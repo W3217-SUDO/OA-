@@ -58,7 +58,8 @@ export const buildCaseCreatePayload = (
   owner: text(draft.owner) || text(context.owner) || "admin",
   case_type: text(draft.case_type) || context.routeType,
   client_position: context.mode === "counsel" ? "" : text(draft.client_position),
-  cause_or_charge: context.mode === "counsel" ? "" : text(draft.cause_or_charge),
+  // 10.22 第9行：法律顾问也提交选填案由（用户答复“第9行是加一个”）。
+  cause_or_charge: text(draft.cause_or_charge),
   right_type: context.mode === "counsel" ? "" : text(draft.right_type),
   opponent: text(draft.opponent) || list(draft.defendants).join("、"),
   source_person: text(draft.source_person),

@@ -20,7 +20,7 @@ function expression(text, bindings = {}) {
   return new Function(...Object.keys(bindings), code + '\nreturn value;')(...Object.values(bindings));
 }
 async function load(path, api = {}, messages = []) {
-  const output = await build({ entryPoints: [fileURLToPath(new URL(path, import.meta.url))], bundle: true, write: false, platform: 'node', format: 'cjs', packages: 'external', plugins: [{
+  const output = await build({ entryPoints: [fileURLToPath(new URL(path, import.meta.url))], bundle: true, write: false, platform: 'node', format: 'cjs', packages: 'external', loader: { '.css': 'empty' }, plugins: [{
     name: 'isolated-clue-ui', setup(builder) {
       builder.onResolve({ filter: /\/api$/ }, () => ({ path: 'api', namespace: 'verification' }));
       builder.onResolve({ filter: /^antd$/ }, () => ({ path: 'antd', namespace: 'verification' }));

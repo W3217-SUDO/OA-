@@ -416,6 +416,18 @@ DEFAULT_SYSTEM_PARAMETERS = [
     ("case_phase", "ARCHIVE_DEFICIT_REVIEW", "亏损审核", {"case_type": "民事争议", "parent_code": "ARCHIVE", "sort_order": 605}),
     ("case_phase", "ARCHIVE_DEFICIT", "亏损归档", {"case_type": "民事争议", "parent_code": "ARCHIVE", "sort_order": 606}),
     ("case_phase", "ARCHIVE_DEFICIT_REJECTED", "亏损拒绝", {"case_type": "民事争议", "parent_code": "ARCHIVE", "sort_order": 607}),
+    # 10.22 第 11 行：刑事案件专用阶段（旧系统刑事“变更阶段”前四项中的后三项；
+    # “待分配”沿用民事 NEW“新案待分配”）。启动时按 (category, code) 只补缺失行，
+    # 不改名、不停用任何已有阶段，生产库重复启动保持幂等。
+    ("case_phase", "CRIMINAL_POLICE_INVESTIGATION", "公安侦查", {"case_type": "刑事案件", "parent_code": "", "sort_order": 41}),
+    ("case_phase", "CRIMINAL_ARREST", "批捕", {"case_type": "刑事案件", "parent_code": "", "sort_order": 42}),
+    ("case_phase", "CRIMINAL_PROSECUTION_REVIEW", "检察院审查起诉", {"case_type": "刑事案件", "parent_code": "", "sort_order": 43}),
+    # 10.22 新增第 11 行（刑事和民事案件阶段不一样，按旧系统截图）：旧系统刑事一审/二审里民事没有的子阶段。
+    ("case_phase", "CRIMINAL_FIRST_HEARING_NOTICE", "一审通知开庭", {"case_type": "刑事案件", "parent_code": "FIRST", "sort_order": 1203}),
+    ("case_phase", "CRIMINAL_FIRST_JUDGMENT", "一审一审判决", {"case_type": "刑事案件", "parent_code": "FIRST", "sort_order": 1205}),
+    ("case_phase", "CRIMINAL_SECOND_APPEAL_PREP", "二审上诉准备", {"case_type": "刑事案件", "parent_code": "SECOND", "sort_order": 1300}),
+    ("case_phase", "CRIMINAL_SECOND_JUDGMENT", "二审判决", {"case_type": "刑事案件", "parent_code": "SECOND", "sort_order": 1306}),
+    ("case_phase", "CRIMINAL_SECOND_JUDGMENT_EFFECTIVE", "二审判决生效", {"case_type": "刑事案件", "parent_code": "SECOND", "sort_order": 1307}),
     ("court", "SHBS", "上海市宝山区人民法院", {}),
     ("court", "SHXH", "上海市徐汇区人民法院", {}),
     ("court", "SHIP", "上海知识产权法院", {}),
@@ -447,6 +459,34 @@ DEFAULT_SYSTEM_PARAMETERS = [
     ("district", "CN-SH", "上海市", {"parent_code": "CN"}),
     ("court_officer", "SHBS-JUDGE-01", "示例法官", {"court_code": "SHBS", "role": "法官", "phone": ""}),
 ]
+
+
+CRIMINAL_CASE_TYPE = "刑事案件"
+
+
+# 刑事案件与民事共用的内置阶段，按旧系统刑事阶段树逐项列出（10.22 新增第 11 行：
+# 刑事和民事阶段不一样，以旧系统截图为准；原第 11 行“其余与民事一样”被此行更正）。
+# 待分配、四个目录本身、归档阶段全部子项与民事相同；一审/二审/再审只保留截图中出现的同名子项，
+# 截图里民事没有的子项见上方 CRIMINAL_* 刑事专用阶段。旧刑事截图无执行阶段。
+CRIMINAL_SHARED_CIVIL_PHASE_CODES = frozenset({
+    "NEW", "FIRST", "SECOND", "RETRIAL", "ARCHIVE",
+    "FIRST_ACCEPTED", "FIRST_EVIDENCE", "FIRST_POST_HEARING", "FIRST_WAIT_APPEAL",
+    "SECOND_ACCEPTED", "SECOND_EVIDENCE", "SECOND_HEARING_PREP", "SECOND_POST_HEARING",
+    "RETRIAL_ACCEPTED", "RETRIAL_EVIDENCE", "RETRIAL_HEARING_PREP", "RETRIAL_POST_HEARING", "RETRIAL_PENDING_EXECUTION",
+    "ARCHIVE_REVIEW", "ARCHIVE_COMPLETED", "ARCHIVE_REJECTED", "ARCHIVE_DEFICIT_INTERNAL",
+    "ARCHIVE_DEFICIT_REVIEW", "ARCHIVE_DEFICIT", "ARCHIVE_DEFICIT_REJECTED",
+})
+CRIMINAL_CASE_PHASE_CODES = frozenset(
+    code for category, code, _name, extra in DEFAULT_SYSTEM_PARAMETERS
+    if category == "case_phase" and extra.get("case_type") == CRIMINAL_CASE_TYPE
+)
+BUILTIN_CASE_PHASE_CODES = frozenset(
+    code for category, code, _name, _extra in DEFAULT_SYSTEM_PARAMETERS if category == "case_phase"
+)
+
+
+def is_criminal_case_type(value: object) -> bool:
+    return str(value or "").strip() == CRIMINAL_CASE_TYPE
 
 
 DEFAULT_SYSTEM_CONFIGS = {
@@ -1392,6 +1432,32 @@ CASE_FORMAL_DOCUMENT_FOLDER_ORDER = (
 CASE_FORMAL_DOCUMENT_FOLDERS = set(CASE_FORMAL_DOCUMENT_FOLDER_ORDER)
 
 
+# 10.22 第 17 行：旧系统刑事案件文档目录（逐字取自旧系统截图）。
+# “诉讼阶段文件”是分组标题，沿用分组值“案件文档全部”，其下四个子目录与民事“案件文档”同位；
+# “公安机关文件”“检察机关文件”是一级目录。已上传到民事目录名下的历史文件不改分类，原样显示。
+CRIMINAL_CASE_DOCUMENT_GROUP_LABEL = "诉讼阶段文件"
+CRIMINAL_CASE_DOCUMENT_FOLDER_ORDER = (
+    "委托手续及证明",
+    "起诉书及证据",
+    "辩论意见及证据",
+    "法院裁判文书",
+)
+CRIMINAL_AUTHORITY_DOCUMENT_FOLDERS = ("公安机关文件", "检察机关文件")
+CRIMINAL_CASE_FORMAL_DOCUMENT_FOLDERS = set(CRIMINAL_CASE_DOCUMENT_FOLDER_ORDER) | set(CRIMINAL_AUTHORITY_DOCUMENT_FOLDERS)
+
+
+def case_formal_document_folders_for_case_type(case_type: object) -> set[str]:
+    """该案件类型可直接上传/移动/转入的固定正式目录。"""
+    if is_criminal_case_type(case_type):
+        return set(CRIMINAL_CASE_FORMAL_DOCUMENT_FOLDERS)
+    return set(CASE_FORMAL_DOCUMENT_FOLDERS)
+
+
+def case_formal_document_folder_blocked(category: str, case_type: object) -> bool:
+    """刑事案件不再接收民事固定目录（历史文件保持原分类，只拦新的放入）。"""
+    return is_criminal_case_type(case_type) and str(category or "").strip() in CASE_FORMAL_DOCUMENT_FOLDERS
+
+
 CASE_INVESTIGATION_DOCUMENT_FOLDERS = ("鉴别资料", "调查文档", "取证文档")
 
 
@@ -1535,6 +1601,24 @@ CASE_DOCUMENT_CATEGORY = {
     "compensation-payment-application": "庭审及庭后文件",
     **{key: "法院诉讼文书" for key in CASE_LEGACY_LAW_FIRM_LETTER_TYPES},
 }
+
+
+# 刑事案件系统生成文书的落点（按默认方案：授权委托书、身份证明、律所函属委托手续；
+# 鉴定函属证据；归档封面、结算提成表、赔付申请放在最后阶段目录“法院裁判文书”，与民事放“庭审及庭后文件”同位）。
+CRIMINAL_CASE_DOCUMENT_CATEGORY = {
+    "identification_letter": "起诉书及证据",
+    "authorization-letter": "委托手续及证明",
+    "identity-certificate": "委托手续及证明",
+    "archive-cover": "法院裁判文书",
+    "settlement-list": "法院裁判文书",
+    "compensation-payment-application": "法院裁判文书",
+    **{key: "委托手续及证明" for key in CASE_LEGACY_LAW_FIRM_LETTER_TYPES},
+}
+
+
+def case_document_category_for(document_type: str, case_type: object) -> str:
+    mapping = CRIMINAL_CASE_DOCUMENT_CATEGORY if is_criminal_case_type(case_type) else CASE_DOCUMENT_CATEGORY
+    return mapping.get(document_type, "案件生成文书")
 
 
 LEGACY_CONTRACT_STATUS_BY_NEW = {

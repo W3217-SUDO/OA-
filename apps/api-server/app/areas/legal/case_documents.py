@@ -19,7 +19,6 @@ from app.core.dependencies import (
     Path,
     SQLAlchemyError,
     StreamingResponse,
-    SystemParameter,
     WorkflowEvent,
     current_identity,
     date,
@@ -636,7 +635,7 @@ async def unlock_case_attachment(case_id: int, attachment_id: int, identity: dic
 @router.post(f"{settings.api_prefix}/cases/{{case_id}}/attachments/move")
 async def move_case_attachments(case_id: int, body: CaseAttachmentMoveInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.documents import (
-        _case_custom_document_folders, _sync_case_document_readiness,
+        _sync_case_document_readiness, _validate_case_attachment_move_category,
     )
     from app.core.permissions import (
         _ensure_case_word_editor_not_locked, _ensure_record_module, _require_case_action, _require_case_detail_write_access,
@@ -644,15 +643,7 @@ async def move_case_attachments(case_id: int, body: CaseAttachmentMoveInput, ide
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     await _require_case_detail_write_access(case_record, identity, db)
     await _require_case_action(identity, db, "case.document.manage")
-    category = body.category.strip()
-    custom_folders = set(_case_custom_document_folders(case_record))
-    configured = await db.scalar(select(SystemParameter.id).where(
-        SystemParameter.category == "case_file_type",
-        SystemParameter.name == category,
-        SystemParameter.is_active.is_(True),
-    ))
-    if category not in custom_folders and not configured:
-        raise HTTPException(status_code=422, detail="目标案件文档目录不存在或已停用")
+    category = await _validate_case_attachment_move_category(case_record, body.category, db)
     attachment_ids = list(dict.fromkeys(body.attachment_ids))
     attachments = list((await db.scalars(select(FileAttachment).where(FileAttachment.id.in_(attachment_ids)))).all())
     if len(attachments) != len(attachment_ids):

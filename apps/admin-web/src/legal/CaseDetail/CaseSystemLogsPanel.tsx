@@ -84,7 +84,7 @@ const CaseSystemLogsContent = ({ caseId, refreshKey, casePersonDisplayName }: Ca
   return <section className="case-system-logs" aria-label="案件系统日志">
     {error ? <Alert type="error" showIcon title={error} action={<Button onClick={() => setReload(value => value + 1)}>重试</Button>} /> : <Spin spinning={loading}>
       <div className="case-system-logs-table">
-        <Table rowKey="id" size="small" pagination={false} dataSource={result?.items || []} columns={[
+        <Table rowKey="id" size="small" sticky pagination={false} dataSource={result?.items || []} columns={[
           { title: "时间", dataIndex: "created_at", width: 170, render: logTime },
           { title: "操作", dataIndex: "action", width: 160 },
           { title: "操作人", width: 110, render: (_: unknown, row: CaseSystemLog) => casePersonDisplayName(row.operator, row.operator_display_name) },

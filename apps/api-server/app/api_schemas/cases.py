@@ -247,6 +247,8 @@ class CaseCounselBasicInput(BaseModel):
     counsel_end: date
     handling_lawyers: list[str] = Field(min_length=1, max_length=20)
     assistant: str = Field(default="", max_length=128)
+    # 10.22 第9行：法律顾问选填案由；None 表示本次不修改。
+    cause_or_charge: str | None = Field(default=None, max_length=256)
     comment: str = Field(default="", max_length=500)
 
 

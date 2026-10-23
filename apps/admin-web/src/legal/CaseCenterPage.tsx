@@ -80,6 +80,7 @@ getLegacyCaseListOperationLabels,
 } from "../caseLegacyParity";
 import {
 buildLegacyCasePhaseTree,
+casePhaseChildrenForCaseType,
 createLatestRequestGuard,
 dashboardCaseQueryForView,
 LEGACY_DEFAULT_EXPANDED_PHASE_GROUPS,
@@ -140,7 +141,7 @@ import { LibreOfficeEditorModal } from "../office/LibreOfficeEditorModal";
 import type { LibreOfficeEditorTarget } from "../office/types";
 import { createCaseFinanceActions } from "./services/financeActions";
 import { createCaseQueriesActions } from "./services/queriesActions";
-import { createCaseWorkflowActions } from "./services/workflowActions";
+import { CRIMINAL_PROCURATORATE_LEVELS, createCaseWorkflowActions, criminalProcuratorateFields, type CriminalProcuratorateLevel } from "./services/workflowActions";
 import { createCasePhaseActions, type CasePhaseChangeFormValues } from "./services/phaseActions";
 
 // ============================================================
@@ -187,8 +188,11 @@ WarehouseCatalogOption
 } from "./types";
 
 import {
-AGENT_CASE_DOCUMENT_FOLDERS,
 AGENT_INVESTIGATION_DOCUMENT_FOLDERS,
+buildNativeCaseDocumentTree,
+getCaseFormalDocumentFolders,
+getCaseUploadCategoryOptions,
+getNonCaseDocumentCategories,
 ARCHIVE_FINAL_STATUSES,
 ARCHIVE_LOCKED_STATUSES,
 ARCHIVE_REVIEW_STATUSES,
@@ -238,6 +242,7 @@ statusColors
 
 import { CaseAgentDrawer } from "./CaseAgentDrawer";
 import { CaseCreateWizard } from "./CaseCreateWizard";
+import { CauseSearchInput } from "./CauseSearchInput";
 import { CaseOperationsMenu } from "./CaseOperationsMenu";
 import {
 CaseCaseTasksPanel,
@@ -483,7 +488,7 @@ export default function CaseCenterPage({
   const [sealingCounselAttachment, setSealingCounselAttachment] = useState<AttachmentRow | null>(null);
   const [movingCounselAttachmentIds, setMovingCounselAttachmentIds] = useState<number[] | null>(null);
   const [caseSealAssets, setCaseSealAssets] = useState<{ id: number; status: string; seal_type: string; name: string }[]>([]);
-  const [] = useState<CaseReminderRow[]>([]);
+  const [counselReminders, setCounselReminders] = useState<CaseReminderRow[]>([]);
   const [, setCounselCaseEvents] = useState<CaseEventRow[]>([]);
   const [, setCounselCaseEventCapabilities] = useState<CaseEventCapabilities>(noCaseEventCapabilities);
   const [, setCounselCaseEventsError] = useState("");
@@ -512,7 +517,7 @@ export default function CaseCenterPage({
   });
   const [caseDocumentFolderEditor, setCaseDocumentFolderEditor] = useState<CaseDocumentFolderEditor | null>(null);
   const [counselUploadCategory, setCounselUploadCategory] = useState(DEFAULT_CASE_ATTACHMENT_CATEGORY);
-  const [, setReminderOpen] = useState(false);
+  const [reminderOpen, setReminderOpen] = useState(false);
   const [caseLogOpen, setCaseLogOpen] = useState(false);
   const [caseLogKind, setCaseLogKind] = useState<CaseLogKind>("case");
   const [caseLogTarget, setCaseLogTarget] = useState<CaseRow | null>(null);
@@ -534,7 +539,7 @@ export default function CaseCenterPage({
   const [creatingCasePartySubmitting, setCreatingCasePartySubmitting] = useState(false);
   const [createDefendantEditorOpen, setCreateDefendantEditorOpen] = useState(false);
   const [editingCaseHearingLawyer, setEditingCaseHearingLawyer] = useState<CaseRow | null>(null);
-  const [criminalMaintenance, setCriminalMaintenance] = useState<{row:CaseRow;kind:"litigants"|"public-security"|"procuratorates"|"courts"}|null>(null);
+  const [criminalMaintenance, setCriminalMaintenance] = useState<{row:CaseRow;kind:"litigants"|"public-security"|"procuratorates"|"courts";level?:CriminalProcuratorateLevel}|null>(null);
   const [feeCase, setFeeCase] = useState<CaseRow | null>(null);
   const [feeSubtypePreset, setFeeSubtypePreset] = useState<"official" | "third-party" | "agency" | "other" | "">("");
   const [editingFeeRow, setEditingFeeRow] = useState<CaseRow | null>(null);
@@ -734,7 +739,7 @@ export default function CaseCenterPage({
     });
     setCreateDefendantEditorOpen(true);
   };
-  const { saveCreateDefendants, advanceCreateStep, saveLitigants, finishCreateFlow, assign, createHearing, openArchive, archive, reviewArchive, reviewCaseCreation, deleteCompanyCase, reviewUnarchive, openCaseTasks, openCounselDetail, duplicateCase, submitCaseMerge, submitNotaryInfo, openCaseClueWorkspace, saveCaseClueEvidence, submitClueConversion, openSpecialCaseDetail, openSpecialCaseTasks, createCounselLog, submitCounselBatchUpdate, saveCounselBasic, openNormalCaseEdit, saveNormalCaseBasic, openArbitrationBasicEdit, saveArbitrationBasic, saveCriminalMaintenance, saveCaseParty, saveCaseLitigants, saveCaseHearingLawyer, createCaseTask, submitCompanyScheduleCourtInfo, saveProgress, downloadCaseExport, openSelectedScheduleHearing } = createCaseWorkflowActions({
+  const { saveCreateDefendants, advanceCreateStep, saveLitigants, finishCreateFlow, assign, createHearing, openArchive, archive, reviewArchive, reviewCaseCreation, deleteCompanyCase, reviewUnarchive, openCaseTasks, openCounselDetail, duplicateCase, submitCaseMerge, submitNotaryInfo, openCaseClueWorkspace, saveCaseClueEvidence, submitClueConversion, openSpecialCaseDetail, openSpecialCaseTasks, createCounselReminder, deleteCounselReminder, createCounselLog, submitCounselBatchUpdate, saveCounselBasic, openNormalCaseEdit, saveNormalCaseBasic, openArbitrationBasicEdit, saveArbitrationBasic, saveCriminalMaintenance, saveCaseParty, saveCaseLitigants, saveCaseHearingLawyer, createCaseTask, submitCompanyScheduleCourtInfo, saveProgress, downloadCaseExport, openSelectedScheduleHearing } = createCaseWorkflowActions({
     get createDefendantEditorForm() { return createDefendantEditorForm; },
     get createForm() { return createForm; },
     get setCreateDefendantEditorOpen() { return setCreateDefendantEditorOpen; },
@@ -803,6 +808,7 @@ export default function CaseCenterPage({
     get setCounselDocumentsLoading() { return setCounselDocumentsLoading; },
     get setCounselDocumentFolderTree() { return setCounselDocumentFolderTree; },
     get setCounselLogs() { return setCounselLogs; },
+    get setCounselReminders() { return setCounselReminders; },
     get setCounselDetailCapabilities() { return setCounselDetailCapabilities; },
     get setCounselDetailFinance() { return setCounselDetailFinance; },
     get setCounselDetailFinanceLoading() { return setCounselDetailFinanceLoading; },
@@ -1051,8 +1057,10 @@ export default function CaseCenterPage({
   const ordinaryCaseQueue = ordinaryCaseQueueForView(initialView);
   const ordinaryCaseTypes = ordinaryCaseTypesForView(initialView);
 
+  // 10.22 新增第 11 行：刑事案件列表左侧阶段树按旧系统刑事子阶段展示与筛选。
+  const phaseChildrenByGroup = casePhaseChildrenForCaseType(initialView.includes("criminal") ? "刑事案件" : "");
   const searchByPhase = (status: string) => {
-    const nextQuery = { ...caseQuery, status, case_statuses: legacyCasePhaseFilterValues(status), sort_order: "updated_desc" };
+    const nextQuery = { ...caseQuery, status, case_statuses: legacyCasePhaseFilterValues(status, phaseChildrenByGroup), sort_order: "updated_desc" };
     caseQueryForm.setFieldValue("status", status);
     setCaseQuery(nextQuery);
     setOriginalPage(1);
@@ -1837,7 +1845,7 @@ export default function CaseCenterPage({
     setActiveCounselDocCategory(category);
     const legacyFolder = findCaseDocumentFolder(counselDocumentFolderTree, category);
     if (legacyFolder?.legacy_folder_id) {
-      if (hasCaseFileTypeOption(legacyFolder.label, applicableOptions) || AGENT_CASE_DOCUMENT_FOLDERS.includes(legacyFolder.label)) {
+      if (hasCaseFileTypeOption(legacyFolder.label, applicableOptions) || getCaseFormalDocumentFolders(viewingCounselCase?.data.case_type).includes(legacyFolder.label)) {
         setCounselUploadCategory(legacyFolder.label);
       }
       setSelectedCounselAttachmentKeys([]);
@@ -1853,7 +1861,7 @@ export default function CaseCenterPage({
     }
     if (
       ["客户文档","合同文档",...AGENT_INVESTIGATION_DOCUMENT_FOLDERS].includes(category)
-      || AGENT_CASE_DOCUMENT_FOLDERS.includes(category)
+      || getCaseFormalDocumentFolders(viewingCounselCase?.data.case_type).includes(category)
       || hasCaseFileTypeOption(category, applicableOptions)
       || getCustomCaseDocumentFolders(viewingCounselCase).includes(category)
     ) {
@@ -1913,6 +1921,7 @@ export default function CaseCenterPage({
       title: row.title,
       customer: row.customer,
       counsel_type: row.data.counsel_type || "",
+      cause_or_charge: row.data.cause_or_charge || "",
       counsel_range: row.data.counsel_start && row.data.counsel_end ? [dayjs(row.data.counsel_start), dayjs(row.data.counsel_end)] : undefined,
       handling_lawyers: resolveCasePersonValues(row.data.handling_lawyers || []),
       assistant: resolveCasePersonValue(row.data.assistant || ""),
@@ -1933,7 +1942,7 @@ export default function CaseCenterPage({
     }
   };
 
-  const openCriminalMaintenance = (row:CaseRow, kind:"litigants"|"public-security"|"procuratorates"|"courts") => {
+  const openCriminalMaintenance = (row:CaseRow, kind:"litigants"|"public-security"|"procuratorates"|"courts", level?:CriminalProcuratorateLevel) => {
     const agentFields = kind === "litigants" ? prepareCaseLitigantAgentFormValues(row.data) : {};
     if (!agentFields) return;
     const dateFields=["first_court_filing_date","first_court_hearing_date","second_court_filing_date","second_court_hearing_date","execution_court_filing_date","execution_court_hearing_date","retrial_court_filing_date","retrial_court_hearing_date"];
@@ -1941,8 +1950,10 @@ export default function CaseCenterPage({
       ...row.data,
       ...agentFields,
       ...Object.fromEntries(dateFields.map(key=>[key,row.data[key]?dayjs(row.data[key]):undefined])),
+      // 10.22 第13行：旧库导入的再审检察院名称存于 last_procuratorate_name，界面字段为 retrial_*，回显时兼容。
+      retrial_procuratorate_name: row.data.retrial_procuratorate_name || row.data.last_procuratorate_name || "",
       comment:"",
-    }); setCriminalMaintenance({row,kind});
+    }); setCriminalMaintenance({row,kind,level});
   };
 
   const searchCaseLitigantCandidates = (keyword: string) => {
@@ -2555,7 +2566,7 @@ export default function CaseCenterPage({
   const phaseItems = counselListMode
     ? buildCasePhaseItems(scopedCases,initialView,phaseDefinitions)
     : buildCasePhaseItemsFromCounts(ordinaryPhaseCounts,phaseDefinitions);
-  const phaseTreeItems = buildLegacyCasePhaseTree(phaseItems, phaseCatalog, ordinaryPhaseCounts) as CasePhaseTreeItem[];
+  const phaseTreeItems = buildLegacyCasePhaseTree(phaseItems, phaseCatalog, ordinaryPhaseCounts, phaseChildrenByGroup) as CasePhaseTreeItem[];
   const originalArchiveMode=initialView.startsWith("case-archive-");
   const archivePendingMode=initialView==="case-archive-pending";
   const archiveTableScroll = useArchiveTableScroll(originalArchiveMode && !isPhoneViewport, initialView);
@@ -2697,48 +2708,23 @@ export default function CaseCenterPage({
     get openCaseListLogCreator() { return openCaseListLogCreator; },
     get openRelatedCustomer() { return openRelatedCustomer; },
   });
+  const caseDocumentCaseType=viewingCounselCase?.data.case_type;
   const customCaseDocumentFolders=getCustomCaseDocumentFolders(viewingCounselCase);
-  const counselCaseFileTypeOptions = fileTypeOptionsForCase(viewingCounselCase?.data.case_type);
-  const fixedFormalCaseDocumentOptions=AGENT_CASE_DOCUMENT_FOLDERS.map(name=>({value:name,label:name}));
-  const counselUploadCategoryOptions=[
-    ...fixedFormalCaseDocumentOptions,
-    ...counselCaseFileTypeOptions.filter(option=>!AGENT_CASE_DOCUMENT_FOLDERS.includes(option.value)),
-    ...customCaseDocumentFolders.filter(name=>!AGENT_CASE_DOCUMENT_FOLDERS.includes(name)&&!hasCaseFileTypeOption(name,counselCaseFileTypeOptions)).map(name=>({value:name,label:name})),
-    {value:"普通附件",label:"普通附件"},
-  ];
+  const counselCaseFileTypeOptions = fileTypeOptionsForCase(caseDocumentCaseType);
+  const counselUploadCategoryOptions=getCaseUploadCategoryOptions({caseType:caseDocumentCaseType,fileTypeOptions:counselCaseFileTypeOptions,customFolders:customCaseDocumentFolders});
   const activeCounselUploadCategoryOptions=activeCounselDocCategory==="AI空间"?[{value:"AI空间",label:"案件智能体文件夹（草稿）"}]:counselUploadCategoryOptions;
-  const caseDocumentTreeGroup=counselDocumentFolderTree.find(option=>option.value==="案件文档全部");
-  const visibleFormalCaseDocumentFolders=Array.from(new Set([
-    ...AGENT_CASE_DOCUMENT_FOLDERS,
-    ...(caseDocumentTreeGroup?.options||[]).map(option=>option.value).filter(name=>name&&name!=="普通附件"),
-    ...customCaseDocumentFolders,
-  ]));
-  const counselMoveCategoryOptions = getCaseDocumentMoveCategoryOptions(customCaseDocumentFolders);
+  const counselMoveCategoryOptions = getCaseDocumentMoveCategoryOptions(customCaseDocumentFolders, caseDocumentCaseType);
   const hasLegacyDocumentTree=counselDocumentFolderTree.some(option=>Boolean(option.legacy_folder_id));
   const counselDocTree:CaseDocumentTreeItem[]=hasLegacyDocumentTree ? [
     {label:"案件智能体文件夹",category:"AI空间",type:"folder"},
     {label:"全部案件文档",category:"全部案件文档",type:"overview"},
     ...flattenLegacyCaseFolders(counselDocumentFolderTree,expandedCounselDocGroups),
-  ] : [
-    {label:"案件智能体文件夹",category:"AI空间",type:"folder"},
-    {label:"全部案件文档",category:"全部案件文档",type:"overview"},
-    {label:"客户文档",category:"客户文档",type:"folder"},
-    {label:"合同文档",category:"合同文档",type:"folder"},
-    {label:"调查文档",category:"调查文档全部",type:"group"},
-    {label:"鉴别资料",category:"鉴别资料",type:"child",parent:"调查文档全部"},
-    {label:"调查文档",category:"调查文档",type:"child",parent:"调查文档全部"},
-    {label:"取证文档",category:"取证文档",type:"child",parent:"调查文档全部"},
-    {label:"案件文档",category:"案件文档全部",type:"group"},
-    ...visibleFormalCaseDocumentFolders.map(label=>({
-      label,category:label,type:"child",parent:"案件文档全部",
-      custom:customCaseDocumentFolders.includes(label),
-    })),
-  ].filter(item=>!item.parent||expandedCounselDocGroups[item.parent]);
+  ] : buildNativeCaseDocumentTree({caseType:caseDocumentCaseType,folderTree:counselDocumentFolderTree,customFolders:customCaseDocumentFolders,expandedGroups:expandedCounselDocGroups});
   const counselDocCategoryGroups:Record<string,string[]>={
     调查文档全部:["调查文档","鉴别资料","取证文档"],
   };
   const activeCounselDocCategories=counselDocCategoryGroups[activeCounselDocCategory]||[activeCounselDocCategory];
-  const nonCaseDocumentCategories=["AI空间","客户文档","合同文档",...counselDocCategoryGroups.调查文档全部];
+  const nonCaseDocumentCategories=getNonCaseDocumentCategories(caseDocumentCaseType);
   const activeLegacyFolder=findCaseDocumentFolder(counselDocumentFolderTree,activeCounselDocCategory);
   const legacyFolderAttachments=filterLegacyCaseFolder(counselDetailAttachments,activeLegacyFolder);
   const filteredCounselDetailAttachments=activeCounselDocCategory==="全部案件文档"
@@ -2924,14 +2910,18 @@ export default function CaseCenterPage({
     {counselDetailCapabilities.can_edit_hearing_lawyer && <Button type="text" block disabled={detailEditLocked} onClick={() => openCaseHearingLawyer(viewingCounselCase)}>{primaryOperationLabels[3]}</Button>}
     {counselDetailCapabilities.can_edit_litigants && <Button type="text" block disabled={detailEditLocked} onClick={() => openCaseLitigants(viewingCounselCase)}>{primaryOperationLabels[4]}</Button>}
     {counselDetailCapabilities.can_edit_criminal_public_security && viewingCounselCase.data.case_type === "刑事案件" && <Button type="text" block disabled={detailEditLocked} onClick={() => openCriminalMaintenance(viewingCounselCase, "public-security")}>修改公安信息</Button>}
-    {counselDetailCapabilities.can_edit_criminal_court && viewingCounselCase.data.case_type === "刑事案件" && <Button type="text" block disabled={detailEditLocked} onClick={() => openCriminalMaintenance(viewingCounselCase, "courts")}>修改法院信息</Button>}
     {counselDetailCapabilities.can_edit_court_info && <div className="case-detail-legacy-submenu">
       <Button type="text" block disabled={detailEditLocked} className="case-detail-legacy-submenu-trigger">{viewingCounselCase.data.case_type === "仲裁" ? "修改仲裁信息" : primaryOperationLabels[5]}</Button>
       <div className="case-detail-legacy-submenu-panel" data-testid="case-detail-court-submenu">
         {getCompanyScheduleCourtLevels().map(([key, label]) => <Button key={key} type="text" block onClick={() => openCompanyScheduleCourtInfo(viewingCounselCase, key)}>{label}</Button>)}
       </div>
     </div>}
-    {counselDetailCapabilities.can_edit_criminal_procuratorate && viewingCounselCase.data.case_type === "刑事案件" && <Button type="text" block disabled={detailEditLocked} onClick={() => openCriminalMaintenance(viewingCounselCase, "procuratorates")}>修改检察院信息</Button>}
+    {counselDetailCapabilities.can_edit_criminal_procuratorate && viewingCounselCase.data.case_type === "刑事案件" && <div className="case-detail-legacy-submenu">
+      <Button type="text" block disabled={detailEditLocked} className="case-detail-legacy-submenu-trigger">修改检察院信息</Button>
+      <div className="case-detail-legacy-submenu-panel" data-testid="case-detail-procuratorate-submenu">
+        {CRIMINAL_PROCURATORATE_LEVELS.map(([level, label]) => <Button key={level} type="text" block disabled={detailEditLocked} onClick={() => openCriminalMaintenance(viewingCounselCase, "procuratorates", level)}>{label}</Button>)}
+      </div>
+    </div>}
     {counselDetailCapabilities.can_edit_settlement && (isNormalCaseBasicType(viewingCounselCase.data.case_type) || viewingCounselCase.data.case_type === "仲裁") && <Button type="text" block disabled={detailEditLocked} onClick={openLegacySettlementAmount}>{primaryOperationLabels[6]}</Button>}
     {counselDetailCapabilities.can_archive && <div className="case-detail-legacy-submenu">
       <Button type="text" block disabled={ARCHIVE_LOCKED_STATUSES.includes(viewingCounselCase.status)} className="case-detail-legacy-submenu-trigger">{primaryOperationLabels[7]}</Button>
@@ -3403,7 +3393,7 @@ export default function CaseCenterPage({
         <Form form={phaseForm}>
           <Alert type="info" showIcon title="请选择一个末级阶段后确认变更；目录阶段不可直接选择。" style={{ marginBottom: 12 }} />
           <Form.Item name="case_phase_id" rules={[{ required: true, message: "请选择案件阶段" }]}>
-            <CasePhasePickerTree options={phaseOptions} />
+            <CasePhasePickerTree options={phaseOptions} caseType={String(phaseEditing?.[0]?.data?.case_type || "")} />
           </Form.Item>
         </Form>
       </Modal>
@@ -3967,7 +3957,8 @@ export default function CaseCenterPage({
           </Dropdown>
         </Space>}
       >
-        {viewingCounselCase&&<div className="case-detail-workbench">
+        {viewingCounselCase&&<div className="case-detail-workbench case-detail-split-workbench">
+          <div className="case-detail-main-column">
           <ConflictReviewNotice guard={detailCaseConflict} />
           <CaseDetailHeader
             viewingCase={viewingCounselCase}
@@ -4106,7 +4097,6 @@ export default function CaseCenterPage({
                 editCaseFee={editCaseFee}
                 deleteCaseFee={deleteCaseFee}
                 handleInternalFeeAction={handleInternalFeeAction}
-                openInformDateBatchUpdate={openInformDateBatchUpdate}
               />},
               {key:"logs",label:"系统日志",children:<CaseSystemLogsPanel
                 caseId={viewingCounselCase.id}
@@ -4150,17 +4140,29 @@ export default function CaseCenterPage({
             ]}
           />
             </div>
-            <aside className="case-detail-side-panel">
-              <section>
-                <div className="case-detail-side-title"><span>案件日志</span>{counselDetailCapabilities.can_create_log && <Space size={0}><Button type="link" size="small" icon={<PlusOutlined />} onClick={()=>openCounselLogCreator("case")}>新增日志</Button><Button type="link" size="small" onClick={()=>openCounselLogCreator("refund")}>退费日志</Button></Space>}</div>
-                <div className="case-detail-log-list">
-                  {counselLogs.length ? counselLogs.map((item) => (
-                    <CaseLogEntry key={item.id} log={item} personDisplayName={casePersonDisplayName} onOpen={setViewingCaseLog} />
-                  )) : <p className="case-detail-empty">暂无日志</p>}
-                </div>
-              </section>
-            </aside>
           </div>
+          </div>
+          <aside className="case-detail-side-panel" data-testid="case-detail-side-panel">
+            <section className="case-detail-reminder-section" aria-label="案件提醒">
+              <div className="case-detail-side-title"><span>案件提醒</span>{counselDetailCapabilities.can_create_reminder && <Button type="link" size="small" icon={<PlusOutlined />} disabled={detailEditLocked} onClick={()=>{reminderForm.resetFields();setReminderOpen(true);}}>新增</Button>}</div>
+              <div className="case-detail-reminder-list" data-testid="case-detail-reminder-list">
+                {counselReminders.length ? counselReminders.map((item) => (
+                  <div key={item.id} className="case-detail-reminder-entry">
+                    <div className="case-detail-reminder-meta"><span>{item.data.reminder_date || "—"}</span><span>截止 {item.data.deadline || "—"}</span>{counselDetailCapabilities.can_delete_reminder && !detailEditLocked && <Button type="link" size="small" danger onClick={()=>deleteCounselReminder(item)}>删除</Button>}</div>
+                    <div className="case-detail-reminder-content">{item.description || "—"}</div>
+                  </div>
+                )) : <p className="case-detail-empty">暂无提醒</p>}
+              </div>
+            </section>
+            <section className="case-detail-log-section" aria-label="案件日志">
+              <div className="case-detail-side-title"><span>案件日志</span>{counselDetailCapabilities.can_create_log && <Space size={0}><Button type="link" size="small" icon={<PlusOutlined />} onClick={()=>openCounselLogCreator("case")}>新增日志</Button><Button type="link" size="small" onClick={()=>openCounselLogCreator("refund")}>新增退费日志</Button></Space>}</div>
+              <div className="case-detail-log-list">
+                {counselLogs.length ? counselLogs.map((item) => (
+                  <CaseLogEntry key={item.id} log={item} personDisplayName={casePersonDisplayName} onOpen={setViewingCaseLog} />
+                )) : <p className="case-detail-empty">暂无日志</p>}
+              </div>
+            </section>
+          </aside>
           <CaseClueContextPanel
             workspace={viewingCaseClue}
             loading={caseClueLoading}
@@ -4173,6 +4175,13 @@ export default function CaseCenterPage({
           />
         </div>}
       </Drawer>
+      <Modal open={reminderOpen} title={`新增案件提醒：${viewingCounselCase?.serial_no||""}`} okText="确定" cancelText="取消" onOk={createCounselReminder} onCancel={()=>setReminderOpen(false)} destroyOnHidden>
+        <Form form={reminderForm} layout="vertical">
+          <div className="form-grid"><Form.Item label="提醒日期" name="reminder_date" rules={[{required:true,message:"请选择提醒日期"}]}><DatePicker style={{width:"100%"}}/></Form.Item><Form.Item label="截止日期" name="deadline" rules={[{required:true,message:"请选择截止日期"}]}><DatePicker style={{width:"100%"}}/></Form.Item></div>
+          <Form.Item label="提醒内容" name="content" rules={[{required:true,whitespace:true,message:"请输入提醒内容"},{max:1000,message:"提醒内容不能超过1000个字符"}]}><Input.TextArea rows={4} maxLength={1000} showCount/></Form.Item>
+          <Alert type="info" showIcon title="提醒日期不能晚于截止日期；保存和删除都会写入案件审计记录。"/>
+        </Form>
+      </Modal>
       <Modal open={Boolean(viewingCaseLog)} title={viewingCaseLog?.kind === "refund" ? "退费日志详情" : "案件日志详情"} footer={null} onCancel={()=>setViewingCaseLog(null)} destroyOnHidden>
         <p><b>记录时间：</b>{viewingCaseLog?.created_at || "—"}</p>
         <p><b>记录人：</b>{viewingCaseLog ? casePersonDisplayName(viewingCaseLog.operator, viewingCaseLog.operator_display_name) : "—"}</p>
@@ -4387,6 +4396,7 @@ export default function CaseCenterPage({
         <Form form={counselEditForm} layout="vertical">
           <Form.Item label="客户" name="customer"><Input disabled /></Form.Item>
           <Form.Item label="顾问类型" name="counsel_type" rules={[{required:true,message:"请输入顾问类型"}]}><Input /></Form.Item>
+          <Form.Item label="案由" name="cause_or_charge"><CauseSearchInput placeholder="选填，输入关键词搜索案由" options={causeOptions} /></Form.Item>
           <Form.Item label="案件名称" name="title" rules={[{required:true,message:"请输入案件名称"}]}><Input /></Form.Item>
           <Form.Item label="顾问期限" name="counsel_range" rules={[{required:true,message:"请选择顾问期限"}]}><DatePicker.RangePicker style={{width:"100%"}} /></Form.Item>
           <Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item>
@@ -4413,7 +4423,7 @@ export default function CaseCenterPage({
             }))} />
           </Form.Item>
           <Form.Item label="客户" name="customer_record_id" rules={[{required:true,message:"请选择可见且有效的客户"}]}><Select disabled={!Number(editingNormalCase?.data.customer_record_id || editingNormalCase?.data.customer_id)} showSearch optionFilterProp="label" options={caseCustomers.filter(item=>!["公海","已回收"].includes(item.status)).map(item=>({value:item.id,label:`${item.serial_no}｜${item.title}`}))}/></Form.Item>
-          <Form.Item label={editingNormalCase?.data.case_type === "刑事案件" ? "罪名/案由" : "案由"} name="cause_or_charge" rules={[{required:true,message:"请输入案由或罪名"}]}><Input/></Form.Item>
+          <Form.Item label={editingNormalCase?.data.case_type === "刑事案件" ? "罪名/案由" : "案由"} name="cause_or_charge" rules={[{required:true,whitespace:true,message:"请输入案由或罪名"}]}>{editingNormalCase?.data.case_type === "刑事案件" ? <CauseSearchInput placeholder="输入关键词搜索罪名/案由" options={causeOptions} /> : <Input/>}</Form.Item>
           <Form.Item label="案件名称" name="title" rules={[{required:true,message:"请输入案件名称"}]}><Input/></Form.Item>
           <div className="form-grid">
             <Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item>
@@ -4436,11 +4446,11 @@ export default function CaseCenterPage({
           <Form.Item label="关联调查线索" name="investigation_clue_ids"><CaseClueSelect caseId={editingArbitrationCase?.id} /></Form.Item><Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>
-      <Modal width={760} open={Boolean(criminalMaintenance)} title={`维护刑事案件资料：${criminalMaintenance?.row.serial_no||""}`} okText="确定" cancelText="取消" onOk={saveCriminalMaintenance} onCancel={()=>setCriminalMaintenance(null)} destroyOnHidden>
+      <Modal width={criminalMaintenance?.kind==="procuratorates"?560:760} open={Boolean(criminalMaintenance)} title={criminalMaintenance?.kind==="procuratorates"?"检察院信息":`维护刑事案件资料：${criminalMaintenance?.row.serial_no||""}`} okText="确定" cancelText="取消" onOk={saveCriminalMaintenance} onCancel={()=>setCriminalMaintenance(null)} destroyOnHidden>
         <Form form={criminalMaintenanceForm} layout="vertical">
           {criminalMaintenance?.kind==="litigants"&&<><div className="form-grid">{[["plaintiffs","受害人"],["defendants","被告/犯罪嫌疑人"],["third_parties","第三人"]].map(([name,label])=><Form.Item key={name} label={label} name={name}><Select mode="tags" tokenSeparators={[",","，"]}/></Form.Item>)}</div>{renderCaseLitigantAgentEditor("plaintiff_agents", "受害人代理人")}{renderCaseLitigantAgentEditor("defendant_agents")}{renderCaseLitigantAgentEditor("third_party_agents")}</>}
           {criminalMaintenance?.kind==="public-security"&&<div className="form-grid">{[["public_security_name","公安机关"],["public_security_case_no","公安案件号"],["public_security_address","地址"],["public_security_phone","联系电话"],["public_security_operator","承办人"]].map(([name,label])=><Form.Item key={name} label={label} name={name}><Input/></Form.Item>)}</div>}
-          {criminalMaintenance?.kind==="procuratorates"&&["first","second","retrial"].map(level=><div className="form-grid" key={level}>{[[`${level}_procuratorate_name`,`${level==="first"?"一审":level==="second"?"二审":"再审"}检察院`],[`${level}_procuratorate_case_no`,`案件号`],[`${level}_procuratorate_address`,`地址`],[`${level}_procuratorate_phone`,`联系电话`],[`${level}_procuratorate_operator`,`承办人`]].map(([name,label])=><Form.Item key={name} label={label} name={name}><Input/></Form.Item>)}</div>)}
+          {criminalMaintenance?.kind==="procuratorates"&&criminalMaintenance.level&&<div className="case-criminal-procuratorate-form" data-testid="case-criminal-procuratorate-form">{criminalProcuratorateFields(criminalMaintenance.level).map(({name,label,placeholder})=><Form.Item key={name} label={label} name={name} rules={[{max:name.endsWith("_address")?500:name.endsWith("_name")?256:name.endsWith("_phone")?64:128,message:`${label}过长`}]}><Input placeholder={placeholder}/></Form.Item>)}</div>}
           {criminalMaintenance?.kind==="courts"&&["first","second","execution","retrial"].map(level=>{
             const levelLabel=level==="first"?"一审":level==="second"?"二审":level==="execution"?"执行":"再审";
             const fieldRows=level==="execution"?[["execution_court_name","执行法院"],["execution_court_case_no","案号"],["execution_court_courtroom","法庭"],["execution_court_judge","法官"],["execution_court_clerk","书记员"]]:[[`${level}_court_name`,`${levelLabel}法院`],[`${level}_court_case_no`,`案号`],[`${level}_court_courtroom`,`法庭`],[`${level}_court_judge`,`法官`],[`${level}_court_clerk`,`书记员`]];
@@ -4448,7 +4458,7 @@ export default function CaseCenterPage({
             const hearingDateName=level==="execution"?"execution_court_hearing_date":`${level}_court_hearing_date`;
             return <div key={level}><Form.Item name={`${level}_court_enabled`} valuePropName="checked"><Checkbox>{`${levelLabel}法院信息`}</Checkbox></Form.Item><div className="form-grid">{fieldRows.map(([name,label])=><Form.Item key={name} label={label} name={name}><Input/></Form.Item>)}<Form.Item label="立案日期" name={filingDateName}><DatePicker style={{width:"100%"}}/></Form.Item><Form.Item label="开庭日期" name={hearingDateName}><DatePicker style={{width:"100%"}}/></Form.Item></div></div>;
           })}
-          <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
+          {criminalMaintenance?.kind!=="procuratorates"&&<Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>}
         </Form>
       </Modal>
       <Modal width={960} open={Boolean(editingCaseLitigants)} title={`修改当事人：${editingCaseLitigants?.serial_no || ""}`} okText="保存修改" cancelText="取消" onOk={saveCaseLitigants} onCancel={()=>setEditingCaseLitigants(null)} forceRender destroyOnHidden style={{ top: 24 }} styles={{ body: { maxHeight: "calc(100vh - 190px)", overflowY: "auto" } }}>

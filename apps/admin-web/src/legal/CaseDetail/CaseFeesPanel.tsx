@@ -53,7 +53,6 @@ export const CaseFeesPanel = ({
   editCaseFee,
   deleteCaseFee,
   handleInternalFeeAction,
-  openInformDateBatchUpdate,
 }: CaseFeesPanelProps) => {
   const hasExternalOperations = [
     counselDetailCapabilities.can_refund_finance,
@@ -69,7 +68,7 @@ export const CaseFeesPanel = ({
   if (scope === "firm") {
     return (
       <div className="case-legacy-tab-panel case-firm-fees-panel">
-        <Table rowKey="id" className="case-firm-fees-table" resizable={false} loading={loading} size="small" bordered tableLayout="fixed" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} dataSource={feeRows} locale={{emptyText:renderCaseFeeEmptyState?.("律所")}} rowSelection={{columnWidth:"4%",selectedRowKeys:selectedFeeKeys,onChange:setSelectedFeeKeys,onCell:()=>({className:"case-firm-fee-selection","data-label":"选择"})}} columns={firmCaseFeeColumns}/>
+        <Table rowKey="id" className="case-firm-fees-table" resizable={false} sticky loading={loading} size="small" bordered tableLayout="fixed" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} dataSource={feeRows} locale={{emptyText:renderCaseFeeEmptyState?.("律所")}} rowSelection={{columnWidth:"4%",selectedRowKeys:selectedFeeKeys,onChange:setSelectedFeeKeys,onCell:()=>({className:"case-firm-fee-selection","data-label":"选择"})}} columns={firmCaseFeeColumns}/>
         {feeRows.length>0&&<Space className="case-legacy-bottom-actions">
           {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"新增官费"},{key:"第三方费用",label:"新增第三方费用"},{key:"代理费",label:"新增代理费"},{key:"其他费用",label:"新增其他费用"},{key:"commission",label:"新建提成(选择费用)"}],onClick:({key})=>key === "commission" ? void openCaseCommission?.() : openCaseFeeBySubtype?.("律所",key)}}><Button>新增案件费用</Button></Dropdown>}
           {hasExternalOperations&&<Dropdown trigger={["click"]} menu={{items:[
@@ -116,7 +115,7 @@ export const CaseFeesPanel = ({
   // internal
   return (
     <div className="case-legacy-tab-panel">
-      <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1120}} dataSource={feeRows} rowSelection={{selectedRowKeys:selectedFeeKeys,onChange:setSelectedFeeKeys}} columns={[
+      <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1000}} dataSource={feeRows} rowSelection={{selectedRowKeys:selectedFeeKeys,onChange:setSelectedFeeKeys}} columns={[
         {title:"收款人",width:130,render:(_:unknown,row:CaseRow)=>casePersonDisplayName?.(row.data.payee||row.data.handler||row.owner,row.data.payee_display_name||row.data.handler_display_name||row.owner_display_name)},
         {title:"提成类型",width:170,render:(_:unknown,row:CaseRow)=>row.data.commission_type||row.data.expense_subtype||row.data.fee_type||"内部费用"},
         {title:"金额",width:100,align:"right",render:(_:unknown,row:CaseRow)=>displayFeeValue(row.data.amount)},
@@ -124,7 +123,6 @@ export const CaseFeesPanel = ({
         {title:"已付款金额",width:130,align:"right",render:(_:unknown,row:CaseRow)=>displayFeeValue(row.data.paid_amount)},
         {title:"状态",dataIndex:"status",width:100},
         {title:"提交时间",width:120,render:(_:unknown,row:CaseRow)=>String(displayFeeValue(String(row.data.submitted_at||row.created_at||row.data.created_at||"").slice(0,10)))},
-        {title:"通知日期",width:120,render:(_:unknown,row:CaseRow)=>String(displayFeeValue(String(row.data.inform_date||row.data.notice_date||"").slice(0,10)))},
         {title:"付款时间",width:120,render:(_:unknown,row:CaseRow)=>String(displayFeeValue(String(row.data.paid_at||row.data.payment_date||"").slice(0,10)))},
         {title:"提交人",width:120,render:(_:unknown,row:CaseRow)=>row.data.submitter_display_name||row.data.submitted_by_display_name||row.data.handler_display_name||row.owner_display_name||casePersonDisplayName?.(row.owner)},
         {title:"备注",width:220,render:(_:unknown,row:CaseRow)=>displayFeeValue(row.description||row.data.remark)},
@@ -134,7 +132,6 @@ export const CaseFeesPanel = ({
         {counselDetailCapabilities.can_create_finance&&<Button onClick={()=>handleInternalFeeAction?.("create")}>新增内部费用</Button>}
         {counselDetailCapabilities.can_apply_fee_payment&&<Button onClick={()=>handleInternalFeeAction?.("payment")}>申请付款</Button>}
         {counselDetailCapabilities.can_edit_finance&&<Button disabled={!selectedFee} onClick={()=>handleInternalFeeAction?.("edit")}>编辑</Button>}
-        {counselDetailCapabilities.can_manage_fee_notice&&<Button onClick={()=>openInformDateBatchUpdate?.(selectedFeeKeys)}>修改通知日期</Button>}
         {counselDetailCapabilities.can_delete_finance&&<Button danger disabled={!selectedFee} onClick={()=>handleInternalFeeAction?.("delete")}>删除</Button>}
       </Space>
     </div>

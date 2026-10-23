@@ -94,15 +94,22 @@ export type CasePhaseTreeItem = CasePhaseListItem & { children: CasePhaseListIte
 
 export const LEGACY_CASE_PHASE_GROUPS: string[];
 export const LEGACY_CIVIL_PHASE_ROOTS: string[];
+export const CRIMINAL_CASE_TYPE: string;
+export const LEGACY_CRIMINAL_PHASE_ROOT_ITEMS: Array<{ label: string; value: string }>;
+export function isCriminalCaseType(caseType?: unknown): boolean;
+export function casePhaseRootItemsForCaseType(caseType?: unknown): Array<{ label: string; value: string }>;
 export const LEGACY_DEFAULT_EXPANDED_PHASE_GROUPS: string[];
 export const LEGACY_PHASE_CHILDREN: Record<string, string[]>;
-export function legacyCasePhaseFilterValues(phase?: unknown): string[];
+export const LEGACY_CRIMINAL_PHASE_CHILDREN: Record<string, string[]>;
+export function casePhaseChildrenForCaseType(caseType?: unknown): Record<string, string[]>;
+export function legacyCasePhaseFilterValues(phase?: unknown, childrenByGroup?: Record<string, string[]>): string[];
 export function dashboardCaseQueryForView(view?: unknown): CaseOrdinarySearchValues;
 
 export function buildLegacyCasePhaseTree(
   items?: CasePhaseListItem[],
   catalog?: CasePhaseOption[],
   phaseCounts?: Record<string, number>,
+  childrenByGroup?: Record<string, string[]>,
 ): CasePhaseTreeItem[];
 
 export function createLatestRequestGuard(): LatestRequestGuard;

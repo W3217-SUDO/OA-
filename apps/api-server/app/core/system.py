@@ -1222,9 +1222,14 @@ async def _save_criminal_detail(record: BusinessRecord, payload: dict, action: s
 
 
 def _criminal_maintenance_payload(body: BaseModel) -> dict:
-    """Keep judicial booleans and dates typed when editing a completed case."""
+    """Keep judicial booleans and dates typed when editing a completed case.
+
+    Only fields the client actually submitted are merged (10.22 第13行: the
+    procuratorate form now saves one trial level at a time, so omitted levels
+    must keep their stored values instead of being reset to defaults).
+    """
     payload: dict[str, object] = {}
-    for key, value in body.model_dump(exclude={"comment"}).items():
+    for key, value in body.model_dump(exclude={"comment"}, exclude_unset=True).items():
         if isinstance(value, date):
             payload[key] = str(value)
         elif isinstance(value, bool) or value is None:

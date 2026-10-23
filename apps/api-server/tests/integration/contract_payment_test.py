@@ -134,8 +134,9 @@ class ContractPaymentTest(unittest.TestCase):
             self.assertEqual(call("POST", "/contract-payment-applications/999999/writeoff", token, {"writeoff_date": "2026-08-02", "voucher_no": "MISSING-WRITEOFF", "comment": "不存在"})[0], 404)
             self.assertEqual(call("POST", f"/contract-payment-applications/{payment_id}/pay", token, {"paid_date": "2026-08-02", "voucher_no": "AFTER-WRITEOFF", "comment": "非法"})[0], 409)
             status, body = call("GET", f"/contracts/{contract_id}/payment-candidates", token)
-            self.assertEqual(status, 200); candidate = json.loads(body)["items"][0]
-            self.assertEqual(candidate["reserved_amount"], 100); self.assertEqual(candidate["remaining_amount"], 0)
+            # 10.22 第2行：已全额申请（待付为 0）的标的不再出现在合同付款候选中。
+            self.assertEqual(status, 200)
+            self.assertNotIn(object_id, {row.get("contract_object_id") for row in json.loads(body)["items"]})
             self.assertIn(call("POST", f"/contracts/{contract_id}/payment-applications", token, {**payment_payload, "lines": [{"contract_object_id": object_id, "amount": 1} ]})[0], (409, 422))
             self.assertEqual(call("POST", f"/contracts/{rejected_contract_id}/payment-applications", token, {**payment_payload, "lines": [{"contract_object_id": object_id, "amount": 1} ]})[0], 409)
         finally:

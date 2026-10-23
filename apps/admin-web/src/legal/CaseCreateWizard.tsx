@@ -8,6 +8,7 @@ import type { CaseRow,ContractRow } from "./types";
 import { useConflictReview } from "../conflict-review/useConflictReview";
 import { ConflictReviewNotice } from "../conflict-review/ConflictReviewNotice";
 import { useCaseCreatePartyInputs } from "./useCaseCreatePartyInputs";
+import { CauseSearchInput } from "./CauseSearchInput";
 import "./case-create-parties.css";
 
 interface LitigantLabels {
@@ -150,8 +151,8 @@ export const CaseCreateWizard = ({
                 <Select disabled={Boolean(contractPrefill?.id) || !String(createCustomer || "").trim()} showSearch allowClear optionFilterProp="label" placeholder="请选择合同" notFoundContent={createCustomer ? "该客户下暂无可用于新建案件的合同" : "请先选择客户"} options={createContractOptions} onChange={(value:number|undefined)=>{const selected=contracts.find(row=>row.id===value);createForm.setFieldsValue({customer:selected?.customer,source_person:resolveCasePersonValue(resolveCaseSourcePerson(selected)),title:selected?`${selected.title}案件`:undefined})}} />
               </Form.Item>
               <Form.Item label="案源人" name="source_person"><KeywordPersonSelect allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="由关联合同自动带入，可按本案实际情况修改" /></Form.Item>
-              {!isCounselCreate && <Form.Item label={isCriminalCreate ? "罪名" : "案由"} name="cause_or_charge" rules={[{ required: true }]}>{isCriminalCreate?<Input placeholder="请输入罪名" />:<Select showSearch optionFilterProp="label" placeholder="输入关键词选择案由" options={causeOptions}/>}</Form.Item>}
-              {isCounselCreate && <><Form.Item label="顾问类型" name="counsel_type" rules={[{ required: true }]}><Input placeholder="请输入顾问类型" /></Form.Item><Form.Item label="顾问期限" name="counsel_range" rules={[{ required: true }]}><DatePicker.RangePicker style={{ width: "100%" }} /></Form.Item></>}
+              {!isCounselCreate && <Form.Item label={isCriminalCreate ? "罪名" : "案由"} name="cause_or_charge" rules={[{ required: true }]}>{isCriminalCreate?<CauseSearchInput placeholder="输入关键词搜索罪名" options={causeOptions} />:<Select showSearch optionFilterProp="label" placeholder="输入关键词选择案由" options={causeOptions}/>}</Form.Item>}
+              {isCounselCreate && <><Form.Item label="顾问类型" name="counsel_type" rules={[{ required: true }]}><Input placeholder="请输入顾问类型" /></Form.Item><Form.Item label="案由" name="cause_or_charge"><CauseSearchInput placeholder="选填，输入关键词搜索案由" options={causeOptions} /></Form.Item><Form.Item label="顾问期限" name="counsel_range" rules={[{ required: true }]}><DatePicker.RangePicker style={{ width: "100%" }} /></Form.Item></>}
               <Form.Item label="案件名称" name="title" rules={[{ required: true }]}><Input placeholder="请输入案件名称" /></Form.Item>
               {!isCounselCreate && <Form.Item label="案件阶段" name="status"><Select disabled options={caseStatuses.map((value) => ({ value, label: value === "新案待分配" ? "待分配" : value }))} /></Form.Item>}
               <Form.Item label="经办律师" name="handling_lawyers" rules={[{ required: true, message: "请选择系统已创建的在职律师" }]}><KeywordPersonSelect mode="multiple" disabled={createStep === 0} showSearch optionFilterProp="label" options={caseLawyerOptions} placeholder="创建人自动作为经办律师" notFoundContent="暂无在职律师；请先在人事中心创建并启用律师账号" /></Form.Item>

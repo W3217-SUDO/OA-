@@ -44,6 +44,56 @@ export function caseHeaderHearingLawyers(data: Record<string, unknown>): string[
   ]).slice(0, 1);
 }
 
+const isFilledDetailValue = (value: unknown) => !["", "-", "—", "null", "none", "undefined"].includes(String(value ?? "").trim().toLowerCase());
+const detailText = (value: unknown) => isFilledDetailValue(value) ? String(value).trim() : "—";
+
+/** 10.22 第15行：刑事检察机关窗口按一审/二审/再审分组，字段与“检察院信息”弹窗一致。 */
+export const CRIMINAL_PROCURATORATE_DISPLAY_LEVELS = [["first", "一审"], ["second", "二审"], ["retrial", "再审"]] as const;
+export function criminalProcuratorateLevelValues(data: Record<string, any>, level: "first" | "second" | "retrial") {
+  const name = data[`${level}_procuratorate_name`] || (level === "retrial" ? data.last_procuratorate_name : "");
+  return {
+    name,
+    case_no: data[`${level}_procuratorate_case_no`],
+    address: data[`${level}_procuratorate_address`],
+    operator: data[`${level}_procuratorate_operator`],
+    phone: data[`${level}_procuratorate_phone`],
+  };
+}
+
+/** 10.22 第18行：刑事受害人取新建时填写的“原告”，为空显示“—”，不回退为客户。 */
+export function criminalVictimNames(data: Record<string, any>, caseDetailNames: (value: unknown) => string): string {
+  const fromList = Array.isArray(data.plaintiffs) && data.plaintiffs.length ? caseDetailNames(data.plaintiffs) : "";
+  return detailText(fromList || data.plaintiff);
+}
+
+interface SummarySectionProps {
+  title: string;
+  expanded: boolean;
+  onToggle: () => void;
+  panelId: string;
+  children: React.ReactNode;
+}
+
+const CaseSummarySection = ({ title, expanded, onToggle, panelId, children }: SummarySectionProps) => (
+  <section className="case-court-summary" aria-label={title}>
+    <div className="case-court-summary-title">
+      <span>{title}</span>
+      <Button
+        type="text"
+        size="small"
+        className="case-summary-section-toggle"
+        aria-expanded={expanded}
+        aria-controls={panelId}
+        aria-label={`${expanded ? "收起" : "展开"}${title}`}
+        title={`${expanded ? "收起" : "展开"}${title}`}
+        icon={expanded ? <UpOutlined /> : <DownOutlined />}
+        onClick={onToggle}
+      />
+    </div>
+    <div id={panelId} className="case-court-summary-grid case-criminal-summary-grid" hidden={!expanded}>{children}</div>
+  </section>
+);
+
 export const CaseDetailHeader = (props: CaseDetailHeaderProps) => {
  const {
   viewingCase,
@@ -62,12 +112,17 @@ export const CaseDetailHeader = (props: CaseDetailHeaderProps) => {
   const sectionVisibility = getCaseDetailSectionVisibility(viewingCase.data, viewingCase.status);
   const [courtExpanded, setCourtExpanded] = useState(true);
   const [archiveExpanded, setArchiveExpanded] = useState(true);
+  const [publicSecurityExpanded, setPublicSecurityExpanded] = useState(true);
+  const [procuratorateExpanded, setProcuratorateExpanded] = useState(true);
   const sectionId = useId().replace(/:/g, "-");
+  const isCriminal = viewingCase.data.case_type === "刑事案件";
 
   useEffect(() => {
     // 案件切换时恢复旧系统的默认展开状态，避免沿用上一案件的折叠状态。
     setCourtExpanded(true);
     setArchiveExpanded(true);
+    setPublicSecurityExpanded(true);
+    setProcuratorateExpanded(true);
   }, [viewingCase.id]);
 
   const courtPanelId = `case-court-panel-${sectionId}`;
@@ -78,7 +133,16 @@ export const CaseDetailHeader = (props: CaseDetailHeaderProps) => {
         <Collapse items={viewingCase.data.merged_sources.map((source: CaseRow) => ({ key: source.id, label: `合并来源：${source.serial_no} ${source.title}`, children: <CaseDetailHeader {...props} viewingCase={source} /> }))} />}
       <Card size="small" title="案件信息" className="case-counsel-detail-card">
         <div className="case-legacy-summary-scroll">
-          <table className="case-legacy-summary" data-testid="case-legacy-summary">
+          {isCriminal ? <table className="case-legacy-summary case-criminal-summary" data-testid="case-legacy-summary" data-case-summary="criminal">
+            <colgroup><col className="case-legacy-label"/><col/><col className="case-legacy-label"/><col/><col className="case-legacy-label"/><col/></colgroup>
+            <tbody>
+              <tr><th>我方案号</th><td>{viewingCase.serial_no||"—"}</td><th>罪名</th><td>{detailText(viewingCase.data.cause_or_charge)}</td><th>受害人</th><td>{criminalVictimNames(viewingCase.data, caseDetailNames)}</td></tr>
+              <tr><th>案件名称</th><td>{viewingCase.title||"—"}</td><th>案件阶段</th><td>{viewingCase.status||"—"}</td><th>受害人代理人</th><td>{renderCaseLitigantAgentSummary(viewingCase.data.plaintiff_agents)}</td></tr>
+              <tr><th>客户</th><td><Button type="link" className="case-cell-link" onClick={() => openRelatedCustomer({ id: Number(viewingCase.data.customer_id) || undefined, serial_no: viewingCase.data.customer_no, title: viewingCase.customer })}>{viewingCase.customer||"—"}</Button></td><th>经办律师</th><td>{casePersonDisplayNames(viewingCase.data.handling_lawyers)}</td><th>被告/犯罪嫌疑人</th><td>{caseDetailNames(Array.isArray(viewingCase.data.defendants) && viewingCase.data.defendants.length ? viewingCase.data.defendants : viewingCase.data.opponent || viewingCase.data.defendant)}</td></tr>
+              <tr><th>合同号</th><td>{viewingCase.data.contract_no?<Button type="link" className="case-cell-link" onClick={() => openRelatedContract({ id: Number(viewingCase.data.contract_record_id || viewingCase.data.contract_id) || undefined, serial_no: viewingCase.data.contract_no })}>{viewingCase.data.contract_no}</Button>:"—"}</td><th>律师助理</th><td>{caseAssistantDisplayNames(viewingCase.data)}</td><th>被告代理人</th><td>{renderCaseLitigantAgentSummary(viewingCase.data.defendant_agents)}</td></tr>
+              <tr><th>案源日期</th><td>{caseDetailDate(viewingCase.data.source_date||viewingCase.data.source_at)}</td><th>案件来源</th><td colSpan={3}>{casePersonDisplayName(viewingCase.data.business_owner||viewingCase.data.source_person||viewingCase.owner,viewingCase.data.business_owner_display_name||viewingCase.data.source_person_display_name||viewingCase.owner_display_name)}</td></tr>
+            </tbody>
+          </table> : <table className="case-legacy-summary" data-testid="case-legacy-summary">
             <colgroup><col className="case-legacy-label"/><col/><col className="case-legacy-label"/><col/><col className="case-legacy-label"/><col/><col className="case-legacy-label"/><col/></colgroup>
             <tbody>
               <tr><th>我方案号</th><td>{viewingCase.serial_no||"—"}</td><th>起诉案由</th><td>{viewingCase.data.cause_or_charge||viewingCase.data.cause_of_action||"—"}</td><th>案件阶段</th><td>{viewingCase.status||"—"}</td><th>原告</th><td>{viewingCase.data.plaintiff||viewingCase.customer||"—"}</td></tr>
@@ -92,9 +156,30 @@ export const CaseDetailHeader = (props: CaseDetailHeaderProps) => {
               <tr><th>原案件号</th><td colSpan={3}>{String(viewingCase.data.original_case_no||viewingCase.data.origin_case_no||viewingCase.data.source_case_no||"").trim()?<Button type="link" className="case-cell-link" onClick={() => openRelatedOriginalCase({ id: Number(viewingCase.data.original_case_id||viewingCase.data.source_case_id)||undefined, serial_no: viewingCase.data.original_case_no||viewingCase.data.origin_case_no||viewingCase.data.source_case_no })}>{viewingCase.data.original_case_no||viewingCase.data.origin_case_no||viewingCase.data.source_case_no}</Button>:"—"}</td><th>复制/关联说明</th><td colSpan={3}>{viewingCase.data.copy_comment||viewingCase.data.relation_comment||"—"}</td></tr>
               <tr><th>诉讼标的</th><td>{viewingCase.data.litigation_subject||viewingCase.data.litigation_amount||"—"}</td><th>判决/调解金额</th><td>{viewingCase.data.judgment_amount||viewingCase.data.settlement_amount||viewingCase.data.mediation_amount||"—"}</td><th>分案日期</th><td>{caseDetailDate(viewingCase.data.case_divisional_date||viewingCase.data.assignment_date)}</td><th>案源人</th><td>{casePersonDisplayName(viewingCase.data.business_owner||viewingCase.data.source_person||viewingCase.owner,viewingCase.data.business_owner_display_name||viewingCase.data.source_person_display_name||viewingCase.owner_display_name)}</td></tr>
             </tbody>
-          </table>
+          </table>}
         </div>
       </Card>
+      {isCriminal && <CaseSummarySection title="公安机关" expanded={publicSecurityExpanded} onToggle={() => setPublicSecurityExpanded((expanded) => !expanded)} panelId={`case-public-security-panel-${sectionId}`}>
+        <p><strong>公安机关</strong><span title={detailText(viewingCase.data.public_security_name)}>{detailText(viewingCase.data.public_security_name)}</span></p>
+        <p><strong>案号</strong><span>{detailText(viewingCase.data.public_security_case_no)}</span></p>
+        <p><strong>地址</strong><span title={detailText(viewingCase.data.public_security_address)}>{detailText(viewingCase.data.public_security_address)}</span></p>
+        <p><strong>经办人</strong><span>{detailText(viewingCase.data.public_security_operator)}</span></p>
+        <p><strong>联系方式</strong><span>{detailText(viewingCase.data.public_security_phone)}</span></p>
+      </CaseSummarySection>}
+      {isCriminal && <CaseSummarySection title="检察机关" expanded={procuratorateExpanded} onToggle={() => setProcuratorateExpanded((expanded) => !expanded)} panelId={`case-procuratorate-panel-${sectionId}`}>
+        {CRIMINAL_PROCURATORATE_DISPLAY_LEVELS.map(([level, label]) => {
+          const values = criminalProcuratorateLevelValues(viewingCase.data, level);
+          // 一审始终显示；二审、再审仅在有数据时显示（与法院信息审级规则一致）。
+          if (level !== "first" && !Object.values(values).some(isFilledDetailValue)) return null;
+          return <div key={level} className="case-procuratorate-level" style={{display:"contents"}}>
+            <p><strong>{`${label}检察机关`}</strong><span title={detailText(values.name)}>{detailText(values.name)}</span></p>
+            <p><strong>检察院案号</strong><span>{detailText(values.case_no)}</span></p>
+            <p><strong>地址</strong><span title={detailText(values.address)}>{detailText(values.address)}</span></p>
+            <p><strong>经办人</strong><span>{detailText(values.operator)}</span></p>
+            <p><strong>联系方式</strong><span>{detailText(values.phone)}</span></p>
+          </div>;
+        })}
+      </CaseSummarySection>}
       {viewingCase.data.case_type !== "法律顾问" && <section className="case-court-summary" aria-label="法院信息">
         <div className="case-court-summary-title">
           <span>法院信息</span>

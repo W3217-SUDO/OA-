@@ -1077,8 +1077,9 @@ async def close_contract_archive_subjects(contract_id: int, body: ContractArchiv
 @router.get(f"{settings.api_prefix}/contracts/{{contract_id}}/payment-candidates")
 async def contract_payment_candidates(contract_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.finance import (
-        _active_payment_type_rows, _contract_payment_candidate_rows,
+        _active_payment_type_rows,
     )
+    from app.core.contract_payment_lifecycle import visible_payment_candidates
     from app.core.permissions import (
         _ensure_record_module,
     )
@@ -1094,7 +1095,8 @@ async def contract_payment_candidates(contract_id: int, identity: dict = Depends
             }
             for item in payment_types
         ],
-        "items": await _contract_payment_candidate_rows(contract, identity, db),
+        # 第2行(10.22)：已申请满、待付为 0 的费用不再进入合同付款候选。
+        "items": await visible_payment_candidates(contract, identity, db),
     }
 
 
@@ -1452,7 +1454,7 @@ from app.models_shared import FinancePaymentCancelInput, FinancePaymentRollbackI
 
 @router.get(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}/edit-context")
 async def contract_payment_edit_context(payment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.contract_payment_lifecycle import locked_payment, ensure_unsettled, ensure_editable, payment_candidates
+    from app.core.contract_payment_lifecycle import locked_payment, ensure_unsettled, ensure_editable, visible_payment_candidates
     from app.core.finance import _active_payment_type_rows
     from app.core.permissions import _record_dict_for_identity, _require_contract_action, _require_record_owner_or_manager
     await _require_contract_action(identity, db, "contract.payment.create", "编辑合同付款")
@@ -1464,7 +1466,7 @@ async def contract_payment_edit_context(payment_id: int, identity: dict = Depend
             "contract": await _record_dict_for_identity(contract, identity, db),
             "payment_types": [{**item, "value": item["id"], "label": "｜".join([item["payee"], item["account_bank"], item["account"]])}
                               for item in await _active_payment_type_rows(db, include_incomplete_accounts=True)],
-            "items": await payment_candidates(contract, identity, db, payment)}
+            "items": await visible_payment_candidates(contract, identity, db, payment)}
 
 
 @router.put(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}")

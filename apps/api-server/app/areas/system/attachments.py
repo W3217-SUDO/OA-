@@ -2,7 +2,7 @@
 from fastapi import APIRouter
 import jwt
 from app.core.storage import _xls_preview_sheets
-from app.core.constants import AI_SPACE_CATEGORY, ARCHIVE_REQUIRED_CATEGORIES, ATTACHMENT_TEXT_PREVIEW_MAX_CHARS, CASE_FORMAL_DOCUMENT_FOLDERS, FINANCE_DEFAULT_VOUCHER_CATEGORY, INVESTIGATION_MATERIAL_CATEGORIES, JAR_FEE_MODULE, PDF_PREVIEW_MAX_DIMENSION, PDF_PREVIEW_MAX_PIXELS, PDF_PREVIEW_MAX_WIDTH, PDF_PREVIEW_MIN_WIDTH, SEAL_APPLICATION_FILE_CATEGORY, SEAL_STAMPED_FILE_CATEGORY, UPLOAD_ROOT, logger
+from app.core.constants import AI_SPACE_CATEGORY, ARCHIVE_REQUIRED_CATEGORIES, ATTACHMENT_TEXT_PREVIEW_MAX_CHARS, case_formal_document_folder_blocked, case_formal_document_folders_for_case_type, FINANCE_DEFAULT_VOUCHER_CATEGORY, INVESTIGATION_MATERIAL_CATEGORIES, JAR_FEE_MODULE, PDF_PREVIEW_MAX_DIMENSION, PDF_PREVIEW_MAX_PIXELS, PDF_PREVIEW_MAX_WIDTH, PDF_PREVIEW_MIN_WIDTH, SEAL_APPLICATION_FILE_CATEGORY, SEAL_STAMPED_FILE_CATEGORY, UPLOAD_ROOT, logger
 from app.core.dependencies import AsyncSession, BusinessRecord, CaseTypeFileTypeRelation, Depends, Document, File, FileAttachment, FileResponse, FinanceTransaction, Form, HTTPException, JSONResponse, Path, Query, Response, SystemParameter, UploadFile, User, WorkflowEvent, current_identity, date, datetime, func, get_db, select, settings, status, timedelta, timezone, uuid4
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import RedirectResponse
@@ -204,12 +204,17 @@ async def upload_attachment(
             await _require_contract_attachment_write_access(record, identity, db)
         if record.module == "case":
             await _require_case_attachment_upload_access(record, identity, db)
+            case_type_value = (record.data or {}).get("case_type")
+            custom_case_folders = set(_case_custom_document_folders(record))
+            # 10.22 第 17 行：固定正式目录按案件类型区分；刑事案件不再接收民事固定目录名。
+            if category not in custom_case_folders and case_formal_document_folder_blocked(category, case_type_value):
+                raise HTTPException(status_code=422, detail="刑事案件请选择刑事案件文档目录")
             if category not in {
                 "普通附件",
                 "案件票据文件",
                 AI_SPACE_CATEGORY,
-                *CASE_FORMAL_DOCUMENT_FOLDERS,
-                *_case_custom_document_folders(record),
+                *case_formal_document_folders_for_case_type(case_type_value),
+                *custom_case_folders,
             }:
                 file_types = list((await db.scalars(select(SystemParameter).where(
                     SystemParameter.category == "case_file_type",

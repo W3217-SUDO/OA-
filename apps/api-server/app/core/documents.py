@@ -1,9 +1,11 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 from app.core.constants import (
     AGENT_CASE_DATA_FIELDS, AGENT_CASE_PERSONNEL_UPDATE_FIELDS, AGENT_CASE_UPDATE_FIELDS, AI_SPACE_CATEGORY, ARCHIVE_REQUIRED_CATEGORIES, CASE_CUSTOM_DOCUMENT_FOLDERS_KEY,
-    CASE_DOCUMENT_FOLDER_HEADERS, CASE_DOCUMENT_TYPES, CASE_FORMAL_DOCUMENT_FOLDERS, CASE_FORMAL_DOCUMENT_FOLDER_ORDER, CASE_INVESTIGATION_DOCUMENT_FOLDERS,
+    CASE_DOCUMENT_FOLDER_HEADERS, CASE_DOCUMENT_TYPES, CASE_FORMAL_DOCUMENT_FOLDER_ORDER, CASE_INVESTIGATION_DOCUMENT_FOLDERS,
     CASE_LEGACY_LAW_FIRM_LETTER_TYPES, CUSTOMER_CREATE_DATA_FIELDS, SEAL_ACTION_CODES, SEAL_APPLICATION_FILE_CATEGORY, SEAL_STAMPED_FILE_CATEGORY,
     SEAL_USE_TYPES, WORD_EDITOR_LOCK_SECONDS,
+    CRIMINAL_AUTHORITY_DOCUMENT_FOLDERS, CRIMINAL_CASE_DOCUMENT_FOLDER_ORDER, CRIMINAL_CASE_DOCUMENT_GROUP_LABEL,
+    case_formal_document_folder_blocked, case_formal_document_folders_for_case_type, is_criminal_case_type,
 )
 from app.core.dependencies import (
     AgentDocument, AsyncSession, BusinessRecord, CaseTypeFileTypeRelation, Document,
@@ -469,9 +471,19 @@ async def _case_formal_document_folder_payload(record: BusinessRecord, db: Async
                 CaseTypeFileTypeRelation.case_type_id == case_type.id,
             ))).all())
             file_types = [item for item in file_types if item.id in allowed_ids]
+    case_type_value = (record.data or {}).get("case_type")
+    criminal = is_criminal_case_type(case_type_value)
+    # 10.22 第 17 行：刑事案件“案件文档”分组换成旧系统“诉讼阶段文件”及其四个子目录，
+    # 并增加一级目录“公安机关文件”“检察机关文件”；民事固定目录名不再作为刑事上传选项。
+    formal_folder_order = CRIMINAL_CASE_DOCUMENT_FOLDER_ORDER if criminal else CASE_FORMAL_DOCUMENT_FOLDER_ORDER
+    top_level_folders = CRIMINAL_AUTHORITY_DOCUMENT_FOLDERS if criminal else ()
     case_candidates = [
-        *CASE_FORMAL_DOCUMENT_FOLDER_ORDER,
-        *(str(item.name or "").strip() for item in file_types),
+        *formal_folder_order,
+        *top_level_folders,
+        *(
+            name for name in (str(item.name or "").strip() for item in file_types)
+            if not case_formal_document_folder_blocked(name, case_type_value) or name in custom_folders
+        ),
         *custom_folders,
         "普通附件",
     ]
@@ -493,22 +505,28 @@ async def _case_formal_document_folder_payload(record: BusinessRecord, db: Async
     )).all()
     visible_case_folders = list(dict.fromkeys(
         name for name in [
-            *CASE_FORMAL_DOCUMENT_FOLDER_ORDER,
+            *formal_folder_order,
             *custom_folders,
             *(str(category or "").strip() for category in attachment_categories),
         ]
         if name and name != AI_SPACE_CATEGORY and name not in CASE_DOCUMENT_FOLDER_HEADERS
-        and name not in CASE_INVESTIGATION_DOCUMENT_FOLDERS
+        and name not in CASE_INVESTIGATION_DOCUMENT_FOLDERS and name not in top_level_folders
     ))
+    case_group_options = [
+        # 刑事案件里历史上传到民事目录的文件保持原分类并照常显示，但不再作为新的放入目标。
+        {"label": name, "value": name, "disabled": True, "historical": True}
+        if case_formal_document_folder_blocked(name, case_type_value) and name not in custom_folders
+        else {"label": name, "value": name}
+        for name in visible_case_folders
+    ]
     tree = [
         {"label": "客户文档", "value": "客户文档", "disabled": customer_record is None},
         {"label": "合同文档", "value": "合同文档", "disabled": contract_record is None},
         {"label": "调查文档", "value": "调查文档全部", "options": [
             {"label": name, "value": name} for name in CASE_INVESTIGATION_DOCUMENT_FOLDERS
         ]},
-        {"label": "案件文档", "value": "案件文档全部", "options": [
-            {"label": name, "value": name} for name in visible_case_folders
-        ]},
+        {"label": CRIMINAL_CASE_DOCUMENT_GROUP_LABEL if criminal else "案件文档", "value": "案件文档全部", "options": case_group_options},
+        *({"label": name, "value": name} for name in top_level_folders),
     ]
     legacy_tree = await legacy_case_folder_tree(record, db)
     if legacy_tree:
@@ -691,7 +709,12 @@ async def _validate_case_formal_document_category(
         return target
     if target in CASE_INVESTIGATION_DOCUMENT_FOLDERS:
         return target
-    if target == "普通附件" or target in CASE_FORMAL_DOCUMENT_FOLDERS or target in _case_custom_document_folders(case_record):
+    if target in _case_custom_document_folders(case_record):
+        return target
+    case_type_value = (case_record.data or {}).get("case_type")
+    if case_formal_document_folder_blocked(target, case_type_value):
+        raise HTTPException(status_code=422, detail="刑事案件请选择刑事案件文档目录")
+    if target == "普通附件" or target in case_formal_document_folders_for_case_type(case_type_value):
         return target
     file_types = list((await db.scalars(select(SystemParameter).where(
         SystemParameter.category == "case_file_type",
@@ -713,6 +736,32 @@ async def _validate_case_formal_document_category(
     ))).all())
     if not any(item.id in allowed_ids for item in file_types):
         raise HTTPException(status_code=422, detail="该案件类型不允许使用所选正式文档目录")
+    return target
+
+
+async def _validate_case_attachment_move_category(
+    case_record: BusinessRecord, category: str, db: AsyncSession,
+) -> str:
+    """移动案件文件的目标目录校验（10.22 第 17 行：按案件类型区分固定目录）。
+
+    民事等类型保持原规则：自定义目录或启用的案件文件类型参数；
+    刑事案件额外接受刑事固定目录，拒绝民事固定目录名（自定义同名目录除外）。
+    """
+    target = str(category or "").strip()
+    case_type_value = (case_record.data or {}).get("case_type")
+    if target in _case_custom_document_folders(case_record):
+        return target
+    if case_formal_document_folder_blocked(target, case_type_value):
+        raise HTTPException(status_code=422, detail="刑事案件请选择刑事案件文档目录")
+    if is_criminal_case_type(case_type_value) and target in case_formal_document_folders_for_case_type(case_type_value):
+        return target
+    configured = await db.scalar(select(SystemParameter.id).where(
+        SystemParameter.category == "case_file_type",
+        SystemParameter.name == target,
+        SystemParameter.is_active.is_(True),
+    ))
+    if not configured:
+        raise HTTPException(status_code=422, detail="目标案件文档目录不存在或已停用")
     return target
 
 

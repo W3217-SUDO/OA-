@@ -100,6 +100,32 @@ async def payment_candidates(contract, identity, db, payment=None):
     return rows
 
 
+def _candidate_key(row):
+    return ("case_fee", row["case_fee_id"]) if row.get("case_fee_id") else ("contract_object", row["contract_object_id"])
+
+
+async def visible_payment_candidates(contract, identity, db, payment=None):
+    """页面展示口径：已被其他有效申请占满（待付为 0）的费用不再列出。
+
+    部分申请仍显示剩余待付；驳回/撤回释放占额后自动重新出现。
+    编辑已有请款单时，本单明细里的费用无论余额都保留，避免保存时被静默丢弃。
+    校验（normalized_payment）仍使用未过滤的 payment_candidates。
+    """
+    rows = await payment_candidates(contract, identity, db, payment)
+    own = set()
+    if payment:
+        for line in (payment.data or {}).get("lines", []):
+            if line.get("case_fee_id"):
+                own.add(("case_fee", int(line["case_fee_id"])))
+            elif line.get("contract_object_id"):
+                own.add(("contract_object", int(line["contract_object_id"])))
+        for line in (await db.scalars(select(ContractPaymentLine).where(
+            ContractPaymentLine.payment_record_id == payment.id,
+        ))).all():
+            own.add(("contract_object", line.contract_object_id))
+    return [row for row in rows if row["remaining_amount"] > 0.0001 or _candidate_key(row) in own]
+
+
 async def normalized_payment(body, contract, identity, db, payment=None):
     from app.core.contracts import _contract_allows_finance_application
     from app.core.finance import _active_payment_type, _finance_payment_type_dict, _round_fee_amount

@@ -688,3 +688,66 @@
   .case-schedule-query .case-special-query-actions{padding-left:0}
   .case-schedule-query .ant-space{max-width:100%;flex-wrap:wrap}
 }
+
+/* 10.22 第16行：右侧栏（案件提醒在上、案件日志在下）与案件信息并列，从详情顶部开始；
+   日志区占满提醒以下的剩余高度并内部滚动。≤900px 时侧栏落到主区下方整宽。 */
+.case-detail-drawer .case-detail-split-workbench{display:grid;grid-template-columns:minmax(0,1fr) 260px;align-items:stretch}
+.case-detail-drawer .case-detail-main-column{display:flex;min-width:0;flex-direction:column}
+.case-detail-drawer .case-detail-main-column>.case-detail-body-grid{display:block;min-width:0;border-top:4px solid #eef2f6}
+.case-detail-drawer .case-detail-split-workbench>.case-detail-side-panel{grid-column:2;grid-row:1;display:flex;min-width:0;min-height:0;flex-direction:column;border-top:0;border-left:1px solid #dce2e8}
+.case-detail-drawer .case-detail-split-workbench>.case-detail-side-panel>section{border-right:0}
+.case-detail-side-panel>.case-detail-reminder-section{flex:0 0 auto;min-height:96px}
+.case-detail-reminder-list{max-height:200px;overflow-y:auto;overscroll-behavior:contain}
+.case-detail-reminder-entry{padding:6px 8px;border-bottom:1px solid #eef2f6;line-height:18px}
+.case-detail-reminder-meta{display:flex;flex-wrap:wrap;align-items:center;gap:0 8px;color:#68727d;font-size:11px}
+.case-detail-reminder-meta .ant-btn{height:20px;margin-left:auto;padding:0 2px;font-size:11px}
+.case-detail-reminder-content{white-space:pre-wrap;overflow-wrap:anywhere}
+.case-detail-side-panel>.case-detail-log-section{display:flex;flex:1 1 auto;min-height:96px;flex-direction:column;border-bottom:0}
+.case-detail-side-panel>.case-detail-log-section>.case-detail-log-list{flex:1 1 auto}
+@media(min-width:901px){
+  .case-detail-static-root .case-detail-workbench.case-detail-split-workbench{display:grid;height:100%;min-height:0!important;grid-template-rows:minmax(0,1fr);overflow:hidden}
+  .case-detail-static-root .case-detail-split-workbench>.case-detail-main-column{min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
+  .case-detail-static-root .case-detail-split-workbench>.case-detail-side-panel{overflow:hidden}
+  .case-detail-static-root .case-detail-side-panel>.case-detail-log-section{min-height:0}
+  .case-detail-static-root .case-detail-side-panel>.case-detail-log-section>.case-detail-log-list{min-height:0;max-height:none;overflow-y:auto}
+  /* 10.22 第5行：标签栏固定在标签区顶部，只有标签内容区滚动；表格表头吸附在内容区顶部（标签栏下方）。 */
+  .case-detail-static-root .case-detail-main-column>.case-detail-body-grid{display:flex;min-height:360px;flex:1 0 360px;flex-direction:column;overflow:hidden}
+  .case-detail-static-root .case-detail-main-column .case-detail-tab-area{display:flex;min-height:0;flex:1 1 auto;flex-direction:column;overflow:hidden}
+  .case-detail-static-root .case-detail-tab-area>.ant-tabs{display:flex;min-height:0;flex:1 1 auto;flex-direction:column}
+  .case-detail-static-root .case-detail-tab-area>.ant-tabs>.ant-tabs-nav{position:relative;z-index:4;flex:0 0 auto;margin:0;background:#fff}
+  .case-detail-static-root .case-detail-tab-area>.ant-tabs>.ant-tabs-body-holder{min-height:0;flex:1 1 auto;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+  .case-detail-static-root .case-detail-tab-area .ant-table-sticky-holder{z-index:3;background:#fff}
+}
+@media(max-width:900px){
+  .case-detail-drawer .case-detail-split-workbench{display:block}
+  .case-detail-drawer .case-detail-split-workbench>.case-detail-side-panel{display:block;border-top:1px solid #dce2e8;border-left:0}
+}
+@media(min-width:768px) and (max-width:900px){
+  .case-detail-static-root .case-detail-workbench.case-detail-split-workbench{display:block;height:100%;overflow-y:auto;overscroll-behavior:contain}
+  .case-detail-static-root .case-detail-main-column>.case-detail-body-grid{overflow:visible}
+  .case-detail-static-root .case-detail-main-column .case-detail-tab-area{overflow:visible}
+  .case-detail-static-root .case-detail-tab-area>.ant-tabs>.ant-tabs-nav{position:sticky;top:0;z-index:4;background:#fff}
+  /* 平板宽度下标签栏吸顶，表头不再二次吸顶，避免被标签栏遮挡。 */
+  .case-detail-static-root .case-detail-tab-area .ant-table-sticky-holder{position:static}
+}
+/* 律所费用（≤1280 卡片模式）在吸顶表头下仍按卡片展示。 */
+@media(max-width:1280px){
+  .case-detail-drawer .case-firm-fees-table .ant-table-sticky-holder{position:static!important}
+  .case-detail-drawer .case-firm-fees-table .ant-table-header{overflow:visible!important}
+  .case-detail-drawer .case-firm-fees-table .ant-table-sticky-scroll{display:none}
+}
+/* 手机端关闭吸顶：标签栏、表头随页面整体滚动。 */
+@media(max-width:767px){
+  .case-detail-drawer .case-detail-tab-area .ant-table-sticky-holder{position:static!important}
+  .case-detail-drawer .case-detail-tab-area .ant-table-sticky-scroll{display:none}
+  .case-detail-drawer .case-detail-split-workbench>.case-detail-side-panel{display:block}
+  .case-detail-drawer .case-detail-reminder-list{max-height:none;overflow:visible}
+  .case-detail-drawer .case-detail-reminder-meta .ant-btn{min-width:44px;min-height:44px}
+  .case-detail-drawer .case-detail-side-title .ant-btn{min-height:44px}
+}
+/* 10.22 第15行：刑事“公安机关 / 检察机关”窗口每组 5 项，桌面按 5 列对齐。 */
+@media(min-width:1281px){
+  .case-court-summary-grid.case-criminal-summary-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
+}
+.case-criminal-summary col.case-legacy-label{width:96px}
+.case-criminal-procuratorate-form .ant-form-item{margin-bottom:12px}

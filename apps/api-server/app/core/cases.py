@@ -1738,7 +1738,8 @@ async def _criminal_detail_maintenance_case(case_id: int, identity: dict, db: As
     )
     record = await _ensure_record_module(case_id, "case", identity, db); await _require_case_action(identity, db, action_code)
     if str((record.data or {}).get("case_type") or "") != "刑事案件": raise HTTPException(status_code=409, detail="该接口仅用于刑事案件")
-    _require_case_creation_completed(record)
+    # 10.22 第14行：案件建成（三步信息完成）后，有对应动作权限即可维护刑事资料，不再要求案件主管审批。
+    _require_case_creation_completed(record, require_approval=False)
     if record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}: raise HTTPException(status_code=409, detail="归档中的刑事案件不能维护资料")
     return record
 

@@ -13,7 +13,21 @@ import { buildCaseHearingPayload, buildCaseUnarchiveReviewPayload, getCaseArchiv
 import { formatRequiredDate } from "../../formSafety";
 import { collectCasePartyIdentities } from "../CasePartyIdentityFields";
 import { CASE_LITIGANT_PARTY_LABELS, CASE_TASK_DEFAULT_PAGE, CASE_TASK_DEFAULT_PAGE_SIZE, getCompanyScheduleCourtLevels, isCompanyCaseListRoute, noCaseDetailWriteCapability } from "../constants";
-import type { AttachmentRow, CaseClueEvidenceRow, CaseClueWorkspace, CaseDetailCapabilities, CaseEventRow, CaseFileTypeOption, CaseLitigantCandidate, CaseLitigantPartyField, CaseLogKind, CaseLogRow, CaseRow, CaseTaskKind, CaseTaskPageState, ContractRow, Profile } from "../types";
+import type { AttachmentRow, CaseClueEvidenceRow, CaseClueWorkspace, CaseDetailCapabilities, CaseEventRow, CaseFileTypeOption, CaseLitigantCandidate, CaseLitigantPartyField, CaseLogKind, CaseLogRow, CaseReminderRow, CaseRow, CaseTaskKind, CaseTaskPageState, ContractRow, Profile } from "../types";
+/** 10.22 第13行：刑事检察院信息按旧系统“修改检察院信息 ▸ 一审/二审/再审”逐审级维护。 */
+export type CriminalProcuratorateLevel = "first" | "second" | "retrial";
+export const CRIMINAL_PROCURATORATE_LEVELS: ReadonlyArray<readonly [CriminalProcuratorateLevel, string]> = [["first", "一审"], ["second", "二审"], ["retrial", "再审"]];
+/** 字段顺序与标签按旧系统“检察院信息”弹窗：检察机关名称、检察院案号、地址、经办人、联系方式。 */
+export const criminalProcuratorateFields = (level: CriminalProcuratorateLevel) => {
+    const levelLabel = CRIMINAL_PROCURATORATE_LEVELS.find(([key]) => key === level)?.[1] || "";
+    return [
+        { name: `${level}_procuratorate_name`, label: `${levelLabel}检察机关名称`, placeholder: "检察机关名称" },
+        { name: `${level}_procuratorate_case_no`, label: "检察院案号", placeholder: "检察院案号" },
+        { name: `${level}_procuratorate_address`, label: "地址", placeholder: "地址" },
+        { name: `${level}_procuratorate_operator`, label: "经办人", placeholder: "经办人" },
+        { name: `${level}_procuratorate_phone`, label: "联系方式", placeholder: "联系方式" },
+    ];
+};
 /** legal workflow operations; dependencies are read when each operation runs. */
 export interface CaseWorkflowDependencies {
     readonly createDefendantEditorForm: FormInstance<any>;
@@ -91,6 +105,7 @@ export interface CaseWorkflowDependencies {
     readonly setCounselDocumentsLoading: React.Dispatch<React.SetStateAction<boolean>>;
     readonly setCounselDocumentFolderTree: React.Dispatch<React.SetStateAction<CaseFileTypeOption[]>>;
     readonly setCounselLogs: React.Dispatch<React.SetStateAction<CaseLogRow[]>>;
+    readonly setCounselReminders: React.Dispatch<React.SetStateAction<CaseReminderRow[]>>;
     readonly setCounselDetailCapabilities: React.Dispatch<React.SetStateAction<CaseDetailCapabilities>>;
     readonly setCounselDetailFinance: React.Dispatch<React.SetStateAction<CaseRow[]>>;
     readonly setCounselDetailFinanceLoading: React.Dispatch<React.SetStateAction<boolean>>;
@@ -170,11 +185,13 @@ export interface CaseWorkflowDependencies {
     readonly criminalMaintenance: {
         row: CaseRow;
         kind: "litigants" | "public-security" | "procuratorates" | "courts";
+        level?: CriminalProcuratorateLevel;
     } | null;
     readonly criminalMaintenanceForm: FormInstance<any>;
     readonly setCriminalMaintenance: React.Dispatch<React.SetStateAction<{
         row: CaseRow;
         kind: "litigants" | "public-security" | "procuratorates" | "courts";
+        level?: CriminalProcuratorateLevel;
     } | null>>;
     readonly creatingCasePartyRole: CaseLitigantPartyField | null;
     readonly casePartyCreateForm: FormInstance<any>;
@@ -682,6 +699,11 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             }).finally(() => {
                 if (clueRequestId === counselDetailClueRequestRef.current) context.setCounselDocumentsLoading(false);
             });
+            // 10.22 第16行：右侧栏“案件提醒 / 案件日志”始终可见，打开详情即加载，
+            // 与费用、文档并行，互不阻塞；失败时保持空列表，不伪造数据。
+            context.setCounselLogs([]);
+            context.setCounselReminders([]);
+            void loadCounselSidePanel(row.id);
             setCounselDetailFinanceLoading(true);
             // 费用列表是案件详情的首屏核心内容，先启动并在其完成时立即回填；
             // 历史、任务、日志等附加面板不得阻塞费用表刷新。
@@ -870,6 +892,42 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             return;
         await openCaseTasks(target);
     };
+    const loadCounselSidePanel = async (caseId: number) => {
+        const { counselDetailCaseIdRef } = context;
+        // 只回填仍在查看的案件，避免快速切换案件时串数据。
+        const isCurrent = () => counselDetailCaseIdRef.current === caseId;
+        const [logRes, reminderRes] = await Promise.allSettled([
+            api.get(`/cases/${caseId}/logs`),
+            api.get(`/cases/${caseId}/reminders`),
+        ]);
+        if (!isCurrent()) return;
+        context.setCounselLogs(logRes.status === "fulfilled" ? logRes.value.data?.items || [] : []);
+        context.setCounselReminders(reminderRes.status === "fulfilled" ? reminderRes.value.data?.items || [] : []);
+        if (reminderRes.status === "rejected") message.warning(reminderRes.reason?.response?.data?.detail || "案件提醒加载失败");
+    };
+    const deleteCounselReminder = (reminder: CaseReminderRow) => {
+        const { viewingCounselCase } = context;
+        if (!viewingCounselCase)
+            return;
+        const caseId = viewingCounselCase.id;
+        Modal.confirm({
+            title: "删除案件提醒",
+            content: `确认删除提醒“${reminder.description || ""}”？删除后可由管理员在回收站恢复。`,
+            okText: "删除",
+            okButtonProps: { danger: true },
+            cancelText: "取消",
+            onOk: async () => {
+                try {
+                    await api.delete(`/cases/${caseId}/reminders/${reminder.id}`);
+                    message.success("案件提醒已删除");
+                    await loadCounselSidePanel(caseId);
+                }
+                catch (error: any) {
+                    message.error(error?.response?.data?.detail || "案件提醒删除失败");
+                }
+            },
+        });
+    };
     const createCounselReminder = async () => {
         const { viewingCounselCase, reminderForm, setReminderOpen } = context;
         if (!viewingCounselCase)
@@ -887,7 +945,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             message.success("案件提醒已创建");
             setReminderOpen(false);
             reminderForm.resetFields();
-            await openCounselDetail(viewingCounselCase);
+            await loadCounselSidePanel(viewingCounselCase.id);
         }
         catch (error: any) {
             message.error(error?.response?.data?.detail || "案件提醒创建失败");
@@ -999,6 +1057,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             const { data } = await api.put(`/cases/${editingCounselCase.id}/counsel-basic`, {
                 title: values.title.trim(),
                 counsel_type: values.counsel_type.trim(),
+                cause_or_charge: String(values.cause_or_charge || "").trim(),
                 counsel_start: values.counsel_range[0].format("YYYY-MM-DD"),
                 counsel_end: values.counsel_range[1].format("YYYY-MM-DD"),
                 handling_lawyers: values.handling_lawyers || [],
@@ -1135,6 +1194,24 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
         if (!criminalMaintenance)
             return;
         const values = await criminalMaintenanceForm.validateFields();
+        if (criminalMaintenance.kind === "procuratorates") {
+            // 只提交当前审级的 5 个字段，其它审级由后端保留原值（exclude_unset 合并）。
+            const level = criminalMaintenance.level;
+            if (!level)
+                return message.error("请选择检察院审级");
+            const levelPayload = Object.fromEntries(criminalProcuratorateFields(level).map(({ name }) => [name, String(values[name] ?? "").trim()]));
+            try {
+                const { data } = await api.put(`/cases/${criminalMaintenance.row.id}/criminal/procuratorates`, levelPayload);
+                message.success("检察院信息已保存");
+                setCriminalMaintenance(null);
+                setViewingCounselCase(data);
+                await load();
+            }
+            catch (error: any) {
+                message.error(error?.response?.data?.detail || "检察院信息保存失败");
+            }
+            return;
+        }
         const dateFields = ["first_court_filing_date", "first_court_hearing_date", "second_court_filing_date", "second_court_hearing_date", "execution_court_filing_date", "execution_court_hearing_date", "retrial_court_filing_date", "retrial_court_hearing_date"];
         const payload = { ...values, ...Object.fromEntries(dateFields.map(key => [key, values[key]?.format?.("YYYY-MM-DD") || null])) };
         try {
@@ -1452,5 +1529,5 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
         if (target)
             openHearing(target);
     };
-    return { saveCreateDefendants, advanceCreateStep, saveLitigants, finishCreateFlow, assign, createHearing, openArchive, closeCase, archive, reviewArchive, reviewCaseCreation, deleteCompanyCase, reviewUnarchive, openCaseTasks, openCounselDetail, duplicateCase, submitCaseMerge, submitNotaryInfo, openCaseClueWorkspace, saveCaseClueEvidence, submitClueConversion, openSpecialCaseDetail, openSpecialCaseTasks, createCounselReminder, saveCaseEvent, createCounselLog, submitCounselBatchUpdate, saveCounselBasic, ensureCaseCustomerOption, openNormalCaseEdit, saveNormalCaseBasic, openArbitrationBasicEdit, saveArbitrationBasic, saveCriminalMaintenance, saveCaseParty, saveCaseLitigants, saveCaseHearingLawyer, createCaseTask, submitCompanyScheduleCourtInfo, saveProgress, saveExecutionStatus, downloadCaseExport, openSelectedScheduleHearing };
+    return { saveCreateDefendants, advanceCreateStep, saveLitigants, finishCreateFlow, assign, createHearing, openArchive, closeCase, archive, reviewArchive, reviewCaseCreation, deleteCompanyCase, reviewUnarchive, openCaseTasks, openCounselDetail, duplicateCase, submitCaseMerge, submitNotaryInfo, openCaseClueWorkspace, saveCaseClueEvidence, submitClueConversion, openSpecialCaseDetail, openSpecialCaseTasks, createCounselReminder, deleteCounselReminder, loadCounselSidePanel, saveCaseEvent, createCounselLog, submitCounselBatchUpdate, saveCounselBasic, ensureCaseCustomerOption, openNormalCaseEdit, saveNormalCaseBasic, openArbitrationBasicEdit, saveArbitrationBasic, saveCriminalMaintenance, saveCaseParty, saveCaseLitigants, saveCaseHearingLawyer, createCaseTask, submitCompanyScheduleCourtInfo, saveProgress, saveExecutionStatus, downloadCaseExport, openSelectedScheduleHearing };
 }

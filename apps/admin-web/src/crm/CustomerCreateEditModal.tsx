@@ -11,6 +11,7 @@ import {
   Upload,
 } from "antd";
 import Table from "../components/ResizableTable";
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { displayChinesePersonName } from "../contractPeoplePresentation.mjs";
 import { ReloadOutlined } from "@ant-design/icons";
 import { matchesDirectoryOption } from "../customerUiBatchI14.mjs";
@@ -282,7 +283,7 @@ export function CustomerCreateEditModal({ open, editing, customerTypeOptions, di
           <div className="customer-create-grid customer-control-grid">
             <Form.Item label="建档日期" name="file_date"><Input type="date" /></Form.Item>
             <Form.Item label="客户来源" name="customer_source">
-              <Select showSearch optionFilterProp="label" options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入或选择人员" />
+              <KeywordPersonSelect options={directoryOptions} filterOption={matchesDirectoryOption} placeholder="输入或选择人员" />
             </Form.Item>
             <Form.Item label="是否共享" name="is_shared">
               <Select options={["是", "否"].map(value => ({ value, label: value }))} />
@@ -303,10 +304,10 @@ export function CustomerCreateEditModal({ open, editing, customerTypeOptions, di
               )}
               rules={[{ required: true, message: "至少设置一名客户管理人" }]}
             >
-              <Select mode="multiple" showSearch optionFilterProp="label" options={directoryOptions} />
+              <KeywordPersonSelect mode="multiple" options={directoryOptions} />
             </Form.Item>
             <Form.Item className="customer-person-multi-field" label="客户联系人账号" name="contact">
-              <Select mode="multiple" showSearch optionFilterProp="label" options={customerContactOptions} filterOption={matchesDirectoryOption} placeholder="输入姓名或账号，选择客户账号" />
+              <KeywordPersonSelect mode="multiple" options={customerContactOptions} filterOption={matchesDirectoryOption} placeholder="输入姓名或账号，选择客户账号" />
             </Form.Item>
           </div>
         </section>

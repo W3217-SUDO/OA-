@@ -4,10 +4,10 @@ from app.core.case_archive import ArchiveSearchInput, ArchiveBatchReviewInput, A
 from app.core.case_invoice_files import InvoiceFileImportInput
 from app.core.constants import (
     ADMINISTRATIVE_CLIENT_POSITIONS, CASE_CLIENT_POSITIONS_BY_TYPE, CASE_CREATABLE_TYPES,
-    CASE_CREATE_PERMISSION_BY_TYPE, CASE_CREATE_STATUS_ALIASES, CASE_DOCUMENT_CATEGORY, CASE_DOCUMENT_TYPES,
+    CASE_CREATE_PERMISSION_BY_TYPE, CASE_CREATE_STATUS_ALIASES, CASE_DOCUMENT_TYPES,
     CIVIL_CASE_TYPES, CRIMINAL_JUDICIAL_PREFIXES, CUSTOMER_SYSTEM_DATA_FIELDS, EXPENSE_SUBTYPE_FEE_TYPE,
     GENERIC_RECORD_DELETABLE_MODULES, GENERIC_RECORD_EDITABLE_MODULES, GENERIC_RECORD_TRANSITION_MODULES, INVESTIGATION_RECORD_MODULES, INVOICE_RELEASED_STATUSES,
-    JAR_FEE_MODULE, NORMAL_CASE_BASIC_TYPES, UPLOAD_ROOT, WORKFLOW_TRANSITIONS, _BUILTIN_DOCUMENT_TEMPLATES, logger,
+    JAR_FEE_MODULE, NORMAL_CASE_BASIC_TYPES, UPLOAD_ROOT, WORKFLOW_TRANSITIONS, _BUILTIN_DOCUMENT_TEMPLATES, case_document_category_for, is_criminal_case_type, logger,
 )
 from app.core.dependencies import (
     Annotated, AsyncSession, BusinessRecord, CaseAssistedFee, CaseTypeCasePhaseRelation, CaseTypeFileTypeRelation, ContractApprovalStep, Department, Depends, Document, FileAttachment, FinanceTransaction, HTTPException, HearingSchedule,
@@ -1339,7 +1339,7 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
             raise HTTPException(status_code=422, detail="顾问期限不能为空")
         if body.counsel_start > body.counsel_end:
             raise HTTPException(status_code=422, detail="顾问结束日期不能早于开始日期")
-        cause_or_charge = ""
+        # 10.22 第9行（用户答复“第9行是加一个”）：法律顾问新增选填“案由”，接收并保存，不再强制清空。
     elif counsel_type or body.counsel_start or body.counsel_end:
         raise HTTPException(status_code=422, detail="仅法律顾问案件可以填写顾问类型和顾问期限")
     handling_lawyers = list(dict.fromkeys(str(item or "").strip() for item in body.handling_lawyers if str(item or "").strip()))
@@ -2218,9 +2218,14 @@ async def update_counsel_case_basic(case_id: int, body: CaseCounselBasicInput, i
     if not handling_lawyers:
         raise HTTPException(status_code=422, detail="请至少保留一名有效经办律师")
     old_summary = f"{case_record.title}｜{case_data.get('counsel_type', '')}｜{case_data.get('counsel_start', '')}至{case_data.get('counsel_end', '')}"
+    # 10.22 第9行：法律顾问案由选填；未提交该字段时保留原值，提交空串表示清空。
+    cause_update = {} if body.cause_or_charge is None else {"cause_or_charge": body.cause_or_charge.strip()}
+    if cause_update and str(case_data.get("cause_or_charge") or "") != cause_update["cause_or_charge"]:
+        old_summary += f"｜案由：{case_data.get('cause_or_charge', '') or '—'}"
     case_record.title = title
     updated_case_data = _case_team_payload({
         **case_data,
+        **cause_update,
         "counsel_type": counsel_type,
         "counsel_start": str(body.counsel_start),
         "counsel_end": str(body.counsel_end),
@@ -3056,8 +3061,9 @@ async def update_case_execution_status(body: CaseExecutionStatusInput, identity:
 @router.get(f"{settings.api_prefix}/cases/phases")
 async def list_case_phases(case_type: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.cases import (
-        _case_phase_option, _case_type_parameter_for_value, _phase_is_builtin_for_case_type,
+        _case_phase_option, _case_type_parameter_for_value,
     )
+    from app.core.case_phase_scope import dedupe_phases_by_name, phase_is_builtin_for_case_type
     from app.core.permissions import (
         _require_record_module_menu,
     )
@@ -3070,17 +3076,18 @@ async def list_case_phases(case_type: str = "", identity: dict = Depends(current
         related_ids = set((await db.scalars(select(CaseTypeCasePhaseRelation.case_phase_id).where(
             CaseTypeCasePhaseRelation.case_type_id == case_type_parameter.id,
         ))).all())
-        builtin_ids = {phase.id for phase in phases if _phase_is_builtin_for_case_type(phase, case_type_parameter)}
+        builtin_ids = {phase.id for phase in phases if phase_is_builtin_for_case_type(phase, case_type_parameter)}
         if related_ids or builtin_ids:
             phases = [phase for phase in phases if phase.id in related_ids or phase.id in builtin_ids]
+        if is_criminal_case_type(case_type_parameter.name):
+            # 生产库可能有旧系统迁入的同名刑事阶段，按名称去重，弹窗按名称匹配时不会选到另一条。
+            phases = dedupe_phases_by_name(phases)
     return {"items": [_case_phase_option(item) for item in phases]}
 
 
 @router.post(f"{settings.api_prefix}/cases/phase-change")
 async def update_case_phase(body: CasePhaseChangeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.cases import (
-        _case_phase_is_allowed, _resolve_case_phase,
-    )
+    from app.core.case_phase_scope import case_phase_is_allowed, resolve_case_phase
     from app.core.formatters import (
         _normalize_case_numbers,
     )
@@ -3094,7 +3101,7 @@ async def update_case_phase(body: CasePhaseChangeInput, identity: dict = Depends
     case_nos = _normalize_case_numbers(body.case_nos)
     if not case_nos:
         raise HTTPException(status_code=422, detail="至少选择一件案件")
-    phase = await _resolve_case_phase(body, db)
+    phase = await resolve_case_phase(body.case_phase_id, body.case_phase_name, db)
     scope = await _record_scope_conditions(identity, db)
     # Preflight every selected case before changing any record, matching the legacy batch contract.
     all_cases = list((await db.scalars(select(BusinessRecord).where(
@@ -3110,7 +3117,7 @@ async def update_case_phase(body: CasePhaseChangeInput, identity: dict = Depends
         await _require_case_phase_change_access(case_record, identity, db)
         await require_conflict_clear(case_record, db, action="修改案件阶段")
         case_data = case_record.data or {}
-        if not await _case_phase_is_allowed(str(case_data.get("case_type") or ""), phase["id"], db):
+        if not await case_phase_is_allowed(str(case_data.get("case_type") or ""), phase["id"], db):
             raise HTTPException(status_code=422, detail=f"案件 {case_record.serial_no} 的类型不允许使用阶段“{phase['name']}”")
         if int(case_data.get("case_phase_id") or 0) == phase["id"] or case_record.status == phase["canonical_name"]:
             raise HTTPException(status_code=409, detail="当前案件已处于所选阶段")
@@ -3766,7 +3773,7 @@ async def generate_case_document(case_id: int, document_type: str, identity: dic
     stored_name = f"{uuid4().hex}.docx"
     path = UPLOAD_ROOT / stored_name
     path.write_bytes(content)
-    attachment = FileAttachment(record_id=record.id, category=CASE_DOCUMENT_CATEGORY.get(document_type, "案件生成文书"), original_name=f"{record.serial_no}-{title}-{datetime.now():%Y%m%d%H%M%S}.docx", stored_name=stored_name, content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", size=len(content), path=str(path), uploader=identity["username"], remark=f"系统生成案件文书：{document_type}")
+    attachment = FileAttachment(record_id=record.id, category=case_document_category_for(document_type, (record.data or {}).get("case_type")), original_name=f"{record.serial_no}-{title}-{datetime.now():%Y%m%d%H%M%S}.docx", stored_name=stored_name, content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", size=len(content), path=str(path), uploader=identity["username"], remark=f"系统生成案件文书：{document_type}")
     try:
         db.add(attachment); await db.flush()
         db.add(WorkflowEvent(record_id=record.id, action="生成案件文书", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{title}｜附件 {attachment.original_name}"))

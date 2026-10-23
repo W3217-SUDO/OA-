@@ -56,6 +56,30 @@ export const LEGACY_CIVIL_PHASE_ROOTS = [
   "二审阶段", "再审阶段", "执行阶段", "归档阶段",
 ];
 
+export const CRIMINAL_CASE_TYPE = "刑事案件";
+
+// 10.22 第 11 行：旧系统刑事案件“变更阶段”树（逐字取自旧系统截图）。
+// 前四项为刑事末级阶段；“待分配”与民事“新案待分配”是同一阶段，显示旧名、取值新案待分配。
+// 一审/二审/再审/归档四个目录的子项见 LEGACY_CRIMINAL_PHASE_CHILDREN，刑事没有执行阶段。
+export const LEGACY_CRIMINAL_PHASE_ROOT_ITEMS = [
+  { label: "待分配", value: "新案待分配" },
+  { label: "公安侦查", value: "公安侦查" },
+  { label: "批捕", value: "批捕" },
+  { label: "检察院审查起诉", value: "检察院审查起诉" },
+  { label: "一审阶段", value: "一审阶段" },
+  { label: "二审阶段", value: "二审阶段" },
+  { label: "再审阶段", value: "再审阶段" },
+  { label: "归档阶段", value: "归档阶段" },
+];
+
+export const isCriminalCaseType = (caseType) => normalizeText(caseType) === CRIMINAL_CASE_TYPE;
+
+// 变更阶段弹窗的根节点：刑事用旧系统刑事根，其他类型保持民事根。
+export const casePhaseRootItemsForCaseType = (caseType) => (isCriminalCaseType(caseType)
+  ? LEGACY_CRIMINAL_PHASE_ROOT_ITEMS
+  : LEGACY_CIVIL_PHASE_ROOTS.map((label) => ({ label, value: label })))
+  .map((item) => ({ ...item }));
+
 // The legacy tree opens at the archive group while keeping trial and execution
 // groups compact, so every top-level phase remains visible in its original order.
 export const LEGACY_DEFAULT_EXPANDED_PHASE_GROUPS = ["归档阶段"];
@@ -67,6 +91,19 @@ export const LEGACY_PHASE_CHILDREN = {
   "执行阶段": ["一审待执行", "二审待执行", "准备材料", "提交法院", "执行受理", "执行中止", "执行结案", "执行终本", "执行终结", "执行亏损", "执行异议", "执行和解中"],
   "归档阶段": ["归档审核", "已归档", "归档拒绝", "亏损内审", "亏损审核", "亏损归档", "亏损拒绝"],
 };
+
+// 10.22 新增第 11 行（用户原文：刑事和民事案件案件阶段是不一样的，根据老系统截图修改）：
+// 旧系统刑事案件阶段树的子项，逐字取自旧系统截图；归档阶段与民事相同。
+export const LEGACY_CRIMINAL_PHASE_CHILDREN = {
+  "一审阶段": ["一审立案受理", "一审补充证据", "一审通知开庭", "一审庭后待判", "一审一审判决", "一审等待上诉"],
+  "二审阶段": ["二审上诉准备", "二审立案受理", "二审补充证据", "二审通知开庭", "二审庭后待判", "二审判决", "二审判决生效"],
+  "再审阶段": ["再审立案受理", "再审补充证据", "再审通知开庭", "再审庭后待判", "再审待执行"],
+  "归档阶段": ["归档审核", "已归档", "归档拒绝", "亏损内审", "亏损审核", "亏损归档", "亏损拒绝"],
+};
+
+export const casePhaseChildrenForCaseType = (caseType) => (isCriminalCaseType(caseType)
+  ? LEGACY_CRIMINAL_PHASE_CHILDREN
+  : LEGACY_PHASE_CHILDREN);
 
 const LEGACY_PHASE_COUNT_ALIASES = {
   "审核公证书": ["等待审核公证书"],
@@ -85,9 +122,9 @@ const LEGACY_PHASE_COUNT_ALIASES = {
 const phaseCount = (counts, phase) => [phase, ...(LEGACY_PHASE_COUNT_ALIASES[phase] || [])]
   .reduce((total, name) => total + Number(counts[name] || 0), 0);
 
-export const legacyCasePhaseFilterValues = (phase) => {
+export const legacyCasePhaseFilterValues = (phase, childrenByGroup = LEGACY_PHASE_CHILDREN) => {
   const normalized = normalizeText(phase);
-  const children = LEGACY_PHASE_CHILDREN[normalized] || [];
+  const children = childrenByGroup[normalized] || [];
   return [...new Set([
     normalized,
     ...(LEGACY_PHASE_COUNT_ALIASES[normalized] || []),
@@ -108,7 +145,7 @@ export const dashboardCaseQueryForView = (view) => {
   return caseQueue ? { case_queue: caseQueue, sort_order: "updated_desc" } : {};
 };
 
-export const buildLegacyCasePhaseTree = (items = [], catalog = [], phaseCounts = {}) => {
+export const buildLegacyCasePhaseTree = (items = [], catalog = [], phaseCounts = {}, childrenByGroup = LEGACY_PHASE_CHILDREN) => {
   const counts = normalizePhaseCounts(phaseCounts);
   const hasAuthoritativeCounts = Object.keys(counts).length > 0;
   const groupNames = new Set(LEGACY_CASE_PHASE_GROUPS);
@@ -119,7 +156,7 @@ export const buildLegacyCasePhaseTree = (items = [], catalog = [], phaseCounts =
       count: hasAuthoritativeCounts ? phaseCount(counts, item.value) : Number(item.count || 0),
       children: [],
     };
-    const children = LEGACY_PHASE_CHILDREN[item.label].map((phase) => ({
+    const children = (childrenByGroup[item.label] || []).map((phase) => ({
       label: phase,
       value: phase,
       count: phaseCount(counts, phase),

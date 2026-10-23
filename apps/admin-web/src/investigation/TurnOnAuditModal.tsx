@@ -1,5 +1,6 @@
-import { Modal, Form, Select, Input } from "antd";
+import { Modal, Form, Input } from "antd";
 import type { Row, PersonOption } from "./types";
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 
 interface TurnOnAuditModalProps {
   open: boolean;
@@ -36,9 +37,7 @@ export default function TurnOnAuditModal({
           name="reviewer"
           rules={[{ required: true, message: "请选择具备线索审批岗位的审核人" }]}
         >
-          <Select
-            showSearch
-            optionFilterProp="label"
+          <KeywordPersonSelect
             loading={reviewerCandidatesLoading}
             options={reviewerCandidates}
             notFoundContent={

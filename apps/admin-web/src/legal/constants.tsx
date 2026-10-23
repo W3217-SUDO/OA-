@@ -5,14 +5,20 @@ import { useState } from "react";
 import { getLegacyCaseDocumentGenerationItems } from "../caseDocumentGenerationActions.mjs";
 import { CaseLitigantAgentDataError, normalizeCaseLitigantAgents } from "./caseLitigantAgents";
 import {
+CRIMINAL_CASE_TYPE,
 LEGACY_CASE_PHASE_GROUPS,
 LEGACY_CIVIL_PHASE_ROOTS,
-buildLegacyCasePhaseTree
+LEGACY_CRIMINAL_PHASE_ROOT_ITEMS,
+buildLegacyCasePhaseTree,
+casePhaseChildrenForCaseType,
+casePhaseRootItemsForCaseType,
+isCriminalCaseType
 } from "../caseOrdinarySearchParity.mjs";
 import type {
 CaseAgentDocument,
 CaseAgentDocumentTreeNode,
 CaseDetailCapabilities,
+CaseFileTypeOption,
 CaseEventCapabilities,
 CaseLitigantAgent,
 CaseLitigantAgentField,
@@ -23,9 +29,11 @@ CaseRow,
 CaseTaskPageState,
 TaskRow,
 } from "./types";
+import type { CaseDocumentTreeItem } from "./services/legacyCaseDocumentFolders";
 
 export { getLegacyCaseDocumentGenerationItems };
 export { normalizeCaseLitigantAgents };
+export { CRIMINAL_CASE_TYPE, isCriminalCaseType };
 
 export const CASE_LITIGANT_PARTY_LABELS: Record<CaseLitigantPartyField, string> = {
   plaintiffs: "原告",
@@ -41,6 +49,15 @@ export const CASE_LITIGANT_AGENT_LABELS: Record<CaseLitigantAgentField, string> 
 
 export const LEGACY_PHASE_GROUPS = new Set(LEGACY_CASE_PHASE_GROUPS);
 export const CASE_PHASE_ROOT_LABELS = LEGACY_CIVIL_PHASE_ROOTS;
+// 列表左侧刑事阶段面板与变更阶段弹窗共用（10.22 第 11 行）。
+export const CRIMINAL_CASE_PHASE_ROOT_ITEMS = LEGACY_CRIMINAL_PHASE_ROOT_ITEMS;
+
+// 弹窗未显式传案件类型时，接口返回了刑事专用阶段即按刑事树显示。
+export const resolveCasePhasePickerCaseType = (caseType: unknown, options: CasePhaseOption[]) => {
+  const explicit = String(caseType ?? "").trim();
+  if (explicit) return explicit;
+  return options.some((option) => isCriminalCaseType(option.case_type)) ? CRIMINAL_CASE_TYPE : "";
+};
 
 export const renderCaseLitigantAgentSummary = (value: unknown) => {
   let agents: CaseLitigantAgent[];
@@ -63,20 +80,25 @@ export const CasePhasePickerTree = ({
   options,
   value,
   onChange,
+  caseType,
 }: {
   options: CasePhaseOption[];
   value?: number;
   onChange?: (value: number) => void;
+  caseType?: string;
 }) => {
   const [collapsedCodes, setCollapsedCodes] = useState<Set<string>>(() => new Set());
   const optionForPhase = (phase: string) => options.find((option) => [
     option.name,
     option.canonical_name,
   ].some((candidate) => String(candidate || "").trim() === phase));
+  const pickerCaseType = resolveCasePhasePickerCaseType(caseType, options);
+  const rootItems = casePhaseRootItemsForCaseType(pickerCaseType);
   const tree = (buildLegacyCasePhaseTree(
-    CASE_PHASE_ROOT_LABELS.map((label) => ({ label, value: label, count: 0 })),
+    rootItems.map((item) => ({ ...item, count: 0 })),
     options,
     {},
+    casePhaseChildrenForCaseType(pickerCaseType),
   ) as CasePhaseTreeItem[]).map((node) => ({
     ...node,
     option: optionForPhase(node.value) || optionForPhase(node.label),
@@ -137,8 +159,9 @@ export const caseDocumentTypes = [
   ["gd-second-instance-appellant-lawyer-letter", "广东版二审上诉人律师函"], ["gd-second-instance-appellee-lawyer-letter", "广东版二审被上诉人律师函"], ["gd-execution-lawyer-letter", "广东版执行律师函"],
 ] as const;
 
-export const getCaseDocumentMoveCategoryOptions = (customFolders: string[] = []) =>
-  ["主体及委托资料", "起诉材料及证据", "答辩材料及证据", "法院诉讼文书", "庭审及庭后文件", ...customFolders]
+// 移动目录可选项按案件类型区分（10.22 第 17 行）；不传案件类型时保持民事五个目录。
+export const getCaseDocumentMoveCategoryOptions = (customFolders: string[] = [], caseType?: unknown) =>
+  [...getCaseFormalDocumentFolders(caseType), ...customFolders]
     .filter((value, index, values) => value && values.indexOf(value) === index)
     .map((value) => ({ value, label: value }));
 
@@ -221,6 +244,105 @@ export const AGENT_DOCUMENT_LIMIT = 12;
 export const AGENT_CASE_DOCUMENT_FOLDERS = ["主体及委托资料", "起诉材料及证据", "答辩材料及证据", "法院诉讼文书", "庭审及庭后文件"];
 export const AGENT_INVESTIGATION_DOCUMENT_FOLDERS = ["鉴别资料", "调查文档", "取证文档"];
 
+// 10.22 第 17 行：旧系统刑事案件文档目录（逐字取自旧系统截图）。
+// “诉讼阶段文件”沿用分组值“案件文档全部”，因此“+ 新增自定义目录”、分组筛选等原逻辑不变。
+export const CRIMINAL_CASE_DOCUMENT_GROUP_LABEL = "诉讼阶段文件";
+export const CRIMINAL_CASE_DOCUMENT_FOLDERS = ["委托手续及证明", "起诉书及证据", "辩论意见及证据", "法院裁判文书"];
+export const CRIMINAL_AUTHORITY_DOCUMENT_FOLDERS = ["公安机关文件", "检察机关文件"];
+
+/** “案件文档/诉讼阶段文件”分组下的固定子目录。 */
+export const getCaseStageDocumentFolders = (caseType?: unknown): string[] =>
+  isCriminalCaseType(caseType) ? [...CRIMINAL_CASE_DOCUMENT_FOLDERS] : [...AGENT_CASE_DOCUMENT_FOLDERS];
+
+/** 该案件类型可上传/移动/转入的全部固定正式目录（刑事含公安机关文件、检察机关文件）。 */
+export const getCaseFormalDocumentFolders = (caseType?: unknown): string[] =>
+  isCriminalCaseType(caseType)
+    ? [...CRIMINAL_CASE_DOCUMENT_FOLDERS, ...CRIMINAL_AUTHORITY_DOCUMENT_FOLDERS]
+    : [...AGENT_CASE_DOCUMENT_FOLDERS];
+
+/** 刑事案件不再放入民事固定目录（历史文件保留原目录显示）。 */
+export const isCaseFormalDocumentFolderBlocked = (category: unknown, caseType?: unknown, customFolders: string[] = []) => {
+  const name = String(category ?? "").trim();
+  return isCriminalCaseType(caseType) && AGENT_CASE_DOCUMENT_FOLDERS.includes(name) && !customFolders.includes(name);
+};
+
+/** 不属于“案件文档/诉讼阶段文件”分组的目录，分组视图需排除。 */
+export const getNonCaseDocumentCategories = (caseType?: unknown): string[] => [
+  "AI空间", "客户文档", "合同文档", ...AGENT_INVESTIGATION_DOCUMENT_FOLDERS,
+  ...(isCriminalCaseType(caseType) ? CRIMINAL_AUTHORITY_DOCUMENT_FOLDERS : []),
+];
+
+/** 上传分类选项：固定正式目录 + 按案件类型关联的文件类型 + 自定义目录 + 普通附件。 */
+export const getCaseUploadCategoryOptions = ({
+  caseType,
+  fileTypeOptions = [],
+  customFolders = [],
+}: {
+  caseType?: unknown;
+  fileTypeOptions?: CaseFileTypeOption[];
+  customFolders?: string[];
+}): CaseFileTypeOption[] => {
+  const fixed = getCaseFormalDocumentFolders(caseType);
+  // 文件类型是树形选项（如 调查文档 › 鉴别资料），逐层去掉固定目录和刑事不再使用的民事目录。
+  const keep = (options: CaseFileTypeOption[]): CaseFileTypeOption[] => options.flatMap((option) => {
+    const children = option.options?.length ? keep(option.options) : undefined;
+    const blocked = fixed.includes(option.value) || isCaseFormalDocumentFolderBlocked(option.value, caseType, customFolders);
+    if (blocked) return children || [];
+    return [children ? { ...option, options: children } : option];
+  });
+  const fileTypes = keep(fileTypeOptions);
+  const flatten = (options: CaseFileTypeOption[]): string[] => options.flatMap((option) => [option.value, ...flatten(option.options || [])]);
+  const fileTypeValues = new Set(flatten(fileTypes));
+  return [
+    ...fixed.map((name) => ({ value: name, label: name })),
+    ...fileTypes,
+    ...customFolders.filter((name) => !fixed.includes(name) && !fileTypeValues.has(name)).map((name) => ({ value: name, label: name })),
+    { value: "普通附件", label: "普通附件" },
+  ];
+};
+
+/**
+ * 新系统案件（非 9/30 迁移旧目录）的文档目录树。民事等类型与原硬编码完全一致；
+ * 刑事案件把“案件文档”换成“诉讼阶段文件”及四个子目录，并增加“公安机关文件”“检察机关文件”。
+ * folderTree 是 GET /cases/{id}/document-folders 的 tree，用于带出历史分类与自定义目录。
+ */
+export const buildNativeCaseDocumentTree = ({
+  caseType,
+  folderTree = [],
+  customFolders = [],
+  expandedGroups = {},
+}: {
+  caseType?: unknown;
+  folderTree?: CaseFileTypeOption[];
+  customFolders?: string[];
+  expandedGroups?: Record<string, boolean>;
+}): CaseDocumentTreeItem[] => {
+  const criminal = isCriminalCaseType(caseType);
+  const caseGroup = folderTree.find((option) => option.value === "案件文档全部");
+  const stageFolders = Array.from(new Set([
+    ...getCaseStageDocumentFolders(caseType),
+    ...(caseGroup?.options || []).map((option) => option.value).filter((name) => name && name !== "普通附件"),
+    ...customFolders,
+  ])).filter((name) => !criminal || !CRIMINAL_AUTHORITY_DOCUMENT_FOLDERS.includes(name));
+  const items: CaseDocumentTreeItem[] = [
+    { label: "案件智能体文件夹", category: "AI空间", type: "folder" },
+    { label: "全部案件文档", category: "全部案件文档", type: "overview" },
+    { label: "客户文档", category: "客户文档", type: "folder" },
+    { label: "合同文档", category: "合同文档", type: "folder" },
+    { label: "调查文档", category: "调查文档全部", type: "group" },
+    { label: "鉴别资料", category: "鉴别资料", type: "child", parent: "调查文档全部" },
+    { label: "调查文档", category: "调查文档", type: "child", parent: "调查文档全部" },
+    { label: "取证文档", category: "取证文档", type: "child", parent: "调查文档全部" },
+    { label: criminal ? CRIMINAL_CASE_DOCUMENT_GROUP_LABEL : "案件文档", category: "案件文档全部", type: "group" },
+    ...stageFolders.map((label) => ({
+      label, category: label, type: "child", parent: "案件文档全部",
+      custom: customFolders.includes(label),
+    })),
+    ...(criminal ? CRIMINAL_AUTHORITY_DOCUMENT_FOLDERS.map((label) => ({ label, category: label, type: "folder" })) : []),
+  ];
+  return items.filter((item) => !item.parent || expandedGroups[item.parent]);
+};
+
 export const agentDocumentCategoryFolder = (item: CaseAgentDocument): string => String(item.category || "未分类").trim() === "调查资料" ? "调查文档" : String(item.category || "未分类").trim() || "未分类";
 
 export const agentDocumentRootFolder = (item: CaseAgentDocument): string => {
@@ -233,11 +355,12 @@ export const agentDocumentRootFolder = (item: CaseAgentDocument): string => {
   return "案件文档";
 };
 
-export const buildAgentDocumentTree = (documents: CaseAgentDocument[]): CaseAgentDocumentTreeNode[] => {
+export const buildAgentDocumentTree = (documents: CaseAgentDocument[], caseType?: unknown): CaseAgentDocumentTreeNode[] => {
   const roots = ["客户文档", "合同文档", "调查文档", "案件文档"];
   return roots.map((root) => {
     const rootDocuments = documents.filter((item) => agentDocumentRootFolder(item) === root);
-    const fixedFolders = root === "调查文档" ? AGENT_INVESTIGATION_DOCUMENT_FOLDERS : root === "案件文档" ? AGENT_CASE_DOCUMENT_FOLDERS : [];
+    // 传入刑事案件类型时，案件文档下的固定目录用刑事目录；不传保持原民事目录。
+    const fixedFolders = root === "调查文档" ? AGENT_INVESTIGATION_DOCUMENT_FOLDERS : root === "案件文档" ? getCaseFormalDocumentFolders(caseType) : [];
     if (!fixedFolders.length) {
       return { key: `folder:${root}`, title: root, selectable: false, disabled: !rootDocuments.length, children: rootDocuments.map((item) => ({ key: `document:${item.id}`, title: item.original_name, selectable: false })) };
     }
