@@ -65,7 +65,6 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
 ) {
   const { status, state, loading, loadError, sending, stopping, input, setInput, send, stop, decide, load } = workspace;
   const intakeMode = workspace.skillId === COURT_INTAKE_SKILL;
-  const startIntake = workspace.courtIntakeAvailable ? () => void workspace.startCourtIntake().catch((error: Error) => message.warning(error.message)) : undefined;
   const mcp = workspace.mcpConnection;
   const threadRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -81,6 +80,9 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   const [caseAgentFolderOpen, setCaseAgentFolderOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [caseSession, setCaseSession] = useState<{ item: CaseAgentConversationSummary; state: WorkspaceState; loading: boolean; sending: boolean } | null>(null);
+  // 进入收文助手时关掉案件智能体会话视图，否则主区域仍显示原案件会话。
+  const startIntake = workspace.courtIntakeAvailable ? () => { mcp.close(); setCaseSession(null); void workspace.startCourtIntake().catch((error: Error) => message.warning(error.message)); } : undefined;
+  const openIntake = (id: string) => { mcp.close(); setCaseSession(null); void workspace.openCourtIntake(id).catch((error: Error) => message.warning(error.message)); };
   const lastMessage = state.messages[state.messages.length - 1];
   const displayedState = caseSession?.state || state;
   const hasDisplayedMessages = displayedState.messages.length > 0;
@@ -442,6 +444,8 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         onOpenCaseAgentConversation={(item: CaseAgentConversationSummary) => void openCaseConversation(item)}
         onReopenConfirmation={reopen}
         onReturnWorkbench={onReturnOverview}
+        onStartIntake={() => startIntake?.()}
+        onOpenIntake={openIntake}
       />}
       {desktopWorkspace ? <div className="assistant-workspace-main">{content}</div> : content}
       {caseAgentFolderOpen && currentCaseProject?.case_id && <CaseAgentFileFolderModal open caseId={currentCaseProject.case_id} serialNo={currentCaseProject.serial_no} onClose={() => setCaseAgentFolderOpen(false)} />}

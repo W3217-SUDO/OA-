@@ -318,10 +318,17 @@ export function usePersonalWorkspace() {
     conversations: conversations.items, conversationBusy: conversations.busy, runningIds: Object.keys(runtime.activities),
     createConversation: () => changeConversation(() => conversations.create()),
     courtIntakeAvailable: skills.some((item) => item.id === COURT_INTAKE_SKILL && item.available),
-    // 新建一条收文对话并选好收文技能，用户粘贴链接即可。
+    // 收文对话固定建在个人空间并选好收文技能，用户粘贴链接即可；历史收文对话按技能单独列出。
     startCourtIntake: () => changeConversation(async () => {
+      if (conversations.workspace?.kind !== "personal") await conversations.openWorkspace(PERSONAL_CONVERSATION_WORKSPACE);
       const next = await conversations.create();
       updateDraft(conversationDraftKey(next.conversation_id || "", conversations.capture().workspace), "skillId", COURT_INTAKE_SKILL);
+      return next;
+    }),
+    courtIntakeConversations: (conversations.items || []).filter((item) => item.skill_id === COURT_INTAKE_SKILL),
+    openCourtIntake: (target: string) => changeConversation(async () => {
+      const next = target === state.conversation_id ? state : await conversations.select(target);
+      updateDraft(conversationDraftKey(target, conversations.capture().workspace), "skillId", COURT_INTAKE_SKILL);
       return next;
     }), selectConversation: (target: string) => target === state.conversation_id ? Promise.resolve() : changeConversation(() => conversations.select(target)),
     deleteConversation: (target: string) => changeConversation(async () => { const next = await conversations.remove(target); runtime.forget(target); drafts.remove(target); return next; }),

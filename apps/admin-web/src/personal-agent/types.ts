@@ -60,7 +60,7 @@ export type CompressionMetadata = {
   [key: string]: unknown;
 };
 export type WorkspaceState = { conversation_id?: string | null; conversation_title?: string; messages: WorkspaceMessage[]; pending_actions: PendingAction[]; dismissed_action_ids: string[]; structured_results?: unknown[]; memory_summary?: string; memory_summary_updated_at?: string; memory_summary_metadata?: CompressionMetadata; workspace?: ConversationWorkspace };
-export type WorkspaceConversation = { id: string; title: string; message_count: number; updated_at: string; workspace?: ConversationWorkspace };
+export type WorkspaceConversation = { id: string; title: string; message_count: number; updated_at: string; workspace?: ConversationWorkspace; skill_id?: string };
 export type CaseAgentConversationSummary = { id: number; title: string; updated_at?: string | null; case_id: number; case_serial_no: string; agent_id: number; agent_name: string; source: "case_agent" };
 export type WorkspaceProject = { kind: "personal" | "case"; case_id?: number; serial_no?: string; title: string; available: boolean; unavailable_reason?: string };
 export type ConversationSnapshot = { items: WorkspaceConversation[]; active_id: string | null; state: WorkspaceState; workspace?: ConversationWorkspace; workspaces?: WorkspaceProject[]; case_agent_conversations?: CaseAgentConversationSummary[]; active_unavailable_reason?: string };

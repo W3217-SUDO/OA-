@@ -33,7 +33,8 @@ _REGION = re.compile(r"^[一-鿿]{2,3}?[省市]")
 class CourtIntakeInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     link: str = Field(min_length=20, max_length=2000, description="法院短信里的完整送达链接，可连同短信正文一起粘贴")
-    case_id: int | None = Field(default=None, gt=0, description="命中多个候选时，用户选定的案件 ID；首次调用不要填")
+    case_id: int | None = Field(default=None, gt=0, description="用户选定或确认的案件 ID；首次预览不要填")
+    confirm: bool = Field(default=False, description="false 只预览（下载文书、匹配案件、列出将写入的内容），用户确认后带 case_id 和 confirm=true 再调用才入库")
 
 
 class CourtFeeConfirmInput(BaseModel):
@@ -210,11 +211,30 @@ async def _prepare_fee(case: BusinessRecord, document: dict, court_no: str, leve
             "bank": account.get("开户行", "")}
 
 
+def _preview(case: BusinessRecord, documents: list[dict], court_no: str, level: str, court_name: str) -> dict:
+    """列出确认后将写入的内容，不改任何业务数据。"""
+    data = case.data or {}
+    hearings = {(item["fields"].get("开庭日期"), item["fields"].get("开庭时刻"), item["fields"].get("开庭法庭") or "")
+                for item in documents if item["fields"].get("开庭日期") and item["fields"].get("开庭时刻")}
+    fees = [{"document": item["name"], "amount": item["fields"].get("缴费金额"), "fee_type": FEE_TYPES.get(level, (0, "审级不明，需律师确认"))[1],
+             "deadline": _deadline(item["fields"], documents), "payee": (item["fields"].get("收款账户") or {}).get("户名", "")}
+            for item in documents if item["fields"].get("文书类型") == "交纳诉讼费用通知书"]
+    return {
+        "receipts": ["_".join(part for part in (case.serial_no, court_no, _stem(item["name"])) if part) + (Path(item["name"]).suffix or ".pdf")
+                     for item in documents],
+        "court_case_no": court_no if not str(data.get("court_case_no") or "").strip() else f"已登记 {data.get('court_case_no')}，不覆盖",
+        "hearing": ([f"{day} {clock} {room}" for day, clock, room in hearings] if hearings else []),
+        "hearing_note": "开庭信息不一致，入库后只报告不回填" if len({(day, clock) for day, clock, _ in hearings}) > 1 else "",
+        "court_name": court_name, "fees": fees,
+    }
+
+
 @router.post(f"{settings.api_prefix}/documents/court-service/intake", status_code=201)
 async def intake_court_service(body: CourtIntakeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    """一键法院收文：下载送达文书、匹配案件、官方收文入库、回填法院案号和开庭；缴费通知生成待确认的官方费用单。
+    """一键法院收文。先预览：下载送达文书、匹配案件、列出将入库和回填的内容；用户确认后带 case_id、confirm=true 再调用，
+    才官方收文入库、回填法院案号和开庭，缴费通知生成待确认的官方费用单。
 
-    命中多个案件时返回候选，让用户选定后带 case_id 再调用；匹配不到则停止，不新建案件。
+    命中多个案件时返回候选让用户选；匹配不到则停止，不新建案件。
     """
     fetched = await fetch_court_service_documents(CourtServiceFetchInput(link=body.link), identity, db)
     documents = fetched["documents"]
@@ -223,10 +243,12 @@ async def intake_court_service(body: CourtIntakeInput, identity: dict = Depends(
     defendants = list(dict.fromkeys(name for item in documents for name in item["fields"].get("被告") or []))
     report = {"court": fetched["court"], "case_numbers": numbers,
               "documents": [{"attachment_id": item["attachment_id"], "name": item["name"], "fields": item["fields"]} for item in documents]}
+    if body.confirm and body.case_id is None:
+        raise HTTPException(422, "确认入库时必须带上用户确认的 case_id")
     if body.case_id is not None:
         from app.core.permissions import _ensure_record_module
         case = await _ensure_record_module(body.case_id, "case", identity, db)
-        match = {"level": "用户选定", "basis": f"用户从候选中选定 {case.serial_no}", "records": [case], "tried": []}
+        match = {"level": "用户确认", "basis": f"用户确认案件 {case.serial_no}", "records": [case], "tried": []}
     else:
         match = await _match_case(numbers, plaintiffs, defendants, identity, db)
     records = match["records"]
@@ -234,7 +256,7 @@ async def intake_court_service(body: CourtIntakeInput, identity: dict = Depends(
                        "candidates": [_brief(record) for record in records[:20]]}
     if len(records) != 1:
         report["status"] = "需要选择案件" if records else "系统内未登记该案"
-        report["next_step"] = ("请用户从候选中选定案件后，带 case_id 重新调用本工具。" if records else
+        report["next_step"] = ("请用户从候选中选定案件后，带 case_id 重新调用本工具预览，再确认入库。" if records else
                                "已停止：系统内未找到对应案件，请先建案；文书已保存为附件，可稍后再收文。")
         return report
     from app.core.permissions import _ensure_record_module
@@ -242,10 +264,15 @@ async def intake_court_service(body: CourtIntakeInput, identity: dict = Depends(
     case = await _ensure_record_module(records[0].id, "case", identity, db)
     court_no = numbers[0] if numbers else ""
     level = parse_case_no(court_no)["审级"] if court_no else ""
+    court_name = fetched["court"] or next((item["fields"].get("受理机关") for item in documents if item["fields"].get("受理机关")), "")
+    if not body.confirm:
+        report.update({"status": "待确认入库", "case": _brief(case), "instance_level": level,
+                       "plan": _preview(case, documents, court_no, level, court_name),
+                       "next_step": f"把匹配结果和 plan 列给用户，用户确认后带 case_id={case.id}、confirm=true 再调用本工具入库；用户不确认则不入库。"})
+        return report
     received = [await _receive(case, item, court_no, item["fields"].get("落款日期") or date.today().isoformat(), identity, db)
                 for item in documents]
     await db.refresh(case)
-    court_name = fetched["court"] or next((item["fields"].get("受理机关") for item in documents if item["fields"].get("受理机关")), "")
     hearing = await _backfill_hearing(case, documents, level, court_name, court_no, identity, db)
     fees = [await _prepare_fee(case, item, court_no, level, documents, identity, db)
             for item in documents if item["fields"].get("文书类型") == "交纳诉讼费用通知书"]

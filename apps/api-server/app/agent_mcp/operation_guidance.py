@@ -28,9 +28,10 @@ _GUIDANCE = {
     },
     ("POST", "/documents/court-service/intake", "intake_court_service"): {
         "title": "一键法院收文",
-        "purpose": "收文助手首选：按送达链接下载文书，官方案号直配或当事人+法院反查唯一案件，官方收文入库并回填法院案号、开庭时间与法庭；缴费通知只生成待确认的官方费用草稿。",
-        "usage": ["body.link 填短信里的完整送达链接（可连同短信正文）；首次调用不要填 case_id。",
-                  "返回 status=需要选择案件 时，把 match.candidates 列给用户选，再带 body.case_id 重新调用；status=系统内未登记该案 时停止并建议先建案。",
+        "purpose": "收文助手首选，两步：先预览（下载文书、匹配唯一案件、列出将入库和回填的内容），用户确认后再入库（官方收文挂案件、回填法院案号和开庭时间法庭；缴费通知生成待确认官方费用草稿）。",
+        "usage": ["第一次只填 body.link（短信或链接），返回 status=待确认入库 时把 case 和 plan 列给用户并询问是否入库。",
+                  "用户确认后带 body.link、body.case_id（返回的 case.case_id）和 body.confirm=true 再调用一次才写入；用户不确认就不再调用。",
+                  "返回 status=需要选择案件 时把 match.candidates 列给用户选，选定后带 case_id 预览再确认；status=系统内未登记该案 时停止并建议先建案。",
                   "返回 fees 中 status=待确认 的费用，向律师确认是否提交缴纳和设提醒，确认后调用“确认收文费用”。"],
         "prerequisites": ["用户发来送达链接即授权下载与收文；重复调用不会重复入库或重复建费用单。"],
         "limitations": ["只在唯一匹配时写入；不新建案件、不改案件阶段；开庭信息冲突或审级不明时只报告不回填。"],

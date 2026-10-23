@@ -189,3 +189,8 @@
   .assistant-thinking::after{animation:none}
   .assistant-composer,.assistant-chips button,.assistant-card{transition:none}
 }
+
+/* 收文助手的历史收文对话，缩进列在入口下方 */
+.assistant-intake-history { display: flex; flex-direction: column; gap: 2px; margin: 0 0 6px 28px; }
+.assistant-intake-history .ant-btn { justify-content: flex-start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ant-color-text-secondary, #666); }
+.assistant-intake-history .ant-btn.is-active { color: var(--ant-color-primary, #1f8a4c); font-weight: 500; }

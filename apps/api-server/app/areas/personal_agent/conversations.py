@@ -281,6 +281,19 @@ def read_state(directory: Path, conversation_id: str | None = None) -> dict[str,
     return state
 
 
+def _first_message_title(message: dict[str, Any]) -> str:
+    """收文对话用“收文 + 案号/法院”做标题，便于在收文历史里辨认；其他对话取首句。"""
+    content = " ".join(str(message.get("content") or "").split())
+    if message.get("skill_id") == "court-doc-intake":
+        from app.agent_skill_packages.court_doc_intake.scripts.normalize_case_no import find_case_numbers
+        import re
+        numbers = find_case_numbers(content)
+        court = re.search(r"【([^】]{2,30})】", content)
+        label = numbers[0] if numbers else court.group(1) if court else content
+        return ("收文 " + label)[:40]
+    return content[:40]
+
+
 def _snapshot(directory: Path, workspace: dict[str, Any] | None = None) -> dict[str, Any]:
     index = _index(directory)
     items = []
@@ -288,8 +301,9 @@ def _snapshot(directory: Path, workspace: dict[str, Any] | None = None) -> dict[
         state = read_state(directory, conversation_id)
         if workspace is not None and state["workspace"] != workspace:
             continue
+        first = next((message for message in state["messages"] if message.get("role") == "user"), None)
         items.append({"id": conversation_id, "title": state["conversation_title"], "message_count": len(state["messages"]),
-                      "workspace": state["workspace"],
+                      "workspace": state["workspace"], "skill_id": str((first or {}).get("skill_id") or ""),
                       "updated_at": state["updated_at"] or state["created_at"]})
     items.sort(key=lambda item: item["updated_at"], reverse=True)
     active_id = index["active_id"]
@@ -437,7 +451,7 @@ async def save_state(directory: Path, state: dict[str, Any]) -> None:
         if not state["created_at"]:
             state["created_at"] = datetime.now(timezone.utc).isoformat()
         if len(state["messages"]) == 1 and state["messages"][0].get("role") == "user":
-            state["conversation_title"] = " ".join(str(state["messages"][0]["content"]).split())[:40]
+            state["conversation_title"] = _first_message_title(state["messages"][0])
         _write_json(_path(directory, conversation_id), state)
 
 

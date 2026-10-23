@@ -255,12 +255,26 @@ class CourtIntakeTest(_CourtApiBase):
             return {"id": record.id, "serial_no": record.serial_no, "status": record.status}
 
         with self.court(self.payload), patch("app.areas.finance.router.create_finance_fee", create_fee):
-            first = await self.client.post(f"{API}/documents/court-service/intake", json={"link": LINK})
-            again = await self.client.post(f"{API}/documents/court-service/intake", json={"link": LINK})
+            preview = await self.client.post(f"{API}/documents/court-service/intake", json={"link": LINK})
+            plan = preview.json()
+            self.assertEqual((preview.status_code, plan["status"]), (201, "待确认入库"), preview.text)
+            self.assertEqual(plan["plan"]["hearing"], ["2026-11-13 08:40 淮南市大通区法院第二法庭"])
+            self.assertEqual((plan["plan"]["fees"][0]["fee_type"], plan["plan"]["fees"][0]["deadline"]), ("一审诉讼费", "2026-10-29"))
+            async with self.sessions() as db:
+                untouched = await db.get(BusinessRecord, self.case_id)
+                official = (await db.scalars(select(FileAttachment).where(FileAttachment.category == "官方收文"))).all()
+            self.assertEqual((official, "court_case_no" in untouched.data), ([], False))  # 预览不写入业务数据
+            self.assertNotIn("body", created)
+            missing_case = await self.client.post(f"{API}/documents/court-service/intake", json={"link": LINK, "confirm": True})
+            self.assertEqual(missing_case.status_code, 422)
+            confirm = {"link": LINK, "case_id": plan["case"]["case_id"], "confirm": True}
+            first = await self.client.post(f"{API}/documents/court-service/intake", json=confirm)
+            again = await self.client.post(f"{API}/documents/court-service/intake", json=confirm)
         self.assertEqual(first.status_code, 201, first.text)
         report = first.json()
         self.assertEqual((report["status"], report["case"]["serial_no"]), ("已收文", "GDMS2401010"))
-        self.assertTrue(report["match"]["level"].startswith("第二级"))
+        self.assertTrue(plan["match"]["level"].startswith("第二级"))
+        self.assertEqual(report["match"]["level"], "用户确认")
         self.assertEqual([item["skipped"] for item in report["received"]], [False, False])
         self.assertEqual(report["received"][1]["name"], "GDMS2401010_（2026）皖0402民初4093号_传票-大通法院.pdf")
         self.assertEqual(report["court_case_no"], "（2026）皖0402民初4093号")
@@ -310,7 +324,16 @@ class CourtIntakeTest(_CourtApiBase):
         self.assertEqual(receipts, [])
         with self.court(self.payload), patch("app.areas.finance.router.create_finance_fee", AsyncMock(return_value={"id": 1})):
             chosen = await self.client.post(f"{API}/documents/court-service/intake", json={"link": LINK, "case_id": self.case_id})
-        self.assertEqual((chosen.json()["status"], chosen.json()["match"]["level"]), ("已收文", "用户选定"))
+        self.assertEqual((chosen.json()["status"], chosen.json()["match"]["level"]), ("待确认入库", "用户确认"))
+
+
+class IntakeConversationTitleTest(unittest.TestCase):
+    def test_intake_conversations_are_titled_by_case_number_and_tagged_with_skill(self):
+        from app.areas.personal_agent.conversations import _first_message_title
+        message = {"role": "user", "skill_id": "court-doc-intake", "content": LINK}
+        self.assertEqual(_first_message_title(message), "收文 （2026）皖0402民初4093号")
+        self.assertEqual(_first_message_title({**message, "content": "【某某法院】请签收 https://zxfw.court.gov.cn/x"}), "收文 某某法院")
+        self.assertEqual(_first_message_title({"role": "user", "content": "列出我的案件"}), "列出我的案件")
 
 
 class SkillPackageAndWebToolTest(unittest.IsolatedAsyncioTestCase):

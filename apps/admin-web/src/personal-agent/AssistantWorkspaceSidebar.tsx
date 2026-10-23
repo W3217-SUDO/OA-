@@ -1,5 +1,4 @@
 import { Button, Tooltip } from "antd";
-import { message } from "antd";
 import { ArrowLeftOutlined, ExperimentOutlined, FolderOpenOutlined, InboxOutlined, ReloadOutlined, RobotOutlined, SettingOutlined } from "@ant-design/icons";
 import { ConfirmationHistory } from "./ConfirmationHistory";
 import { ConversationManager } from "./ConversationManager";
@@ -19,9 +18,11 @@ type Props = {
   onReopenConfirmation: (detail: ConfirmationDetail) => Promise<void>;
   onReturnWorkbench?: () => void;
   onOpenCaseAgentConversation?: (item: CaseAgentConversationSummary) => void;
+  onStartIntake: () => void;
+  onOpenIntake: (id: string) => void;
 };
 
-export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPersonalSpace, onOpenMemory, onImportSkills, onOpenAgentCenter, onReopenConfirmation, onReturnWorkbench, onOpenCaseAgentConversation }: Props) {
+export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPersonalSpace, onOpenMemory, onImportSkills, onOpenAgentCenter, onReopenConfirmation, onReturnWorkbench, onOpenCaseAgentConversation, onStartIntake, onOpenIntake }: Props) {
   const busy = workspace.loading || workspace.stopping || workspace.uploading || !!workspace.decisionId || workspace.conversationBusy;
   return <aside className="assistant-workspace-sidebar" aria-label="AI 工作区导航">
     <div className="assistant-workspace-brand">
@@ -44,7 +45,12 @@ export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPers
       rowClassName="assistant-conversation-row"
       selectClassName="assistant-conversation-select"
       navigation={<>
-        <Button type="text" icon={<InboxOutlined />} aria-label="收文助手" disabled={busy || !workspace.courtIntakeAvailable} onClick={() => void workspace.startCourtIntake().catch((error: Error) => message.warning(error.message))}>收文助手</Button>
+        <Button type="text" icon={<InboxOutlined />} aria-label="收文助手" disabled={busy || !workspace.courtIntakeAvailable} onClick={onStartIntake}>收文助手</Button>
+        {!!workspace.courtIntakeConversations?.length && <div className="assistant-intake-history" aria-label="收文历史">
+          {workspace.courtIntakeConversations.slice(0, 8).map((item) => <Button key={item.id} type="text" size="small" disabled={busy}
+            className={item.id === workspace.state.conversation_id ? "is-active" : undefined}
+            title={item.title} onClick={() => onOpenIntake(item.id)}>{item.title}</Button>)}
+        </div>}
         <Button type="text" className="assistant-workspace-generated-entry" icon={<FolderOpenOutlined />} onClick={onOpenPersonalSpace}>AI生成文件夹</Button>
         <Button type="text" icon={<SettingOutlined />} aria-label="记忆管理" onClick={onOpenMemory}>记忆管理</Button>
         <ConfirmationHistory onReopen={onReopenConfirmation} busy={busy || !!workspace.dismissalId} />
