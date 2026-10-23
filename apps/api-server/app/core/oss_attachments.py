@@ -133,3 +133,78 @@ async def oss_put_editor_revision(bucket: str, key: str, content: bytes, content
     if response.status_code == 409:
         return False
     raise HTTPException(status_code=502, detail=f"OSS 新版本写入被拒绝（HTTP {response.status_code}）")
+
+
+def _signed_headers(method: str, bucket: str, key: str, *, credentials_file: str, content: bytes = b"",
+                    content_type: str = "", oss_headers: dict[str, str] | None = None, subresource: str = "") -> dict[str, str]:
+    """OSS V1 签名：x-oss-* 头按名称排序后参与签名。"""
+    access_key_id, access_key_secret = _load_credentials(credentials_file)
+    date_header = formatdate(usegmt=True)
+    checksum = base64.b64encode(hashlib.md5(content, usedforsecurity=False).digest()).decode("ascii") if content else ""
+    extra = {name.lower(): value for name, value in (oss_headers or {}).items()}
+    canonical = "".join(f"{name}:{extra[name]}\n" for name in sorted(extra) if name.startswith("x-oss-"))
+    signing = f"{method}\n{checksum}\n{content_type}\n{date_header}\n{canonical}/{bucket}/{key}{subresource}"
+    signature = base64.b64encode(hmac.new(access_key_secret.encode(), signing.encode(), hashlib.sha1).digest()).decode("ascii")
+    headers = {"Authorization": f"OSS {access_key_id}:{signature}", "Date": date_header, **extra}
+    if content:
+        headers.update({"Content-MD5": checksum, "Content-Type": content_type})
+    return headers
+
+
+def _ascii_value(value: object) -> str:
+    """元数据和标签值只允许 ASCII，中文按 URL 编码保存。"""
+    return quote(str(value or ""), safe="")
+
+
+async def oss_put_object(bucket: str, key: str, content: bytes, content_type: str, *, credentials_file: str, endpoint: str,
+                         metadata: dict[str, object] | None = None, tags: dict[str, object] | None = None) -> bool:
+    """写入私有对象（禁止覆盖），附带元数据和标签；返回是否新建，已存在返回 False。"""
+    oss_headers = {"x-oss-forbid-overwrite": "true", "x-oss-object-acl": "private"}
+    oss_headers.update({f"x-oss-meta-{name}": _ascii_value(value) for name, value in (metadata or {}).items()})
+    if tags:
+        oss_headers["x-oss-tagging"] = "&".join(f"{_ascii_value(name)}={_ascii_value(value)}" for name, value in tags.items())
+    headers = _signed_headers("PUT", bucket, key, credentials_file=credentials_file, content=content,
+                              content_type=content_type, oss_headers=oss_headers)
+    scheme, host = _endpoint_host(endpoint)
+    try:
+        async with httpx.AsyncClient(timeout=60, follow_redirects=False, trust_env=False) as client:
+            response = await client.put(f"{scheme}://{bucket}.{host}/{quote(key, safe='/~')}", headers=headers, content=content)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="文件写入 OSS 失败") from exc
+    if response.status_code in {200, 201}:
+        return True
+    if response.status_code == 409:
+        return False
+    raise HTTPException(status_code=502, detail=f"文件写入 OSS 被拒绝（HTTP {response.status_code}）")
+
+
+async def oss_put_tags(bucket: str, key: str, tags: dict[str, object], *, credentials_file: str, endpoint: str) -> None:
+    """替换对象标签（如“待入库”→“已入库”），对象内容不变。"""
+    from xml.sax.saxutils import escape
+    body = ("<Tagging><TagSet>" + "".join(f"<Tag><Key>{escape(str(name))}</Key><Value>{escape(str(value))}</Value></Tag>"
+                                          for name, value in tags.items()) + "</TagSet></Tagging>").encode("utf-8")
+    headers = _signed_headers("PUT", bucket, key, credentials_file=credentials_file, content=body,
+                              content_type="application/xml", subresource="?tagging")
+    scheme, host = _endpoint_host(endpoint)
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=False, trust_env=False) as client:
+            response = await client.put(f"{scheme}://{bucket}.{host}/{quote(key, safe='/~')}?tagging", headers=headers, content=body)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="OSS 文件标签更新失败") from exc
+    if response.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"OSS 文件标签更新被拒绝（HTTP {response.status_code}）")
+
+
+async def oss_attachment_bytes(item) -> bytes:
+    """按附件 OSS 路径读取内容（短时签名地址）。"""
+    url = oss_attachment_signed_url(item)
+    if url is None:
+        raise HTTPException(status_code=409, detail="附件不在 OSS 上")
+    try:
+        async with httpx.AsyncClient(timeout=60, follow_redirects=False, trust_env=False) as client:
+            response = await client.get(url)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="OSS 附件读取失败") from exc
+    if response.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"OSS 附件读取被拒绝（HTTP {response.status_code}）")
+    return response.content

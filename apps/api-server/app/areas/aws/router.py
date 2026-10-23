@@ -712,14 +712,28 @@ async def upload_official_document(
         description=remark,
         data=official_data,
     )
-    try:
+    content_type = file.content_type or "application/octet-stream"
+    if case_id is not None:
+        # 按案件收文（收文助手）存 OSS“法院收文/已入库/系统案号/法院案号/”，写案件元数据并标记“已入库”。
+        import hashlib
+        from app.core.court_intake_storage import RECEIVED_DIR, object_key, store
+        stored_path, stored_name = await store(content, key=object_key(RECEIVED_DIR, matched_case.serial_no, matched_court_no or "无法院案号", original_name),
+                                               filename=original_name, content_type=content_type, metadata={
+            "case-id": matched_case.id, "case-no": matched_case.serial_no, "court-case-no": matched_court_no,
+            "document-date": str(document_date), "document-type": remark, "uploader": identity["username"],
+            "sha256": hashlib.sha256(content).hexdigest()},
+            tags={"status": "received", "status-cn": "已入库", "case": matched_case.serial_no})
+        target = Path(stored_path) if not stored_path.startswith("oss://") else None
+    else:
         await run_in_threadpool(target.write_bytes, content)
+        stored_path = str(target)
+    try:
         db.add(record)
         await db.flush()
         attachment = FileAttachment(
             record_id=matched_case.id, category="官方收文", original_name=original_name,
-            stored_name=stored_name, content_type=file.content_type or "application/octet-stream",
-            size=len(content), path=str(target), uploader=identity["username"], remark=remark,
+            stored_name=stored_name, content_type=content_type,
+            size=len(content), path=stored_path, uploader=identity["username"], remark=remark,
         )
         db.add(attachment)
         await db.flush()
@@ -734,7 +748,8 @@ async def upload_official_document(
         await db.refresh(attachment)
     except Exception:
         await db.rollback()
-        target.unlink(missing_ok=True)
+        if target is not None:
+            target.unlink(missing_ok=True)
         raise
     return {"record": _record_dict(record), "attachment": _attachment_dict(attachment, record)}
 

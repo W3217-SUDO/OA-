@@ -2,16 +2,15 @@
 
 import asyncio
 import ipaddress
-from io import BytesIO
+from pathlib import Path
 import socket
 from urllib.parse import urljoin, urlsplit
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.datastructures import Headers
 
 from app.agent_skill_packages.court_doc_intake.scripts import fetch_court_docs as court_api
 from app.agent_skill_packages.court_doc_intake.scripts.extract_doc_fields import extract
@@ -82,17 +81,39 @@ async def _list_documents(client: httpx.AsyncClient, params: dict) -> list[dict]
 
 
 async def _reading(item: FileAttachment, username: str) -> tuple[str, str]:
+    """读取文书正文；OSS 上的文件先取回到临时目录再解析。"""
+    import tempfile
     from app.agent_attachment_reader import read_attachment
-    from app.core.storage import _attachment_storage_path
-    path = _attachment_storage_path(item)
-    if path is None:
-        return "unavailable", ""
+    from app.core.court_intake_storage import read_bytes
     try:
-        result = await asyncio.to_thread(read_attachment, path, item.original_name,
-                                         cache_scope=username, attachment_id=item.id)
+        content = await read_bytes(item)
+        with tempfile.TemporaryDirectory(prefix="court-intake-") as directory:
+            path = Path(directory) / ("document" + (Path(item.original_name).suffix or ".pdf"))
+            path.write_bytes(content)
+            result = await asyncio.to_thread(read_attachment, path, item.original_name)
     except Exception:
         return "failed", ""
     return result.status, result.text
+
+
+async def _save_original(content: bytes, filename: str, content_type: str, document: dict, params: dict, marker: str,
+                         identity: dict, db: AsyncSession) -> FileAttachment:
+    """送达原件存 OSS“法院收文/送达原件/年-月/送达编号/”，写来源元数据并标记“待入库”。"""
+    import hashlib
+    from datetime import date
+    from app.core.court_intake_storage import SOURCE_DIR, object_key, store
+    digest = hashlib.sha256(content).hexdigest()
+    key = object_key(SOURCE_DIR, date.today().strftime("%Y-%m"), params["sdbh"], f"{document['document_no'] or digest[:12]}_{filename}")
+    path, stored_name = await store(content, key=key, filename=filename, content_type=content_type, metadata={
+        "source": "zxfw.court.gov.cn", "sdbh": params["sdbh"], "wsbh": document["document_no"], "court": document["court"],
+        "document-name": document["name"], "sha256": digest, "uploader": identity["username"],
+    }, tags={"source": "zxfw", "status": "pending", "status-cn": "待入库"})
+    item = FileAttachment(record_id=None, category=CATEGORY, original_name=filename, stored_name=stored_name,
+                          content_type=content_type, size=len(content), path=path, uploader=identity["username"], remark=marker)
+    db.add(item)
+    await db.commit()
+    await db.refresh(item)
+    return item
 
 
 @router.post(f"{settings.api_prefix}/documents/court-service/fetch", status_code=201)
@@ -102,7 +123,6 @@ async def fetch_court_service_documents(body: CourtServiceFetchInput, identity: 
 
     返回的 attachment_id 用于“上传官方收文”的 files.file；同一文书重复送达时复用已下载的附件。
     """
-    from app.areas.system.attachments import upload_attachment
     from app.core.storage import _attachment_dict
     try:
         params = court_api.parse_service_link(body.link)
@@ -124,11 +144,7 @@ async def fetch_court_service_documents(body: CourtServiceFetchInput, identity: 
                 if not content:
                     raise HTTPException(502, f"法院文书为空：{filename}")
                 content_type = "application/pdf" if content.startswith(b"%PDF") else "application/octet-stream"
-                upload = UploadFile(BytesIO(content), filename=filename, headers=Headers({"content-type": content_type}))
-                saved = await upload_attachment(file=upload, record_id=None, finance_transaction_id=None, source_case_id=None,
-                                                customer_guid=None, is_license=None, document_date=None,
-                                                category=CATEGORY, remark=marker, identity=identity, db=db)
-                item = await db.get(FileAttachment, int(saved["id"]))
+                item = await _save_original(content, filename, content_type, document, params, marker, identity, db)
             status, text = await _reading(item, identity["username"])
             results.append({
                 "attachment_id": item.id, "name": item.original_name, "size": item.size, "reused": reused,

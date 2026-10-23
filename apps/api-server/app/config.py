@@ -68,6 +68,8 @@ class Settings(BaseSettings):
     ai_oss_prefix: str = ""
     ai_oss_endpoint: str = ""
     ai_oss_credentials_file: str = ""
+    # 法院收文文件放在 AI 文件桶的独立目录（不在 AI空间 下）；桶未配置时退回本机附件目录。
+    court_intake_oss_prefix: str = "法院收文"
     dify_base_url: str = ""
     dify_api_key: str = ""
     langgraph_enabled: bool = False

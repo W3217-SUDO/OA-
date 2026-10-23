@@ -109,7 +109,8 @@ class _CourtApiBase(unittest.IsolatedAsyncioTestCase):
         self.temporary = tempfile.TemporaryDirectory(prefix="CODEX-1023-intake-")
         root = Path(self.temporary.name)
         self.patches = [patch(target, root) for target in (
-            "app.areas.system.attachments.UPLOAD_ROOT", "app.areas.aws.router.UPLOAD_ROOT", "app.core.storage.UPLOAD_ROOT")]
+            "app.areas.system.attachments.UPLOAD_ROOT", "app.areas.aws.router.UPLOAD_ROOT", "app.core.storage.UPLOAD_ROOT",
+            "app.core.court_intake_storage.UPLOAD_ROOT")]
         self.patches.append(patch.object(court_service, "_public_host", lambda host: None))
         self.patches.append(patch.object(court_service, "_reading", AsyncMock(return_value=("parsed", SUMMONS))))
         for item in self.patches:
@@ -170,12 +171,13 @@ class CourtServiceFetchTest(_CourtApiBase):
         self.assertIn("校验失败", rejected.json()["detail"])
         bad_link = await self.client.post(f"{API}/documents/court-service/fetch", json={"link": "https://example.com/" + "x" * 20})
         self.assertEqual(bad_link.status_code, 422)
-        self.patches[3].stop()
+        host_patch = next(item for item in self.patches if getattr(item, "attribute", "") == "_public_host")
+        host_patch.stop()
         try:
             with self.assertRaises(HTTPException):
                 court_service._public_host("127.0.0.1")
         finally:
-            self.patches[3].start()
+            host_patch.start()
 
     async def test_official_receipt_by_case_id_backfills_missing_court_number(self):
         async with self.sessions() as db:
@@ -395,3 +397,38 @@ class SkillPackageAndWebToolTest(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CourtIntakeOssStorageTest(unittest.IsolatedAsyncioTestCase):
+    async def test_originals_and_receipts_go_to_marked_oss_folders(self):
+        from app.core import court_intake_storage
+        calls = []
+
+        async def put(bucket, key, content, content_type, *, credentials_file, endpoint, metadata=None, tags=None):
+            calls.append({"bucket": bucket, "key": key, "metadata": metadata, "tags": tags, "endpoint": endpoint})
+            return True
+
+        with patch.object(settings, "ai_oss_bucket", "huzhi3217"), patch.object(settings, "ai_oss_credentials_file", "/x.csv"), \
+                patch.object(settings, "ai_oss_endpoint", "oss-cn-beijing.aliyuncs.com"), \
+                patch("app.core.oss_attachments.oss_put_object", put):
+            key = court_intake_storage.object_key(court_intake_storage.SOURCE_DIR, "2026-10", "sdbh1", "WS1_传票/大通.pdf")
+            path, stored = await court_intake_storage.store(b"%PDF", key=key, filename="传票.pdf", content_type="application/pdf",
+                                                            metadata={"sdbh": "sdbh1"}, tags={"status": "pending", "status-cn": "待入库"})
+        self.assertEqual(key, "法院收文/送达原件/2026-10/sdbh1/WS1_传票／大通.pdf")  # 不在 AI空间 下，文件名里的斜杠不会多建目录
+        self.assertEqual(path, "oss://huzhi3217/" + key)
+        self.assertTrue(stored.startswith("oss-") and stored.endswith(".pdf"))
+        self.assertEqual((calls[0]["tags"]["status-cn"], calls[0]["metadata"]["sdbh"]), ("待入库", "sdbh1"))
+        self.assertIn("stored-at", calls[0]["metadata"])
+
+    def test_signature_covers_sorted_oss_headers_and_ascii_values(self):
+        import base64, hashlib, hmac
+        from app.core import oss_attachments
+        with patch.object(oss_attachments, "_load_credentials", return_value=("AK", "SK")), \
+                patch.object(oss_attachments, "formatdate", return_value="Fri, 23 Oct 2026 00:00:00 GMT"):
+            headers = oss_attachments._signed_headers("PUT", "b", "法院收文/a.pdf", credentials_file="x", content=b"x", content_type="application/pdf",
+                                                      oss_headers={"x-oss-tagging": "status-cn=" + oss_attachments._ascii_value("待入库"), "x-oss-meta-a": "1"})
+        md5 = base64.b64encode(hashlib.md5(b"x").digest()).decode()
+        expected = f"PUT\n{md5}\napplication/pdf\nFri, 23 Oct 2026 00:00:00 GMT\nx-oss-meta-a:1\nx-oss-tagging:status-cn=%E5%BE%85%E5%85%A5%E5%BA%93\n/b/法院收文/a.pdf"
+        signature = base64.b64encode(hmac.new(b"SK", expected.encode(), hashlib.sha1).digest()).decode()
+        self.assertEqual(headers["Authorization"], f"OSS AK:{signature}")
+        self.assertTrue(all(ord(char) < 128 for value in headers.values() for char in value if value != headers["Authorization"]))

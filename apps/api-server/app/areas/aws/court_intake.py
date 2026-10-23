@@ -98,17 +98,18 @@ async def _match_case(numbers: list[str], plaintiffs: list[str], defendants: lis
 
 async def _already_received(case_id: int, source: FileAttachment, db: AsyncSession) -> FileAttachment | None:
     """同一案件已有内容相同的官方收文（不看文件名，手工收过的也算）就不再入库。"""
-    from app.core.storage import _attachment_storage_path
+    from app.core.court_intake_storage import read_bytes
     candidates = (await db.scalars(select(FileAttachment).where(
         FileAttachment.record_id == case_id, FileAttachment.category == "官方收文", FileAttachment.size == source.size))).all()
     if not candidates:
         return None
-    path = _attachment_storage_path(source)
-    content = path.read_bytes() if path else None
+    content = await read_bytes(source)
     for item in candidates:
-        other = _attachment_storage_path(item)
-        if content is None or other is None or other.read_bytes() == content:
-            return item
+        try:
+            if await read_bytes(item) == content:
+                return item
+        except (FileNotFoundError, HTTPException):
+            continue
     return None
 
 
@@ -120,21 +121,25 @@ def _stem(name: str) -> str:
 async def _receive(case: BusinessRecord, document: dict, court_no: str, received: str, identity: dict, db: AsyncSession) -> dict:
     """官方收文入库；同一案件已收过同名同大小的文书则跳过。"""
     from app.areas.aws.router import upload_official_document
-    from app.core.storage import _attachment_storage_path
+    from app.core.court_intake_storage import mark, read_bytes
     source = await db.get(FileAttachment, document["attachment_id"])
     suffix = Path(source.original_name).suffix.lower() or ".pdf"
     existing = await _already_received(case.id, source, db)
     if existing is not None:
+        await mark(source, {"source": "zxfw", "status": "received", "status-cn": "已入库", "case": case.serial_no})
         return {"name": existing.original_name, "attachment_id": existing.id, "skipped": True}
-    path = _attachment_storage_path(source)
-    if path is None:
-        raise HTTPException(409, f"法院文书附件暂不可读取：{source.original_name}")
-    upload = UploadFile(BytesIO(path.read_bytes()), filename=_stem(source.original_name) + suffix,
+    try:
+        content = await read_bytes(source)
+    except FileNotFoundError as exc:
+        raise HTTPException(409, f"法院文书附件暂不可读取：{source.original_name}") from exc
+    upload = UploadFile(BytesIO(content), filename=_stem(source.original_name) + suffix,
                         headers=Headers({"content-type": source.content_type or "application/pdf"}))
     result = await upload_official_document(
         file=upload, document_date=date.fromisoformat(received), category="收文附件",
         remark=document["fields"].get("文书类型") or "法院文书", case_ids="", case_id=case.id,
         court_case_no=court_no, identity=identity, db=db)
+    # 送达原件同步改标“已入库”，在 OSS 上就能看出哪些已收进哪个案件。
+    await mark(source, {"source": "zxfw", "status": "received", "status-cn": "已入库", "case": case.serial_no})
     return {"name": result["attachment"]["original_name"], "attachment_id": result["attachment"]["id"],
             "receipt_id": result["record"]["id"], "skipped": False}
 
