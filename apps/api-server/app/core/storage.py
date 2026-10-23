@@ -73,7 +73,10 @@ def _attachment_dict(
     from app.core.oss_attachments import oss_attachment_location
     oss_location = oss_attachment_location(item)
     from app.core.libreoffice_config import office_attachment_editable
-    uploader_display_name = (uploader_names or {}).get(str(item.uploader or "").lower(), "") or CONTRACT_PERSON_NAME_PLACEHOLDER
+    from app.core.person_names import person_name
+    # 调用方给了姓名对照就用；否则用进程内账号姓名缓存，找不到账号的显示原用户名。
+    uploader_display_name = ((uploader_names or {}).get(str(item.uploader or "").lower(), "")
+                             or person_name(item.uploader) or CONTRACT_PERSON_NAME_PLACEHOLDER)
     return {
         "id": item.id, "record_id": item.record_id, "communication_log_id": item.communication_log_id, "finance_transaction_id": item.finance_transaction_id,
         "invoice_record_id": item.invoice_record_id,

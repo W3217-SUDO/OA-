@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import current_identity, get_db, settings
 from app.core.permissions import _permission_payload_for_identity, _require_record_module_menu
+from app.core.person_names import person_name
 from app.core.query_batches import _scalars_in_batches
 from app.core.storage import _attachment_dict
 from app.core.system import _record_dict
@@ -84,9 +85,11 @@ def _case_attachment_row(attachment: FileAttachment, case: BusinessRecord) -> di
         "customer": case.customer,
         "status": "已签收",
         "owner": attachment.uploader,
+        "owner_display_name": person_name(attachment.uploader),
         "description": attachment.remark,
         "data": {
             "receipt_source": "case_attachment",
+            "uploader_display_name": person_name(attachment.uploader),
             "attachment_id": attachment.id,
             "case_id": case.id,
             "case_no": case.serial_no,
@@ -150,7 +153,8 @@ async def list_receipts(
             record = official_candidates[attachment_id]
             attachment = official_attachments[attachment_id]
             row = _record_dict(record)
-            row["data"] = {**row["data"], "receipt_source": "official_upload"}
+            row["data"] = {**row["data"], "receipt_source": "official_upload",
+                           "uploader_display_name": person_name(attachment.uploader or record.owner)}
             rows.append(row)
             files[attachment_id] = _attachment_dict(attachment)
 

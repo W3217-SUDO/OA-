@@ -246,6 +246,8 @@ async def current_identity(request: Request, token: str = Depends(oauth2_scheme)
         raise HTTPException(status_code=428, detail="首次登录必须先修改初始密码")
     from app.core.soft_delete import set_actor
     from app.core import change_log
+    from app.core.person_names import refresh_person_names
+    await refresh_person_names(db)  # 本进程的账号姓名对照，最长 60 秒刷新一次
     set_actor(user.username)  # 本次请求里的删除和变更记录操作人
     if change_log.source_var.get() == "system":  # MCP / 智能体发起的内部请求已带来源，这里不覆盖
         change_log.set_source("web")

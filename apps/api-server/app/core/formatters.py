@@ -48,7 +48,8 @@ def _person_reference_display(username: object, users_by_username: dict[str, Use
         return "系统", False
     user = users_by_username.get(key.lower())
     if not user:
-        return PERSON_NAME_PLACEHOLDER, True
+        # 系统里已没有这个账号（多为旧系统导入）：显示原用户名，仍标记为未匹配。
+        return key, True
     return _person_display_name(user.display_name, key)
 
 

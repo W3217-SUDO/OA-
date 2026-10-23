@@ -29,6 +29,7 @@ _NEXT_AUTO_CACHE_CLEANUP_AT: datetime | None = None
 
 
 def _record_dict(record: BusinessRecord, allowed_fields: set[str] | None = None) -> dict:
+    from app.core.person_names import person_name
     from app.core.crm import (
         _customer_contact_dict, _customer_guid,
     )
@@ -55,6 +56,8 @@ def _record_dict(record: BusinessRecord, allowed_fields: set[str] | None = None)
         "owner": record.owner, "department": record.department,
         "description": record.description, "data": data,
         "created_at": record.created_at, "updated_at": record.updated_at,
+        # 负责人姓名统一补齐；需要更细人员字段的模块仍由 _apply_record_person_displays 覆盖。
+        "owner_display_name": person_name(record.owner),
     }
     if record.module == "ipr_case":
         result.update({
