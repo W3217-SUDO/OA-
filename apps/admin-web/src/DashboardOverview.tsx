@@ -13,9 +13,10 @@ const todoRoutes: Record<string, string> = {
   待审批合同: "contract-audit-pending",
   待审批结算费用: "finance-settlement-audit",
   待审批用印: "seal-audit-pending",
-  待审批归档费用: "finance-archive-fee-pending",
+  待归档费用: "finance-archive-fee-pending",
   待审核归档: "case-archive-pending",
-  待审核预损费用: "finance-internal-fee-audit",
+  // 控制台数字口径 Q2(a)：预损对应归档“亏损内审”案件，首页数字即该标签总数。
+  待审核预损费用: "case-archive-loss-internal",
 };
 
 const todoIcons: Record<string, ReactNode> = {
@@ -24,6 +25,7 @@ const todoIcons: Record<string, ReactNode> = {
   "contract-audit-pending": <AuditOutlined />,
   "seal-audit-pending": <AuditOutlined />,
   "case-archive-pending": <FolderOpenOutlined />,
+  "case-archive-loss-internal": <FolderOpenOutlined />,
   "finance-payment-audit": <BankOutlined />,
   "finance-internal-fee-audit": <BankOutlined />,
   "finance-settlement-audit": <BankOutlined />,
@@ -80,7 +82,7 @@ export default function DashboardOverview({ greeting, name, briefing, todos, cas
             {items.map(({ label, count }) => {
               const route = todoRoutes[label];
               const clickable = Boolean(route && canNavigate(route));
-              const category = route?.startsWith("finance-") ? "finance" : route === "case-archive-pending" ? "archive" : "workflow";
+              const category = route?.startsWith("finance-") ? "finance" : route?.startsWith("case-archive-") ? "archive" : "workflow";
               const className = `wb-todo-entry todo-${category}${Number(count) > 0 ? " has-pending" : ""}`;
               const content = <>
                 <span className="wb-todo-label"><span className="wb-todo-icon" aria-hidden="true">{todoIcons[route]}</span><span className="wb-todo-title">{label}</span></span>

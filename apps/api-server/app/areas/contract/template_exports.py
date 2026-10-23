@@ -34,6 +34,9 @@ async def list_contract_receivable_details(
 ):
     from app.core.system import _allowed_field_keys
     items, scoped_identity, _ = await _detail_rows(identity, db, dashboard_queue=dashboard_queue)
+    if dashboard_queue == "official-fee-unreceived":
+        # 控制台数字口径 M2：从“未到官费金额”进入时只列官费且未到账>0 的行，合计与首页同一口径。
+        items = [item for item in items if item["fee_category"] == "official" and (item["remaining_amount"] or 0) > 0]
     amount_visible = "contract.amount" in await _allowed_field_keys(scoped_identity, db)
     if not amount_visible:
         for item in items:
@@ -79,6 +82,9 @@ async def export_contract_receivables(
     if not detail:
         return await render_contract_list(contracts, identity, db, summary=True)
     details, scoped_identity, contracts = await _detail_rows(identity, db, contracts=contracts, dashboard_queue=dashboard_queue)
+    if dashboard_queue == "official-fee-unreceived":
+        # 与控制台进入的明细页同一口径：只导出官费且未到账>0 的行。
+        details = [row for row in details if row["fee_category"] == "official" and (row["remaining_amount"] or 0) > 0]
     def matches(row):
         if dashboard_queue:
             # 控制台沿用当前明细页面对投影字段的筛选，避免普通合同列表范围截断。

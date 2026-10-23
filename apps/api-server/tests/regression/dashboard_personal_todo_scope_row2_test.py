@@ -134,7 +134,8 @@ class DashboardPersonalTodoScopeRow2Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(todos["待审批线索"], (1, 2))
         self.assertEqual(todos["待审批合同"], (1, 1))
         self.assertEqual(todos["待审批用印"], (1, 1))
-        self.assertEqual(todos["待审核归档"], (1, 1))
+        # 控制台数字口径（2026-10-23）：待审核归档 = 点进去“待审核归档”标签总数；管理员在该列表看全部待审核。
+        self.assertEqual(todos["待审核归档"], (3, 1))
         self.assertEqual(past_handoff_task.status, "待接收")
 
 

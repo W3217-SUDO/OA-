@@ -306,7 +306,8 @@ class Row7ReceivableDetailTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(classify.call_count, 6)
             self.assertEqual(compact, original)
             self.assertEqual({row["id"]: row["remaining_amount"] for row in compact}, {
-                f"fee:{fees[1].id}": 90.0, f"fee:{fees[2].id}": 25.0, f"fee:{fees[5].id}": 40.0,
+                # 控制台数字口径（2026-10-23）：已删除费用与应收明细一致不计应收（原 fees[2] 25.0 移除）。
+                f"fee:{fees[1].id}": 90.0, f"fee:{fees[5].id}": 40.0,
                 f"object:{official.id}": 80.0, f"fee:{fees[8].id}": 45.0,
                 f"fee:{fees[10].id}": 53.0, f"fee:{fees[11].id}": 62.0, f"fee:{fees[13].id}": 90.0,
             })

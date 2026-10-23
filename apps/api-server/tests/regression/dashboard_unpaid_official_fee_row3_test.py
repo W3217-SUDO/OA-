@@ -111,7 +111,9 @@ class DashboardUnpaidOfficialFeeRow3Test(unittest.IsolatedAsyncioTestCase):
         )
 
         metric = next(item for item in result["metrics"] if item["key"] == "official-fee-unpaid")
-        self.assertEqual(metric["value"], "1件")
+        # 控制台数字口径（2026-10-23）：待缴官费按费用逐笔计数，与点进去的费用查询总数一致。
+        self.assertEqual(metric["value"], "3件")
+        self.assertEqual(metric["value"], f"{clicked_response.json()['total']}件")
         self.assertEqual(metric["route"], "dashboard-queue-official-fee-unpaid")
         self.assertEqual(clicked_response.status_code, 200, clicked_response.text)
         self.assertEqual(clicked_response.json()["total"], 3)

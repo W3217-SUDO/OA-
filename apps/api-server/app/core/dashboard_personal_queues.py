@@ -79,7 +79,8 @@ async def _personal_queues(identity, db, *, finance_only=False):
             data = row["data"]
             case = by_id.get(data.get("case_id")) or by_no.get(data.get("case_no"))
             if case:
-                add(key, case, fee_id=row["id"] if key == "refund-pending" else None)
+                # 控制台数字口径 M1：待缴官费与待退费都按费用逐笔计数，与点进去的费用列表一致。
+                add(key, case, fee_id=row["id"])
         del rows
     with measure_phase("dashboard.receivables"):
         receivables = await dashboard_receivables(

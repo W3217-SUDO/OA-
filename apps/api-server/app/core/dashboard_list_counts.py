@@ -1,0 +1,103 @@
+"""控制台“我的待办”卡片计数：直接复用点进去那个列表的同一查询函数，只取总数。
+
+控制台数字口径（2026-10-23 用户确认）：首页每个数字 = 当前账号按点进去页面默认条件查询得到的总条数。
+不另写一套条件，列表的权限、数据范围、状态规则改动时首页自动跟随。
+"""
+import inspect
+
+from fastapi import HTTPException
+from fastapi.params import Depends as DependsParam, Param
+
+
+def _endpoint_kwargs(fn, **values):
+    """按接口签名补齐 Query 默认值；Depends 参数必须显式传入。"""
+    kwargs = {}
+    for name, parameter in inspect.signature(fn).parameters.items():
+        if name in values:
+            kwargs[name] = values[name]
+            continue
+        default = parameter.default
+        if isinstance(default, DependsParam):
+            raise TypeError(f"{fn.__name__} 缺少依赖参数 {name}")
+        if isinstance(default, Param):
+            default = default.default
+        kwargs[name] = default
+    return kwargs
+
+
+async def _list_total(fn, **values) -> int:
+    try:
+        result = await fn(**_endpoint_kwargs(fn, **values))
+    except HTTPException as error:
+        if error.status_code in {403, 404}:
+            return 0
+        raise
+    if isinstance(result, dict):
+        return int(result.get("total") or 0)
+    return len(result or [])
+
+
+async def _finance_center_identity(identity, db, scope="firm"):
+    """与 finance_center_identity 相同的菜单校验；没有该财务中心菜单时卡片计 0。"""
+    from app.core.permissions import _permission_payload_for_identity
+
+    if identity.get("role") != "admin":
+        permission = await _permission_payload_for_identity(identity, db)
+        prefix = "platform-finance" if scope == "platform" else "finance"
+        if not any(key == prefix or key.startswith(prefix + "-") for key in permission.get("menu_keys") or []):
+            return None
+    return {**identity, "_finance_scope": scope}
+
+
+async def archive_queue_total(identity, db, view):
+    from app.core.case_archive import ArchiveSearchInput, search_archive_cases
+
+    try:
+        result = await search_archive_cases(ArchiveSearchInput(view=view, page=1, page_size=1), identity, db)
+    except HTTPException as error:
+        if error.status_code in {403, 404}:
+            return 0
+        raise
+    return int(result.get("total") or 0)
+
+
+async def payment_audit_total(identity, db):
+    """请款单审批（finance-payment-audit）：外部费用“待审批” + 合同付款“待审批”。"""
+    from app.areas.legal.record_queries import list_records
+
+    fees = await _list_total(list_records, module="finance", finance_view="external", record_status="待审批",
+                             page=1, page_size=1, identity=identity, db=db)
+    contract_payments = await _list_total(list_records, module="contract_payment", record_status="待审批",
+                                          page=1, page_size=1, identity=identity, db=db)
+    return fees + contract_payments
+
+
+async def internal_review_total(identity, db, kind="other"):
+    """内部请款审批列表（/finance/internal-review-requests）的总数：同一权限判断、取数与筛选函数。"""
+    from app.core.internal_finance_query import InternalApplicationFilters, filter_internal_rows
+    from app.core.internal_requests import internal_review_rows
+
+    if identity.get("role") not in {"admin", "manager", "auditor"}:
+        return 0
+    rows = await internal_review_rows(identity, db, kind)
+    return len(filter_internal_rows(rows, case_no="", customer="", case_stages="", payee="", fee_types="",
+                                    paid_from=None, paid_to=None, **InternalApplicationFilters().values()))
+
+
+async def settlement_audit_total(identity, db):
+    from app.areas.finance.settlements import list_general_settlement_applications
+
+    scoped = await _finance_center_identity(identity, db)
+    if scoped is None:
+        return 0
+    return await _list_total(list_general_settlement_applications, application_status="待审批",
+                             page=1, page_size=1, identity=scoped, db=db)
+
+
+async def archive_fee_pending_total(identity, db):
+    from app.areas.finance.settlements import list_pending_archive_settlements
+
+    scoped = await _finance_center_identity(identity, db)
+    if scoped is None:
+        return 0
+    return await _list_total(list_pending_archive_settlements, page=1, page_size=1, identity=scoped, db=db)

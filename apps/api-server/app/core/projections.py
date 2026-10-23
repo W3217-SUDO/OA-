@@ -288,7 +288,8 @@ async def _receivable_detail_projection(
         if fee.id in matched_fee_ids:
             continue
         data = fee.data or {}
-        if fee.status in _INVALID_RECEIVABLE_FEE_STATUSES:
+        # 控制台数字口径 M2：与应收明细（receivable_export_rows）一致，已删除、已撤回的费用不计应收。
+        if fee.status in {"已删除", "已撤回", *_INVALID_RECEIVABLE_FEE_STATUSES}:
             continue
         projected = finance_data_by_id.get(fee.id, {})
         projected_fee_type = projected.get("fee_type")
