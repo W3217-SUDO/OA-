@@ -107,6 +107,8 @@ async def delete_finance_fee(fee_id: int, identity: dict = Depends(current_ident
     await _require_linked_case_fee_action(item, "case.fee.delete", identity, db)
     db.add(WorkflowEvent(record_id=item.id, action="删除费用", from_status=item.status, to_status="已删除", operator=identity["username"], comment=item.serial_no))
     item.status = "已删除"
+    from app.core.fee_refund_query import void_refund_for_agency_fee
+    await void_refund_for_agency_fee(item, identity["username"], db, "删除律师代理费（退费）")
     await db.commit()
     return None
 

@@ -11,7 +11,7 @@ import {
   ProfileOutlined,
   RollbackOutlined,
 } from "@ant-design/icons";
-import type { DashboardData } from "./dashboardData";
+import { DASHBOARD_METRIC_ORDER, orderDashboardMetrics, type DashboardData } from "./dashboardData";
 
 type Metric = DashboardData["metrics"][number];
 
@@ -55,6 +55,14 @@ export default function DashboardMetricTiles({ metrics, status, onOpen }: Props)
       // 浏览器禁用本地存储时仍然可以折叠，只是不记忆状态。
     }
   }, [collapsed]);
+  // 10.23 第4行：八个位置固定（未返回的一组先占位），颜色按指标固定，不随位置变化。
+  const known = new Set(DASHBOARD_METRIC_ORDER.map((item) => item.key));
+  const byKey = new Map(metrics.map((metric) => [metric.key, metric]));
+  const slots = [
+    ...DASHBOARD_METRIC_ORDER.map((item, tone) => ({ key: item.key, label: item.label, metric: byKey.get(item.key), tone })),
+    ...orderDashboardMetrics(metrics.filter((metric) => !known.has(metric.key)))
+      .map((metric, index) => ({ key: metric.key, label: metric.label, metric, tone: (DASHBOARD_METRIC_ORDER.length + index) % 8 })),
+  ];
   const pending = metrics.reduce((total, metric) => total + (Number(metric.value) || 0), 0);
   return (
     <section className={`wb-metrics${collapsed ? " is-collapsed" : ""}`} aria-label="案件与费用提醒">
@@ -74,12 +82,20 @@ export default function DashboardMetricTiles({ metrics, status, onOpen }: Props)
       </div>
       {!collapsed && (
         <div className="wb-metric-grid">
-          {metrics.map((metric, index) => (
-            <button type="button" className={`wb-metric tone-${index}${metric.key === "urgent-cases" && Number.parseInt(metric.value, 10) > 0 ? " is-urgent" : ""}`} key={metric.key} onClick={() => onOpen(metric)}>
+          {slots.map(({ key, label, metric, tone }) => metric ? (
+            <button type="button" className={`wb-metric tone-${tone}${metric.key === "urgent-cases" && Number.parseInt(metric.value, 10) > 0 ? " is-urgent" : ""}`} key={key} onClick={() => onOpen(metric)}>
               <span className="wb-metric-icon">{metricIcons[metric.key]}</span>
               <span className="wb-metric-text">
                 <strong>{metric.value}</strong>
                 <span>{metric.label}</span>
+              </span>
+            </button>
+          ) : (
+            <button type="button" className={`wb-metric tone-${tone} is-loading`} key={key} disabled aria-busy="true">
+              <span className="wb-metric-icon">{metricIcons[key]}</span>
+              <span className="wb-metric-text">
+                <strong>…</strong>
+                <span>{label}</span>
               </span>
             </button>
           ))}

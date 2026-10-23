@@ -606,6 +606,9 @@ async def list_case_relations(
     else:
         refund_condition.append(False)
     refunds = list((await db.scalars(select(BusinessRecord).where(*refund_condition))).all())
+    from app.core.fee_refund_query import inactive_agency_refund_ids
+    inactive_refunds = await inactive_agency_refund_ids(refunds, db)
+    refunds = [refund for refund in refunds if refund.id not in inactive_refunds]
     refunds_by_fee: dict[int, list[BusinessRecord]] = {}
     for refund in refunds:
         try:
@@ -697,24 +700,6 @@ async def list_case_relations(
     from app.core.system import _allowed_field_keys
     allowed_fields = await _allowed_field_keys(identity, db)
     fee_source_data = {item.id: _legacy_case_fee_projection(item.data or {}) for item in fees}
-    # Court refunds for a law-firm fee create a dedicated derived
-    # ``律师代理费(退费)`` finance row.  The source official/agency row remains
-    # authoritative for the refund workflow, but its refund column must not
-    # repeat the same amount in the case-detail table.
-    legacy_source_fee_ids = {
-        item.id for item in fees
-        if (item.data or {}).get("legacy_record")
-        or (item.data or {}).get("legacy_case_fee_id")
-        or (item.data or {}).get("legacy_fee_id")
-    }
-    agency_refund_source_ids = {
-        int((item.data or {}).get("source_fee_id"))
-        for item in fees
-        if (item.data or {}).get("refund_fee")
-        and str((item.data or {}).get("source_fee_id") or "").isdigit()
-        and item.status != "已删除"
-        and int((item.data or {}).get("source_fee_id")) not in legacy_source_fee_ids
-    }
     payment_totals = await fee_payment_totals(
         fees, db, source_data_by_id=fee_source_data,
     ) if allowed_fields is None or "finance.amount" in allowed_fields else {}
@@ -772,8 +757,8 @@ async def list_case_relations(
                 float(result_data.get("refund_amount") or result_data.get("refund_requested_amount") or 0),
                 max(float(result_data.get("refunded_amount") or 0), float((item.data or {}).get("refunded_amount") or 0)),
             )
-            if item.id in agency_refund_source_ids:
-                result_data["refund_display_suppressed"] = True
+            # 10.23 第3行（用户确认）：新系统法院退费后，来源费用“退费”列显示有效律师代理费（退费）合计，
+            # 与控制台待退费同一口径；不再隐藏（refund_display_suppressed 不再下发）。
         result["data"] = result_data
         return apply_fee_payment_projection(result, payment_totals, allowed_fields)
 

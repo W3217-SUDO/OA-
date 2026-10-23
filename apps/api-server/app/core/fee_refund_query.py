@@ -27,6 +27,8 @@ async def read_fee_refunds(fees, db, *, scope_conditions=(), ids=None, summary_o
         refunds = list((await db.scalars(select(BusinessRecord).where(*conditions).order_by(
             BusinessRecord.updated_at.desc(), BusinessRecord.id.desc(),
         ))).all())
+    inactive = await inactive_agency_refund_ids(refunds, db)
+    refunds = [refund for refund in refunds if refund.id not in inactive]
     by_id = {fee.id: fee for fee in fees}
     by_document_no = {}
     official_by_case = {}
@@ -54,6 +56,47 @@ async def read_fee_refunds(fees, db, *, scope_conditions=(), ids=None, summary_o
         if fee:
             result.setdefault(fee.id, []).append(refund)
     return result
+
+
+# 10.23 第3行：律师代理费（退费）已删除、已撤回或已作废时，生成它的退费单不再计入待退费和案件“退费”列。
+INACTIVE_AGENCY_REFUND_STATUSES = {"已删除", "已撤回", "已作废"}
+
+
+async def inactive_agency_refund_ids(refunds, db):
+    """返回对应律师代理费（退费）已失效的退费单 id；没有律师代理费（退费）的退费单（旧系统）不受影响。"""
+    refund_ids = {int(item.id) for item in refunds}
+    if not refund_ids:
+        return set()
+    agency_fees = (await db.execute(
+        select(BusinessRecord.status, BusinessRecord.deleted_at, BusinessRecord.data).where(
+            BusinessRecord.module == "finance",
+            BusinessRecord.data["refund_record_id"].as_integer().in_(refund_ids),
+        ).execution_options(include_deleted=True)
+    )).all()
+    inactive: set[int] = set()
+    for status, deleted_at, data in agency_fees:
+        if not (data or {}).get("refund_fee"):
+            continue
+        if deleted_at is not None or str(status or "") in INACTIVE_AGENCY_REFUND_STATUSES:
+            inactive.add(int((data or {}).get("refund_record_id") or 0))
+    return inactive
+
+
+async def void_refund_for_agency_fee(fee, operator, db, reason):
+    """律师代理费（退费）删除或撤回时，把它对应的草稿退费单标为已作废（逻辑作废，不删除）。"""
+    from app.models import WorkflowEvent
+    data = fee.data or {}
+    if not data.get("refund_fee") or not str(data.get("refund_record_id") or "").isdigit():
+        return None
+    refund = await db.get(BusinessRecord, int(data["refund_record_id"]))
+    if not refund or refund.module != "refund" or refund.status != "草稿":
+        return None
+    previous = refund.status
+    refund.status = "已作废"
+    refund.data = {**(refund.data or {}), "voided_reason": reason, "voided_by": operator, "voided_with_fee_id": fee.id}
+    db.add(WorkflowEvent(record_id=refund.id, action="退费单随律师代理费（退费）作废", from_status=previous,
+                         to_status="已作废", operator=operator, comment=f"{reason}：{fee.serial_no}"))
+    return refund
 
 
 def fee_refund_progress(data, refunds, receipts):

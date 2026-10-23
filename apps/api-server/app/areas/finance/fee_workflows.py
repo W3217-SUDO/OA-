@@ -64,6 +64,8 @@ async def cancel_finance_payment(
     if is_external_case_fee(item):
         await release_direct_fee_request(item, db)
     item.status = "已撤回"
+    from app.core.fee_refund_query import void_refund_for_agency_fee
+    await void_refund_for_agency_fee(item, identity["username"], db, "撤回律师代理费（退费）")
     item.data = {
         **(item.data or {}),
         "cancel_reason": reason,

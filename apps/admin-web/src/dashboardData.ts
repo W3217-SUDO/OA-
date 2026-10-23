@@ -31,6 +31,29 @@ export type DashboardRejection = {
   route: string;
 };
 
+// 10.23 第4行：八个提醒指标的固定顺序，与后端 dashboard_metrics.METRIC_DEFINITIONS（原八卡）一致。
+// 案件、财务两组指标分两个接口并行加载，必须按此顺序排列，不能按返回先后拼接。
+export const DASHBOARD_METRIC_ORDER: { key: string; label: string }[] = [
+  { key: "official-fee-unpaid", label: "待缴官费" },
+  { key: "refund-pending", label: "待退费" },
+  { key: "evidence-supplement", label: "补充证据" },
+  { key: "opinion-supplement", label: "补充意见" },
+  { key: "appeal-pending", label: "待上诉" },
+  { key: "execution-pending", label: "待执行" },
+  { key: "urgent-cases", label: "紧急案件" },
+  { key: "official-fee-unreceived", label: "未到官费金额" },
+];
+
+const metricRank = (key: string) => {
+  const index = DASHBOARD_METRIC_ORDER.findIndex((item) => item.key === key);
+  return index < 0 ? DASHBOARD_METRIC_ORDER.length : index;
+};
+
+export const orderDashboardMetrics = <T extends { key: string }>(metrics: T[]): T[] =>
+  metrics.map((metric, index) => ({ metric, index }))
+    .sort((left, right) => metricRank(left.metric.key) - metricRank(right.metric.key) || left.index - right.index)
+    .map(({ metric }) => metric);
+
 export type DashboardSection = "metrics" | "todos" | "cases" | "rejections";
 const sections: DashboardSection[] = ["metrics", "todos", "cases", "rejections"];
 const refreshIntervalMs = 5 * 60_000;
@@ -84,7 +107,7 @@ export function useDashboardData(requestedSections: readonly DashboardSection[] 
                 if (!active || requestController.signal.aborted || generation !== metricsGeneration) return previous;
                 const metrics = new Map(previous.metrics?.map((metric) => [metric.key, metric]));
                 result.metrics.forEach((metric) => metrics.set(metric.key, metric));
-                return { ...previous, metrics: Array.from(metrics.values()) };
+                return { ...previous, metrics: orderDashboardMetrics(Array.from(metrics.values())) };
               });
             })
             .catch((error) => {

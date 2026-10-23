@@ -117,6 +117,7 @@ button.wb-todo-entry:active{background:#dcece3}
 .tone-5{--tone:#16729f;--tone-bg:#e5f3fa}
 .tone-6{--tone:#5d6b80;--tone-bg:#edf0f5}
 .tone-7{--tone:#9a6208;--tone-bg:#fbf1de}
+.wb-metric.is-loading{cursor:default;opacity:.6}
 
 /* 右栏两张卡片：标题固定，列表在卡片内滚动。 */
 .wb-docket,.wb-rail{position:relative;display:flex;flex-direction:column;min-height:0;border:1px solid var(--wb-line);border-radius:14px;background:#fff;box-shadow:0 12px 32px -24px rgba(18,38,63,.5)}
