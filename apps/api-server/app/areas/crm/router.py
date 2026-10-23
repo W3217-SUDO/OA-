@@ -404,6 +404,25 @@ async def create_customer(body: CustomerCreateInput, identity: dict = Depends(cu
     return await _record_dict_for_identity(record, identity, db)
 
 
+async def _json_field_rows(db: AsyncSession, columns: tuple, keys: tuple[str, ...], condition) -> list[tuple]:
+    """读出若干列和 data 里的指定键（返回 (列..., {键: 值})），每条记录的 data 只解析一次。
+
+    值与从完整 data 里 .get() 得到的一致；不存在的键不放进字典。
+    """
+    if db.get_bind().dialect.name == "postgresql":
+        from sqlalchemy import cast
+        from sqlalchemy.dialects.postgresql import JSONB
+        source = select(*columns, cast(BusinessRecord.data, JSONB).label("doc")).where(condition).offset(0).subquery()
+        statement = select(*(source.c[column.key] for column in columns), *(source.c.doc[key] for key in keys))
+    else:
+        statement = select(*columns, *(BusinessRecord.data[key] for key in keys)).where(condition)
+    width = len(columns)
+    return [
+        (*row[:width], {key: value for key, value in zip(keys, row[width:]) if value is not None})
+        for row in (await db.execute(statement)).all()
+    ]
+
+
 @router.get(f"{settings.api_prefix}/customers/conflicts")
 async def customer_conflicts(
     name: str = Query(min_length=1, max_length=100),
@@ -442,39 +461,42 @@ async def customer_conflicts(
 
     # Conflict checking deliberately spans the whole firm.  Only the minimum
     # original-page disclosure is returned and no source record id is exposed.
-    cases = list((await db.scalars(
-        select(BusinessRecord).where(BusinessRecord.module == "case")
-    )).all())
-    direct_matching_cases = cases if not needle else [
-        case_record for case_record in cases
+    # 匹配只用到当事人字段、证件字段和名称，先只读这些字段判断，命中的案件再读完整记录。
+    identity_keys = ("plaintiff_identities", "defendant_identities", "third_party_identities")
+    case_keys = (*CASE_PLAINTIFF_FIELDS, *CASE_DEFENDANT_FIELDS, *CASE_THIRD_PARTY_FIELDS, *identity_keys)
+    case_rows = await _json_field_rows(db, (BusinessRecord.id, BusinessRecord.customer), case_keys, BusinessRecord.module == "case")
+    cases = [SimpleNamespace(id=row_id, customer=customer, data=data) for row_id, customer, data in case_rows]
+    direct_matching_ids = {case_record.id for case_record in cases} if not needle else {
+        case_record.id for case_record in cases
         if any(_normalize_conflict_entity(entity) == needle for entity in _case_conflict_entities(case_record)) or case_identity_match(case_record)
-    ]
-    customers = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "customer"))).all())
+    }
+    customers = await _json_field_rows(db, (BusinessRecord.title,), ("contacts", "identity_no", "credit_code"), BusinessRecord.module == "customer")
     related_customer_names: set[str] = set()
-    for customer in customers:
-        customer_data = customer.data or {}
+    for title, customer_data in customers:
         contacts = customer_data.get("contacts") or []
         contact_names = [str(item.get("name") or "").strip() for item in contacts if isinstance(item, dict)]
         customer_identity_match = identity_needle in {
             str(customer_data.get("identity_no") or "").replace(" ", "").upper(),
             str(customer_data.get("credit_code") or "").replace(" ", "").upper(),
         }
-        if _normalize_conflict_entity(customer.title) == needle or any(_normalize_conflict_entity(value) == needle for value in contact_names) or customer_identity_match:
-            related_customer_names.add(customer.title)
+        if _normalize_conflict_entity(title) == needle or any(_normalize_conflict_entity(value) == needle for value in contact_names) or customer_identity_match:
+            related_customer_names.add(title)
     # 当事人表里的主体（新建当事人不再写客户表）按同样的名称/证件规则参与检索。
     from app.data_models.parties import PartyRecord
-    for party in (await db.scalars(select(PartyRecord))).all():
-        party_data = party.data or {}
+    for party_name, party_identity, party_credit in (await db.execute(select(
+        PartyRecord.name, PartyRecord.data["identity_no"], PartyRecord.data["credit_code"],
+    ))).all():
         party_identity_match = identity_needle in {
-            str(party_data.get("identity_no") or "").replace(" ", "").upper(),
-            str(party_data.get("credit_code") or "").replace(" ", "").upper(),
+            str(party_identity or "").replace(" ", "").upper(),
+            str(party_credit or "").replace(" ", "").upper(),
         }
-        if _normalize_conflict_entity(party.name) == needle or party_identity_match:
-            related_customer_names.add(party.name)
-    matching_cases = list(dict.fromkeys([
-        *direct_matching_cases,
-        *(case_record for case_record in cases if case_record.customer in related_customer_names),
-    ]))
+        if _normalize_conflict_entity(party_name) == needle or party_identity_match:
+            related_customer_names.add(party_name)
+    matching_ids = direct_matching_ids | {case_record.id for case_record in cases if case_record.customer in related_customer_names}
+    matching_cases = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.id.in_(matching_ids)
+    ))).all()) if matching_ids else []
+    direct_matching_cases = [case_record for case_record in matching_cases if case_record.id in direct_matching_ids]
     if not matching_cases:
         return _empty_customer_conflict_result(query)
     latest_case = max(
@@ -1535,7 +1557,7 @@ async def list_customers(
     db: AsyncSession = Depends(get_db),
 ):
     """Original customer-list scopes with authoritative server-side filtering and paging."""
-    from app.core.customer_readmodel import customer_summary, customer_relationship_counts, customer_person_names
+    from app.core.customer_readmodel import customer_summary, customer_relationship_counts, customer_person_names, customer_type_expression
     from app.core.formatters import (
         _parse_customer_contact_at,
     )
@@ -1624,7 +1646,7 @@ async def list_customers(
         like = f"%{normalized_name}%"
         conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like)))
     conditions.append(
-        func.coalesce(BusinessRecord.data["customer_type"].as_string(), "客户") == customer_type
+        customer_type_expression(db.get_bind().dialect.name) == customer_type
     )
     normalized_manager = manager.strip()
     manager_search_tokens = {normalized_manager} if normalized_manager else set()
@@ -1676,6 +1698,28 @@ async def list_customers(
     )
     if sql_paged:
         candidate_statement = candidate_statement.offset((page - 1) * page_size).limit(page_size)
+    if db.get_bind().dialect.name == "postgresql":
+        from sqlalchemy import cast
+        from sqlalchemy.dialects.postgresql import JSONB
+        if sql_paged:
+            # 先只按排序取出本页编号，再读这几条的字段，不必为整个范围逐行解析 JSON。
+            page_ids = select(BusinessRecord.id).where(*conditions).order_by(
+                BusinessRecord.updated_at.desc(), BusinessRecord.id.desc(),
+            ).offset((page - 1) * page_size).limit(page_size)
+            source = select(
+                BusinessRecord.id, BusinessRecord.serial_no, BusinessRecord.title, BusinessRecord.owner,
+                BusinessRecord.updated_at, cast(BusinessRecord.data, JSONB).label("doc"),
+            ).where(BusinessRecord.id.in_(page_ids)).subquery()
+        else:
+            # 每条客户的 data 只解析一次（OFFSET 0 防止子查询被展开），再取各字段。
+            source = select(
+                BusinessRecord.id, BusinessRecord.serial_no, BusinessRecord.title, BusinessRecord.owner,
+                BusinessRecord.updated_at, cast(BusinessRecord.data, JSONB).label("doc"),
+            ).where(*conditions).offset(0).subquery()
+        candidate_statement = select(
+            source.c.id, source.c.serial_no, source.c.title, source.c.owner, source.c.updated_at,
+            *(source.c.doc[key] for key in candidate_data_fields),
+        ).order_by(source.c.updated_at.desc(), source.c.id.desc())
     candidate_values = (await db.execute(candidate_statement)).all()
     candidate_rows = [
         SimpleNamespace(

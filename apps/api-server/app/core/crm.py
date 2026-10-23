@@ -684,9 +684,11 @@ async def _conflict_customer_managers(entity_name: str, db: AsyncSession) -> lis
         _conflict_entity_tokens,
     )
     normalized_name = _normalize_conflict_entity(entity_name)
-    customers = list((await db.scalars(
-        select(BusinessRecord).where(BusinessRecord.module == "customer")
-    )).all())
+    # 只读比较和排序要用的列，选中后再读那一条的完整记录。
+    customers = (await db.execute(select(
+        BusinessRecord.id, BusinessRecord.title, BusinessRecord.customer, BusinessRecord.status,
+        BusinessRecord.updated_at, BusinessRecord.created_at,
+    ).where(BusinessRecord.module == "customer"))).all()
     matching_customers = [
         customer for customer in customers
         if normalized_name in {
@@ -706,7 +708,7 @@ async def _conflict_customer_managers(entity_name: str, db: AsyncSession) -> lis
         ),
         reverse=True,
     )
-    customer = matching_customers[0]
+    customer = await db.get(BusinessRecord, matching_customers[0].id)
     manager_tokens = _conflict_entity_tokens((customer.data or {}).get("customer_managers"))
     if not manager_tokens and customer.owner:
         manager_tokens = [customer.owner]
@@ -768,11 +770,33 @@ async def _customer_by_guid(customer_guid: str, identity: dict, db: AsyncSession
     guid = str(customer_guid or "").strip()
     if not guid:
         raise HTTPException(status_code=422, detail="客户 Guid 不能为空")
-    customers = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "customer"))).all()
-    customer = next((item for item in customers if _customer_guid(item) == guid), None)
-    if not customer:
+    from app.core.customer_readmodel import customer_guid_expression
+    # 先按存储的 GUID 精确查（走索引）；查不到再用包含匹配兜底（超集，再按原规则去空白后精确比较）。
+    exact = await db.scalar(select(BusinessRecord.id).where(
+        BusinessRecord.module == "customer", customer_guid_expression(db.get_bind().dialect.name) == guid,
+    ).order_by(BusinessRecord.id).limit(1))
+    if exact is not None:
+        return await _customer_or_404(exact, identity, db)
+    stored_guid = BusinessRecord.data["customer_guid"].as_string()
+    stored = (await db.execute(select(BusinessRecord.id, BusinessRecord.data["customer_guid"]).where(
+        BusinessRecord.module == "customer", stored_guid.contains(guid, autoescape=True),
+    ).order_by(BusinessRecord.id))).all()
+    customer_id = next((record_id for record_id, value in stored if str(value or "").strip() == guid), None)
+    if customer_id is None and _is_derived_customer_guid(guid):
+        # 没存 GUID 的旧客户，GUID 由记录编号推出（uuid5）；只有这种格式才需要逐个比对。
+        legacy = (await db.execute(select(BusinessRecord.id, BusinessRecord.data["customer_guid"]).where(
+            BusinessRecord.module == "customer",
+        ).order_by(BusinessRecord.id))).all()
+        customer_id = next((record_id for record_id, value in legacy
+                            if not str(value or "").strip() and str(uuid5(NAMESPACE_URL, f"customer:{record_id}")) == guid), None)
+    if customer_id is None:
         raise HTTPException(status_code=404, detail="客户不存在或无权访问")
-    return await _customer_or_404(customer.id, identity, db)
+    return await _customer_or_404(customer_id, identity, db)
+
+
+def _is_derived_customer_guid(guid: str) -> bool:
+    """uuid5 推出的 GUID 第 15 位是版本号 5；其他格式不可能是推出来的。"""
+    return len(guid) == 36 and guid[14] == "5"
 
 
 async def _customer_files_by_guid(customer_guid: str, identity: dict, db: AsyncSession) -> tuple[BusinessRecord, list[FileAttachment]]:

@@ -155,6 +155,11 @@ def _apply_hz_allocation_read_model(connection: Connection, _upgrade_schema: Cal
     upgrade_hz_allocation_read_model(connection)
 
 
+def _apply_customer_list_indexes(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    from app.core.customer_readmodel import create_customer_list_indexes
+    create_customer_list_indexes(connection)
+
+
 def _run_versioned_schema_migrations(
     connection: Connection,
     upgrade_schema: Callable[[Connection], None],
@@ -178,6 +183,7 @@ def _run_versioned_schema_migrations(
         (PARTY_MASTER_REVISION, _apply_party_master),
         ("mcp_access_tokens_v1", _apply_mcp_access_tokens),
         ("mcp_access_tokens_write_v1", _apply_mcp_token_write),
+        ("customer_list_indexes_v1", _apply_customer_list_indexes),
     )
     for revision, migration in revisions:
         if connection.execute(
