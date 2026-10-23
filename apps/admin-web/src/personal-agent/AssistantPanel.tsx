@@ -19,6 +19,7 @@ import { McpConnectionTurn } from "./McpConnectionTurn";
 import { agentOperationMessage, userFacingAgentText } from "../AgentOperationPreview";
 import { errorText, workspaceDocumentSaveTarget, type CaseAgentConversationSummary, type ConfirmationDetail, type PendingAction, type WorkspaceMessage, type WorkspaceState } from "./types";
 import type { usePersonalWorkspace } from "./usePersonalWorkspace";
+import { COURT_INTAKE_SKILL } from "../agentSkillRouting";
 import "./assistant-panel.css";
 
 export type { AssistantSuggestion };
@@ -63,6 +64,8 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   ref,
 ) {
   const { status, state, loading, loadError, sending, stopping, input, setInput, send, stop, decide, load } = workspace;
+  const intakeMode = workspace.skillId === COURT_INTAKE_SKILL;
+  const startIntake = workspace.courtIntakeAvailable ? () => void workspace.startCourtIntake().catch((error: Error) => message.warning(error.message)) : undefined;
   const mcp = workspace.mcpConnection;
   const threadRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -274,13 +277,15 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
       )}
       {!hasDisplayedMessages && !mcp.open && <div className={`assistant-empty-state${logoSrc ? " has-logo" : ""}`}>
         {logoSrc && <img className="assistant-empty-logo" src={logoSrc} alt="" width={56} height={56} />}
-        {desktopWorkspace ? <div className="assistant-workspace-greeting"><h1>今天想处理什么？</h1></div> : <AssistantStart suggestions={suggestions} disabled={sending} onPick={submit} />}
-        {!desktopWorkspace && <div className="assistant-mobile-empty">
+        {intakeMode ? <div className="assistant-workspace-greeting"><h1>收文助手</h1><p>把法院送达短信或链接粘贴到下面，我会自动下载文书、匹配案件、收文入库并回填法院案号和开庭；缴费通知会先问你再提交缴纳。</p></div>
+          : desktopWorkspace ? <div className="assistant-workspace-greeting"><h1>今天想处理什么？</h1></div> : <AssistantStart suggestions={suggestions} disabled={sending} onPick={submit} onStartIntake={startIntake} />}
+        {!desktopWorkspace && !intakeMode && <div className="assistant-mobile-empty">
           <h2>今天想处理什么？</h2>
           <div className="assistant-mobile-suggestions">
             {suggestions.slice(0, 1).map((item) => <button key={item.kind} type="button" disabled={sendBlocked} onClick={() => submit(item.prompt)}>
               {item.label}<em>{item.count}</em>
             </button>)}
+            {startIntake && <button type="button" disabled={sendBlocked} onClick={startIntake}>收文助手</button>}
             {shortcuts.slice(0, 2).map((item) => <button key={item.label} type="button" disabled={sendBlocked} onClick={() => submit(item.prompt)}>{item.label}</button>)}
           </div>
         </div>}
@@ -391,7 +396,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
             }}
             maxLength={8000}
             autoSize={{ minRows: 1, maxRows: 5 }}
-            placeholder="告诉智能体你要完成的 OA 工作"
+            placeholder={intakeMode ? "粘贴法院送达短信或 zxfw.court.gov.cn 链接" : "告诉智能体你要完成的 OA 工作"}
             aria-label="给智能体的指令"
           />
           <div className="assistant-composer-actions">

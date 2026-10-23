@@ -20,6 +20,7 @@ from app.models_shared import (
     OfficialOutgoingUpdateInput,
 )
 from fastapi import APIRouter
+from app.areas.aws.court_intake import router as court_intake_router
 from app.areas.aws.court_service import router as court_service_router
 from app.areas.aws.receipt_sources import is_official_receipt, list_receipts, router as receipt_sources_router
 
@@ -740,3 +741,4 @@ async def upload_official_document(
 
 router.include_router(receipt_sources_router)
 router.include_router(court_service_router)
+router.include_router(court_intake_router)

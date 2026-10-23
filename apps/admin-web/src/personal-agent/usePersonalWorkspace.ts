@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type SetStateAction } from "react";
 import { message } from "antd";
 import { api } from "../api";
 import { subscribeAgentSkillCatalog } from "../agentSkillCatalog";
+import { COURT_INTAKE_SKILL } from "../agentSkillRouting";
 import { aiExcelDocumentName, aiWordDocumentName, isAiSpreadsheetGenerationRequest, isAiWordGenerationRequest, isUsableAiDocumentContent } from "../legal/constants";
 import { confirmCaseAgentDocument } from "../legal/services/agentDocumentConfirmation";
 import { confirmPersonalAiDocument } from "./personalAiDocumentConfirmation";
@@ -315,7 +316,14 @@ export function usePersonalWorkspace() {
   return { mcpConnection, status, state, skills, skillId, setSkillId, input, setInput, loading, loadError, load, sending, stopping, responseMode, setResponseMode, progress: runtime.activities[id]?.progress || "", upload, uploading, materials, setMaterials, selectedCase, chooseCase, chooseCaseMaterials, caseMaterials, setCaseMaterials, send, decide, decisionId, decisionResult, decisionFailures, hideDecisionFailure, stop, refreshSkills, saveWord, saveSpreadsheet, savedDocuments, savedSpreadsheets, documentRevision, dismissAction, dismissActions, dismissalId, visibleActions, reopenConfirmation, draftKey,
     currentWorkspace: conversations.workspace, workspaceProjects: conversations.projects, caseAgentConversations: conversations.caseAgentConversations, selectWorkspace, setProjectMode,
     conversations: conversations.items, conversationBusy: conversations.busy, runningIds: Object.keys(runtime.activities),
-    createConversation: () => changeConversation(() => conversations.create()), selectConversation: (target: string) => target === state.conversation_id ? Promise.resolve() : changeConversation(() => conversations.select(target)),
+    createConversation: () => changeConversation(() => conversations.create()),
+    courtIntakeAvailable: skills.some((item) => item.id === COURT_INTAKE_SKILL && item.available),
+    // 新建一条收文对话并选好收文技能，用户粘贴链接即可。
+    startCourtIntake: () => changeConversation(async () => {
+      const next = await conversations.create();
+      updateDraft(conversationDraftKey(next.conversation_id || "", conversations.capture().workspace), "skillId", COURT_INTAKE_SKILL);
+      return next;
+    }), selectConversation: (target: string) => target === state.conversation_id ? Promise.resolve() : changeConversation(() => conversations.select(target)),
     deleteConversation: (target: string) => changeConversation(async () => { const next = await conversations.remove(target); runtime.forget(target); drafts.remove(target); return next; }),
   };
 }

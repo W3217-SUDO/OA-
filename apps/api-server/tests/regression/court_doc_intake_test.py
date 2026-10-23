@@ -92,7 +92,7 @@ class CaseNumberAndFieldTest(unittest.TestCase):
                 fetch_court_docs.parse_service_link(bad)
 
 
-class CourtServiceFetchTest(unittest.IsolatedAsyncioTestCase):
+class _CourtApiBase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
@@ -137,6 +137,8 @@ class CourtServiceFetchTest(unittest.IsolatedAsyncioTestCase):
             return httpx.Response(200, content=b"%PDF-1.7 summons")
         return patch.object(court_service, "_client", lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
 
+
+class CourtServiceFetchTest(_CourtApiBase):
     async def test_documents_are_downloaded_once_and_fields_returned(self):
         payload = {"code": 200, "success": True, "data": [{
             "wjlj": "https://oss.example.com/ws/1.pdf", "c_wsmc": "传票", "c_wjgs": "pdf", "c_wsbh": "WS001",
@@ -207,6 +209,108 @@ class CourtServiceFetchTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([(event.record_id, event.comment) for event in events], [(case_id, "（2026）皖0402民初4093号")])
         listing = await self.client.get(f"{API}/documents/receipts", params={"scope": "official"})
         self.assertEqual(listing.json()["total"], 2)
+
+
+FEE_TEXT = ("淮南市大通区人民法院\n交纳诉讼费用通知书\n（2026）皖0 402民初4093号\n浙江大光明眼镜有限公司与淮南市蔡氏眼镜有限公司侵害商标权纠纷一案，"
+            "你应当交纳案件受理费900元。限你于收到本通知书次日起七日内向本\n院预交。\n收款户名：淮南市财政局\n收款银行：徽商银行淮南支行\n账 号：0 0000611")
+SUMMONS_PDF = ("淮南市大通区人民法院\n传 票\n案 号：（2026）皖 0402 民初 4093 号\n案 由：侵害商标权纠纷\n应到时间\n2026 年 11 月 13\n日 08:40\n"
+               "应到处所\n淮南市大通区法院第\n二法庭\n二〇二六年十月二十二日")
+
+
+class CourtIntakeTest(_CourtApiBase):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.patches[-1].stop()
+        texts = {"交纳诉讼费用通知书": FEE_TEXT, "传票": SUMMONS_PDF}
+        reading = patch.object(court_service, "_reading", AsyncMock(side_effect=lambda item, user: (
+            "parsed", next(text for key, text in texts.items() if key in item.original_name))))
+        reading.start()
+        self.patches[-1] = reading
+        self.payload = {"code": 200, "success": True, "data": [
+            {"wjlj": "https://oss.example.com/1.pdf", "c_wsmc": "大光明_交纳诉讼费用通知书.pdf", "c_wjgs": "pdf", "c_wsbh": "WS1", "c_fymc": "淮南市大通区人民法院"},
+            {"wjlj": "https://oss.example.com/2.pdf", "c_wsmc": "传票-大通法院", "c_wjgs": "pdf", "c_wsbh": "WS2", "c_fymc": "淮南市大通区人民法院"}]}
+        async with self.sessions() as db:
+            target = BusinessRecord(module="case", serial_no="GDMS2401010", title="大光明诉蔡氏", customer="浙江大光明眼镜有限公司",
+                                    owner=IDENTITY["username"], department="测试部", status="提交立案",
+                                    data={"court": "皖0402", "plaintiff": "浙江大光明眼镜有限公司", "opponent": "淮南市蔡氏眼镜有限公司"})
+            other = BusinessRecord(module="case", serial_no="GDMS2400001", title="其他案件", customer="别的客户",
+                                   owner=IDENTITY["username"], department="测试部", status="提交立案",
+                                   data={"court": "皖0402", "plaintiff": "别的客户", "opponent": "别的被告有限公司"})
+            db.add_all([target, other])
+            await db.commit()
+            self.case_id = target.id
+
+    async def test_one_click_intake_receives_backfills_and_prepares_fee_then_confirms(self):
+        created = {}
+
+        async def create_fee(body, identity, db):
+            record = BusinessRecord(module="finance", serial_no="FY-TEST-1", title=body.title, customer=body.customer, status="草稿",
+                                    owner=identity["username"], department="测试部", description=body.description,
+                                    data={"amount": body.amount, "fee_type": body.fee_type, "fee_type_id": body.fee_type_id,
+                                          "expense_subtype": body.expense_subtype, "case_no": body.case_no, "case_id": body.case_record_id,
+                                          "deadline": str(body.deadline), "document_no": body.document_no, "payee": body.payee})
+            db.add(record)
+            await db.commit()
+            created["body"] = body
+            return {"id": record.id, "serial_no": record.serial_no, "status": record.status}
+
+        with self.court(self.payload), patch("app.areas.finance.router.create_finance_fee", create_fee):
+            first = await self.client.post(f"{API}/documents/court-service/intake", json={"link": LINK})
+            again = await self.client.post(f"{API}/documents/court-service/intake", json={"link": LINK})
+        self.assertEqual(first.status_code, 201, first.text)
+        report = first.json()
+        self.assertEqual((report["status"], report["case"]["serial_no"]), ("已收文", "GDMS2401010"))
+        self.assertTrue(report["match"]["level"].startswith("第二级"))
+        self.assertEqual([item["skipped"] for item in report["received"]], [False, False])
+        self.assertEqual(report["received"][1]["name"], "GDMS2401010_（2026）皖0402民初4093号_传票-大通法院.pdf")
+        self.assertEqual(report["court_case_no"], "（2026）皖0402民初4093号")
+        self.assertEqual(report["hearing"]["status"], "已回填")
+        fee = report["fees"][0]
+        self.assertEqual((fee["status"], fee["amount"], fee["fee_type"], fee["deadline"]), ("待确认", 900.0, "一审诉讼费", "2026-10-29"))
+        self.assertEqual((created["body"].fee_type_id, created["body"].payee), (19, "淮南市财政局"))
+        repeat = again.json()
+        self.assertEqual([item["skipped"] for item in repeat["received"]], [True, True])
+        self.assertEqual((repeat["hearing"]["status"], repeat["fees"][0]["status"]), ("已是最新", "已有费用单"))
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, self.case_id)
+        self.assertEqual(case.data["first_court_courtroom"], "淮南市大通区法院第二法庭")
+        self.assertTrue(str(case.data["first_court_hearing_date"]).startswith("2026-11-13"))
+        self.assertEqual(case.status, "提交立案")
+
+        submitted = {}
+
+        async def submit(fee_id, body, identity, db):
+            submitted["body"] = body
+            return {"status": "待审批"}
+
+        with patch("app.areas.finance.fee_workflows.list_finance_fee_payment_types",
+                   AsyncMock(return_value={"items": [{"id": 7, "name": "淮南市财政局", "account": "0000 0611", "nature": "官费"}]})), \
+                patch("app.areas.finance.fee_workflows.submit_finance_fee", submit):
+            confirmed = await self.client.post(f"{API}/documents/court-service/fees/{fee['fee_id']}/confirm", json={})
+        self.assertEqual(confirmed.status_code, 200, confirmed.text)
+        result = confirmed.json()
+        self.assertEqual((submitted["body"].amount, submitted["body"].payment_type_id), (900.0, 7))
+        self.assertEqual((result["fee_status"], result["task"]["deadline"]), ("待审批", "2026-10-29"))
+        async with self.sessions() as db:
+            task = await db.get(BusinessRecord, result["task"]["task_id"])
+        self.assertEqual(task.title, "缴纳一审诉讼费900元（最后期限2026-10-29）")
+
+    async def test_ambiguous_or_missing_case_stops_without_writing(self):
+        async with self.sessions() as db:
+            db.add(BusinessRecord(module="case", serial_no="GDMS2401011", title="重名", customer="浙江大光明眼镜有限公司",
+                                  owner=IDENTITY["username"], department="测试部", status="提交立案",
+                                  data={"court": "皖0402", "plaintiff": "浙江大光明眼镜有限公司", "opponent": "淮南市蔡氏眼镜有限公司"}))
+            await db.commit()
+        with self.court(self.payload):
+            response = await self.client.post(f"{API}/documents/court-service/intake", json={"link": LINK})
+        report = response.json()
+        self.assertEqual((report["status"], len(report["match"]["candidates"])), ("需要选择案件", 2))
+        async with self.sessions() as db:
+            receipts = (await db.scalars(select(FileAttachment).where(FileAttachment.category == "官方收文"))).all()
+        self.assertEqual(receipts, [])
+        with self.court(self.payload), patch("app.areas.finance.router.create_finance_fee", AsyncMock(return_value={"id": 1})):
+            chosen = await self.client.post(f"{API}/documents/court-service/intake", json={"link": LINK, "case_id": self.case_id})
+        self.assertEqual((chosen.json()["status"], chosen.json()["match"]["level"]), ("已收文", "用户选定"))
 
 
 class SkillPackageAndWebToolTest(unittest.IsolatedAsyncioTestCase):

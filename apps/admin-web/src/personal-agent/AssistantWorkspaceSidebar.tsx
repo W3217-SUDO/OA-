@@ -1,5 +1,6 @@
 import { Button, Tooltip } from "antd";
-import { ArrowLeftOutlined, ExperimentOutlined, FolderOpenOutlined, ReloadOutlined, RobotOutlined, SettingOutlined } from "@ant-design/icons";
+import { message } from "antd";
+import { ArrowLeftOutlined, ExperimentOutlined, FolderOpenOutlined, InboxOutlined, ReloadOutlined, RobotOutlined, SettingOutlined } from "@ant-design/icons";
 import { ConfirmationHistory } from "./ConfirmationHistory";
 import { ConversationManager } from "./ConversationManager";
 import { ConversationWorkspaceNavigation } from "./ConversationWorkspaceNavigation";
@@ -43,6 +44,7 @@ export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPers
       rowClassName="assistant-conversation-row"
       selectClassName="assistant-conversation-select"
       navigation={<>
+        <Button type="text" icon={<InboxOutlined />} aria-label="收文助手" disabled={busy || !workspace.courtIntakeAvailable} onClick={() => void workspace.startCourtIntake().catch((error: Error) => message.warning(error.message))}>收文助手</Button>
         <Button type="text" className="assistant-workspace-generated-entry" icon={<FolderOpenOutlined />} onClick={onOpenPersonalSpace}>AI生成文件夹</Button>
         <Button type="text" icon={<SettingOutlined />} aria-label="记忆管理" onClick={onOpenMemory}>记忆管理</Button>
         <ConfirmationHistory onReopen={onReopenConfirmation} busy={busy || !!workspace.dismissalId} />
