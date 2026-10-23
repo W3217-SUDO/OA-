@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
 
+from app.agent_skill_packages import instruction as package_instruction
 from app.system_skill_packages import runtime_instruction
 
 
@@ -71,9 +72,23 @@ TRIAL_PREP_SKILL = AgentSkill(
 )
 
 
+COURT_DOC_INTAKE_SKILL = AgentSkill(
+    id="court-doc-intake",
+    name="法院收文",
+    category="诉讼",
+    description="按法院送达短信下载文书，识别案号与要素，匹配案件后官方收文入库并回填字段",
+    source="system:court-doc-intake",
+    available=True,
+    unavailable_reason="",
+    instruction=package_instruction("court-doc-intake"),
+    quick_prompts=("处理这条法院送达短信", "把这份法院文书收文入库"),
+)
+
+
 AGENT_SKILLS: tuple[AgentSkill, ...] = (
     GENERAL_SKILL,
     TRIAL_PREP_SKILL,
+    COURT_DOC_INTAKE_SKILL,
     AgentSkill(
         id="legal-document-drafting",
         name="法律文书起草",

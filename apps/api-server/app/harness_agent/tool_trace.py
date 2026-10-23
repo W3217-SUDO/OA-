@@ -56,6 +56,8 @@ def describe(name: str, arguments) -> tuple[str, str]:
     elif name == "harness_run_code":
         label = "沙箱运行代码（" + str(arguments.get("language") or "") + "）"
         shown = {"code": str(arguments.get("code") or "")[:_DETAIL_LIMIT], "args": arguments.get("args") or []}
+    elif name == "harness_web_fetch":
+        label = "上网读取网页"
     elif name == "harness_run_skill_script":
         label = "运行技能脚本"
     elif name == "harness_read_skill_resource":

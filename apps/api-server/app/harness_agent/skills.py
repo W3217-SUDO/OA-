@@ -19,11 +19,13 @@ def native_name(identifier: str) -> str:
 
 async def definitions(identity, db):
     from app.core.permissions import _agent_skill_catalog_for_identity, _agent_skill_for_identity
+    from app.system_agent_skills import with_package
 
     result = []
     for item in await _agent_skill_catalog_for_identity(identity, db):
         if item.get("available"):
-            result.append(await _agent_skill_for_identity(item["id"], identity, db))
+            # 随系统发布的技能包在真正运行时才落成快照，供原生技能目录和隔离脚本读取。
+            result.append(with_package(await _agent_skill_for_identity(item["id"], identity, db)))
     return result
 
 
@@ -89,6 +91,65 @@ CODE_TOOL = {"type": "function", "function": {
         "required": ["language", "code"], "additionalProperties": False}}}
 
 
+WEB_TOOL = {"type": "function", "function": {
+    "name": "harness_web_fetch", "description": "上网读取公开网页或接口：在隔离沙箱里 GET 指定 http/https 地址，返回状态码、最终地址、标题和正文文本（HTML 已去标签）。适合查法规、公告、法院/企业公开信息等。只准公网，不带 OA 凭据和登录状态；需要 POST、自定义请求头或下载二进制时改用 harness_run_code。法院短信送达链接请用 OA 工具“下载法院送达文书”，它会把文书存进 OA。",
+    "parameters": {"type": "object", "properties": {
+        "url": {"type": "string", "pattern": "^https?://", "maxLength": 2000},
+        "max_chars": {"type": "integer", "minimum": 500, "maximum": 18000}},
+        "required": ["url"], "additionalProperties": False}}}
+
+# 沙箱内执行的固定抓取代码：只用标准库，输出一行 JSON。
+_WEB_FETCH_CODE = r'''
+import html, json, re, sys, urllib.request
+url, limit = sys.argv[1], int(sys.argv[2])
+request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+                                               "Accept": "text/html,application/json,text/plain,*/*", "Accept-Language": "zh-CN,zh;q=0.9"})
+try:
+    with urllib.request.urlopen(request, timeout=25) as response:
+        status, final, kind, data = response.status, response.geturl(), response.headers.get("content-type", ""), response.read(3000000)
+except urllib.error.HTTPError as error:
+    status, final, kind, data = error.code, url, error.headers.get("content-type", ""), error.read(200000)
+charset = re.search(r"charset=([\w-]+)", kind) or re.search(rb"<meta[^>]+charset=[\"']?([\w-]+)", data[:4000], re.I)
+encoding = charset.group(1) if charset else "utf-8"
+encoding = encoding.decode() if isinstance(encoding, bytes) else encoding
+try:
+    text = data.decode(encoding, errors="replace")
+except LookupError:
+    text = data.decode("utf-8", errors="replace")
+title = ""
+if "html" in kind or re.search(r"<html|<body", text[:2000], re.I):
+    found = re.search(r"<title[^>]*>(.*?)</title>", text, re.I | re.S)
+    title = html.unescape(found.group(1)).strip() if found else ""
+    text = re.sub(r"(?is)<(script|style|noscript|svg)[^>]*>.*?</\1>", " ", text)
+    text = re.sub(r"(?i)<br\s*/?>|</(p|div|li|tr|h[1-6])>", "\n", text)
+    text = html.unescape(re.sub(r"<[^>]+>", " ", text))
+text = re.sub(r"[ \t\r\f\v]+", " ", text)
+text = re.sub(r"\n\s*\n+", "\n", text).strip()
+print(json.dumps({"status": status, "url": final, "content_type": kind, "title": title,
+                  "text": text[:limit], "truncated": len(text) > limit, "characters": len(text)}, ensure_ascii=False))
+'''
+
+
+async def web_fetch(arguments):
+    import json
+    import re
+    if not isinstance(arguments, dict) or set(arguments) - {"url", "max_chars"}:
+        raise HTTPException(422, "网页读取参数错误")
+    url, limit = arguments.get("url"), arguments.get("max_chars", 12000)
+    if not isinstance(url, str) or len(url) > 2000 or not re.match(r"^https?://[^\s/]+", url) or any(ord(char) < 32 for char in url):
+        raise HTTPException(422, "网址必须是完整的 http/https 地址")
+    if type(limit) is not int or not 500 <= limit <= 18000:
+        raise HTTPException(422, "max_chars 必须在 500 到 18000 之间")
+    from .script_runtime import run_code
+    result = await run_code("python", _WEB_FETCH_CODE, [url, str(limit)])
+    if result.get("isError") or result.get("exit_code"):
+        return {"isError": True, "url": url, "message": "网页读取失败", "stderr": str(result.get("stderr") or "")[-2000:]}
+    try:
+        return json.loads(result.get("stdout") or "")
+    except ValueError:
+        return {"isError": True, "url": url, "message": "网页读取结果无法解析"}
+
+
 class WorkspaceTools:
     def __init__(self, delegate, identity, db, on_progress=None):
         self.delegate, self.identity, self.db = delegate, identity, db
@@ -119,6 +180,12 @@ class WorkspaceTools:
             if not isinstance(arguments, dict) or set(arguments) - {"language", "code", "args"}:
                 raise HTTPException(422, "沙箱参数错误")
             return await run_code(arguments.get("language"), arguments.get("code"), arguments.get("args", []))
+        if name == "harness_web_fetch":
+            from app.agent_mcp.auth import authenticated_identity
+            actual = await authenticated_identity(self.db)
+            if actual["username"] != self.identity.get("username"):
+                raise HTTPException(403, "上网读取只能使用当前真实登录账号的工作区身份")
+            return await web_fetch(arguments)
         if name not in {"harness_read_skill_resource", "harness_run_skill_script"}:
             return await self.delegate.execute(name, arguments)
         allowed = {"name", "path", "args"} if name == "harness_run_skill_script" else {"name", "path", "offset", "limit"}

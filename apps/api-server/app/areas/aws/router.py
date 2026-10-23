@@ -20,6 +20,7 @@ from app.models_shared import (
     OfficialOutgoingUpdateInput,
 )
 from fastapi import APIRouter
+from app.areas.aws.court_service import router as court_service_router
 from app.areas.aws.receipt_sources import is_official_receipt, list_receipts, router as receipt_sources_router
 
 router = APIRouter()
@@ -624,6 +625,8 @@ async def rollback_official_outgoing_document(record_id: int, body: OfficialOutg
 async def upload_official_document(
     file: UploadFile = File(...), document_date: date = Form(...),
     category: str = Form("收文附件"), remark: str = Form(""), case_ids: str = Form(""),
+    case_id: int | None = Form(None, description="已匹配的案件 ID；提供后不再要求文件名为“系统案号_法院案号”"),
+    court_case_no: str = Form("", max_length=200, description="文书上的官方案号；案件未登记法院案号时回填"),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.permissions import (
@@ -651,23 +654,39 @@ async def upload_official_document(
     stored_name = f"{uuid4().hex}{suffix}"
     target = UPLOAD_ROOT / stored_name
     file_stem = Path(original_name).stem
-    if "_" not in file_stem:
-        raise HTTPException(status_code=422, detail="文件名必须使用“系统案号_法院案号”格式")
-    system_case_no, court_file_part = (part.strip() for part in file_stem.split("_", 1))
-    matched_case = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.serial_no == system_case_no))
-    if not matched_case:
-        raise HTTPException(status_code=422, detail=f"未找到系统案号 {system_case_no}")
-    matched_case = await _ensure_record_module(matched_case.id, "case", identity, db)
-    case_data = matched_case.data or {}
     court_keys = {
         "court_case_no", "first_court_case_no", "first_instance_case_no",
         "second_court_case_no", "retrial_court_case_no", "hearing_case_no",
         "court_no", "filing_no", "official_no",
     }
-    court_numbers = {str(case_data[key]).strip() for key in court_keys if str(case_data.get(key) or "").strip()}
-    matched_court_no = next((number for number in court_numbers if court_file_part == number or court_file_part.startswith(f"{number}_")), "")
-    if not matched_court_no:
-        raise HTTPException(status_code=422, detail="文件名中的法院案号与该案件登记的法院案号不一致")
+    backfill_court_no = ""
+    if case_id is not None:
+        # 智能体收文：案件已按官方案号或当事人匹配好，案号可能尚未登记，按案件 ID 收文并回填空缺案号。
+        from app.agent_skill_packages.court_doc_intake.scripts.normalize_case_no import parse as parse_case_no
+        from app.core.permissions import _require_case_attachment_upload_access
+        matched_case = await _ensure_record_module(case_id, "case", identity, db)
+        await _require_case_attachment_upload_access(matched_case, identity, db)
+        case_data = matched_case.data or {}
+        court_numbers = sorted({str(case_data[key]).strip() for key in court_keys if str(case_data.get(key) or "").strip()})
+        provided = parse_case_no(court_case_no)["归一化"] if court_case_no.strip() else ""
+        matched_court_no = provided or (court_numbers[0] if court_numbers else "")
+        if provided and not str(case_data.get("court_case_no") or "").strip():
+            backfill_court_no = provided
+        if not original_name.startswith(f"{matched_case.serial_no}_"):
+            original_name = "_".join(part for part in (matched_case.serial_no, matched_court_no, file_stem) if part)[:200] + suffix
+    else:
+        if "_" not in file_stem:
+            raise HTTPException(status_code=422, detail="文件名必须使用“系统案号_法院案号”格式")
+        system_case_no, court_file_part = (part.strip() for part in file_stem.split("_", 1))
+        matched_case = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.serial_no == system_case_no))
+        if not matched_case:
+            raise HTTPException(status_code=422, detail=f"未找到系统案号 {system_case_no}")
+        matched_case = await _ensure_record_module(matched_case.id, "case", identity, db)
+        case_data = matched_case.data or {}
+        court_numbers = {str(case_data[key]).strip() for key in court_keys if str(case_data.get(key) or "").strip()}
+        matched_court_no = next((number for number in court_numbers if court_file_part == number or court_file_part.startswith(f"{number}_")), "")
+        if not matched_court_no:
+            raise HTTPException(status_code=422, detail="文件名中的法院案号与该案件登记的法院案号不一致")
     linked_case_ids = [matched_case.id]
     linked_cases = {matched_case.id: matched_case}
     now = datetime.now()
@@ -705,6 +724,10 @@ async def upload_official_document(
         await db.flush()
         record.data = {**official_data, "attachment_id": attachment.id}
         db.add(WorkflowEvent(record_id=record.id, action="上传官文收文", from_status="", to_status="待签收", operator=identity["username"], comment=original_name))
+        if backfill_court_no:
+            matched_case.data = {**(matched_case.data or {}), "court_case_no": backfill_court_no}
+            db.add(WorkflowEvent(record_id=matched_case.id, action="收文回填法院案号", from_status=matched_case.status,
+                                 to_status=matched_case.status, operator=identity["username"], comment=backfill_court_no))
         await db.commit()
         await db.refresh(record)
         await db.refresh(attachment)
@@ -716,3 +739,4 @@ async def upload_official_document(
 
 
 router.include_router(receipt_sources_router)
+router.include_router(court_service_router)

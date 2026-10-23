@@ -40,6 +40,9 @@ API_RESOURCE_FILES = {
     "export_templates/huzhi/identity-certificate.docx",
     "export_templates/huzhi/compensation-payment-application.docx",
     "export_templates/huzhi/print-table.docx",
+    "agent_skill_packages/court_doc_intake/SKILL.md",
+    "agent_skill_packages/court_doc_intake/references/case-number-formats.md",
+    "agent_skill_packages/court_doc_intake/references/oa-system-notes.md",
 }
 API_OPTIONAL_RESOURCE_FILES = {"system_skill_packages.json", "harness_agent/stream.mjs"}
 WEB_EXTENSIONS = {

@@ -424,7 +424,7 @@ class DeepSeekHarnessRuntimeTest(unittest.IsolatedAsyncioTestCase):
         tools.execute.assert_awaited_once_with("metadata_probe", {})
         self.assertEqual("".join(chunks), "核验完成核验完成")
         names = {item["function"]["name"] for item in requests[0]["tools"]}
-        self.assertEqual(names, {"skill", "mcp__oa__metadata_probe", "mcp__oa__harness_read_skill_resource", "mcp__oa__harness_run_skill_script", "mcp__oa__harness_run_code"})
+        self.assertEqual(names, {"skill", "mcp__oa__metadata_probe", "mcp__oa__harness_read_skill_resource", "mcp__oa__harness_run_skill_script", "mcp__oa__harness_run_code", "mcp__oa__harness_web_fetch"})
         self.assertIn("原生技能中文正文核验标记", json.dumps(requests[1]["messages"], ensure_ascii=False))
         self.assertEqual(len(requests), 4)
         self.assertEqual(requests[0].get("thinking"), {"type": "disabled"})

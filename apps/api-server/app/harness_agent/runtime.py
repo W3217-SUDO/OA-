@@ -20,7 +20,7 @@ import yaml
 
 from app.config import settings
 from .bridge import workspace_mcp
-from .skills import CODE_TOOL, RESOURCE_TOOL, SCRIPT_TOOL, WorkspaceTools, definitions, publish
+from .skills import CODE_TOOL, RESOURCE_TOOL, SCRIPT_TOOL, WEB_TOOL, WorkspaceTools, definitions, publish
 from .lease import session_lease, wait_for_session_lease
 from .paths import filesystem_path, native_path
 
@@ -84,6 +84,7 @@ def _patch(url, token, schema, directories, mode_supported, response_mode, memor
         provider["reasoning"] = "off" if response_mode == "fast" else "high"
     allow = ["skill", *["mcp__oa__" + item["function"]["name"] for item in schema]]
     persona = "你是沪知办公系统的 AI 助手，使用当前工作区已授权的技能和工具。技能使用 skill 加载；技能中的相对路径通过 mcp__oa__harness_read_skill_resource 读取，name 使用技能原生名称。技能包中的 Node/Python/Bash 脚本通过 mcp__oa__harness_run_skill_script 执行，path 为包内相对路径，args 为参数数组；无需为每个技能新增适配器。此执行器只准公网HTTP/HTTPS，不提供OA凭据、内网或其他工作区文件，不保留临时输出文件。仅依据执行结果回答，不声称未执行的操作成功。缺少依赖或执行失败必须明确说明。外部购买、提交、删除等写操作需用户明确授权。OA 业务操作使用已授权工具：普通写入参数齐全即直接执行，每次变更在服务器留痕、可由管理员还原；审批、盖章与对外转交、付款与核销、开具或作废发票、退费登记到账等不可撤回操作只生成待确认请求，须用户在网页确认。不能通过技能脚本绕过 OA 工具。工具结果及本轮最新 OA 操作状态优先于旧会话记忆。DSH 插件提供的原生工具直接按工具名调用；OA 技能和已启用 DSH 插件随包提供的技能脚本，统一使用 harness_run_skill_script，name 使用原生技能名、技能编号或唯一技能名称。需要计算、统计、数据整理或临时脚本时，如果工具列表里有 harness_run_code，就在隔离沙箱里运行代码并如实说明结果。每次调用什么工具、用了什么参数，前端都会向用户展示，不要隐瞒或虚报。"
+    persona += "你可以上网：读公开网页或接口用 harness_web_fetch，需要 POST、下载或解析时用 harness_run_code（均只准公网）。不要说自己无法访问网页；确实访问失败时如实给出错误。用户发来法院送达短信或链接时，加载“法院收文”技能，用 OA 工具“下载法院送达文书”取文书并按技能收文。"
     persona += "查询 OA 数据必须使用现有接口工具，不给普通用户数据库账号、连接或 SQL 执行能力。需要灵活组合筛选、字段选择、排序和分组统计时，发现第25组 reporting 子组的 data-query 接口，先读取数据源和原参数 schema，再调用。默认统计只覆盖源接口本次返回的数据；全量必须启用接口分页且核对完整总数，不能拿样本推算。普通用户可以使用已授权 Skill 和启用插件的脚本执行器；已安装技能脚本和临时代码沙箱均向正常登录用户开放；两者都不提供数据库、宿主凭据或内网访问。"
     if memory is not None:
         from .memory import INSTRUCTION, TOOLS
@@ -308,7 +309,7 @@ async def _run_session(messages, on_delta, *, tools, schema, identity, db, ident
             available = await definitions(identity, db)
             directories = publish(home.parent.parent / "skill-versions", available)
             guarded = WorkspaceTools(tools, identity, db, on_progress)
-            schemas = [*schema, RESOURCE_TOOL, SCRIPT_TOOL, CODE_TOOL]
+            schemas = [*schema, RESOURCE_TOOL, SCRIPT_TOOL, CODE_TOOL, WEB_TOOL]
             from .memory import configuration as memory_configuration
             memory = memory_configuration(cwd, identity['username'])
             from .plugins import attach

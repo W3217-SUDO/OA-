@@ -129,7 +129,7 @@ class SystemSkillLifecycleTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await db.scalar(select(func.count()).select_from(WorkflowEvent)), len(AGENT_SKILLS))
             self.assertEqual(await db.scalar(select(func.count()).select_from(BusinessRecord)
                                             .where(BusinessRecord.module == "system_audit")), len(AGENT_SKILLS))
-        self.assertEqual(len(AGENT_SKILLS), 10, "注销不修改不可变声明")
+        self.assertEqual(len(AGENT_SKILLS), 11, "注销不修改不可变声明")
 
     async def test_stale_revision_or_definition_cannot_delete_another_skill(self):
         async with self.sessions() as db:

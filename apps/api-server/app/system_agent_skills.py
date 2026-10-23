@@ -1,11 +1,12 @@
 """系统内联技能的活动注册、详情和持久化注销；不修改不可变源码。"""
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 from fastapi import HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.agent_permissions import require_agent_settings_management
+from app.agent_skill_packages import PACKAGES, bundle, manifest
 from app.agent_skills import AGENT_SKILLS, SKILLS_BY_ID
 from app.models import SystemConfig
 from app.skill_definitions import skill_definition
@@ -29,9 +30,16 @@ async def system_skill_registry(db):
     return item, value
 
 
+def with_package(skill, *, store=True):
+    """随系统发布脚本的技能附上完整技能包；展示目录只算摘要，不写文件。"""
+    if skill.id not in PACKAGES:
+        return skill
+    return replace(skill, bundle=bundle(skill.id) if store else manifest(skill.id))
+
+
 async def active_system_skills(db):
     _, value = await system_skill_registry(db)
-    return [{**skill.public_dict(), "scope": "system"} for skill in AGENT_SKILLS
+    return [{**with_package(skill, store=False).public_dict(), "scope": "system"} for skill in AGENT_SKILLS
             if skill.id not in value["deleted_ids"]]
 
 
@@ -42,7 +50,7 @@ async def require_active_system_skill(skill_id, db):
     _, value = await system_skill_registry(db)
     if skill_id in value["deleted_ids"]:
         raise HTTPException(409, "该系统技能已删除，请清空技能选择或重新选择")
-    return skill
+    return with_package(skill, store=False)
 
 
 async def runtime_system_skill(skill_id):
