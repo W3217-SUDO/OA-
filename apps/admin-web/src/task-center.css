@@ -131,6 +131,16 @@
 .task-query-submit .ant-btn-primary {
   background: #149ec5;
 }
+/* 任务中心直接新建任务：与查询区分开，白字实底保证可读。 */
+.task-query-submit .ant-btn-primary.task-create-button {
+  margin-left: 12px;
+  color: #fff;
+  background: #23a057;
+}
+.task-query-submit .ant-btn-primary.task-create-button:hover {
+  color: #fff;
+  background: #2bb365;
+}
 
 .task-list-caption {
   height: 32px;

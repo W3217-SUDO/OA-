@@ -186,7 +186,7 @@ export default function TaskList(props: TaskListProps) {
           <Button htmlType="button" onClick={onQueryReset}>
             重置
           </Button>
-          <Button htmlType="button" type="primary" ghost onClick={onCreateTask}>
+          <Button htmlType="button" type="primary" className="task-create-button" onClick={onCreateTask}>
             新建任务
           </Button>
         </div>
