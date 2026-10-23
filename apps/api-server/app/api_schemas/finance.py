@@ -1,7 +1,7 @@
 """finance 领域请求数据契约。"""
 
 from datetime import date
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing import Literal
 
 
@@ -187,6 +187,13 @@ class FinanceActionInput(BaseModel):
     payment_account: str = Field(default="", max_length=128)
     payment_payee: str = Field(default="", max_length=256)
     payment_remark: str = Field(default="", max_length=1000)
+
+
+class FinanceFeeMoveCaseInput(BaseModel):
+    """10.22 第8行：案件费用“移到其他案子”，一次只迁移路径里的这一条费用。"""
+    model_config = ConfigDict(extra="forbid")
+
+    target_case_no: str = Field(min_length=1, max_length=64)
 
 
 class InternalPaymentSelectionInput(BaseModel):

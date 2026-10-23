@@ -430,6 +430,8 @@ export default function CaseCenterPage({
   const [legacyLsHistoryOpen, setLegacyLsHistoryOpen] = useState(false);
   const [activeCounselDetailTab, setActiveCounselDetailTab] = useState("documents");
   const [mergingCase, setMergingCase] = useState<CaseRow | null>(null);
+  const [movingFee, setMovingFee] = useState<CaseRow | null>(null);
+  const [moveFeeSubmitting, setMoveFeeSubmitting] = useState(false);
   const [notaryInfoCase, setNotaryInfoCase] = useState<CaseRow | null>(null);
   const [settlementAmountCase, setSettlementAmountCase] = useState<CaseRow | null>(null);
   const [counselSystemLogsRevision, setCounselSystemLogsRevision] = useState(0);
@@ -719,6 +721,7 @@ export default function CaseCenterPage({
   const [batchUpdateForm] = Form.useForm();
   const [batchFeeForm] = Form.useForm();
   const [mergeCaseForm] = Form.useForm();
+  const [moveFeeForm] = Form.useForm();
   const [notaryInfoForm] = Form.useForm();
   const [settlementAmountForm] = Form.useForm();
   const [caseClueEvidenceForm] = Form.useForm();
@@ -1516,6 +1519,7 @@ export default function CaseCenterPage({
     get deleteCaseFee() { return deleteCaseFee; },
     get markCaseFeeNoPayment() { return markCaseFeeNoPayment; },
     get markCaseFeeRefundNotRequired() { return markCaseFeeRefundNotRequired; },
+    get openCaseFeeMove() { return openCaseFeeMove; },
     get selectedFirmFeeKeys() { return selectedFirmFeeKeys; },
     get selectedFirmFee() { return selectedFirmFee; },
     get setCaseCommissionLoading() { return setCaseCommissionLoading; },
@@ -2157,6 +2161,34 @@ export default function CaseCenterPage({
         }
       },
     });
+  };
+  // 10.22 第8行：律所/平台费用“移到其他案子”（同一客户、一次一条；合同编号保留原值）。
+  const openCaseFeeMove = (row: CaseRow) => {
+    moveFeeForm.resetFields();
+    setMovingFee(row);
+  };
+  const submitCaseFeeMove = async () => {
+    if (!movingFee) return;
+    const values = await moveFeeForm.validateFields();
+    const targetCaseNo = String(values.target_case_no || "").trim();
+    if (targetCaseNo === String(viewingCounselCase?.serial_no || movingFee.data.case_no || "")) {
+      message.warning("目标案件不能与当前案件相同");
+      return;
+    }
+    setMoveFeeSubmitting(true);
+    try {
+      await api.post(`/finance/fees/${movingFee.id}/move-case`, { target_case_no: targetCaseNo });
+      message.success(`费用已移到案件 ${targetCaseNo}`);
+      setMovingFee(null);
+      setSelectedFirmFeeKeys([]);
+      setSelectedPlatformFeeKeys([]);
+      await load();
+      if (viewingCounselCase) await openCounselDetail(viewingCounselCase);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "移到其他案子失败");
+    } finally {
+      setMoveFeeSubmitting(false);
+    }
   };
   const canMarkCaseFeeRefundNotRequired = (row: CaseRow | undefined) => {
     if (!row || row.data.refund_status === "R100" || row.data.refund_not_required) return false;
@@ -3902,6 +3934,26 @@ export default function CaseCenterPage({
           </Form.Item>
           <Form.Item label="合并说明" name="comment"><Input.TextArea rows={3} maxLength={1000} /></Form.Item>
         </Form>
+      </Modal>
+      <Modal
+        open={Boolean(movingFee)}
+        title="移到其他案子"
+        okText="确定"
+        cancelText="取消"
+        confirmLoading={moveFeeSubmitting}
+        destroyOnHidden
+        onCancel={() => { setMovingFee(null); moveFeeForm.resetFields(); }}
+        onOk={() => void submitCaseFeeMove()}
+      >
+        <Form form={moveFeeForm} layout="horizontal" labelCol={{ flex: "84px" }} className="case-fee-move-form">
+          <Form.Item label="当前案件">{viewingCounselCase?.serial_no || movingFee?.data.case_no || "—"}</Form.Item>
+          <Form.Item label="客户编号">{String(viewingCounselCase?.data.customer_no || viewingCounselCase?.customer || "—")}</Form.Item>
+          <Form.Item label="合同编号">{String(movingFee?.data.contract_no || "—")}</Form.Item>
+          <Form.Item label="目标案件" name="target_case_no" rules={[{ required: true, whitespace: true, message: "请输入目标案件编号" }]}>
+            <Input placeholder="请输入目标案件编号" maxLength={64} />
+          </Form.Item>
+        </Form>
+        <Alert type="info" showIcon message="仅允许迁移到同一客户下的案件；一次只能迁移一条费用。" />
       </Modal>
       <Modal
         open={assistedFeeModalOpen}

@@ -410,6 +410,7 @@ export type CaseDetailCapabilities = {
   can_confirm_fee_arrival: boolean;
   can_view_fee_receipt: boolean;
   can_mark_fee_unpaid: boolean;
+  can_move_fee?: boolean;
   can_manage_assisted_fees: boolean;
   team_role: "manager" | "handling_lawyer" | "assistant" | "none";
   reason: string;

@@ -7,7 +7,7 @@ from app.areas.finance.fee_action_guards import _is_internal_application as _is_
 
 router = APIRouter()
 
-from app.api_schemas.finance import InternalPaymentRequestInput, InternalPaymentSelectionInput, InternalPaymentRequestLine
+from app.api_schemas.finance import FinanceFeeMoveCaseInput, InternalPaymentRequestInput, InternalPaymentSelectionInput, InternalPaymentRequestLine
 
 
 @router.post(f"{settings.api_prefix}/finance/internal-applications/payment-preview")
@@ -309,6 +309,14 @@ async def mark_finance_fee_no_payment(fee_id: int, body: FinanceActionInput, ide
     ))
     await db.commit()
     await db.refresh(item)
+    return await _record_dict_for_identity(item, identity, db)
+
+@router.post(f"{settings.api_prefix}/finance/fees/{{fee_id}}/move-case")
+async def move_finance_fee_to_case(fee_id: int, body: FinanceFeeMoveCaseInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """10.22 第8行：律所/平台费用“移到其他案子”，同一客户、一次一条。"""
+    from app.core.case_fee_move import move_case_fee
+    from app.core.permissions import _record_dict_for_identity
+    item = await move_case_fee(fee_id, body.target_case_no, identity, db)
     return await _record_dict_for_identity(item, identity, db)
 
 @router.post(f"{settings.api_prefix}/finance/fees/{{fee_id}}/mark-refund-not-required")

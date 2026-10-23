@@ -944,7 +944,8 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
             ("case.fee.refund", "办理法院退费"), ("case.fee.payment", "申请案件付款"),
             ("case.fee.invoice", "申请案件开票"), ("case.fee.notice", "维护费用通知"),
             ("case.fee.arrival", "确认费用到账"), ("case.fee.receipt.view", "查看票据文件"),
-            ("case.fee.mark_unpaid", "标记不缴费"), ("case.assisted_fee.manage", "维护资助费用"),
+            ("case.fee.mark_unpaid", "标记不缴费"), ("case.fee.move", "移到其他案件"),
+            ("case.assisted_fee.manage", "维护资助费用"),
         )),
         {"code": "case.fee.receipt.upload", "menu_key": "case-files-receipt", "label": "上传案件票据文件"},
     ])

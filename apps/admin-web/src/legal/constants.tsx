@@ -442,7 +442,7 @@ export const noCaseDetailWriteCapability: CaseDetailCapabilities = {
   can_create_finance: false, can_edit_finance: false, can_delete_finance: false,
   can_refund_finance: false, can_apply_fee_payment: false, can_apply_fee_invoice: false,
   can_manage_fee_notice: false, can_confirm_fee_arrival: false, can_view_fee_receipt: false,
-  can_mark_fee_unpaid: false, can_manage_assisted_fees: false, team_role: "none",
+  can_mark_fee_unpaid: false, can_move_fee: false, can_manage_assisted_fees: false, team_role: "none",
   reason: "当前账号没有案件详情办理权限",
 };
 

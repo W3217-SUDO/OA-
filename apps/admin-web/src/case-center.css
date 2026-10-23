@@ -751,3 +751,10 @@
 }
 .case-criminal-summary col.case-legacy-label{width:96px}
 .case-criminal-procuratorate-form .ant-form-item{margin-bottom:12px}
+/* 10.22 第8行：“移到其他案子”弹窗在手机端标签与值上下排列，长编号换行不横向溢出。 */
+.case-fee-move-form .ant-form-item-control-input-content{overflow-wrap:anywhere}
+@media(max-width:767px){
+  .case-fee-move-form .ant-form-item-row{flex-wrap:wrap}
+  .case-fee-move-form .ant-form-item-label{flex:0 0 100%!important;max-width:100%;text-align:left}
+  .case-fee-move-form .ant-input{min-height:44px}
+}

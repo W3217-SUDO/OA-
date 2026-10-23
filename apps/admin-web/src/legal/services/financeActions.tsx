@@ -131,6 +131,7 @@ export interface CaseFinanceDependencies {
     readonly deleteCaseFee: (row: CaseRow) => MessageType | undefined;
     readonly markCaseFeeNoPayment: (row: CaseRow) => MessageType | undefined;
     readonly markCaseFeeRefundNotRequired: (row: CaseRow) => MessageType | undefined;
+    readonly openCaseFeeMove: (row: CaseRow) => void;
     readonly selectedFirmFeeKeys: React.Key[];
     readonly selectedFirmFee: CaseRow | undefined;
     readonly setCaseCommissionLoading: React.Dispatch<React.SetStateAction<boolean>>;
@@ -1007,10 +1008,10 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         }
     };
     const handleExternalFeeOperation = async (keys: Key[], selectedFee: CaseRow | undefined, key: string) => {
-        const { openInformDateBatchUpdate, requireSingleFee, openFeeInformCreator, editCaseFee, deleteCaseFee, markCaseFeeNoPayment, markCaseFeeRefundNotRequired, viewingCounselCase, onNavigate } = context;
+        const { openInformDateBatchUpdate, requireSingleFee, openFeeInformCreator, editCaseFee, deleteCaseFee, markCaseFeeNoPayment, markCaseFeeRefundNotRequired, openCaseFeeMove, viewingCounselCase, onNavigate } = context;
         if (key === "inform-date")
             return openInformDateBatchUpdate(keys);
-        if (!requireSingleFee(keys, selectedFee, key === "refund" ? "办理法院退费" : key === "payment" ? "申请付款" : key === "invoice" ? "申请开票" : key === "edit" ? "修改" : key === "delete" ? "删除" : key === "inform" ? "新建费用通知" : key === "arrival" ? "到账确认" : key === "bill" ? "上传票据" : key === "download-bill" ? "查看票据文件" : key === "invoice-files" ? "查看发票文件" : key === "unlock-inform" ? "费用通知解锁" : key === "link-inform" ? "关联费用信息" : key === "delete-inform" ? "删除费用通知" : "标记不缴费"))
+        if (!requireSingleFee(keys, selectedFee, key === "refund" ? "办理法院退费" : key === "payment" ? "申请付款" : key === "invoice" ? "申请开票" : key === "edit" ? "修改" : key === "delete" ? "删除" : key === "inform" ? "新建费用通知" : key === "arrival" ? "到账确认" : key === "bill" ? "上传票据" : key === "download-bill" ? "查看票据文件" : key === "invoice-files" ? "查看发票文件" : key === "unlock-inform" ? "费用通知解锁" : key === "link-inform" ? "关联费用信息" : key === "delete-inform" ? "删除费用通知" : key === "move-case" ? "移到其他案子" : "标记不缴费"))
             return;
         if (key === "inform")
             return openFeeInformCreator(selectedFee!);
@@ -1038,6 +1039,8 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
             return deleteCaseFee(selectedFee!);
         if (key === "no-payment")
             return markCaseFeeNoPayment(selectedFee!);
+        if (key === "move-case")
+            return openCaseFeeMove(selectedFee!);
         if (key === "refund-not-required")
             return markCaseFeeRefundNotRequired(selectedFee!);
         if (key === "invoice") {
