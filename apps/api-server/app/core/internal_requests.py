@@ -133,8 +133,9 @@ async def internal_review_rows(identity: dict, db: AsyncSession, kind: str) -> l
         data = row.get("data") or {}
         commission = is_explicit_internal_commission(data)
         refund = commission and _is_refund_commission(row, sources)
-        if kind == "refund" and refund and row["status"] in {"待到账", "待分配", "待结算", "待归档", "待审批"}:
-            selected.append({**row, "status": "待审批", "data": {**data, "is_refund": True}})
+        # 退费提成未归档时在“内部提成-待归档”，案件归档后才进入本队列。
+        if kind == "refund" and refund and row["status"] == "待审批":
+            selected.append({**row, "data": {**data, "is_refund": True}})
         elif row["status"] == "待审批" and (
             (kind == "commission" and commission and not refund)
             or (kind == "other" and not commission)
@@ -181,8 +182,7 @@ async def internal_review_rows(identity: dict, db: AsyncSession, kind: str) -> l
     full = [projected[item.id] for item in members]
     refund_ids = await refund_commission_ids(members, db)
     for row in full:
-        if row["id"] in refund_ids and row["status"] in {"待到账", "待分配", "待结算", "待归档", "待审批"}:
-            row["status"] = "待审批"
+        if row["id"] in refund_ids:
             row["data"] = {**(row.get("data") or {}), "is_refund": True}
     from app.core.finance_person_projection import apply_finance_person_displays
     grouped = group_commission_applications(full)
@@ -228,9 +228,8 @@ async def review_internal_applications(
         member_kind = "refund" if item.id in refund_ids else "commission" if commission else "other"
         if not is_internal_fee(data) or member_kind != kind:
             raise HTTPException(409, "请款单含其他审批类别，不能部分审批")
-        allowed = {"待审批", "待到账", "待分配", "待结算", "待归档"} if kind == "refund" else {"待审批"}
         effective_status = lifecycle_statuses.get(item.id, item.status)
-        if effective_status not in allowed:
+        if effective_status != "待审批":
             raise HTTPException(409, "请款单含非待审批费用，不能部分审批")
     await _review_finance_fee_records(members, approved, comment, identity, db)
     await db.commit()

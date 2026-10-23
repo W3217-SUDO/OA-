@@ -97,6 +97,12 @@ class Finance930Rows9To14Test(unittest.IsolatedAsyncioTestCase):
         app.dependency_overrides.update(self.previous)
         await self.engine.dispose()
 
+    async def archive_case(self):
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, self.case_id)
+            case.status = "已归档"
+            await db.commit()
+
     async def test_payment_and_review_queues_are_disjoint(self):
         external = await self.client.get(f"{settings.api_prefix}/records", params={
             "module": "finance", "finance_view": "external", "page_size": 100,
@@ -115,6 +121,10 @@ class Finance930Rows9To14Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payments.status_code, 200, payments.text)
         # 仅生成来源费用不代表已经申请付款，不能显示为真实请款单。
         self.assertEqual(payments.json()["items"], [])
+        # 退费提成在案件归档后才进入“内部提成(退费)-待审核”。
+        unarchived = await self.client.get(f"{settings.api_prefix}/finance/internal-review-requests", params={"kind": "refund"})
+        self.assertEqual(unarchived.json()["items"], [])
+        await self.archive_case()
         results = {}
         for kind in ("commission", "other", "refund"):
             response = await self.client.get(f"{settings.api_prefix}/finance/internal-review-requests", params={"kind": kind})
@@ -154,6 +164,13 @@ class Finance930Rows9To14Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payments.json()["items"], [])
 
     async def test_refund_commissions_review_from_positive_refund_source(self):
+        blocked = await self.client.post(f"{settings.api_prefix}/finance/internal-applications/batch-review", params={
+            "kind": "refund",
+        }, json={
+            "fee_ids": self.refund_commissions[:1], "approved": True, "comment": "确认退费提成",
+        })
+        self.assertEqual(blocked.status_code, 409, blocked.text)
+        await self.archive_case()
         response = await self.client.post(f"{settings.api_prefix}/finance/internal-applications/batch-review", params={
             "kind": "refund",
         }, json={

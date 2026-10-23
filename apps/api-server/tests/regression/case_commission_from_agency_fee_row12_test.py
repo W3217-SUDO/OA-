@@ -312,8 +312,22 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 201, response.text)
         result = response.json()
         item = result["items"][0]
-        self.assertEqual(item["status"], "待审批")
+        # 案件未归档：退费提成进“内部提成-待归档”；归档后进“内部提成(退费)-待审核”，解档再退回待归档。
+        self.assertEqual(item["status"], "待归档")
         self.assertEqual(item["data"]["payment_requested_amount"], item["data"]["amount"])
+        archive_page = await self.client.get(f"{API}/finance/internal-fees", params={"scope": "archive"})
+        self.assertIn(result["application_no"], [row["serial_no"] for row in archive_page.json()["items"]])
+        early = await self.client.get(f"{API}/finance/internal-review-requests", params={"kind": "refund"})
+        self.assertNotIn(result["application_no"], [row["serial_no"] for row in early.json()["items"]])
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, self.case_id)
+            case.status = "已归档"
+            await db.flush()
+            from app.core.finance import _sync_case_commissions_for_links
+            await _sync_case_commissions_for_links(db, operator=IDENTITY["username"], case_ids={self.case_id}, comment="归档审核通过")
+            await db.commit()
+            stored = await db.get(BusinessRecord, item["id"])
+            self.assertEqual(stored.status, "待审批")
         refund_queue = await self.client.get(f"{API}/finance/internal-review-requests", params={"kind": "refund"})
         self.assertEqual(refund_queue.status_code, 200, refund_queue.text)
         self.assertIn(result["application_no"], [row["serial_no"] for row in refund_queue.json()["items"]])

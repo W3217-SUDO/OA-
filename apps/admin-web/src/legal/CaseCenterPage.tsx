@@ -3726,7 +3726,7 @@ export default function CaseCenterPage({
         </Space>}
       >
         {caseCommissionResult ? <>
-          <Alert type="success" showIcon title={`提成 ${caseCommissionResult.application_no} 已生成并提交付款申请`} description="可在财务中心“内部费用-我的请款单”查看；律师代理费（退费）的提成进入“内部提成(退费)-待审核”，不需要再点“申请付款”。" style={{ marginBottom: 12 }} />
+          <Alert type="success" showIcon title={`提成 ${caseCommissionResult.application_no} 已生成并提交付款申请`} description="可在财务中心“内部费用-我的请款单”查看；律师代理费（退费）的提成在案件归档前位于“内部提成-待归档”，案件归档后进入“内部提成(退费)-待审核”，不需要再点“申请付款”。" style={{ marginBottom: 12 }} />
           <Table
             rowKey="record_id"
             size="small"

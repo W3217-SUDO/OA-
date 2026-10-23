@@ -2232,7 +2232,11 @@ _CASE_COMMISSION_PENDING_STATUSES = {"待到账", "待分配", "待结算", "待
 _CASE_COMMISSION_ARCHIVED_CASE_STATUSES = {"已归档", "亏损归档"}
 
 
-def _is_case_agency_fee_commission(item: BusinessRecord) -> bool:
+def _is_refund_commission_data(data: dict) -> bool:
+    return data.get("commission_lifecycle") == "case_agency_refund" or bool(data.get("is_refund"))
+
+
+def _is_case_agency_fee_commission(item: BusinessRecord, *, include_refund: bool = False) -> bool:
     from app.core.finance_batch_parity import is_explicit_internal_commission
 
     data = item.data or {}
@@ -2245,8 +2249,7 @@ def _is_case_agency_fee_commission(item: BusinessRecord) -> bool:
         and item.status in _CASE_COMMISSION_PENDING_STATUSES
         and data.get("fee_type") == "内部费用"
         and data.get("legacy_kind") != "internal_payment_line"
-        and data.get("commission_lifecycle") != "case_agency_refund"
-        and not data.get("is_refund")
+        and (include_refund or not _is_refund_commission_data(data))
         and is_explicit_internal_commission(data)
         and source_fee_id
         and (data.get("case_id") or str(data.get("case_no") or "").strip())
@@ -2259,7 +2262,7 @@ async def _case_commission_lifecycle_statuses(
     """Derive pending automatic commission state from settlement and archive facts."""
     from app.core.record_projection_query import read_record_projections
     from app.core.json_relation_query import scalar_in_values
-    candidates = [item for item in items if _is_case_agency_fee_commission(item)]
+    candidates = [item for item in items if _is_case_agency_fee_commission(item, include_refund=True)]
     if not candidates:
         return {}
 
@@ -2270,14 +2273,21 @@ async def _case_commission_lifecycle_statuses(
     source_fees = await read_record_projections(db, [
         BusinessRecord.module == "finance", scalar_in_values(BusinessRecord.id, source_fee_ids),
     ], ("refund_fee", "fee_type", "received_amount", "cashed_amount"))
+    # 投影读取的 JSON 布尔值在 SQLite 里是 1，PostgreSQL 里是 True，两种都按退费处理。
     refund_source_ids = {
         item.id for item in source_fees
-        if (item.data or {}).get("refund_fee") is True
+        if str((item.data or {}).get("refund_fee")).lower() in {"true", "1"}
         and (item.data or {}).get("fee_type") == "代理费"
     }
-    candidates = [item for item in candidates if int((item.data or {}).get("source_fee_id") or 0) not in refund_source_ids]
-    if not candidates:
-        return {}
+    # 律师代理费（退费）的提成不经过到账、分配和一般结算，只看案件是否归档：
+    # 未归档进“内部提成-待归档”，归档后进“内部提成(退费)-待审核”（10.22 第 6 行，沿用 09-14 规则）。
+    refund_candidates = [
+        item for item in candidates
+        if _is_refund_commission_data(item.data or {})
+        or int((item.data or {}).get("source_fee_id") or 0) in refund_source_ids
+    ]
+    refund_candidate_ids = {item.id for item in refund_candidates}
+    candidates = [item for item in candidates if item.id not in refund_candidate_ids]
     source_fee_ids -= refund_source_ids
     paid_source_fee_ids: set[int] = set()
     # 候选编号以单个集合参数传递，结算记录只扫描一次，归属仍按原明细键判断。
@@ -2317,11 +2327,11 @@ async def _case_commission_lifecycle_statuses(
 
     case_ids = {
         int((item.data or {}).get("case_id") or 0)
-        for item in candidates if (item.data or {}).get("case_id")
+        for item in [*candidates, *refund_candidates] if (item.data or {}).get("case_id")
     }
     case_nos = {
         str((item.data or {}).get("case_no") or "").strip()
-        for item in candidates if str((item.data or {}).get("case_no") or "").strip()
+        for item in [*candidates, *refund_candidates] if str((item.data or {}).get("case_no") or "").strip()
     }
     case_conditions = []
     if case_ids:
@@ -2352,6 +2362,11 @@ async def _case_commission_lifecycle_statuses(
             result[item.id] = "待审批"
         else:
             result[item.id] = "待归档"
+    for item in refund_candidates:
+        data = item.data or {}
+        linked_case = cases_by_id.get(int(data.get("case_id") or 0)) or cases_by_no.get(str(data.get("case_no") or ""))
+        archived = bool(linked_case and linked_case.status in _CASE_COMMISSION_ARCHIVED_CASE_STATUSES)
+        result[item.id] = "待审批" if archived else "待归档"
     return result
 
 
@@ -2374,6 +2389,9 @@ async def _sync_case_commission_lifecycle(
             continue
         previous_status = item.status
         data = dict(item.data or {})
+        action = action_by_status[target_status]
+        if _is_refund_commission_data(data):
+            action = "案件归档完成，退费提成进入待审批" if target_status == "待审批" else "案件未归档，退费提成进入待归档"
         data["payment_status"] = target_status
         data["commission_lifecycle_status"] = target_status
         data["commission_lifecycle_changed_at"] = changed_at
@@ -2383,11 +2401,11 @@ async def _sync_case_commission_lifecycle(
         item.data = data
         db.add(WorkflowEvent(
             record_id=item.id,
-            action=action_by_status[target_status],
+            action=action,
             from_status=previous_status,
             to_status=target_status,
             operator=operator,
-            comment=comment.strip() or action_by_status[target_status],
+            comment=comment.strip() or action,
         ))
     return statuses
 
@@ -3676,19 +3694,16 @@ async def _review_finance_fee_records(items: list[BusinessRecord], approved: boo
     await lock_case_fee_rows([item.id for item in items if is_external_case_fee(item)], db)
     refund_ids = await refund_commission_ids(items, db)
     for item in items:
-        if item.id not in refund_ids:
-            continue
-        previous = item.status
-        if previous in {"待到账", "待分配", "待结算", "待归档"}:
-            item.status = "待审批"
-            db.add(WorkflowEvent(
-                record_id=item.id, action="退费提成转入专项审批",
-                from_status=previous, to_status="待审批",
-                operator=identity["username"], comment="关联来源为律师代理费（退费）",
-            ))
-        item.data = {**(item.data or {}), "is_refund": True,
-                     "commission_lifecycle": "case_agency_refund"}
+        if item.id in refund_ids:
+            item.data = {**(item.data or {}), "is_refund": True,
+                         "commission_lifecycle": "case_agency_refund"}
     lifecycle_statuses = await _case_commission_lifecycle_statuses(items, db)
+    blocked_refund = [
+        f"{item.serial_no}（{lifecycle_statuses[item.id]}）"
+        for item in items if item.id in refund_ids and lifecycle_statuses.get(item.id) == "待归档"
+    ]
+    if blocked_refund:
+        raise HTTPException(status_code=409, detail="退费提成须案件归档后才能审批：" + "、".join(blocked_refund))
     blocked = [
         f"{item.serial_no}（{lifecycle_statuses[item.id]}）"
         for item in items

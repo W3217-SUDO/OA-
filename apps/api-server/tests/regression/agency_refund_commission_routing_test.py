@@ -64,6 +64,7 @@ class AgencyRefundCommissionRoutingTest(unittest.IsolatedAsyncioTestCase):
                 db.add(item); await db.flush(); commissions.append(item.id)
             await db.commit()
         self.payment_type_id, self.contract_id, self.fees, self.commissions = payment_type.id, contract.id, fees, commissions
+        self.case_id = case.id
 
         async def override_db():
             async with self.sessions() as db:
@@ -128,6 +129,17 @@ class AgencyRefundCommissionRoutingTest(unittest.IsolatedAsyncioTestCase):
             "comment": "CODEX 退费提成申请付款"})
         self.assertEqual(applied.status_code, 200, applied.text)
         application_no = applied.json()["application_no"]
+
+        # 案件未归档：退费提成在“内部提成-待归档”，归档后才进入“内部提成(退费)-待审核”。
+        archive_page = await self.client.get(f"{API}/finance/internal-fees", params={"scope": "archive"})
+        self.assertEqual(archive_page.status_code, 200, archive_page.text)
+        self.assertIn(application_no, [item["serial_no"] for item in archive_page.json()["items"]])
+        early = await self.client.get(f"{API}/finance/internal-review-requests", params={"kind": "refund"})
+        self.assertNotIn(application_no, [item["serial_no"] for item in early.json()["items"]])
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, self.case_id)
+            case.status = "已归档"
+            await db.commit()
 
         refund_queue = await self.client.get(f"{API}/finance/internal-review-requests", params={"kind": "refund"})
         self.assertEqual(refund_queue.status_code, 200, refund_queue.text)

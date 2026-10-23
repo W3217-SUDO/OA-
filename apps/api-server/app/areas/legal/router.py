@@ -248,7 +248,8 @@ async def create_case_commissions(
         raise HTTPException(status_code=409, detail="所选费用已生成过这些提成，不能重复生成：" + "、".join(duplicates))
     source_data = source_fee.data or {}
     refund_commission = source_data.get("refund_fee") is True and source_data.get("fee_type") == "代理费"
-    initial_status = "待审批" if refund_commission else "待结算"
+    # 退费提成按案件是否归档进入待归档/待审批，由下方生命周期同步确定。
+    initial_status = "待归档" if refund_commission else "待结算"
     application_no = _new_internal_payment_package_no()
     applied_at = datetime.now().isoformat(timespec="seconds")
     created: list[BusinessRecord] = []

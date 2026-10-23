@@ -118,6 +118,12 @@ class CaseInternalFeeRow17Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(withdrawn.status_code,200,withdrawn.text)
         self.assertEqual(set(withdrawn.json()["fee_ids"]),set(ids))
 
+    async def archive_case(self):
+        async with self.sessions() as db:
+            case=await db.get(BusinessRecord,self.case_id)
+            case.status="已归档"
+            await db.commit()
+
     async def test_unsubmitted_not_reviewed_and_refund_visible_after_explicit_apply(self):
         ids,_=await self.create_payment_selection(refund=True)
         before=await self.client.get(f"{API}/finance/internal-review-requests",params={"kind":"refund"})
@@ -127,6 +133,13 @@ class CaseInternalFeeRow17Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(direct.status_code,409,direct.text)
         response=await self.client.post(f"{API}/finance/internal-applications/payment-requests",json=self.payment_body(ids))
         self.assertEqual(response.status_code,200,response.text)
+        # 10.22 第 6 行：案件未归档时退费提成在“内部提成-待归档”，不进退费审核队列。
+        pending=await self.client.get(f"{API}/finance/internal-review-requests",params={"kind":"refund"})
+        self.assertFalse(set(ids)&{item["id"] for item in pending.json()["items"]})
+        archive=await self.client.get(f"{API}/finance/internal-fees",params={"scope":"archive"})
+        self.assertEqual(archive.status_code,200,archive.text)
+        self.assertIn(response.json()["application_no"],[item["serial_no"] for item in archive.json()["items"]])
+        await self.archive_case()
         after=await self.client.get(f"{API}/finance/internal-review-requests",params={"kind":"refund"})
         self.assertEqual(after.status_code,200,after.text)
         group=next(item for item in after.json()["items"] if item["serial_no"]==response.json()["application_no"])
@@ -177,6 +190,7 @@ class CaseInternalFeeRow17Test(unittest.IsolatedAsyncioTestCase):
                 item.data={**item.data,"payment_application_no":f"CODEX1021INTERNAL-APP-{index}",
                     "internal_payment_submitted":True,"internal_payment_submitted_at":f"2026-10-{index+10:02d}T12:00:00"}
             await db.commit()
+        await self.archive_case()
         response=await self.client.get(f"{API}/finance/internal-review-requests",params={"kind":"refund","page_size":2})
         self.assertEqual(response.status_code,200,response.text)
         self.assertEqual([item["id"] for item in response.json()["items"]],ids[::-1][:2])
