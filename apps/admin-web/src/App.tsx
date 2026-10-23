@@ -230,7 +230,7 @@ const menuItems: NavItem[] = [
   {
     key: "task",
     icon: <FileTextOutlined />,
-    label: "事务中心",
+    label: "任务中心",
     children: [
       {
         key: "task-my",

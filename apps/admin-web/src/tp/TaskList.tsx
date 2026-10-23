@@ -63,6 +63,8 @@ export interface TaskListProps {
   onToggleMobileFilters: () => void;
   onQuerySubmit: (values: TaskQuery) => void;
   onQueryReset: () => void;
+  /** 任务中心直接新建任务：不关联案件即为事务性任务。 */
+  onCreateTask: () => void;
   onSelectedKeysChange: (keys: Key[]) => void;
   onTableChange: (
     pagination: TablePaginationConfig,
@@ -89,7 +91,7 @@ export interface TaskListProps {
 
 export default function TaskList(props: TaskListProps) {
   const { canRequestTaskException, onRequestException, onReviewException } = props;
-  const { isUnread, tabs, statusTab, counts, mobileFiltersOpen, queryForm, loading, columns, filteredTasks, taskMeta, selectedKeys, hideTaskFooter, actionSubmitting, profile, canManageInitiatedTask, canManageAcceptedTask, canManageCompanyCreatedTask, canWithdrawTask, canReviewTaskException, selectedRows, selected, caseBatchLabels, onTabChange, onToggleMobileFilters, onQuerySubmit, onQueryReset, onSelectedKeysChange, onTableChange, onOpenCommunication, onMarkSelectedUnreadRead, onConfirmTask, onWithdrawTask, onResendTask, onRestartTask, onAcceptSelected, onCompleteSelected, onCompleteOne, onOpenHandoff, onOpenTaskBatchLifecycle, onMoreAction } = props;
+  const { isUnread, tabs, statusTab, counts, mobileFiltersOpen, queryForm, loading, columns, filteredTasks, taskMeta, selectedKeys, hideTaskFooter, actionSubmitting, profile, canManageInitiatedTask, canManageAcceptedTask, canManageCompanyCreatedTask, canWithdrawTask, canReviewTaskException, selectedRows, selected, caseBatchLabels, onTabChange, onToggleMobileFilters, onQuerySubmit, onQueryReset, onCreateTask, onSelectedKeysChange, onTableChange, onOpenCommunication, onMarkSelectedUnreadRead, onConfirmTask, onWithdrawTask, onResendTask, onRestartTask, onAcceptSelected, onCompleteSelected, onCompleteOne, onOpenHandoff, onOpenTaskBatchLifecycle, onMoreAction } = props;
 
   return (
     <Card
@@ -183,6 +185,9 @@ export default function TaskList(props: TaskListProps) {
           </Button>
           <Button htmlType="button" onClick={onQueryReset}>
             重置
+          </Button>
+          <Button htmlType="button" type="primary" ghost onClick={onCreateTask}>
+            新建任务
           </Button>
         </div>
       </Form>

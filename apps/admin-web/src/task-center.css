@@ -268,7 +268,7 @@
   }
 }
 
-/* 事务中心标准任务页：原系统紧凑列表布局。 */
+/* 任务中心标准任务页：原系统紧凑列表布局。 */
 .task-original-standard.ant-card > .ant-card-head {
   height: 34px;
   min-height: 34px;

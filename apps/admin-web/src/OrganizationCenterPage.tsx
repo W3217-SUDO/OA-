@@ -128,7 +128,7 @@ const permissionGroups = [
     ],
   },
   {
-    name: "事务中心",
+    name: "任务中心",
     items: [
       "任务查看",
       "任务派发",

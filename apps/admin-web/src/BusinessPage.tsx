@@ -27,7 +27,7 @@ const configs:Record<string,ModuleConfig> = {
   customer:{title:'客户管理',prefix:'KH',statuses:['正常','跟进中','待共享','公海','已回收'],fields:[{key:'contact',label:'联系人'},{key:'phone',label:'联系电话'},{key:'level',label:'客户等级'}]},
   contract:{title:'合同中心',prefix:'HT',statuses:['草稿','审批中','审批通过','已完成','已拒绝'],fields:[{key:'amount',label:'合同金额'},{key:'signed_at',label:'签订日期'},{key:'type',label:'合同类型'}]},
   case:{title:'案件中心',prefix:'AJ',statuses:['新案待分配','文书准备','一审立案受理','一审准备开庭','二审','执行','已归档'],fields:[{key:'court',label:'承办法院'},{key:'case_type',label:'案件类型'},{key:'opponent',label:'对方当事人'}]},
-  task:{title:'事务中心',prefix:'RW',statuses:['待处理','处理中','已完成','已逾期','已撤回'],fields:[{key:'deadline',label:'截止日期'},{key:'priority',label:'优先级'},{key:'source',label:'任务来源'}]},
+  task:{title:'任务中心',prefix:'RW',statuses:['待处理','处理中','已完成','已逾期','已撤回'],fields:[{key:'deadline',label:'截止日期'},{key:'priority',label:'优先级'},{key:'source',label:'任务来源'}]},
   clue:{title:'调查大厅',prefix:'XS',statuses:['草稿','待审批','调查中','待公证','已转案件','已驳回'],fields:[{key:'platform',label:'调查平台'},{key:'product',label:'侵权产品'},{key:'notary',label:'公证状态'}]},
   notary:{title:'公证管理',prefix:'GZ',statuses:['待审核','审核通过','审核驳回'],fields:[{key:'clue_no',label:'来源线索'},{key:'review_due_date',label:'审核期限'},{key:'case_no',label:'关联案件'}]},
   evidence:{title:'证据管理',prefix:'ZJ',statuses:['待整理','已整理','已入卷'],fields:[{key:'source',label:'材料来源'},{key:'clue_no',label:'关联线索'},{key:'case_no',label:'关联案件'}]},
@@ -85,11 +85,11 @@ export default function BusinessPage({module,title,openCreate=false,defaultStatu
   useEffect(()=>{setPage(1);load(1)},[module])
   useEffect(()=>{if(openCreate)startCreate()},[module,openCreate])
 
-  const startCreate=()=>{if(module==='task'){message.warning('请使用事务中心专用入口');return}setEditing(null);form.resetFields();form.setFieldsValue({serial_no:nextSerial(config.prefix),status:config.statuses[0],owner:'管理者',department:'上海分所'});setModalOpen(true)}
+  const startCreate=()=>{if(module==='task'){message.warning('请使用任务中心专用入口');return}setEditing(null);form.resetFields();form.setFieldsValue({serial_no:nextSerial(config.prefix),status:config.statuses[0],owner:'管理者',department:'上海分所'});setModalOpen(true)}
   const startEdit=(row:RecordRow)=>{setEditing(row);form.setFieldsValue({...row,...row.data});setModalOpen(true)}
   const openDetails=async(row:RecordRow)=>{setViewing(row);setHistory({transitions:[],items:[]});try{const {data}=await api.get(`/records/${row.id}/history`);setHistory(data)}catch{message.error('流程记录加载失败')}}
-  const save=async()=>{if(module==='task'){message.warning('请使用事务中心专用入口');return}const values=await form.validateFields();const data=Object.fromEntries(config.fields.map(f=>[f.key,values[f.key]??'']));const payload={module,serial_no:values.serial_no,title:values.title,customer:values.customer||'',status:values.status,owner:values.owner,department:values.department,description:values.description||'',data};try{if(editing)await api.patch(`/records/${editing.id}`,payload);else await api.post('/records',payload);message.success(editing?'保存成功':'新增成功');setModalOpen(false);load()}catch(error:any){message.error(error?.response?.data?.detail||'保存失败')}}
-  const remove=async(id:number)=>{if(module==='task'){message.warning('请使用事务中心专用入口');return}try{await api.delete(`/records/${id}`);message.success('已删除');load()}catch{message.error('删除失败')}}
+  const save=async()=>{if(module==='task'){message.warning('请使用任务中心专用入口');return}const values=await form.validateFields();const data=Object.fromEntries(config.fields.map(f=>[f.key,values[f.key]??'']));const payload={module,serial_no:values.serial_no,title:values.title,customer:values.customer||'',status:values.status,owner:values.owner,department:values.department,description:values.description||'',data};try{if(editing)await api.patch(`/records/${editing.id}`,payload);else await api.post('/records',payload);message.success(editing?'保存成功':'新增成功');setModalOpen(false);load()}catch(error:any){message.error(error?.response?.data?.detail||'保存失败')}}
+  const remove=async(id:number)=>{if(module==='task'){message.warning('请使用任务中心专用入口');return}try{await api.delete(`/records/${id}`);message.success('已删除');load()}catch{message.error('删除失败')}}
   const startTransition=(target:string)=>{setTransitionTarget(target);setTransitionComment('');setTransitionOpen(true)}
   const submitTransition=async()=>{if(!viewing)return;if(module==='task'){message.warning('禁止使用通用记录接口流转任务');return}try{const {data}=await api.post(`/records/${viewing.id}/transition`,{to_status:transitionTarget,comment:transitionComment});message.success(`已流转至“${transitionTarget}”`);setViewing(data);setTransitionOpen(false);const result=await api.get(`/records/${viewing.id}/history`);setHistory(result.data);load()}catch(error:any){message.error(error?.response?.data?.detail||'流程操作失败')}}
 
@@ -111,8 +111,8 @@ export default function BusinessPage({module,title,openCreate=false,defaultStatu
         <Alert
           type="info"
           showIcon
-          message="事务中心请使用专用入口"
-          description="禁止使用通用记录接口新建或流转任务；请从我的任务、我接受的任务或未读消息进入事务中心操作。"
+          message="任务中心请使用专用入口"
+          description="禁止使用通用记录接口新建或流转任务；请从我的任务、我接受的任务或未读消息进入任务中心操作。"
         />
         <Space wrap style={{ marginTop: 16 }}>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => onNavigate?.("task-my-created")}>我的任务</Button>

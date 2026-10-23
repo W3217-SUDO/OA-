@@ -489,6 +489,20 @@ export default function TaskCenterPage({
     }
   };
 
+  // 任务中心直接新建：不带案件，留空“关联案件”即为事务性任务。
+  const openStandaloneCreate = () => {
+    createForm.resetFields();
+    setCreateMaterialFiles([]);
+    createForm.setFieldsValue({
+      priority: "普通",
+      collaborators: [],
+      case_nos: [],
+      start_at: dayjs().second(0),
+      end_at: dayjs().add(1, "day").hour(18).minute(0).second(0),
+    });
+    setCreateOpen(true);
+  };
+
   const createTask = async () => {
     const values = await createForm.validateFields();
     if (!beginTaskAction()) return;
@@ -498,6 +512,8 @@ export default function TaskCenterPage({
       const endAt = values.end_at as Dayjs;
       const { data: createdTask } = await api.post("/tasks", {
         ...values,
+        // 关联了案件就是案件任务，否则是事务性任务。
+        source: caseNos.length ? "案件任务" : "事务性任务",
         collaborators: values.collaborators || [],
         case_no: caseNos[0] || "",
         case_nos: caseNos,
@@ -1027,6 +1043,12 @@ export default function TaskCenterPage({
       ),
     },
     {
+      title: "任务类别",
+      dataIndex: "task_category",
+      width: 100,
+      render: (_value: string, row: TaskRow) => (taskCaseNos(row).length ? "案件任务" : "事务性任务"),
+    },
+    {
       title: "案号编号",
       dataIndex: "case_no",
       width: 180,
@@ -1182,7 +1204,6 @@ export default function TaskCenterPage({
         title: context.title || `案件任务—${context.case_no}`,
         owner: profile.username || "admin",
         priority: caseTaskDefaults.priority,
-        source: "案件任务",
         collaborators: [],
         case_nos: [context.case_no],
         start_at: dayjs().second(0),
@@ -1453,6 +1474,7 @@ export default function TaskCenterPage({
         onToggleMobileFilters={() => setMobileFiltersOpen((open) => !open)}
         onQuerySubmit={handleQuerySubmit}
         onQueryReset={handleQueryReset}
+        onCreateTask={openStandaloneCreate}
         onSelectedKeysChange={setSelectedKeys}
         onTableChange={handleTableChange}
         onOpenCommunication={openCommunication}

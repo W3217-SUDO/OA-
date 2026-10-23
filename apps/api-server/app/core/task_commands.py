@@ -40,7 +40,10 @@ async def create_task_record(body: TaskInput, identity: dict, db: AsyncSession):
     ]
     case_nos = list(dict.fromkeys(value for value in requested_case_nos if value))
     case_no = case_nos[0] if case_nos else ""
-    source = body.source.strip() or "日常任务"
+    # 不关联案件的手工任务是“事务性任务”，直接发给负责人；关联案件即为“案件任务”。
+    source = body.source.strip() or ("案件任务" if case_nos or body.case_record_id else "事务性任务")
+    if source == "事务性任务" and (case_nos or body.case_record_id):
+        source = "案件任务"
     if source == "客户任务":
         raise HTTPException(status_code=403, detail="客户任务只能由客户通过客户端发布")
     if body.case_record_id and case_nos:

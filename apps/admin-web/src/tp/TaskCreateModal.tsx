@@ -104,18 +104,6 @@ export default function TaskCreateModal(props: TaskCreateModalProps) {
               }))}
             />
           </Form.Item>
-          <Form.Item label="任务来源" name="source">
-            <Select
-              options={[
-                "自动",
-                "人工",
-                "案件任务",
-                "合同任务",
-                "客户任务",
-                "公证书交接任务",
-              ].map((value) => ({ value, label: value }))}
-            />
-          </Form.Item>
         </div>
         <Form.Item label="协作人" name="collaborators">
           <KeywordPersonSelect
@@ -129,7 +117,11 @@ export default function TaskCreateModal(props: TaskCreateModalProps) {
             }))}
           />
         </Form.Item>
-        <Form.Item label="关联案件" name="case_nos">
+        <Form.Item
+          label="关联案件"
+          name="case_nos"
+          extra="不填为事务性任务，直接发给负责人；填写案号即为案件任务。"
+        >
           <Select
             mode="tags"
             tokenSeparators={[",", "，", ";", "；"]}
