@@ -20,8 +20,8 @@ test('律师代理费（退费）不能从案件律所费用发起付款管理�
   assert.match(openPaymentRequest, /新建提成\(选择费用\)/);
 });
 
-test('新建提成结果如实提示仍需在内部费用中申请付款', () => {
-  assert.doesNotMatch(casePage, /付款申请 \$\{caseCommissionResult\.application_no\} 已提交审批/);
-  assert.match(casePage, /提成 \$\{caseCommissionResult\.application_no\} 已生成/);
-  assert.doesNotMatch(financeActions, /付款申请 \$\{data\.application_no\} 已提交`/);
+test('新建提成即同时提交付款申请，结果提示不再要求另点申请付款', () => {
+  assert.match(casePage, /提成 \$\{caseCommissionResult\.application_no\} 已生成并提交付款申请/);
+  assert.match(financeActions, /提成 \$\{data\.application_no\} 已生成并提交付款申请/);
+  assert.doesNotMatch(casePage + financeActions, /再在内部费用中申请付款|请在内部费用中申请付款/);
 });

@@ -186,12 +186,9 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
         })
         self.assertEqual(response.status_code, 201, response.text)
         item = response.json()["items"][0]
-        applied = await self.client.post(f"{API}/finance/internal-applications/payment-requests", json={
-            "lines": [{"fee_id": item["id"], "amount": item["data"]["amount"],
-                       "payment_payee": item["data"]["payee"], "payment_account": "CODEX-R12-ACCOUNT"}],
-            "comment": "生命周期测试显式申请",
-        })
-        self.assertEqual(applied.status_code, 200, applied.text)
+        # 新增提成即同时登记付款申请，不再需要在内部结算另点“申请付款”。
+        self.assertIs(item["data"]["internal_payment_submitted"], True)
+        self.assertEqual(item["data"]["payment_requested_amount"], item["data"]["amount"])
         return item
 
     async def _mark_source_fee_received(self) -> None:
@@ -298,6 +295,68 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(quality_rows[0]["reference_commission"], 335.43)
         self.assertEqual(data["quality_manager_source"], "客户基本信息：CODEX-831-R12-CUSTOMER")
 
+    async def test_created_commission_is_already_applied_and_visible_in_internal_pages(self):
+        """10.22 第 3、6 行：新增提成即已申请付款；退费提成直接进入内部提成(退费)-待审核。"""
+        async with self.sessions() as db:
+            fee = await db.get(BusinessRecord, self.fee_id)
+            fee.data = {**(fee.data or {}), "refund_fee": True}
+            await db.commit()
+        preview = (await self.client.get(
+            f"{API}/cases/{self.case_id}/commission-preview", params={"source_fee_id": self.fee_id},
+        )).json()
+        selected = preview["items"][0]
+        response = await self.client.post(f"{API}/cases/{self.case_id}/commissions", json={
+            "source_fee_id": self.fee_id,
+            "items": [{"preview_key": selected["preview_key"], "actual_amount": selected["actual_amount"], "remark": ""}],
+        })
+        self.assertEqual(response.status_code, 201, response.text)
+        result = response.json()
+        item = result["items"][0]
+        self.assertEqual(item["status"], "待审批")
+        self.assertEqual(item["data"]["payment_requested_amount"], item["data"]["amount"])
+        refund_queue = await self.client.get(f"{API}/finance/internal-review-requests", params={"kind": "refund"})
+        self.assertEqual(refund_queue.status_code, 200, refund_queue.text)
+        self.assertIn(result["application_no"], [row["serial_no"] for row in refund_queue.json()["items"]])
+        mine = await self.client.get(f"{API}/finance/internal-fees", params={"scope": "applications"})
+        self.assertEqual(mine.status_code, 200, mine.text)
+        self.assertIn(result["application_no"], [row["serial_no"] for row in mine.json()["items"]])
+        repeat = await self.client.post(f"{API}/finance/internal-applications/payment-requests", json={
+            "lines": [{"fee_id": item["id"], "amount": item["data"]["amount"],
+                       "payment_payee": item["data"]["payee"], "payment_account": "CODEX-R12-ACCOUNT"}],
+            "comment": "不能重复申请",
+        })
+        self.assertEqual(repeat.status_code, 409, repeat.text)
+
+    async def test_same_source_fee_cannot_generate_same_commission_twice(self):
+        """同一来源费用、同一人员、同一提成类型只能有一条有效提成；其他类型仍可补生成。"""
+        await self._mark_source_fee_received()
+        preview = (await self.client.get(
+            f"{API}/cases/{self.case_id}/commission-preview", params={"source_fee_id": self.fee_id},
+        )).json()
+        first, second = preview["items"][:2]
+        line = lambda selected: {"preview_key": selected["preview_key"], "actual_amount": selected["actual_amount"], "remark": ""}
+        created = await self.client.post(f"{API}/cases/{self.case_id}/commissions",
+                                         json={"source_fee_id": self.fee_id, "items": [line(first)]})
+        self.assertEqual(created.status_code, 201, created.text)
+        async with self.sessions() as db:
+            before = await db.scalar(select(func.count()).select_from(BusinessRecord).where(BusinessRecord.module == "finance"))
+        duplicate = await self.client.post(f"{API}/cases/{self.case_id}/commissions",
+                                           json={"source_fee_id": self.fee_id, "items": [line(first), line(second)]})
+        self.assertEqual(duplicate.status_code, 409, duplicate.text)
+        self.assertIn(created.json()["application_no"], duplicate.json()["detail"])
+        async with self.sessions() as db:
+            after = await db.scalar(select(func.count()).select_from(BusinessRecord).where(BusinessRecord.module == "finance"))
+        self.assertEqual(after, before)
+        other = await self.client.post(f"{API}/cases/{self.case_id}/commissions",
+                                       json={"source_fee_id": self.fee_id, "items": [line(second)]})
+        self.assertEqual(other.status_code, 201, other.text)
+        withdrawn = await self.client.post(
+            f"{API}/finance/internal-applications/{created.json()['items'][0]['id']}/withdraw", json={"reason": "重新生成"})
+        self.assertEqual(withdrawn.status_code, 200, withdrawn.text)
+        again = await self.client.post(f"{API}/cases/{self.case_id}/commissions",
+                                       json={"source_fee_id": self.fee_id, "items": [line(first)]})
+        self.assertEqual(again.status_code, 201, again.text)
+
     async def test_batch_create_is_atomic_and_persists_source_relation(self):
         await self._mark_source_fee_received()
         preview = (await self.client.get(
@@ -331,9 +390,9 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(all(row.status == "待结算" for row in rows))
             self.assertTrue(all((row.data or {}).get("payment_status") == "待结算" for row in rows))
             self.assertTrue(all((row.data or {}).get("payment_application_no") == result["application_no"] for row in rows))
-            self.assertTrue(all((row.data or {}).get("payment_requested_amount") == 0 for row in rows))
-            self.assertTrue(all((row.data or {}).get("internal_payment_submitted") is False for row in rows))
-            self.assertTrue(all(not (row.data or {}).get("payment_applied_at") for row in rows))
+            self.assertTrue(all((row.data or {}).get("payment_requested_amount") == (row.data or {}).get("amount") for row in rows))
+            self.assertTrue(all((row.data or {}).get("internal_payment_submitted") is True for row in rows))
+            self.assertTrue(all((row.data or {}).get("payment_applied_at") for row in rows))
             events = list((await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id.in_([row.id for row in rows])))).all())
             self.assertEqual(len(events), 2)
             self.assertTrue(all(event.action == "创建案件提成" and event.to_status == "待结算" for event in events))

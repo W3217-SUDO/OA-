@@ -229,7 +229,23 @@ async def create_case_commissions(
     if not actor:
         raise HTTPException(status_code=401, detail="当前用户不存在")
     case_record = await db.get(BusinessRecord, case_id)
-    source_fee = await db.get(BusinessRecord, body.source_fee_id)
+    from app.core.case_fee_payments import lock_case_fee_rows
+    # 锁定来源费用后再查重，同一费用、同一人员、同一提成类型只能有一条有效提成。
+    source_fee = (await lock_case_fee_rows([body.source_fee_id], db))[0]
+    existing = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "finance",
+        BusinessRecord.data["source_fee_id"].as_integer() == source_fee.id,
+        BusinessRecord.status.not_in(["已撤回", "已驳回", "已作废", "已删除"]),
+    ))).all()
+    taken = {((item.data or {}).get("payee"), (item.data or {}).get("commission_type")): item for item in existing}
+    duplicates = [
+        f"{template['employee_display_name'] or template['employee_username']}{template['commission_type']}"
+        f"（{(taken[key].data or {}).get('payment_application_no') or taken[key].serial_no}）"
+        for template, _, _ in normalized
+        if (key := (template["employee_username"], template["commission_type"])) in taken
+    ]
+    if duplicates:
+        raise HTTPException(status_code=409, detail="所选费用已生成过这些提成，不能重复生成：" + "、".join(duplicates))
     source_data = source_fee.data or {}
     refund_commission = source_data.get("refund_fee") is True and source_data.get("fee_type") == "代理费"
     initial_status = "待审批" if refund_commission else "待结算"
@@ -259,8 +275,13 @@ async def create_case_commissions(
                 "source_fee_id": source_fee.id, "source_fee_no": source_fee.serial_no,
                 "source_fee_amount": preview["source_fee"]["amount"],
                 "payment_application_no": application_no,
-                "payment_requested_amount": 0,
-                "internal_payment_submitted": False,
+                # 与原系统一致：新增提成即同时登记付款申请，进入内部费用请款单和对应审核页。
+                "payment_requested_amount": amount,
+                "internal_payment_submitted": True,
+                "internal_payment_submitted_at": applied_at,
+                "payment_applied_at": applied_at,
+                "payment_applied_by": identity["username"],
+                "payment_payee": template["employee_display_name"] or template["employee_username"],
                 "payment_status": initial_status,
                 "commission_lifecycle": "case_agency_refund" if refund_commission else "case_agency_fee",
                 "is_refund": refund_commission,
