@@ -6,6 +6,7 @@
 
 from functools import lru_cache
 import hashlib
+from importlib import import_module
 import json
 from pathlib import Path
 
@@ -14,15 +15,17 @@ PACKAGES = {"court-doc-intake": "court_doc_intake"}
 
 
 def package_files(skill_id: str) -> dict[str, bytes]:
-    directory = ROOT / PACKAGES[skill_id]
-    return {path.relative_to(directory).as_posix(): path.read_bytes()
-            for path in sorted(directory.rglob("*"))
-            if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc"}
+    """技能快照内容：文档来自包内 documents.py（运行包只发 Python 文件），脚本取 scripts/ 下的源码。"""
+    module = PACKAGES[skill_id]
+    files = {name: text.encode("utf-8") for name, text in import_module(f"{__name__}.{module}.documents").DOCUMENTS.items()}
+    scripts = ROOT / module / "scripts"
+    files.update({f"scripts/{path.name}": path.read_bytes() for path in sorted(scripts.glob("*.py")) if path.name != "__init__.py"})
+    return files
 
 
 def instruction(skill_id: str) -> str:
     """SKILL.md 去掉元数据后的正文。"""
-    text = (ROOT / PACKAGES[skill_id] / "SKILL.md").read_text(encoding="utf-8-sig").replace("\r\n", "\n")
+    text = package_files(skill_id)["SKILL.md"].decode("utf-8").replace("\r\n", "\n")
     if text.startswith("---\n"):
         text = text.split("\n---\n", 1)[1]
     return text.strip()
