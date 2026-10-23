@@ -1,0 +1,202 @@
+﻿@using Dchien.Legal.BizModel.FCM.Contract
+@using Dchien.Legal.Service.BAS.Type
+
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.AP.Payment.PaymentModel
+<link type="text/css" rel="stylesheet" href="https://g.alicdn.com/aliyun/ticketsystem/1.6.17//styles/ticketSystem/detail.css" />
+<link type="text/css" rel="stylesheet" href="https://g.alicdn.com/aliyun/ticketsystem/1.6.17//styles/ticketSystem/tip.css" />
+<link type="text/css" rel="stylesheet" href="https://g.alicdn.com/aliyun/ticketsystem/1.6.17//styles/ticketSystem/common.css" />
+@*<script type="text/javascript" src="@Url.Content("~/Scripts/FAM/AP/FAM.AP.Payment.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>*@
+
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body">
+      
+            <div class="console-container ng-scope">
+                <div class="ng-scope">
+                    <div class="row ng-scope">
+                        <div class="col-sm-12">
+                            <div ui-view="myTicket">
+                                <div class="ticket-detail ng-scope">
+                                    <div class="console-title console-title-border clearfix">
+                                        <h5 class="pull-left">任务创建</h5>
+
+                                    </div>
+                                    <div class="margin-top-3"></div>
+                                    <div style="margin-top:12px" class="ng-isolate-scope">
+                                        <div class="console-step row step-bar">
+                                            <div class="step col-md-3 ng-scope step-first step-active">
+                                                <span class="">任务填写</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope  ">
+                                                <span class="">任务分派</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope ">
+                                                <span class="">任务处理</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope step-end">
+                                                <span class="">任务完成</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="info-panel" style="margin-top:12px">
+
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-2">
+                                                <span class="text-explode">
+                                                    <span>合同编号</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractId)
+                                                    @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractNo)
+                                                    @Html.HiddenFor(m => m.Customer.CustomerBasic.CustomerId)
+                                                    @Html.HiddenFor(m => m.Customer.CustomerBasic.CustomerNo)
+                                                    @Html.HiddenFor(m => m.Payment.PaymentBasic.ApplicationNo)
+                                                    @Html.HiddenFor(m => m.Payment.PaymentBasic.ApplicationDate)
+
+                                                    @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.ContractNo)
+                                                </span>
+                                            </div>
+
+                                            <div class="col-sm-3 ">
+                                                <span class="text-explode">
+                                                    <span>合同名称</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.ContractName)
+                                                </span>
+                                            </div>
+
+                                            <div class="col-sm-3 ">
+                                                <span class="text-explode">
+                                                    <span>客户名称</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Customer.CustomerBasic.CustomerName)
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-2">
+                                                <span class="text-explode">
+                                                    <span>申请编号</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span class="">
+                                                    @Html.DisplayTextFor(m => m.Payment.PaymentBasic.ApplicationNo)
+                                                </span>
+                                            </div>
+
+                                            <div class="col-sm-3">
+                                                <span class="text-explode">
+                                                    <span>销售代表</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.BusinessOwnerName)
+                                                </span>
+                                            </div>
+                                            <div class="col-sm-2">
+                                                <span class="text-explode">
+                                                    <span>申请日期</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    <span class=""> @Html.DisplayFor(m => m.Payment.PaymentBasic.ApplicationDate) </span>
+                                                </span>
+                                            </div>
+
+
+                                        </div>
+                                        <div class="row" style="margin-top:8px">
+
+                                            <div class="col-sm-7 ">
+                                                <span class="text-explode">
+                                                    <span>交&nbsp&nbsp款&nbsp人</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.TextBoxFor(m => m.Payment.PaymentBasic.PayerName, new { @class = "input_text form-control", @style = "display:inline;border:0px;width:77%", @unselectable = "on" })
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-7  ">
+                                                <span class="text-explode">
+                                                    <span>
+                                                        @Html.HiddenFor(m => m.Payment.PaymentType.PaymentTypeId)
+                                                        @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractId)
+                                                        @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractNo)
+                                                        @Html.HiddenFor(m => m.Customer.CustomerBasic.CustomerId)
+                                                        @Html.HiddenFor(m => m.Customer.CustomerBasic.CustomerNo)
+                                                        @Html.HiddenFor(m => m.Payment.PaymentBasic.ApplicationNo)
+                                                        @Html.HiddenFor(m => m.Payment.PaymentBasic.ApplicationDate)
+                                                        @Html.HiddenFor(m => m.Payment.PaymentBasic.PaymentId)
+
+                                                        
+                                                        <a id='lblPaymentType' href="javascript:void(0);" onclick="javascript:void(0);">收款单位</a>
+                                                    </span>
+                                                    <span>:</span>
+                                                </span>
+
+                                                @Html.TextBoxFor(m => m.Payment.PaymentType.OrganizationName, new { @class = "input_text form-control", @readonly = true, @style = "display:inline;border:0px;width:77%", @unselectable = "on" })
+                                            </div>
+                                        </div>
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-7 ">
+                                                <span class="text-explode">
+                                                    <span>开&nbsp&nbsp户&nbsp行</span>
+                                                    <span>:</span>
+                                                </span>
+
+                                                @Html.TextBoxFor(m => m.Payment.PaymentType.OrganizationName, new { @class = "input_text form-control", @readonly = true, @style = "display:inline;border:0px;width:77%", @unselectable = "on" })
+                                            </div>
+                                        </div>
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-7  ">
+                                                <span class="text-explode">
+                                                    <span>帐号信息</span>
+                                                    <span>:</span>
+                                                </span>
+
+                                                @Html.TextBoxFor(m => m.Payment.PaymentType.Account, new { @class = "input_text form-control", @readonly = true, @style = "display:inline;border:0px;width:77%", @unselectable = "on" })
+                                            </div>
+
+                                        </div>
+
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-7 ">
+                                                <span class="text-explode">
+                                                    <span>备&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp注</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span> @Html.TextBoxFor(m => m.Payment.PaymentBasic.Remark, new { @class = "input_text form-control", @style = "display:inline;border:0px;width:77%", @unselectable = "on" }) </span>
+                                            </div>
+                                        </div>
+
+
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="simple-form-field ng-scope ng-isolate-scope">
+                                                <div class="form-group simple-form-submit ng-scope" style="margin-bottom:0px">
+                                                    <label for="submit5" class="col-sm-12 control-label"><span class="ng-binding"></span></label>
+                                                    <div class="col-sm-2">
+                                                        <input class="btn btn-primary ng-binding" type="button" id="btnInvoiceSubmit" onclick="javascript: payment.Payment.Application.CreateUpdate(true);" value="提交">
+                                                    </div>
+                                                </div>
+
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+
+                            
+                        </div>
+                    </div>
+                </div>
+            </div>
+        
+    </div>
+</div>

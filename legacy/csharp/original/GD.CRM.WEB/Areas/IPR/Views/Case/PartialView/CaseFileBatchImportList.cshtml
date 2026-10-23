@@ -1,0 +1,48 @@
+﻿@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+
+    var actived = "active";
+
+}
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding">案件文件导入</div>
+        <div class="ng-isolate-scope"></div>
+
+        <div class="product-nav-list">
+            <ul class="top-level">
+
+                @{ actived = Request["typeId"] == "1" ? "class=active" : "";}
+
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href="/IPR/Case/CaseFileBatchImport?typeId=1" class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">专利局文件导入</div>
+                        </a>
+                    </div>
+                </li>
+
+                @{ actived = Request["typeId"] == "2" ? "class=active" : "";}
+
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href="/IPR/Case/CaseFileBatchImport?typeId=2" class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">自定义文件导入</div>
+                        </a>
+                    </div>
+                </li>
+
+            </ul>
+        </div>
+
+    </div>
+    <div class="product-nav-scene product-nav-sub-scene">
+        <div class="product-nav-title">xxx</div>
+        <div class="product-nav-list">
+            <ul></ul>
+        </div>
+    </div>
+</div>

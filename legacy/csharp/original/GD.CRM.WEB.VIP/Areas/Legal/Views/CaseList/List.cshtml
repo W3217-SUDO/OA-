@@ -1,0 +1,415 @@
+﻿@using Dchien.Legal.Service
+@using Dchien.Legal.Service.BAS.Type;
+@using Dchien.Legal.Entity.System;
+
+ 
+
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.CaseList.CaseListModel
+
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var id = string.Empty;
+    if (ViewContext.RouteData.Values.ContainsKey("id"))
+    {
+        id = ViewContext.RouteData.Values["id"].ToString().ToLower();
+    }
+}
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.List.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/CIT/Investigation/CIT.Investigation.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Resource/webuploader/webuploader.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.core.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.excheck.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.exedit.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/webuploader/webuploader.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/zTree/zTreeStyle.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<style type="text/css">
+    ul.ztree {
+        margin-top: 0px;
+        border-right: 0px solid #e1e6eb;
+        overflow-y: auto;
+        overflow-x: auto;
+    }
+
+    .ztree li {
+        line-height: 20px;
+    }
+
+        .ztree li a {
+            width: 150px;
+            height: 20px;
+            padding-top: 0px;
+        }
+
+            .ztree li a:hover {
+                text-decoration: none;
+                background-color: #E7E7E7;
+            }
+
+            .ztree li a span.button.switch {
+                visibility: hidden;
+            }
+
+    .ztree.showIcon li a span.button.switch {
+        visibility: hidden;
+    }
+
+    .ztree li a.curSelectedNode {
+        background-color: #D4D4D4;
+        border: 0;
+        height: 20px;
+    }
+
+    .ztree li span {
+        line-height: 20px;
+    }
+
+        .ztree li span.button {
+            margin-top: 2px;
+        }
+
+            .ztree li span.button.switch {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+
+            .ztree li span.button.add {
+                margin-left: 2px;
+                margin-right: -1px;
+                background-position: -144px 0;
+                vertical-align: top;
+                *vertical-align: middle;
+            }
+
+
+            /*.ztree li span.button {background-image:url("./left_menuForOutLook.png"); *background-image:url("./left_menuForOutLook.gif")}*/
+
+            .ztree li span.button.ico_docu {
+                background-position: -110px -16px;
+            }
+
+            .ztree li span.button.switch.level0 {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+
+            .ztree li span.button.switch.level1 {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+    /*.ztree li span.button.noline_open {background-position: 0 0;}
+    .ztree li span.button.noline_close {background-position: -18px 0;}
+    .ztree li span.button.noline_open.level0 {background-position: 0 -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}*/
+
+    .node_name {
+        margin-left: 10px;
+    }
+
+    div#rMenu {
+        position: absolute;
+        visibility: hidden;
+        top: 0;
+        background-color: #555;
+        text-align: left;
+        padding: 2px;
+    }
+
+        div#rMenu ul li {
+            margin: 1px 0;
+            padding: 0 5px;
+            cursor: pointer;
+            list-style: none outside none;
+            background-color: #DFDFDF;
+        }
+</style>
+
+<SCRIPT type="text/javascript">
+
+     function zTreeOnClick(event, treeId, treeNode) {
+        if (treeNode.id != null)
+        {
+            var subCasePhases = $.lsCasePhase.getSubCasePhases(treeNode.id)
+            var subCasePhaseIds = new Array();
+            var subCasePhaseNames = new Array();
+
+            $.each(subCasePhases, function (i, f) {
+                subCasePhaseIds.push(f.CasePhaseId);
+                subCasePhaseNames.push(f.CasePhaseName);
+            });
+
+            $("#SearchCondition_CasePhaseId").val(subCasePhaseIds.join(','));
+            $("#SearchCondition_CasePhaseName").val(subCasePhaseNames.join(','));
+        }
+
+        $("#SearchCondition_PageNo").val(1);
+        $("#SearchCondition_PageSize").val(10);
+        c.Cases.List();
+    };
+
+    var setting = {
+        view: {
+            showLine: false,
+            addHoverDom: addHoverDom,
+            removeHoverDom: removeHoverDom,
+            selectedMulti: false
+        },
+        edit: {
+            enable: true,
+            showRemoveBtn: false,
+            showRenameBtn: false,
+            showUploadBtn: false
+
+        },
+        data: {
+            simpleData: {
+                enable: true
+             }
+        },
+        callback: {
+            onClick: zTreeOnClick
+
+        }
+    };
+
+    var log, className = "dark";
+
+    function getTime() {
+        var now = new Date(),
+        h = now.getHours(),
+        m = now.getMinutes(),
+        s = now.getSeconds(),
+        ms = now.getMilliseconds();
+        return (h + ":" + m + ":" + s + " " + ms);
+    }
+
+    var newCount = 1;
+    function addHoverDom(treeId, treeNode) {
+        return false;
+    };
+    function removeHoverDom(treeId, treeNode) {
+    };
+    function selectAll() {
+        var zTree = $.fn.zTree.getZTreeObj("caseListTree");
+        zTree.setting.edit.editNameSelectAll = $("#selectAll").attr("checked");
+    }
+
+    $(document).ready(function () {
+
+        var data = {
+            caseTypeId: $("#SearchCondition_CaseTypeId").val()
+        };
+        $.ajaxPost(AP_ROOT + AP_PAGE_ID + "/Legal/CasePhase/GetCasePhaseList", data, function (response) {
+            if (response.IsSuccess) {
+                if (response.Data.PhaseCaseCounts.length > 0)
+                {
+                    var zNodes = [];
+                    $.each(response.Data.PhaseCaseCounts, function (i, phase) {
+                        var node = {};
+                        node.id = phase.Item1.CasePhaseId;
+                        node.pId = phase.Item1.ParentPhaseId;
+                        node.name = phase.Item1.CasePhaseName + "【" + phase.Item2 + "】";
+                        node.open = false;
+
+                        zNodes.push(node);
+                    });
+
+                    $.fn.zTree.init($("#caseListTree"), setting, zNodes);
+                    var zTree = $.fn.zTree.getZTreeObj("caseListTree");
+                    $("#selectAll").bind("click", selectAll);
+
+                }
+            }
+        });
+    });
+
+</SCRIPT>
+
+@{
+
+    var viewFramework_style = "viewFramework-product-col-1";
+
+    if (id == "1001103040" || id == "1001102040" || id == "100110140")
+    {
+        viewFramework_style = "";
+    }
+
+}
+
+<div class="viewFramework-product @viewFramework_style">
+
+    @if (id != "1001103040" && id != "1001102040" && id != "100110140")
+    {
+        <div class="viewFramework-product-navbar ng-scope">
+
+            <div class="product-nav-stage ng-scope product-nav-stage-main">
+                <div class="product-nav-scene product-nav-main-scene">
+                    <div class="product-nav-title ng-binding">案件阶段</div>
+                    <div class="ng-isolate-scope"></div>
+                    <div class="">
+                        <div><ul id="caseListTree" class="ztree"></ul></div>
+                    </div>
+                </div>
+                <div class="product-nav-scene product-nav-sub-scene">
+                    <div class="product-nav-title">xxx</div>
+                    <div class="product-nav-list">
+                        <ul></ul>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+        <div class="viewFramework-product-navbar-collapse ng-scope">
+            <div class="product-navbar-collapse-inner">
+                <div class="product-navbar-collapse-bg"></div>
+                <div class="product-navbar-collapse">
+                    <span class="icon-collapse-left"></span>
+                    <span class="icon-collapse-right"></span>
+                </div>
+            </div>
+        </div>
+    }
+
+    <div class="viewFramework-product-body" name="dropbox" id="dropbox" style="overflow-y:hidden">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>案件列表</h5>
+                            </div>
+
+                            <div class="pull-right">
+                                <a href="javascript:void(0);" class="btn advancedBtnSearch" onclick="javascript: $('.advancedSearch').show(); $('.commonBtnSearch').show(); $('.advancedBtnSearch').hide(); c.ResetSize();">
+                                    高级搜索
+                                </a>
+                                <a href="javascript:void(0);" style="display:none" class="btn commonBtnSearch" onclick="javascript: $('.advancedSearch').hide(); $('.commonBtnSearch').hide(); $('.advancedBtnSearch').show(); c.ResetSize();">
+                                    普通搜索
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="pull-left  col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm" action="@Url.Content("~/Legal/CaseList/List")">
+                                @Html.HiddenFor(m => m.SearchCondition.PageId, new { name = "PageId" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageName, new { name = "PageName" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.Sorting)
+                                @Html.HiddenFor(m => m.SearchCondition.CaseTypeId)
+
+                                @{
+                                    if (Model.SearchCondition.CaseTypeId == ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_110).ToString())
+                                    {
+                                        Html.RenderPartial("~/Areas/Legal/Views/CaseList/PartialView/CivilDisputeCase/SearchCondition.cshtml", Model);
+                                    }
+                                    else if (Model.SearchCondition.CaseTypeId == ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_130).ToString())
+                                    {
+                                        Html.RenderPartial("~/Areas/Legal/Views/CaseList/PartialView/AdministrativeCase/SearchCondition.cshtml", Model);
+                                    }
+                                    else if (Model.SearchCondition.CaseTypeId == ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_150).ToString())
+                                    {
+                                        Html.RenderPartial("~/Areas/Legal/Views/CaseList/PartialView/ArbitrationCase/SearchCondition.cshtml", Model);
+                                    }
+                                    else if (Model.SearchCondition.CaseTypeId == ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_120).ToString())
+                                    {
+                                        Html.RenderPartial("~/Areas/Legal/Views/CaseList/PartialView/CriminalCase/SearchCondition.cshtml", Model);
+                                    }
+                                    else if (Model.SearchCondition.CaseTypeId == ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_140).ToString())
+                                    {
+                                        Html.RenderPartial("~/Areas/Legal/Views/CaseList/PartialView/ConsultantCase/SearchCondition.cshtml", Model);
+                                    }
+                                }
+
+                                <div class='divcaseconditioncasephases' style='overflow-y: scroll; '>
+                                    <div id="divCasePhaseCheckBoxList" style="display:none" class='i_common_box'>
+                                        <div class='i_common_hd'>
+                                            从下列案件阶段中选择
+                                            <input type='hidden' id='hidCasePhaseId'>
+                                            <input type='hidden' id='hidCasePhaseName'>
+                                        </div>
+                                        <div class='i_common_bd'>
+                                            <ul id='casePhaseTree' class='ztree' style="max-height:600px"></ul>
+                                            <div class="pull-right">
+                                                <input class='btn btn-primary' type='button' id='btnCasePhaseSelected' value='确定' />
+                                                <input class='btn btn-default' type='button' value='取消' />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                @*<div class='divcaseconditioncasephases'></div>*@
+                                <div class='divcaseconditioncasetypes'></div>
+                                <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                                    <div class="i_common_wrap">
+                                        <div class="i_common_list"></div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="">
+                            <div class="gridSection">
+                                @{
+                                    if (Model.SearchCondition.CaseTypeId == ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_110).ToString())
+                                    {
+                                        Html.RenderPartial("~/Areas/Legal/Views/CaseList/PartialView/CivilDisputeCase/List.cshtml", Model);
+                                    }
+                                    else if (Model.SearchCondition.CaseTypeId == ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_130).ToString())
+                                    {
+                                        Html.RenderPartial("~/Areas/Legal/Views/CaseList/PartialView/AdministrativeCase/List.cshtml", Model);
+                                    }
+                                    else if (Model.SearchCondition.CaseTypeId == ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_150).ToString())
+                                    {
+                                        Html.RenderPartial("~/Areas/Legal/Views/CaseList/PartialView/ArbitrationCase/List.cshtml", Model);
+                                    }
+                                    else if (Model.SearchCondition.CaseTypeId == ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_120).ToString())
+                                    {
+                                        Html.RenderPartial("~/Areas/Legal/Views/CaseList/PartialView/CriminalCase/List.cshtml", Model);
+                                    }
+                                    else if (Model.SearchCondition.CaseTypeId == ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_140).ToString())
+                                    {
+                                        Html.RenderPartial("~/Areas/Legal/Views/CaseList/PartialView/ConsultantCase/List.cshtml", Model);
+                                    }
+                                }
+
+                            </div>
+                            <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center  ">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                            <span class="">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="sidebox" class="sidebox active" style="overflow-y: auto; width: 30%; min-width: 700px;display:none">
+                        <div class="sidebox-content"></div>
+                    </div>
+
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>

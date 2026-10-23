@@ -4,6 +4,7 @@
 
 - 线上地址：<https://huzhilawfirm.com>
 - 源码仓库：<https://github.com/W3217-SUDO/OA->（`dev` 测试集成，`main` 已上线版本）
+- 旧系统 C# 源码：[脱敏只读归档](legacy/csharp/README.md)（含 GD 两个项目与 SH 源码片段，不参与新系统构建或部署）。
 
 ## 技术栈
 

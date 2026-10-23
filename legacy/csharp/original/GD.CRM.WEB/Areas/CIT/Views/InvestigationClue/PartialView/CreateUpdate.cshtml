@@ -1,0 +1,185 @@
+﻿@model Dchien.Legal.Web.Areas.CIT.ViewModels.InvestigationClue.InvestigationClueModel
+
+<style>
+    .bootstrap-tagsinput {
+        width: 100%;
+        border-radius: 0px;
+        padding: 2px 4px;
+    }
+
+        .bootstrap-tagsinput input {
+            padding: 0px;
+            width: 50px;
+        }
+
+    .btn-expense-file-upload input {
+        position: absolute;
+        top: 0px;
+        right: 0px;
+        left: 0px;
+        bottom: 0px;
+        opacity: 0;
+        filter: alpha(opacity=0);
+        overflow: hidden;
+    }
+</style>
+
+<div class="modal fade" id="investigationClueModal">
+    <div class="modal-dialog" style="width:660px">
+        <div class="modal-content">
+            <div class="ng-scope">
+                @using (Html.BeginForm("CreateUpdate", "InvestigationClue", FormMethod.Post, new { id = "investigationClue", enctype = "multipart/form-data", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+                    <div class="modal-header">
+                        <button type="button" class="close" onclick="javascript: $('#investigationClueModal').modal('hide');">×</button>
+                        <h5 class="modal-title ng-binding">线索信息</h5>
+                    </div>
+                    <div class="modal-body">
+                        <div class="">
+                            <div class="form-horizontal margin-top-3 ">
+                                <div class="form-group">
+                                    <label class="col-sm-3 control-label">
+                                        <span class="text-danger">*</span>
+                                        <span>调查时间：</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        <div class="bootstrap-tagsinput">
+                                            @Html.HiddenFor(m => m.InvestigationClue.Basic.ClueNo)
+                                            @Html.HiddenFor(m => m.InvestigationTask.Basic.TaskNo)
+                                            @Html.HiddenFor(m => m.Investigation.Basic.InvestigationNo )
+                                            @Html.TextBoxFor(m => m.InvestigationClue.Basic.InvestigateTime, "{0:yyyy-MM-dd}",
+                                             new
+                                             {
+                                                 placeholder = "调查时间",
+                                                 style = "height:24px;width:90%",
+                                                 autocomplete = "off",
+                                                 @onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})"
+                                             })
+
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="col-sm-3 control-label">
+                                        <span class="text-danger">*</span>
+                                        <span>被调查人：</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        <div class="bootstrap-tagsinput">
+                                            @Html.TextBoxFor(m => m.InvestigationClue.Basic.Indictee,
+                                            new
+                                            {
+                                                placeholder = "被调查人",
+                                                style = "height:24px;width:90%",
+                                                autocomplete = "off"
+                                            })
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="col-sm-3 control-label">
+                                        <span class="text-danger">*</span>
+                                        <span>侵权地址：</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        <div class="bootstrap-tagsinput">
+                                            @Html.TextBoxFor(m => m.InvestigationClue.Basic.InfringementAddress,
+                                            new
+                                            {
+                                                placeholder = "侵权地址",
+                                                style = "height:24px;width:90%",
+                                                autocomplete = "off"
+                                            })
+                                        </div>
+                                    </div>
+                                </div>
+
+
+                                <div class="form-group">
+                                    <label class="col-sm-3 control-label">
+                                        <span class="text-danger">*</span>
+                                        <span>店铺招牌：</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        <div class="bootstrap-tagsinput">
+                                            @Html.TextBoxFor(m => m.InvestigationClue.Basic.Signboard,
+                                            new
+                                            {
+                                                placeholder = "店铺招牌",
+                                                style = "height:24px;width:90%",
+                                                autocomplete = "off"
+                                            })
+                                        </div>
+                                    </div>
+                                </div>
+
+
+                                <div class="form-group">
+                                    <label class="col-sm-3 control-label">
+                                        <span class="text-danger">*</span>
+                                        <span>确认主体方式：</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        <div class="bootstrap-tagsinput">
+                                            @Html.TextBoxFor(m => m.InvestigationClue.Basic.SubjectVerificationType,
+                                            new
+                                            {
+                                                placeholder = "确认主体方式",
+                                                style = "height:24px;width:90%",
+                                                autocomplete = "off"
+                                            })
+
+                                        </div>
+                                        <div class="divCaseDetermineTheway"></div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="col-sm-3 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">线索文件：</span>
+                                    </label>
+                                    <div class="col-sm-6">
+
+                                        <div class="form-control-wrap">
+                                            <input id="txtFilePath" placeholder="选择一个文件" disabled="disabled" class="form-control" style="height:30px;display:inline-block">
+                                            <div class="btn btn-default btn-xs btn-expense-file-upload" style="height: 0px; line-height: 0px; padding: 0px;border:0px">
+                                                <input type="file" multiple="multiple" value="" id="flFile" name="flFile" style="height: 30px; width: 250px; margin-left: 10px;">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="col-sm-3 control-label">
+                                        <span class="text-danger">*</span>
+                                        <span>备注：</span>
+                                    </label>
+                                    <div class="col-sm-6">
+
+                                        @Html.TextAreaFor(m => m.InvestigationClue.Basic.Remark,
+            new
+            {
+                @class = "form-control inline-block ",
+                placeholder = "备注",
+                rows = "3",
+                style = "width:100%"
+            })
+
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <input class="btn btn-primary ng-binding" type="button" onclick="javascript: investigation.Investigations.Investigation.Clues.Clue.CreateUpdate(false);" value="确定" />
+                        <input class="btn btn-default ng-binding" type="button" onclick="javascript: $('#investigationClueModal').modal('hide');" value="取消" />
+
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,348 @@
+﻿@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.AR.ReceivedPayment.ListModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/index.css")" />
+
+<script src="@Url.Content("~/Scripts/FAM/AR/FAM.AR.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/FAM/AR/FAM.AR.Payment.List.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<div class="viewFramework-product">
+    <div class="viewFramework-product-body" style="overflow-y:hidden">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12"style="margin-top:1px">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>回款查询</h5>
+                            </div>
+                        </div>
+                        <div class="pull-left   col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm">
+       
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageId)
+                                @Html.HiddenFor(m => m.SearchCondition.Sorting)
+
+
+                                <table class="search_table" style="width: 600px">
+                                    <colgroup>
+                                        <col style="width: 60px;" />
+                                        <col style="width: 200px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col>
+                                    </colgroup>
+                                    <tr>
+                                        <th>
+                                            回款日期：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CashedDateStart, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", @style = "width:80px", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.CashedDateEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", @style = "width:80px", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                        </td>
+                                        <th>
+                                            银行单号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.InvoiceNo, new { @class = "form-control", @style = "" })
+                                        </td>
+                                        <th>
+                                            客户名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control", @style = "" })
+                                        </td>
+ 
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            回款单位：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.Payer, new { @class = "form-control", @style = "width:87%" })
+                                        </td>
+                                        <th>
+                                            回款方式：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.PaymentModeName, new { @class = "form-control", @style = "" })
+                                        </td>
+
+                                        <th>
+                                            合同编号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.ContractNo, new { @class = "form-control", @style = "" })
+                                        </td>
+
+                                    </tr>
+                                    <tr>
+                                        <th style="text-align:left">
+                                           
+                                        </th>
+                                        <td style="text-align:left">
+                                            @if (Model.SearchCondition.PageId.ToString() == Dchien.Legal.Entity.System.PageId.PageId_5001001002 
+                                                || Model.SearchCondition.PageId.ToString() == Dchien.Legal.Entity.System.PageId.PageId_50001001002)
+                                            {
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnPaymentListSearch">
+                                                <span>查询</span>
+                                            </a>
+                                            }
+                                            else if (Model.SearchCondition.PageId.ToString() == Dchien.Legal.Entity.System.PageId.PageId_5001001003 
+                                                  || Model.SearchCondition.PageId.ToString() == Dchien.Legal.Entity.System.PageId.PageId_50001001003)
+                                            {
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnPaymentPublicListSearch">
+                                                <span>查询</span>
+                                            </a>
+                                            }
+
+                                            else if (Model.SearchCondition.PageId.ToString() == Dchien.Legal.Entity.System.PageId.PageId_5001001004
+                                                 || Model.SearchCondition.PageId.ToString() == Dchien.Legal.Entity.System.PageId.PageId_50001001004)
+                                            {
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnPaymentApplyListSearch">
+                                                <span>查询</span>
+                                            </a>
+                                            }
+
+                                            else if (Model.SearchCondition.PageId.ToString() == Dchien.Legal.Entity.System.PageId.PageId_5001001005
+                                                 || Model.SearchCondition.PageId.ToString() == Dchien.Legal.Entity.System.PageId.PageId_50001001005)
+                                            {
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnPaymentAppliedListSearch">
+                                                <span>查询</span>
+                                            </a>
+                                            }
+                                        </td>
+                                    </tr>
+                                </table>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="">
+                            <table class="aps-table aps-widget aps-ani-transition ">
+                                <colgroup>
+                                    <col style="width: 3%">
+                                    <col style="width: 12%">
+                                    <col style="width: 6%">
+                                    <col style="width: 12%">
+                                    <col style="width: 8%">
+                                    <col style="width: 6%">
+                                    <col style="width: 6%">
+                                    <col style="width: 6%">
+                                    <col style="width: 6%">
+                                    <col style="width: 6%">
+                                    <col style="width: 6%">
+                                    <col style="width: 8%">
+                                    <col style="width: 25%">
+                                    <col style="width:17px">
+                                </colgroup>
+                                <thead>
+                                    <tr>
+                                        <td><input type="checkbox" id="chkPaymentAll" name="chkPaymentAll"></td>
+                                        <th style="text-align: center">客户名称</th>
+                                        <th style="text-align: center">客户管理人</th>
+                                        <th style="text-align: center">
+                                            回款单位
+                                            <span>
+                                                <span class="aps-state-hidden"></span>
+                                                <span data-field="PayerName" class="aps-widget aps-ani-transition aps-sort  aps-state-visible">
+                                                    <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                                                    <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                                                       style="top:9px">
+                                                    </i>
+                                                </span>
+                                            </span>
+                                        </th>
+                                        <th style="text-align: center">
+                                            回款日期
+                                            <span>
+                                                <span class="aps-state-hidden"></span>
+                                                <span data-field="CashedDate" class="aps-widget aps-ani-transition aps-sort  aps-state-visible">
+                                                    <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                                                    <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                                                       style="top:9px">
+                                                    </i>
+                                                </span>
+                                            </span>
+                                        </th>
+                                        <th style="text-align: center">
+                                            回款金额
+                                            <span>
+                                                <span class="aps-state-hidden"></span>
+                                                <span data-field="CashedAmount" class="aps-widget aps-ani-transition aps-sort  aps-state-visible">
+                                                    <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                                                    <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                                                       style="top:9px">
+                                                    </i>
+                                                </span>
+                                            </span>
+                                        </th>
+                                        <th style="text-align: center">
+                                            已分金额
+                                            <span>
+                                                <span class="aps-state-hidden"></span>
+                                                <span data-field="AppliedAmount" class="aps-widget aps-ani-transition aps-sort  aps-state-visible">
+                                                    <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                                                    <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                                                       style="top:9px">
+                                                    </i>
+                                                </span>
+                                            </span>
+                                        </th>
+                                        <th style="text-align: center">
+                                            未分金额
+                                            <span>
+                                                <span class="aps-state-hidden"></span>
+                                                <span data-field="UnAppliedAmount" class="aps-widget aps-ani-transition aps-sort  aps-state-visible">
+                                                    <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                                                    <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                                                       style="top:9px">
+                                                    </i>
+                                                </span>
+                                            </span>
+                                        </th>
+                                        <th style="text-align: center">已分<br>官费</th>
+                                        <th style="text-align: center">已分<br>代理费</th>
+                                        <th style="text-align: center">已分<br>其他费用</th>
+                                        <th style="text-align: center">回款方式</th>
+                                        <th style="text-align: center">备注</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                            </table>
+
+                            <div id="divPaymentList" style="border-top: 0;margin-top: -1px; overflow-x:hidden; overflow-y: scroll;">
+                                <table id="tblPaymentList" class="aps-table aps-widget aps-ani-transition ">
+                                    <colgroup>
+                                        <col style="width: 3%">
+                                        <col style="width: 12%">
+                                        <col style="width: 6%">
+                                        <col style="width: 12%">
+                                        <col style="width: 8%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 8%">
+                                        <col style="width: 25%">
+                                    </colgroup>
+
+                                    <tbody>
+                                        <tr style="display: none">
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: left;white-space: nowrap"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: left;white-space: nowrap"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: right"></td>
+                                            <td style="text-align: right"></td>
+                                            <td style="text-align: right"></td>
+                                            <td style="text-align: right"></td>
+                                            <td style="text-align: right"></td>
+                                            <td style="text-align: right"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                        </tr>
+                                        <tr style="display: none">
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: left;white-space: nowrap"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: left;white-space: nowrap"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: right"></td>
+                                            <td style="text-align: right"></td>
+                                            <td style="text-align: right"></td>
+                                            <td style="text-align: right"></td>
+                                            <td style="text-align: right"></td>
+                                            <td style="text-align: right"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                        </tr>
+                                    </tbody>
+                                    <tfoot class="" style="display: none">
+
+                                        <tr>
+                                            <td><input type="checkbox" id="chkPaymentAll" name="chkPaymentAll"></td>
+
+                                            <td colspan="12">
+                                                <div class="pull-left">
+
+                                                    @if (Model.SearchCondition.PageId == PageId.PageId_5001001002 || Model.SearchCondition.PageId == PageId.PageId_50001001002)
+                                                    {
+                                                        <input type="button" id="btnPaymentEdit" class="btn btn-default" style="height:32px" value="编辑" />
+                                                        <input type="button" id="btnPaymentDelete" class="btn btn-default" style="height:32px" value="删除" />
+                                                    }
+                                                    else if (Model.SearchCondition.PageId == PageId.PageId_5001001003 || Model.SearchCondition.PageId == PageId.PageId_50001001003)
+                                                    {
+                                                        <input type="button" id="btnPaymentListPush" class="btn btn-default" style="height:32px" value="正常领取" />
+                                                        <input type="button" id="btnPaymentListMatching" class="btn btn-default" style="height:32px" value="退费领取" />
+                                                    }
+                                                    else if (Model.SearchCondition.PageId == PageId.PageId_5001001004 || Model.SearchCondition.PageId == PageId.PageId_50001001004)
+                                                    {
+                                                        <input type="button" id="btnPaymentListApply" class="btn btn-default" style="height:32px" value="分配" />
+                                                    }
+                                                    else if (Model.SearchCondition.PageId == PageId.PageId_5001001005 || Model.SearchCondition.PageId == PageId.PageId_50001001005)
+                                                    {
+                                                        <input type="button" id="btnPaymentListApplied" class="btn btn-default" style="height:32px" value="已分配记录" />
+                                                    }
+
+                                                </div>
+                                                <div class="">
+                                                    <div class="pull-right page-box paymentList">
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                            <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center  ">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                            <span class="">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+
+                    <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+
+    </div>
+</div>
+
+
+
+

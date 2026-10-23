@@ -1,0 +1,203 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity
+@using Dchien.Legal.Entity.IPR.Case
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.IPR.Case
+
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.AR.CaseFeeModel
+
+@{
+    var displayYearly = (Model.DefaultCaseFee.CaseFeeTypeId == (int)CaseFeeType.FeeType3) ? "" : "display:none";
+    var staffs = StaffService.Instance.GetStaffList();
+}
+
+<script type="text/javascript"></script>
+
+<div class="modal fade" id="caseFeeInformModal">
+    <div class="modal-dialog" style="width:50%">
+        <div class="modal-content">
+            @using (Html.BeginForm("CaseFeeInform", "ARCaseFee", FormMethod.Post, new { id = "caseFeeInform", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+            {
+                @Html.HiddenFor(m => m.CaseId)
+                @Html.HiddenFor(m => m.CaseTypeId)
+                @Html.HiddenFor(m => m.CaseNo)
+
+                <div class="modal-header">
+                    <button type="button" class="close" id="btnFeeInformClose">×</button>
+                    <h5 class="modal-title ng-binding">新增应收账款</h5>
+                </div>
+
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="col-sm-2 control-label" for="CaseOfficeFeeTypeId">
+                            <span class="text-danger ng-binding">*</span>
+                            <span class="ng-binding">费用类型:</span>
+                        </label>
+                        <div class="col-sm-4">
+                            @Html.HiddenFor(m => m.DefaultCaseFee.CaseFeeTypeId)
+                            @Html.TextBoxFor(m => m.DefaultCaseFee.CaseFeeTypeName, new { @class = "form-control", @readonly = true })
+                        </div>
+
+                    </div>
+
+                    <div class="form-group">
+
+                        <div class="yearly" style="@displayYearly">
+                            <label class="col-sm-2 control-label">
+                                <span class="text-danger ng-binding">*</span>
+                                <span class="ng-binding">年限:</span>
+                            </label>
+                            <div class="col-sm-4">
+                                @*@Html.TextBoxFor(m => m.DefaultCaseFee.Yearly, new
+                                    {
+                                        @class = "form-control",
+                                        @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')",
+                                        @onafterpaste = "this.value=this.value.replace(/\\D/g,'')"
+                                    })*@
+
+                                <select class="form-control" id="Case_CaseFeeInformYearly" name="Case.CaseFeeInformYearly" unselectable="on">
+                                    @{
+                                        if (Model.CaseRequestDate.HasValue)
+                                        {
+                                            for (var i = 1; i <= 20; i++)
+                                            {
+                                                <option value="@i" annualfrom="@Model.CaseRequestDate.Value.AddYears(i - 1).ToString("yyyy-MM-dd")" annualend="@Model.CaseRequestDate.Value.AddYears(@i).AddDays(-1).ToString("yyyy-MM-dd")">第 @i 年度 @Model.CaseRequestDate.Value.AddYears(i - 1).ToString("yyyy-MM-dd") ~ @Model.CaseRequestDate.Value.AddYears(@i).AddDays(-1).ToString("yyyy-MM-dd")</option>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <option value="">申请日为空，请联系管理员.</option>
+                                        }
+                                    }
+                                </select>
+
+                            </div>
+                            
+                            <label class="col-sm-2 control-label">
+                                <span class="text-danger ng-binding">*</span>
+                                <span class="ng-binding">是否首年:</span>
+                            </label>
+                            <div class="col-sm-2" style='padding-top: 7px'>
+                                @Html.CheckBoxFor(m => Model.DefaultCaseFee.IsFirstYear, new { @class = "form-control", style = "height: 20px;width: 20px" })
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="col-sm-12">
+                            <div class="gridSection">
+                                <table id="tblCaseFeeItemList" class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 15%">
+                                                费用类型
+                                            </th>
+
+                                            <th style="width: 15%">
+                                                收费金额(RMB)
+                                            </th>
+
+                                            <th style="width: 10%">
+                                                客户自缴
+                                            </th>
+
+                                            <th style="width: 5%">
+                                                操作
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @if (Model.CaseFeeList != null && Model.CaseFeeList.Any())
+                                        {
+                                            var i = 0;
+                                            foreach (var item in Model.CaseFeeList)
+                                            {
+                                                var id = "CaseFee_CaseFeeTypeName" + i;
+                                                var hid = "hidCaseFee_CaseFeeTypeId" + i;
+                                                var feeTypeName = "(" + item.CaseFeeTypeId + ")" + item.CaseFeeTypeName;
+
+                                                <tr>
+                                                    @if (i == 0)
+                                                    {
+                                                        <td style="text-align: center">
+                                                            <span class='spanCaseFeeTypeName'>@feeTypeName</span>
+                                                        </td>
+                                                    }
+                                                    else
+                                                    {
+                                                        <td style="text-align: center">
+                                                            <input type="hidden" value="@item.CaseFeeTypeId" id="@hid">
+                                                            <input class="CaseFee_CaseFeeTypeName form-control" style="text-align:center;width:100px" id=@id readonly="" type="text" value=@feeTypeName>
+                                                        </td>
+                                                    }
+
+                                                    <td>
+                                                        @Html.TextBoxFor(m => item.Amount, new
+                                                                {
+                                                                    @class = "form-control",
+                                                                    @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')",
+                                                                    @onafterpaste = "this.value=this.value.replace(/\\D/g,'')"
+                                                                })
+                                                    </td>
+ 
+                                                    
+                                                    <td>
+                                                        @Html.CheckBoxFor(m => item.PaymentByCustomer, new { @style = "height: 20px;width: 20px" })
+                                                    </td>
+
+                                                    <td>
+                                                        <input type="button" value="重写" class="btn_clear" />
+                                                        <input type="button" disabled value="移除" class="btn_remove" />
+                                                    </td>
+                                                </tr>
+
+                                                    i++;
+                                            }
+                                        }
+
+                                    </tbody>
+
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="divCaseFeeTypeList"></div>
+
+                    @*<div style="display: none;" id="divUsers">
+                            @Html.Partial("~/Views/IPRBase/UserList.cshtml")
+                        </div>*@
+
+                    <div style="display: none;" id="divUsers">
+                        <div class="i_common_box" style='width:300px'>
+                            <div class="i_common_hd">
+                                从下列用户中选择
+                                <input type="hidden" id="hidUserId">
+                                <input type="hidden" id="hidUserName">
+                            </div>
+                            <div class="i_common_bd">
+                                <ul class="i_common_ul layoutfix">
+                                    @if (staffs != null && staffs.Count > 0)
+                                    {
+                                        foreach (var staff in staffs.FindAll(x => x.StaffBasic.DepartmentId == 5))
+                                        {
+                                            <li style='width:100px'><a href="javascript:void(0)" name="@staff.StaffBasic.StaffName">@staff.StaffBasic.StaffChName</a></li>
+                                        }
+                                    }
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+                <div class="modal-footer">
+                    @*<input class="btn btn-primary ng-binding" type="button" id="btnFeeInformConfirmItemLinked" value="关联收费明细" />*@
+                    <input class="btn btn-primary ng-binding" type="button" id="btnFeeInformConfirmItemAdd" value="新增收费明细" />
+                    <input class="btn btn-primary ng-binding" type="button" id="btnFeeInformConfirm" value="保存" />
+                    <input class="btn btn-default ng-binding" type="button" id="btnFeeInformCancel" value="取消" />
+                </div>
+            }
+        </div>
+    </div><!-- /.modal -->
+</div>
+

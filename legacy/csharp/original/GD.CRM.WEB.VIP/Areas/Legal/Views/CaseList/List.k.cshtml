@@ -1,0 +1,138 @@
+﻿@using Dchien.Legal.Service
+@using Dchien.Legal.Service.BAS.Type;
+@using Dchien.Legal.Entity.System;
+
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.CaseList.CaseListModel
+
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var id = string.Empty;
+    if (ViewContext.RouteData.Values.ContainsKey("id"))
+    {
+        id = ViewContext.RouteData.Values["id"].ToString().ToLower();
+    }
+    var actived = "active";
+}
+
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.List.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/zTree/zTreeStyle.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.core.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.excheck.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.exedit.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<div class="viewFramework-product ">
+
+    <div class="viewFramework-product-body" style="overflow-y:hidden">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>案件列表</h5>
+                            </div>
+                        </div>
+                        <div class="pull-left margin-top-1 col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm" action="@Url.Content("~/Legal/CaseList/List")">
+                                @Html.HiddenFor(m => m.SearchCondition.PageId, new { name = "PageId" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageName, new { name = "PageName" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.Sorting)
+                                @Html.HiddenFor(m => m.SearchCondition.CaseTypeId)
+
+                                @{
+                                    if (Model.SearchCondition.CaseTypeId == ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_110).ToString())
+                                    {
+                                        Html.RenderPartial("~/Areas/Legal/Views/CaseList/PartialView/CivilDisputeCase/SearchCondition.cshtml", Model);
+                                    }
+                                    else if (Model.SearchCondition.CaseTypeId == ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_130).ToString())
+                                    {
+                                        Html.RenderPartial("~/Areas/Legal/Views/CaseList/PartialView/AdministrativeCase/SearchCondition.cshtml", Model);
+                                    }
+                                    else if (Model.SearchCondition.CaseTypeId == ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_150).ToString())
+                                    {
+                                        Html.RenderPartial("~/Areas/Legal/Views/CaseList/PartialView/ArbitrationCase/SearchCondition.cshtml", Model);
+                                    }
+                                    else if (Model.SearchCondition.CaseTypeId == ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_120).ToString())
+                                    {
+                                        Html.RenderPartial("~/Areas/Legal/Views/CaseList/PartialView/CriminalCase/SearchCondition.cshtml", Model);
+                                    }
+                                    else if (Model.SearchCondition.CaseTypeId == ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_140).ToString())
+                                    {
+                                        Html.RenderPartial("~/Areas/Legal/Views/CaseList/PartialView/ConsultantCase/SearchCondition.cshtml", Model);
+                                    }
+                                }
+
+                                <div class='divcaseconditioncasephases'></div>
+                                <div class='divcaseconditioncasetypes'></div>
+                                <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                                    <div class="i_common_wrap">
+                                        <div class="i_common_list"></div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="">
+                            <div class="gridSection">
+                                @{
+                                    if (Model.SearchCondition.CaseTypeId == ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_110).ToString())
+                                    {
+                                        Html.RenderPartial("~/Areas/Legal/Views/CaseList/PartialView/CivilDisputeCase/List.cshtml", Model);
+                                    }
+                                    else if (Model.SearchCondition.CaseTypeId == ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_130).ToString())
+                                    {
+                                        Html.RenderPartial("~/Areas/Legal/Views/CaseList/PartialView/AdministrativeCase/List.cshtml", Model);
+                                    }
+                                    else if (Model.SearchCondition.CaseTypeId == ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_150).ToString())
+                                    {
+                                        Html.RenderPartial("~/Areas/Legal/Views/CaseList/PartialView/ArbitrationCase/List.cshtml", Model);
+                                    }
+                                    else if (Model.SearchCondition.CaseTypeId == ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_120).ToString())
+                                    {
+                                        Html.RenderPartial("~/Areas/Legal/Views/CaseList/PartialView/CriminalCase/List.cshtml", Model);
+                                    }
+                                    else if (Model.SearchCondition.CaseTypeId == ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_140).ToString())
+                                    {
+                                        Html.RenderPartial("~/Areas/Legal/Views/CaseList/PartialView/ConsultantCase/List.cshtml", Model);
+                                    }
+                                }
+
+                              </div>
+                            <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center  ">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                            <span class="">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="slide-panel-container show-panel">
+
+                    </div>
+
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+
+    </div>
+</div>

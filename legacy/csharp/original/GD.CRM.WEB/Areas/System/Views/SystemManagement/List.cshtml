@@ -1,0 +1,61 @@
+﻿@using Dchien.Legal.Entity.System 
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+
+    var actived = "active";
+
+}
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding">系统管理</div>
+        <div class="ng-isolate-scope"></div>
+
+        <div class="product-nav-list">
+            <ul class="top-level">
+                
+                @{ actived = action == "CacheList".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+
+                        <a href=@Url.Content(string.Format("~/{0}/System/SystemManagement/CacheList", PageId.PageId_7002001)) class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding"> 缓存管理</div>
+                        </a>
+                    </div>
+                </li>
+
+                @{ actived = action == "MenuList".ToLower() ?  "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                       
+                            <a href=@Url.Content(string.Format("~/{0}/System/SystemManagement/MenuList", PageId.PageId_7002002)) class="ng-scope">
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">菜单管理</div>
+                            </a>
+                    </div>
+                </li>
+
+
+                @{ actived = action == "ConfigAppSettingList".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+
+                        <a href=@Url.Content(string.Format("~/{0}/System/SystemManagement/ConfigAppSettingList", PageId.PageId_7002003)) class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">系统配置</div>
+                        </a>
+                    </div>
+                </li>
+
+            </ul>
+        </div>
+
+    </div>
+    <div class="product-nav-scene product-nav-sub-scene">
+        <div class="product-nav-title">xxx</div>
+        <div class="product-nav-list">
+            <ul></ul>
+        </div>
+    </div>
+</div>

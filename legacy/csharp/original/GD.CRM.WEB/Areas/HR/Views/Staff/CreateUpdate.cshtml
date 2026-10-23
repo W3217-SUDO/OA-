@@ -1,0 +1,456 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.HR.Staff
+@model Dchien.Legal.Web.Areas.HR.ViewModels.Staff.CreateUpdateModel
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/HR/Staff/HR.Staff.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/HR/Staff/HR.Staff.Create.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript">
+
+</script>
+<style>
+    .input_table th {
+        padding: 2px;
+        font-weight: normal;
+        text-align: right;
+    }
+
+    .input_table td {
+        padding: 0px;
+        text-align: left;
+    }
+
+    .form-control {
+        border: 0;
+    }
+</style>
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.index.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/case.createupdate.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/messageCenter.console.css")" />
+<div class="viewFramework-product viewFramework-product-col-1" style='background: #eaedf1;'>
+    <div class="viewFramework-product-navbar ng-scope">
+        <div class="product-nav-stage ng-scope product-nav-stage-main">
+            <div class="product-nav-scene product-nav-main-scene">
+                <div class="product-nav-title ng-binding">员工信息</div>
+                <div class="ng-isolate-scope"></div>
+                <div class="product-nav-list">
+                    <ul class="top-level">
+                        <li class='active'>
+                            <div class="ng-isolate-scope">
+                                <a href="javascript:void(0);" class="ng-scope">
+                                    <div class="nav-icon"></div>
+                                    <div class="nav-title ng-binding">@(string.IsNullOrEmpty(Request["staffId"]) ? "员工新建" : "员工修改")</div>
+                                </a>
+                            </div>
+                        </li>
+                        <li>
+                            <div class="ng-isolate-scope">
+                                
+                                    <a href=@Url.Content(string.Format("~/{0}/HR/Staff/List", PageId.PageId_8001002)) class="ng-scope" style="width:220px">
+                                        <div class="nav-icon"></div>
+                                        <div class="nav-title ng-binding">员工列表</div>
+                                        <div class="nav-extend">
+                                            <span class="ng-isolate-scope">
+                                                <span class="deadline-leftdays-normal ng-scope ng-binding"></span>
+                                            </span>
+                                        </div>
+                                    </a>
+                            </div>
+                        </li>
+ 
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+    <div class="viewFramework-product-body">
+        <div class="ng-scope">
+            <div class="ng-scope">
+                <div class="case-section-main clearfix" style="padding:0px">
+                    <!-- 左侧 -->
+                    <div class="case-section-left" style="padding-right: 0%;">
+                        <div class="case-section-wrap">
+                            <div class="case-section-product">
+                                <!-- product section -->
+                                <div class="product-container">
+                                    <div class="product-section">
+                                        <div class="section-content clearfix" style="padding: 0px; padding-left: 10px; padding-right: 10px; ">
+                                            <form id="staffForm">
+                                                <div class="ng-scope">
+                                                    @Html.HiddenFor(m => m.Staff.StaffBasic.StaffId)
+                                                    @Html.HiddenFor(m => m.Staff.StaffBasic.StaffGuid)
+
+                                                    <div class="table-viewer-header clearfix" style="margin-top: 0px">
+                                                        <span class="table-viewer-topbar-title">
+                                                            基本信息
+                                                        </span>
+                                                        <div class="pull-right table-viewer-topbar-content"></div>
+                                                        <span class="toggle-drop-down-icon ng-isolate-scope">
+                                                            <span id="spanStaffBasic" class="table-viewer-dropdown icon-up" style="margin-top: 0px"></span>
+                                                        </span>
+                                                    </div>
+                                                    <div id="divStaffBasic" class="gridSection" style="padding-top: 4px; ">
+
+                                                        <table class="input_table" style="width:100%">
+                                                            <colgroup>
+                                                                <col style="width: 8%;" />
+                                                                <col style="width: 12%;" />
+                                                                <col style="width: 8%;" />
+                                                                <col style="width: 12%;" />
+                                                                <col style="width: 8%;" />
+                                                                <col style="width: 12%;" />
+                                                                <col style="width: 8%;" />
+                                                                <col style="width: 12%;" />
+                                                                <col style="width: 8%;" />
+                                                                <col style="width: 12%;" />
+                                                           </colgroup>
+                                                            <tbody>
+
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.StaffNo) <span class="text-danger ng-binding">*</span> </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.StaffNo, new { @class = "input_text form-control", @unselectable = "on" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.StaffName) <span class="text-danger ng-binding">*</span> </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.StaffName, new { @class = "input_text form-control", @unselectable = "on" })</td>
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.StaffChName) <span class="text-danger ng-binding">*</span> </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.Staff.StaffBasic.StaffChName, new { @class = "input_text form-control" })
+                                                                    </td>
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.RoleId) <span class="text-danger ng-binding">*</span> </th>
+                                                                    <td>@Html.DropDownListFor(m => m.Staff.StaffBasic.RoleId, RoleService.Instance.GetRoleList(), new { @class = "form-control" })</td>
+
+                                                                
+                                                                        <th>
+                                                                            @Html.LabelFor(m => m.Staff.StaffBasic.OrgPassword) <span class="text-danger ng-binding">*</span>
+                                                                        </th>
+                                                                        <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.OrgPassword, new { @class = "form-control" })</td>
+                                                      
+        
+                                                                </tr>
+                                                                <tr>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Staff.StaffBasic.CompanyId) <span class="text-danger ng-binding">*</span> 
+                                                                    </th>
+                                                                    <td>
+                                                                        @Html.DropDownListFor(m => m.Staff.StaffBasic.CompanyId, CompanyService.Instance.GetCompanyList(), new { @class = "form-control", @style = "width:100%" })
+                                                                    </td>
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.DepartmentName) <span class="text-danger ng-binding">*</span> </th>
+                                                                    <td>
+                                                                        @Html.DropDownListFor(m => m.Staff.StaffBasic.DepartmentId, DepartmentService.Instance.GetDepartmentList(LoginHelper.GetCompanyId()), new { @class = "form-control", @style = "width:100%" })
+                                                                    </td>
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.StaffTitleId) <span class="text-danger ng-binding">*</span>  </th>
+                                                                    <td>
+                                                                        @Html.DropDownListFor(m => m.Staff.StaffBasic.StaffTitleId, StaffService.Instance.GetStaffTitleList(), new { @class = "form-control", @style = "width:100%" })
+                                                                    </td>
+                                       
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.AccessLevel) <span class="text-danger ng-binding">*</span> </th>
+                                                                    <td>@Html.DropDownListFor(m => m.Staff.StaffBasic.AccessLevel, StaffService.Instance.GetAccessLevelList(), new { @class = "form-control" })</td>
+
+
+                                                                    <td rowspan="5" colspan="2" style="text-align: center">
+                                                                        <a id="aimgContactsPhoto" href="@Url.Content("~/CustomerFiles/ContactsPhoto/photo.jpg")" target="_blank">
+                                                                            <img id="imgContactsPhoto" width="50%" height="150px" src="@Url.Content("~/CustomerFiles/ContactsPhoto/photo.jpg")">
+                                                                        </a>
+                                                                    </td>
+                                                                    
+                                                                </tr>
+
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.IsActived) </th>
+                                                                    <td> 
+                                                                        @Html.DropDownListFor(m => m.Staff.StaffBasic.IsActived, CommonService.Instance.GetTrueFalseList(false), new { @class = "form-control", @style = "width:100%" })
+                                                                      </td>
+
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Staff.StaffBasic.StaffType)
+                                                                    </th>
+                                                                    <td>
+                                                                        @Html.DropDownListFor(m => m.Staff.StaffBasic.StaffType, StaffService.Instance.GetStaffTypeList(), new { @class = "form-control", @style = "width:100%" })
+                                                                    </td>
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.IdentityNo) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.Staff.StaffBasic.IdentityNo, new { @class = "input_text form-control" })
+                                                                    </td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Staff.StaffBasic.MobilePhone)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.MobilePhone, new { @class = "form-control" })</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.EnglishLevel) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.EnglishLevel, new { @class = "input_text form-control", @unselectable = "on" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.Education) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.Education, new { @class = "input_text form-control", @unselectable = "on" })</td>
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.SubOfficePhone) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.Staff.StaffBasic.SubOfficePhone, new { @class = "input_text form-control" })
+                                                                    </td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Staff.StaffBasic.Native)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.Native, new { @class = "form-control" })</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.OtherLanguage) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.OtherLanguage, new { @class = "input_text form-control", @unselectable = "on" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.GraduationDate) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.GraduationDate, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.SocialSecurity) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.Staff.StaffBasic.SocialSecurity, new { @class = "input_text form-control" })
+                                                                    </td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Staff.StaffBasic.University)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.University, new { @class = "form-control" })</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.Address) </th>
+                                                                    <td colspan="3">@Html.TextBoxFor(m => m.Staff.StaffBasic.Address, new { @class = "input_text form-control", @unselectable = "on" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.IdentificationAddress) </th>
+                                                                    <td colspan="3">@Html.TextBoxFor(m => m.Staff.StaffBasic.IdentificationAddress, new { @class = "input_text form-control", @unselectable = "on" })</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+
+                                                    <div class="table-viewer-header clearfix" style="margin-top: 0px">
+                                                        <span class="table-viewer-topbar-title">
+                                                           职业信息
+                                                        </span>
+                                                        <div class="pull-right table-viewer-topbar-content"></div>
+                                                        <span class="toggle-drop-down-icon ng-isolate-scope">
+                                                            <span id="spanStaffExperience"  class="table-viewer-dropdown icon-up" style="margin-top: 0px"></span>
+                                                        </span>
+                                                    </div>
+                                                    <div id="divStaffExperience" class="gridSection" style="padding-top: 4px;">
+
+                                                        <table class="input_table" style="width:100%">
+                                                            <colgroup>
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                                <col style="width: 10%;" />
+                                                            </colgroup>
+                                                            <tbody>
+
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.PatentAgentCertificateNo) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.PatentAgentCertificateNo, new { @class = "input_text form-control", @unselectable = "on" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.PatentAgentCertificateDate) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.PatentAgentCertificateDate, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.PatentAgentLicenceNo) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.Staff.StaffBasic.PatentAgentLicenceNo, new { @class = "input_text form-control" })
+                                                                    </td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Staff.StaffBasic.PatentAgentLicenceDate)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.PatentAgentLicenceDate, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.ProfessionalTitle) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.Staff.StaffBasic.ProfessionalTitle, new { @class = "input_text form-control", @unselectable = "on" })
+                                                                    </td>
+                                                                    
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.SocialTitle) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.SocialTitle, new { @class = "input_text form-control", @unselectable = "on" })</td>
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.LawyerLicenceNo) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.Staff.StaffBasic.LawyerLicenceNo, new { @class = "input_text form-control" })
+                                                                    </td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Staff.StaffBasic.LawyerLicenceDate)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.LawyerLicenceDate, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+
+                                                                </tr>
+
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.PoliticsStatus) </th>
+                                                                    <td>
+                                                                        @Html.DropDownListFor(m => m.Staff.StaffBasic.PoliticsStatus, CommonService.Instance.GetPoliticsStatusList(), new { @class = "form-control", @style = "width:100%" })
+                                                                    </td>
+
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.DutyDate) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.DutyDate, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.InternshipDurationFrom) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.InternshipDurationFrom, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Staff.StaffBasic.InternshipDurationEnd)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.InternshipDurationEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+
+                                                                </tr>
+
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.PartnerDurationFrom) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.PartnerDurationFrom, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.PartnerDurationEnd) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.PartnerDurationEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.EntryDate) </th>
+
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.EntryDate, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Staff.StaffBasic.ResignationDate)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.ResignationDate, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.JobTitle) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.JobTitle, new { @class = "input_text form-control", @unselectable = "on" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.JobLevel) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.JobLevel, new { @class = "input_text form-control", @unselectable = "on" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.AnnualVacationLeft) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.Staff.StaffBasic.AnnualVacationLeft, new { @class = "input_text form-control" })
+                                                                    </td>
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.LeadRate) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.Staff.StaffBasic.LeadRate, new { @class = "input_text form-control" })
+                                                                    </td>
+                                                                </tr>
+                                                                <tr>
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.Gender) </th>
+                                                                    <td>@Html.DropDownListFor(m => m.Staff.StaffBasic.Gender, CommonService.Instance.GetGenderList(), new { @class = "form-control", @style = "width:100%" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.MaritalStatus) </th>
+                                                            
+                                                                    <td>@Html.DropDownListFor(m => m.Staff.StaffBasic.MaritalStatus, CommonService.Instance.GetMaritalStatusList(), new { @class = "form-control", @style = "width:100%" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.Fertility) </th>
+                                                                    <td>
+                                                                        
+                                                                        @Html.DropDownListFor(m => m.Staff.StaffBasic.Fertility, CommonService.Instance.GetFertilityList(), new { @class = "form-control", @style = "width:100%" })
+                                                                    </td>
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.CopyRate) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.Staff.StaffBasic.CopyRate, new { @class = "input_text form-control" })
+                                                                    </td>
+                                             
+                                                                </tr>
+                                                                <tr>
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.ContractDeadline) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.ContractDeadline, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.JobStatus) </th>
+                                                                    <td>@Html.DropDownListFor(m => m.Staff.StaffBasic.JobStatus, CommonService.Instance.GetJobStatusList(), new { @class = "form-control", @style = "width:100%" })</td>
+
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.Email) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.Staff.StaffBasic.Email, new { @class = "input_text form-control" })
+                                                                    </td>
+
+                                                                    @*<th>@Html.LabelFor(m => m.Staff.StaffBasic.EmailPassword) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.Staff.StaffBasic.EmailPassword, new { @class = "input_text form-control" })
+                                                                    </td>*@
+                                                                    <th>@Html.LabelFor(m => m.Staff.StaffBasic.IM) </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Staff.StaffBasic.IM, new { @class = "input_text form-control", @unselectable = "on" })</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="case-section-wrap" style="padding-top: 0;">
+                            <div class="case-section-product">
+                                <!-- product section -->
+                                <div class="product-container">
+                                    <div class="product-section">
+                                        <ul class="nav nav-tabs">
+                                            <li id="liStaffOffWorkDayList"  class='active' ><a href="javascript:void(0);" id="btnStaffOffWorkDayList">请假记录</a></li>
+                                            <li id="liStaffEventList"><a href="javascript:void(0);" id="btnStaffEventList">事项记录</a></li>
+                                            <li id="liStaffFileList"><a href="javascript:void(0);" id="btnStaffFileList">员工档案</a></li>
+                                            <li id="liStaffPerformanceList"><a href="javascript:void(0);" id="btnStaffPerformanceList">提成设定</a></li>
+                                            <li class="pull-right" style="border:none">
+                                                <div style="margin-top:3px">
+                                                    <div style="text-align: inherit;">
+                                                        <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+                                                            <input class="btn btn-primary ng-binding" type="button" id="btnStaffCreateUpdate" value="保存" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </li>
+                                        </ul>
+                                        <div class="section-content clearfix">
+                                            <div class="product-col ng-scope" style="width: 100%">
+                                                <div id="dv_List">
+
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="case-section-right" style='width: 10%; '>
+                        <div class="case-section-wrap">
+                            <div id='divInvoiceInfo' class="case-section-product">
+                                <!-- product section -->
+                                <div class="product-container">
+                                    <div class="product-section">
+                                        <div class="section-content clearfix" style='padding:0px'>
+                                            <div class="ng-scope">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+                    <div style="display: none;" id="divUserList">
+                        
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

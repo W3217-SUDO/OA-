@@ -1,0 +1,38 @@
+﻿@using Dchien.Legal.Service.BAS.Type
+
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.CaseFee.RefundStatusModel
+
+<div class="modal fade" id="refundStatusChangeModel">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="ng-scope">
+                @using (Html.BeginForm("RefundStatus", "CaseFee", FormMethod.Post, new { id = "refundStatusChange", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+                    <div class="modal-header">
+                        <button type="button" class="close" id="btnRefundStatusChangeClose" onclick="javascript: $('#refundStatusChangeModel').modal('hide');">×</button>
+                        <h5 class="modal-title ng-binding">选择退费进度</h5>
+                    </div>
+                    <div class="modal-body">
+                        <div>
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    <span class="text-danger ng-binding">*</span>
+                                    <span class="ng-binding">退费进度:</span>
+                                </label>
+                                <div class="col-sm-6">
+                                        @Html.DropDownListFor(m => m.RefundStatus, Dchien.Legal.Service.FAM.AR.ReceivedPayment.PaymentStatusService.Instance.GetRefundStatusList(false), new { @class = "form-control", style = "width:90%" })
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <input class="btn btn-primary ng-binding" type="button" id="btnRefundStatusUpdate" value="确定" />
+                        <input class="btn btn-default ng-binding" type="button" id="btnRefundStatusUpdateCancel" value="取消" onclick="javascript: $('#refundStatusChangeModel').modal('hide');" />
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+

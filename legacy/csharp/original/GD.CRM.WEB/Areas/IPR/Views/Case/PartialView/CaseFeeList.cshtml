@@ -1,0 +1,253 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity
+@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Entity.IPR.Case
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.CaseFeeListModel
+
+<form id="postForm" action="">
+
+    <div id="casegridSection" class="gridSection">
+ 
+
+        <div class="context" id='divContextList' style="overflow-y: auto; ">
+            <table class="list_table " id="tblCaseFee" style='width: 100%; margin-top: 0px; margin-bottom: 0px;'>
+                <colgroup>
+                    <col style="width: 3%">
+                    @*<col style="width: 5%">*@
+                    <col style="width: 15%">
+                    @*<col style="width: 5%">*@
+                    <col style="width: 5%">
+                    <col style="width: 8%">
+                    <col style="width: 6%">
+                    <col style="width: 8%">
+                    <col style="width: 9%">
+                    <col style="width: 9%">
+                    <col style="width: 9%">
+                    @*<col style="width: 5%">*@
+                    <col style="width: 8%">
+                </colgroup>
+
+                <thead>
+                    <tr>
+                        <th>
+
+                        </th>
+                        @*<th>
+                        组号
+                    </th>*@
+                        @*<th>
+                        案件编号
+                    </th>*@
+                        <th style="text-align: left">
+                            费用类型
+                        </th>
+                        @*<th>
+                        减缓
+                    </th>*@
+                        <th>
+                            金额
+                        </th>
+                        <th>
+                            提交人
+                        </th>
+                        <th>
+                            收费人
+                        </th>
+                        <th>
+                            通知日期
+                        </th>
+                        <th>
+                            开票/交费日期
+                        </th>
+                        <th>
+                            到款日期
+                        </th>
+                        <th>
+                            发票号
+                        </th>
+                        @*<th>
+                        锁定
+                    </th>*@
+                        @*<th>
+                       到帐方式
+                    </th>*@
+                        <th>
+                            待转票
+                        </th>
+
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    @if (Model.CaseFees != null)
+                    {
+                        var lst = new int[] { 0, 1, 13, 27, 2, 12, 6, 3, 4, 5, 15, 25, 26, 28, 29, 9, 10, 31,47};
+
+                        foreach (var item in Model.CaseFees)
+                        {
+                            <tr class="caseFee">
+                                <td>
+                                    <input type="checkbox" name="chkCaseFeeItemId" value="@item.FeeItemId">
+                                </td>
+
+                                <td class="feeId" style="display:none">
+                                    @Html.HiddenFor(m => item.FeeItemId)
+                                    @Html.HiddenFor(m => item.FeeId)
+                                    @Html.HiddenFor(m => item.CaseNo)
+                                    @Html.HiddenFor(m => item.BillFileName)
+                                    @*@(Model.CaseFees.IndexOf(item) + 1)*@
+                                    @item.FeeId
+                                </td>
+                                @*<td>
+                                <span>@item.CaseNo</span>
+                            </td>*@
+                                <td style="text-align: left">
+                                    <span style='width: 150px; float: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; '>
+                                        (@item.FeeTypeId) 
+                                        @{
+                                            var feeTypeName = string.Empty;
+                                            if (item.FeeTypeId == (int)CaseFeeType.FeeType3 && item.FirstYear)
+                                            {
+                                                feeTypeName = "首年年费" + "[" + item.Yearly + "]";
+                                            }else if (item.FeeTypeId == (int) CaseFeeType.FeeType3)
+                                            {
+                                                feeTypeName = item.FeeTypeName + "[" + item.Yearly + "]";
+                                            }
+                                            else
+                                            {
+                                                feeTypeName = item.FeeTypeName;
+                                            }
+                                        }
+          
+                                        @feeTypeName
+                                    </span>
+                                </td>
+                                @*<td>
+                                <span> @(item.IsFeeMitigation ? "是" : "否") </span>
+                            </td>*@
+                                <td>
+                                    <span> @(item.Amount.HasValue ? item.Amount.Value.ToString() : "0") </span>
+                                </td>
+                                <td>
+                                    <span>@item.RequestUserName</span>
+                                </td>
+                                <td>
+                                    <span>@item.ResponseUserName</span>
+                                </td>
+                                <td>
+                                    <span>@(item.InformDate.HasValue ? item.InformDate.Value.ToString("yyyy-MM-dd") : "")</span>
+                                </td>
+                                <td>
+                                    <span>@(item.BillDate.HasValue ? item.BillDate.Value.ToString("yyyy-MM-dd") : "")</span>
+                                </td>
+                                <td>
+                                    <span>@(item.GainedDate.HasValue ? item.GainedDate.Value.ToString("yyyy-MM-dd") : "")</span>
+                                </td>
+                                <td>
+
+                                    <span>@(item.PaymentByCustomer ? "客户自缴" : item.BillNo)</span>
+                                </td>
+                                @*<td>
+                                <span>@(item.IsActive ? "是" : "否")</span>
+                            </td>*@
+
+                                @*<td>
+                                <span>@(item.PaymentBank)</span>
+                            </td>*@
+                                <td style="text-align:center">
+                                    <span>@(!item.HasHedgingFile && lst.Contains(item.FeeTypeId.HasValue ? item.FeeTypeId.Value : -1) ? "是" : "否")</span>
+                                </td>
+                            </tr>
+                        }
+                    }
+
+                </tbody>
+
+                <tfoot class="ng-scope" style="display: none">
+                    <tr>
+                        <td colspan="10">
+                            <div class="pull-left"></div>
+                            <div class="ng-scope">
+                                <div class="pull-right page-box casefee">
+
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+            <div class="simple-grid-none-data-wrap">
+                <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                        <div class="text-size-16 tip-text inline-block">
+                            <span class="margin-left ng-binding"></span>没有查询到费用信息。
+
+                            @if (CommonService.Instance.CheckPermission((int)Permission.CreateCaseFeeInform))
+                            {
+                                <a href="javascript:void(0);" class=" ng-binding" id="btnCaseFeeInformCreate">新建费用信息</a>
+                            }
+
+                            <span class="ng-binding"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+    </div>
+
+    <div class="contextMenu" id="feeMenu" style="display: none;">
+        <ul>
+            @if (CommonService.Instance.CheckPermission((int)Permission.CreateCaseFeeInform))
+            {
+                <li id="create">新建费用信息</li>
+            }
+
+            @if (CommonService.Instance.CheckPermission((int)Permission.ConfirmCaseFeeInform))
+            {
+                <li id="feeConfirm">到账确认</li>
+            }
+
+            @if (CommonService.Instance.CheckPermission((int)Permission.ConfirmCaseFeeBill))
+            {
+                <li id="billConfirm">上传票据</li>
+            }
+
+            <li id="view">查看票据文件</li>
+            <li id="download">下载票据文件</li>
+
+            @if (CommonService.Instance.CheckPermission((int)Permission.UnlockCaseFeeFile))
+            {
+                <li id="nolock">解锁</li>
+            }
+
+            @if (CommonService.Instance.CheckPermission((int)Permission.RemoveFeeHedgingFile))
+            {
+                <li id="removefeehedgingfile">解除待转票</li>
+               
+            }
+            
+
+            @if (CommonService.Instance.CheckPermission((int)Permission.DeleteCaseFeeFile))
+            {
+                <li id="feeConfirmClear">取消到帐确认</li>
+                <li id="feeBillConfirmClear">取消票据确认</li>
+                <li id="delete">删除费用通知</li>
+            }
+
+            <li id="linked">关联费用信息</li>
+            <li id="paymentbycustomer">客户自缴</li>
+            <li id="firstyear">标记首年年费</li>
+            <li id="feeYearlyConfirm">设定年度</li>
+            <li id="refresh">刷新</li>
+        </ul>
+    </div>
+
+    @Html.HiddenFor(m => Model.TotalCount, new { name = "TotalCount" })
+    @Html.HiddenFor(m => Model.PageNo, new { name = "PageNo" })
+    @Html.HiddenFor(m => Model.PageSize, new { name = "PageSize" })
+</form>

@@ -1,0 +1,165 @@
+﻿@using Dchien.Legal.Web.Captcha
+@{
+    Layout = null;
+}
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge,chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <meta http-equiv="Cache-Control" content="no-store">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>登录 - 知识产权代理机构应用平台</title>
+    <link rel="shortcut icon" href="@Url.Content(" ~/icon.ico")" type="image/x-icon" />
+    <link href="@Url.Content(" ~/Resource/css/account2/miniui.css")" rel="stylesheet">
+    <link href="@Url.Content(" ~/Resource/css/account2/common.css")" rel="stylesheet">
+    <link href="@Url.Content(" ~/Resource/css/account2/main.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" rel="stylesheet">
+    <link href="@Url.Content(" ~/Resource/css/account2/login.css")" rel="stylesheet">
+    <script src="@Url.Content(" ~/Scripts/Common/jquery.js")" type="text/javascript"></script>
+    <script src="@Url.Content(" ~/Scripts/Common/jquery.ipr.fn.extend.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+    <script src="@Url.Content(" ~/Scripts/Home/Login.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+    <!--[if lt IE 8]>
+        <script src="@Url.Content("~/Scripts/Common/browser-not-supported.js")"></script>
+    <![endif]-->
+    <!--[if lt IE 8]>
+        <script src="@Url.Content("~/Scripts/Common/browser-not-supported-ie8.js")"></script>
+    <![endif]-->
+    <script type="text/javascript">
+        var AP_ROOT = '@Url.Content("~/")';
+    </script>
+</head>
+<body>
+    <noscript>
+        &lt;div id="noScript"&gt;
+        &lt;div&gt;&lt;h2&gt;请开启浏览器的Javascript功能&lt;/h2&gt;&lt;p&gt;亲，没它我们玩不转啊！求您了，开启Javascript吧！&lt;br/&gt;不知道怎么开启Javascript？那就请&lt;a href="http://www.baidu.com/s?wd=%E5%A6%82%E4%BD%95%E6%89%93%E5%BC%80Javascript%E5%8A%9F%E8%83%BD" rel="nofollow" target="_blank"&gt;猛击这里&lt;/a&gt;！&lt;/p&gt;&lt;/div&gt;
+        &lt;/div&gt;
+    </noscript>
+    <div class="main">
+        <div class="hd">
+            <div class="ctn clearfix">
+                <h1 class="web-title">
+                    <a href="@Url.Content(" ~/")">知识产权代理机构应用平台</a>
+                </h1>
+            </div>
+        </div>
+        <div class="bd" style="padding-bottom: 10px;">
+            <div id="body">
+                <div class="login sh" style="background-size: cover;">
+                    <div class="ctn clearfix">
+                        <div class="login-box" id="loginForm">
+                            <div class="login-box-hd clearfix">
+                                <a href="javascript:void(0);" class="active"><span class="pr">用户名登录</span></a>
+                                @*<a href="javascript:void(0);" onclick="switchIdLoginWay(this)">
+                                    <span class="pr">证件登录</span>
+                                </a>*@
+                            </div>
+                            <div class="login-box-bd">
+                                <div class="login-msg-ctn">
+                                </div>
+                                @*<div class="fn-hide" id="idloginPanel">
+                                    <div class="login-field">
+                                        <label for="idType" class="login-label"> 证件类型：</label>
+                                        <div id="idType" class="sf"><span class="mini-buttonedit mini-combobox mini-popupedit sf" id="idType_mini" style="border-width: 0px; padding: 0px; width: 100%;"><span class="mini-buttonedit-border" style="padding-right: 2px;"><span><input type="input" class="mini-buttonedit-input" autocomplete="off" placeholder="" readonly="" id="idType$text"></span><span class="mini-buttonedit-buttons"><span class="mini-buttonedit-close"></span><span class="mini-buttonedit-button" onmouseover="mini.addClass(this, 'mini-buttonedit-button-hover');" onmouseout="mini.removeClass(this, 'mini-buttonedit-button-hover');"><span class="mini-buttonedit-icon"></span></span></span></span><input name="idType" type="hidden" id="idType$value" value="201"></span></div>
+                                    </div>
+                                    <div class="login-field">
+                                        <label for="idNumber" class="login-label"> 证件号码：</label>
+                                        <div id="idNumber" class="sf"><span class="mini-textbox sf" id="idNumber_mini" style="border-width: 0px; padding: 0px; width: 100%;"><span class="mini-textbox-border"><input type="text" class="mini-textbox-input" autocomplete="off" placeholder="" id="idNumber$text"></span><input type="hidden" id="idNumber$value" name="idNumber"></span></div>
+                                    </div>
+                                </div>*@
+                                <div id="loginPanel">
+                                    <div class="login-field">
+                                        <label for="username" class="login-label"> 账户：</label>
+                                        <div id="username" class="sf"><span class="mini-textbox sf" id="username_mini" style="border-width: 0px; padding: 0px; width: 100%;"><span class="mini-textbox-border"><input type="text" class="mini-textbox-input" autocomplete="off" placeholder="用户名" id="fm-login-id"></span><input type="hidden" name="yhm"></span></div>
+                                    </div>
+                                </div>
+                                <div class="login-field">
+                                    <label for="password" class="login-label"> 密码：</label>
+                                    <div id="password" class="sf"><span class="mini-textbox mini-password sf" id="password_mini" style="border-width: 0px; padding: 0px; width: 125px;"><span class="mini-textbox-border"><input type="password" class="mini-textbox-input" autocomplete="off" placeholder="" id="fm-login-password"></span><input type="hidden" name="mm"></span></div>
+                                </div>
+                                <div class="login-field auth">
+                                    <label for="authCode" class="login-label"> 验证码：</label>
+                                    <i class="auth-pass"></i>
+                                    <div id="authCode" class="sf"><span class="mini-textbox sf" id="authCode_mini" style="border-width: 0px; padding: 0px; width: 100%;"><span class="mini-textbox-border"><input type="text" class="mini-textbox-input" autocomplete="off" placeholder="" id="fm-login-authCode" maxlength="4"></span><input type="hidden" name="authCode"></span></div>
+                                    @Html.Captcha()
+                                </div>
+                                <a class="mini-button login-btn" href="javascript:void(0)" id="loginBtn"><span class="mini-button-text">登录</span></a>
+                                <div class="ctn-link clearfix">
+                                    <a id="toRegister" class="login-reg" href="javascript:void(0);">没有账号？<em class="em">立即注册</em></a>
+                                    <a class="login-forget" href="javascript:void(0);">忘记密码？</a>
+                                </div>
+                                <div id="redirect_uri"><input type="hidden" class="mini-hidden" id="redirect_uri_mini" value="" name="redirect_uri"></div>
+                                <div id="response_type"><input type="hidden" class="mini-hidden" id="response_type_mini" value="" name="response_type"></div>
+                                <div id="client_id"><input type="hidden" class="mini-hidden" id="client_id_mini" value="" name="client_id"></div>
+                                <div id="sign"><input type="hidden" class="mini-hidden" id="sign_mini" value="" name="sign"></div>
+                                <div id="st" data-param-rsapubkey="REDACTED_ARCHIVE_ONLY" data-param-token="REDACTED_ARCHIVE_ONLY"><input type="hidden" class="mini-hidden" id="st_mini" value="" name="st"></div>
+                                <div id="dllx"><input type="hidden" class="mini-hidden" id="dllx_mini" value="yhm" name="dllx"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="seperator"></div>
+                <div class="biz" style="margin-top: 40px ;margin-bottom:10px ">
+                    <div class="ctn clearfix">
+                        <div class="biz-item tax-inq">
+                            <div class="icon"></div>
+                            <h3>专利、商标申请</h3>
+                            <p>帮助客户申请、管理知识产权专利、商标等业务</p>
+                        </div>
+
+                        <div class="biz-item income-dec">
+                            <div class="icon"></div>
+                            <h3>案件管理</h3>
+                            <p>对案件文档归档，对案件阶段、缴费时间节点进行特别提醒，节省人力、时间成本</p>
+                        </div>
+                        <div class="biz-item pay-tax">
+                            <div class="icon"></div>
+                            <h3>案件查询</h3>
+                            <p>提交基本信息后，客户通过手机端查询、跟踪案件的所有状态</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="ft sh">
+            <div class="ctn">
+                <div class="copyright">
+                    <label><i></i>版权所有</label>
+                    <p>上海精晟知识产权代理有限公司</p>
+                </div>
+                <div class="hotline">
+                    <label><i></i>服务热线</label>
+                    <p>REDACTED_ARCHIVE_ONLY</p>
+                </div>
+
+                <div class="helpcenter">
+                    <label><i></i>帮助中心</label>
+                    <p><a href="javascript:void(0);">帮助中心</a></p>
+                </div>
+
+                <div class="platform">
+                    <label><i></i>移动端渠道</label>
+                    <p><a href="javascript:void(0);">移动端渠道</a></p>
+                </div>
+                <div class="links">
+                    <label><i></i>友情链接</label>
+                    <p><a href="http://www.Dchien.com.cn" target="_blank">上海德乾软件有限公司</a></p>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="copyright-100" data-spm="999">
+            <div class="y-row copyright">
+                <p class="big">
+                    <span><a href="javascript:void(0);"> 关于我们 </a></span><span><a href="javascript:void(0);"> 法律声明 </a></span><span><a href="javascript:void(0);"> 友情链接 </a></span>
+                </p>
+                <p>©  2017 上海精晟知识产权代理有限公司 版权所有 ICP证：沪ICP备18036612号 </p>
+                <p><a class="img img-1" href="javascript:void(0);"></a><a class="img img-2" href="avascript:void(0);"></a></p>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

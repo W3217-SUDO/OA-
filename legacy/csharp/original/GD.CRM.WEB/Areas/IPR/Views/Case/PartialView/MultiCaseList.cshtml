@@ -1,0 +1,84 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity
+@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.IPR.Case
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.MultiCreateModel
+
+
+<form id="postForm" action="">
+    <div id="casegridSection" class="gridSection">
+
+        <div id='divContextList' style="overflow-y: auto; margin-top: -1px; overflow-x: hidden; overflow-y: auto; ">
+            <table class='table table-hover' id="tblCaseList" width="100%">
+                <colgroup>
+                    <col style="width: 12.5%">
+                    <col style="width: 12.5%">
+                    <col style="width: 12.5%">
+                    <col style="width: 12.5%">
+                    <col style="width: 12.5%">
+                    <col style="width: 12.5%">
+                    <col style="width: 12.5%">
+                    <col style="width: 12.5%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>案号</th>
+                        <th>案件类型</th>
+                        <th>案件阶段</th>
+                        <th>立案日</th>
+                        <th>案源人</th>
+                        <th>处理人</th>
+                        <th>处理日</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @if (Model.Cases != null && Model.Cases.Count > 0)
+                    {
+                        foreach (var item in Model.Cases)
+                        {
+                            <tr>
+                                <td>
+                                    @Html.TextBoxFor(m => item.CaseBasicInfo.CaseNo, new { @readonly=true,@class = "item_CaseNo form-control",@placeholder = "自动生成" })
+                                    @Html.HiddenFor(m => item.CaseBasicInfo.CaseId, new { @class = "item_CaseId form-control", })
+                                </td>
+
+                                <td>
+                                    @Html.DropDownListFor(m => item.CaseBasicInfo.CaseTypeId, CaseTypeService.Instance.GetCaseTypeList(), new { @class = "form-control select" })
+                                </td>
+                                <td style="text-align: center">
+                                    @Html.DropDownListFor(m => item.CaseBasicInfo.CasePhaseId, CaseTypeService.Instance.GetAllCasePhaseList(false), new { @class = "form-control select" })
+                                </td>
+                                <td>
+                                    @Html.TextBoxFor(m => item.CaseBasicInfo.CaseRegisterDate, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", required = "true" })
+                                </td>
+
+                                <td>
+                                    @Html.TextBoxFor(m => item.CaseBasicInfo.CaseOriginPeopleName, new { @readonly=true, @class =  "form-control"})
+                                    @Html.HiddenFor(m => item.CaseBasicInfo.CaseOriginPeople)
+                                </td>
+                                <td>
+                                    @Html.TextBoxFor(m => item.CaseBasicInfo.CaseOfficerName, new { @readonly = true, @class = "form-control" })
+                                    @Html.HiddenFor(m => item.CaseBasicInfo.CaseOfficer)
+                                </td>
+                                <td>
+                                    @Html.TextBoxFor(m => item.CaseBasicInfo.Deadline, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", required = "true" })
+                                </td>
+
+                                <td>
+                                    <input type="button" value="新增" class="btn_ar_add" />
+                                    <input type="button" value="移除" class="btn_ar_remove" />
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+
+</form>
+

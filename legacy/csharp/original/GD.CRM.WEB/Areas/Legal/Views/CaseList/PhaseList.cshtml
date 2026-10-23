@@ -1,0 +1,396 @@
+﻿@using Dchien.Legal.Service
+@using Dchien.Legal.Service.BAS.Type;
+@using Dchien.Legal.Entity.System;
+@using Dchien.Legal.Service.HR.Staff
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.CaseList.CaseListModel
+ 
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var id = string.Empty;
+    if (ViewContext.RouteData.Values.ContainsKey("id"))
+    {
+        id = ViewContext.RouteData.Values["id"].ToString().ToLower();
+    }
+}
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/index.css")" />
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.PhaseList.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script src="@Url.Content("~/Scripts/Common/charts/Chart.min.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+@{
+    var staffs = StaffService.Instance.GetStaffList();
+}
+
+<style>
+    .chosen-container-single .chosen-single {
+        border: 1px solid #cccccc;
+        font-size: 12px;
+        border-radius: 0px;
+    }
+
+    .chosen-container-multi .chosen-choices {
+        border: 1px solid #cccccc;
+        font-size: 12px;
+    }
+
+    .chosen-drop, chosen-results, .chosen-results li {
+        overflow: visible !important;
+    }
+
+    .chosen-container-multi .chosen-choices li.search-field input[type=text] {
+        margin: 1px 0;
+        padding: 0;
+        height: 21px;
+        outline: 0;
+        border: 0 !important;
+        background: 0 0 !important;
+        -webkit-box-shadow: none;
+        box-shadow: none;
+        color: #999;
+        font-size: 100%;
+        font-family: sans-serif;
+        line-height: normal;
+        border-radius: 0;
+        width: 25px;
+    }
+</style>
+
+<div class="viewFramework-product">
+
+    <div class="viewFramework-product-body" style="overflow-y:hidden">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>案件阶段统计</h5>
+                            </div>
+                        </div>
+                        <form class="form-inline ng-valid " id="postForm">
+                            <div class="pull-left   col-sm-12" style="margin-top: 1px;margin-bottom:4px">
+                                @Html.HiddenFor(m => m.SearchCondition.PageId)
+                                @Html.HiddenFor(m => m.SearchCondition.PageName, new { name = "PageName" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.TotalCount, new { name = "TotalCount" })
+                                @Html.HiddenFor(m => m.SearchCondition.CountCasePhaseStaffs)
+                                <div style="float: left; padding-top: 2px; " class="pull-left   col-sm-12">
+                                    <div id="lblGroupName" style="float: left; width: 60px;padding-top: 5px;">
+                                        开庭律师：
+                                    </div>
+                                    <div style="float: left; padding-left: 1px; width:662px;">
+                                        <div style="width:662px;">
+                                            <select data-placeholder="请选择" multiple id="SearchCondition_CountStaffName" class="SearchCondition_CountStaffName" style="height:21px;width:500px">
+                                                @if (staffs != null && staffs.Count > 0)
+                                                {
+                                                    foreach (var staff in staffs)
+                                                    {
+                                                        <option value="@staff.StaffBasic.StaffName">@staff.StaffBasic.StaffChName</option>
+                                                    }
+                                                }
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="float: left; padding-top: 1px; " class="pull-left   col-sm-12">
+                                    <table class="search_table" style="width: 600px">
+                                        <colgroup>
+                                            <col style="width: 60px;" />
+                                            <col style="width: 190px" />
+                                            <col style="width: 80px;" />
+                                            <col style="width: 160px" />
+                                            <col style="width: 60px;" />
+                                            <col style="width: 160px" />
+                                            <col style="width: 60px;" />
+                                            <col style="width: 160px" />
+                                            <col style="width: 40px;" />
+                                            <col style="width: 30px" />
+                                            <col />
+                                        </colgroup>
+ 
+                                        <tr>
+                                            <th>
+                                            </th>
+                                            <td>
+                                                <div class="form-group">
+                                                    <a href="javascript:void(0);" class="btn btn-primary " id="btnSearch">
+                                                        <span>查询</span>
+                                                    </a>
+                                                    @*<a href="javascript:void(0);" class="btn btn-default " id="btnSearchReset">
+                                            <span>重置</span>
+                                        </a>*@
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="col-sm-12 select-table">
+                        <div class="">
+                            <table class="aps-table aps-widget aps-ani-transition ">
+                                <colgroup>
+                                    <col style="width: 3%">
+                                    <col style="width: 5%">
+                                    <col style="width: 8%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 7%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 5%">
+                                    <col style="width: 7%">
+                                    <col style="width: 7%">
+                                    <col style="width:17px">
+                                </colgroup>
+                                <thead>
+                                    <tr>
+                                        <th width="10">                                            
+                                        </th>
+                                        <th style="text-align: center" rowspan="2">姓名</th>
+                                        <th style="text-align: center" rowspan="2">日期</th>
+                                        <th style="text-align: center" colspan="6">立案进度</th>
+                                        <th style="text-align: center" colspan="7">退费进度</th>
+                                        <th style="text-align: center" colspan="11">执行进度</th>
+                                        <th style="text-align: center" colspan="4">线索进度</th>
+                                        <th></th>
+                                    </tr>
+
+                                    <tr>
+                                        <td width="10">
+                                            <input type="checkbox" id="chkCaseAll" name="chkCaseAll">
+                                        </td> 
+                                        <td style="text-align: center">文书<br>准备</td>
+                                        <td style="text-align: center"> 客户<br>盖章</td>
+                                        <td style="text-align: center">提交<br>立案</td>
+                                        <td style="text-align: center">等待<br>立案</td>
+                                        <td style="text-align: center">补充<br>取证</td>
+                                        <td style="text-align: center">一审<br>阶段</td>
+                                        <td style="text-align: center">二审<br>阶段</td>
+                                        <td style="text-align: center">等待<br>开庭 </td>
+                                        <td style="text-align: center">准备<br>材料 </td>
+                                        <td style="text-align: center">客户<br>盖章</td>
+                                        <td style="text-align: center">已提交<br>法院</td>
+                                        <td style="text-align: center">待法院<br>现场办理</td>
+                                        <td style="text-align: center">退费到<br>客户</td>
+                                        <td style="text-align: center">一审待<br>执行</td>
+                                        <td style="text-align: center">二审待<br>执行</td>
+                                        <td style="text-align: center">准备<br>材料</td>
+                                        <td style="text-align: center">提交<br>法院</td>
+                                        <td style="text-align: center">执行<br>受理</td>
+                                        <td style="text-align: center">执行<br>中止</td>
+                                        <td style="text-align: center">执行<br>结案</td>
+                                        <td style="text-align: center">执行<br>终本</td>
+                                        <td style="text-align: center">执行<br>终结</td>
+                                        <td style="text-align: center">执行<br>亏损</td>
+                                        <td style="text-align: center">执行<br>异议</td>
+                                        <td style="text-align: center">待审核<br>线索</td>
+                                        <td style="text-align: center">已审核<br>线索</td>
+                                        <td style="text-align: center">待客户<br>审核线索</td>
+                                        <td style="text-align: center">客户已<br>审核线索</td>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                            </table>
+                            <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center  ">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                            <span class="">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="divCaseList" style="border-top: 0;margin-top: -1px; overflow-x:hidden; overflow-y: scroll;">
+                                <table id="tblCaseList" class="aps-table aps-widget aps-ani-transition ">
+                                    <colgroup>
+                                        <col style="width: 3%">
+                                        <col style="width: 5%">
+                                        <col style="width: 8%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+                                        <col style="width: 7%">
+                                        <col style="width: 7%">
+                                    </colgroup>
+
+                                    <tbody>
+                                        <tr style="display: none">
+                                            <td>
+                                                &nbsp;
+                                            </td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                       </tr>
+                                        <tr style="display: none">
+                                            <td>
+                                                &nbsp;
+                                            </td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                        </tr>
+                                    </tbody>
+                                    <tfoot class="" style="display: none">
+                                        <tr>
+                                            <td width="1">
+                                                <input type="checkbox" id="chkCaseAll" name="chkCaseAll">
+                                            </td>
+                                            <td colspan="30">
+                                                <div class="pull-left" style="position:absolute;z-index: 1000;">
+                                                    <div class="inline-block dropdown" style="margin-left: 4px">
+                                                        @*<div class="divdropdown dropdown ng-scope">
+                                                            <button class="btn btn-default dropdown-toggle" style="height:32px" data-toggle="dropdown">
+                                                                导出案件
+                                                                <span class="caret"></span>
+                                                            </button>
+                                                            <ul class="dropdown-menu" style="position:absolute;z-index: 99999;text-align: left;">
+                                                                <li>
+                                                                    <a href="javascript:;" id="btnCaseExportToExcel" onclick="javascript:void(0);">
+                                                                        <span style="font-size:12px">导出选中</span>
+                                                                    </a>
+                                                                </li>
+                                                                <li>
+                                                                    <a href="javascript:;" id="btnAllCaseExportToExcel" onclick="javascript:void(0);">
+                                                                        <span style="font-size:12px">导出全部</span>
+                                                                    </a>
+                                                                </li>
+                                                            </ul>
+                                                        </div>*@
+
+                                                        <input type="button" id="btnCountPhaseCaseListExportToExcel" class="btn btn-default" style="height:32px" value="导出选中" />
+
+                                                    </div>
+                                                </div>
+                                                <div class="">
+                                                    <div class="pull-right page-box caselist">
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                          
+                        </div>
+
+
+                    </div>
+
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

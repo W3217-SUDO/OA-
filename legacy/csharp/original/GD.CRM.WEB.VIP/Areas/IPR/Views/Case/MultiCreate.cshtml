@@ -1,0 +1,195 @@
+﻿@using Dchien.Legal.BizModel.FCM.Contract
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.MultiCreateModel
+<script type="text/javascript" src="@Url.Content("~/Scripts/IPR/Case/Case.CreateUpdate.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/components.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/font-awesome.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<script type="text/javascript">
+
+</script>
+<style>
+    input.input_text, textarea, select, input.input_time {
+        border: 1px solid #ccc;
+    }
+
+    /*select {
+        color: rgb(84, 84, 84);
+        background-color: rgb(235, 235, 228);
+    }*/
+
+    input.input_text, textarea, input.input_time {
+        padding: 2px 2px 2px 3px;
+    }
+
+    input.input_text, textarea, input.input_time {
+        background-color: #fff;
+    }
+
+    .case-form-control {
+        /*border-radius: 0px;*/
+        -webkit-transition: none;
+        transition: none;
+        font-size: 12px;
+        width: 100%;
+        height: 24px;
+    }
+
+    .case-section-product .product-container .product-section .section-content .content-table td {
+        padding-left: 1px;
+    }
+
+
+    table td, th {
+        padding: 0px 0;
+        /* border-bottom: 1px dotted #D6D6D6; */
+        vertical-align: middle;
+    }
+
+
+    .input_table th {
+        font-weight: normal;
+        text-align: right;
+    }
+
+    .input_table td {
+        text-align: left;
+    }
+
+    .case-section-wrap {
+        padding: 4px;
+    }
+
+    .case-section-main {
+        margin: 0 6px;
+        padding: 8px 0;
+        position: relative;
+    }
+</style>
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.index.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/case.createupdate.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/messageCenter.console.css")" />
+<div class="viewFramework-product viewFramework-product-col-1" style='background: #eaedf1;'>
+    <div class="viewFramework-product-navbar ng-scope">
+         product nav 
+        @{
+            Html.RenderPartial("MenuList");
+        }
+    </div><!-- /product nav -->
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+    <div class="viewFramework-product-body">
+        <div>
+            <div class="ng-scope">
+                <div class="ng-scope">
+                    <div class="case-section-main clearfix">
+                        <!-- 左侧 -->
+                        <div class="case-section-left" style="padding-right: 0%;">
+                            <div class="case-section-wrap">
+                                <div class="case-section-product">
+                                    <!-- product section -->
+                                    <div class="product-container">
+                                        <div class="product-section">
+                                            @using (Html.BeginForm("MultiCreate", "Case", FormMethod.Post, new { id = "caseForm", enctype = "multipart/form-data", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                                            {
+
+                                                <div class="section-content clearfix">
+                                                    <div class="ng-scope">
+                                                        <table class="input_table" style='width:100%'>
+                                                            <colgroup>
+                                                                <col style="width: 8%;" />
+                                                                <col style="width: 40%;" />
+                                                                <col style="width: 8%;" />
+                                                                <col style="width: 20%;" />
+                                                                <col style="width: 8%;" />
+                                                                <col style="width: 20%;" />
+                                                            </colgroup>
+                                                            <tr>
+                                                                <th colspan="6" style="text-align: center">
+                                                                    <span style='font-weight: bold; font-size: 10pt; '>批量新建案件</span>
+                                                                </th>
+                                                            </tr>
+                                                            <tr>
+                                                                <th>
+                                                                    @Html.LabelFor(m => m.CustomerName)
+                                                                </th>
+                                                                <td>
+                                                                    @Html.TextBoxFor(m => m.CustomerName, new { @class = "input_text form-control", @unselectable = "on", @placeholder = "" })
+                                                                </td>
+                                                                <th>
+                                                                    @Html.LabelFor(m => m.CustomerNo)
+                                                                </th>
+                                                                <td>
+                                                                    @Html.TextBoxFor(m => m.CustomerNo, new { @readonly = true, @class = "input_text form-control", @unselectable = "on" })
+                                                                    @Html.HiddenFor(m => m.CustomerId)
+                                                                </td>
+                                                                <th colspan="2">
+
+                                                                </th>
+
+                                                            </tr>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="case-section-wrap">
+                                <div class="case-section-product">
+                                    <!-- product section -->
+                                    <div class="product-container">
+                                        <div class="product-section">
+                                            <ul class="nav nav-tabs">
+                                                <li class="active"><a href="javascript:void(0);" id="btnARList">案件列表</a></li>
+                                                <li class="pull-right" style=" border:none">
+                                                    <div style="margin-top:3px">
+                                                        <div style="text-align: inherit;">
+
+                                                            <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+                                                                <input class="btn btn-primary ng-binding" type="button" id="btnCaseCreateUpdate" value="提交" />
+                                                            </div>
+                                                            <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+                                                                <input class="btn btn-primary ng-binding" type="button" id="btnCaseCreateNew" value="新建" />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </li>
+                                            </ul>
+                                            <div class="section-content clearfix">
+                                                <div class="product-col ng-scope" style="width: 100%">
+                                                    <div id="dv_List">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                            <div class="i_common_wrap">
+                                <div class="i_common_list"></div>
+                            </div>
+                        </div>
+
+                        <div class="i_common_select" id="div_customer" style="display: none;">
+                            <div class="i_common_wrap">
+                                <div class="i_common_list"></div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

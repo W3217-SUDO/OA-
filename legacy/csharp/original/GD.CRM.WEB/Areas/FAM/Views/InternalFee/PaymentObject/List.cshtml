@@ -1,0 +1,426 @@
+﻿@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.InternalFee.Payment.ListObjectModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/index.css")" />
+
+<script src="@Url.Content("~/Scripts/FAM/InternalFee/Payment/FAM.InternalFee.Payment.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/FAM/InternalFee/Payment/FAM.InternalFee.Payment.Object.List.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.core.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.excheck.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.exedit.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/zTree/zTreeStyle.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+
+<style type="text/css">
+    ul.ztree {
+        margin-top: 0px;
+        border-right: 0px solid #e1e6eb;
+        overflow-y: auto;
+        overflow-x: auto;
+    }
+
+    .ztree li {
+        line-height: 20px;
+    }
+
+        .ztree li a {
+            width: 150px;
+            height: 20px;
+            padding-top: 0px;
+        }
+
+            .ztree li a:hover {
+                text-decoration: none;
+                background-color: #E7E7E7;
+            }
+
+            .ztree li a span.button.switch {
+                visibility: hidden;
+            }
+
+    .ztree.showIcon li a span.button.switch {
+        visibility: hidden;
+    }
+
+    .ztree li a.curSelectedNode {
+        background-color: #D4D4D4;
+        border: 0;
+        height: 20px;
+    }
+
+    .ztree li span {
+        line-height: 20px;
+    }
+
+        .ztree li span.button {
+            margin-top: 2px;
+        }
+
+            .ztree li span.button.switch {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+
+            .ztree li span.button.add {
+                margin-left: 2px;
+                margin-right: -1px;
+                background-position: -144px 0;
+                vertical-align: top;
+                *vertical-align: middle;
+            }
+
+
+            /*.ztree li span.button {background-image:url("./left_menuForOutLook.png"); *background-image:url("./left_menuForOutLook.gif")}*/
+
+            .ztree li span.button.ico_docu {
+                background-position: -110px -16px;
+            }
+
+            .ztree li span.button.switch.level0 {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+
+            .ztree li span.button.switch.level1 {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+    /*.ztree li span.button.noline_open {background-position: 0 0;}
+    .ztree li span.button.noline_close {background-position: -18px 0;}
+    .ztree li span.button.noline_open.level0 {background-position: 0 -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}*/
+
+    .node_name {
+        margin-left: 10px;
+    }
+
+    div#rMenu {
+        position: absolute;
+        visibility: hidden;
+        top: 0;
+        background-color: #555;
+        text-align: left;
+        padding: 2px;
+    }
+
+        div#rMenu ul li {
+            margin: 1px 0;
+            padding: 0 5px;
+            cursor: pointer;
+            list-style: none outside none;
+            background-color: #DFDFDF;
+        }
+</style>
+<div class="viewFramework-product ">
+
+    <div class="viewFramework-product-body">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>待付款列表</h5>
+                            </div>
+                        </div>
+                        <div class="pull-left  col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm" action="@Url.Content("~/FAM/InternalFee/PaymentList")">
+                                @Html.HiddenFor(m => m.SearchCondition.Applicant)
+                                @Html.HiddenFor(m => m.SearchCondition.PackageNo)
+                                @Html.HiddenFor(m => m.SearchCondition.PageId, new { name = "PageId" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                <table class="search_table" style="width: 600px">
+                                    <colgroup>
+                                        <col style="width: 60px;" />
+                                        <col style="width: 180px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+
+                                        <col>
+                                    </colgroup>
+                                    <tr>
+                                        <th>
+                                            申请日期：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.ApplicationDateStart, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.ApplicationDateEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                        </td>
+
+                                        <th>
+                                            付款状态：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.PaymentObjectStatus, Dchien.Legal.Service.FAM.InternalFee.Payment.PaymentStatusService.Instance.GetPaymentObjectStatusList(true), new { @class = "form-control", @disabled = true, style = "width:95%" })
+                                        </td>
+
+                                        <th>
+                                            收款人：
+                                        </th>
+                                        <td>
+                                            @Html.HiddenFor(m => m.SearchCondition.PaymentObject)
+                                            @Html.TextBoxFor(m => m.SearchCondition.PaymentObjectName, new { @class = "form-control", @autocomplete = "off", @placeholder = "收款人" })
+                                        </td>
+
+                                    </tr>
+                                    <tr>
+
+                                        <th>
+                                            审核日期：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.AuditDateStart, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.AuditDateEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                        </td>
+
+
+
+                                        @*<th>
+                                                付款日期：
+                                            </th>
+                                            <td colspan="2">
+                                                @Html.TextBoxFor(m => m.SearchCondition.PaidDateStart, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                                -
+                                                @Html.TextBoxFor(m => m.SearchCondition.PaidDateEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                            </td>*@
+
+                                        <th>
+                                            案件编号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseNo, new { @class = "form-control", @autocomplete = "off", @placeholder = "案件编号" })
+                                        </td>
+
+                                        <th>
+                                            申请人：
+                                        </th>
+                                        <td>
+                                            @Html.HiddenFor(m => m.SearchCondition.Applicant)
+                                            @Html.TextBoxFor(m => m.SearchCondition.ApplicantName, new { @class = "form-control", @autocomplete = "off", @placeholder = "申请人" })
+
+                                            <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                                                <div class="i_common_wrap">
+                                                    <div class="i_common_list"></div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+
+                                        <th>
+                                            客户名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control", @style = "width:96.8%", @placeholder = "客户名称" })
+                                        </td>
+
+                                        <th>
+                                            案件阶段：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CasePhaseName, new { @class = "form-control", @autocomplete = "off", @placeholder = "案件阶段" })
+                                            @Html.HiddenFor(m => m.SearchCondition.CasePhaseId)
+                                            <div class='divcaseconditioncasephases' style='overflow-y: scroll; '>
+                                                <div id="divCasePhaseCheckBoxList" style="display:none" class='i_common_box'>
+                                                    <div class='i_common_hd'>
+                                                        从下列案件阶段中选择
+                                                        <input type='hidden' id='hidCasePhaseId'>
+                                                        <input type='hidden' id='hidCasePhaseName'>
+                                                    </div>
+                                                    <div class='i_common_bd'>
+                                                        <ul id='casePhaseTree' class='ztree' style="max-height:600px"></ul>
+                                                        <div class="pull-right">
+                                                            <input class='btn btn-primary' type='button' id='btnCasePhaseSelected' value='确定' />
+                                                            <input class='btn btn-default' type='button' id='btnCasePhaseCancel'  value='取消' />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <th>
+                                            费用类型：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.FeeTypeName, new { @class = "form-control", @autocomplete = "off", @placeholder = "费用类型" })
+                                            @Html.HiddenFor(m => m.SearchCondition.FeeTypeId)
+                                            <div class='divcaseconditioncasefeetypes' style='overflow-y: scroll; '>
+                                                <div id="divCaseFeeTypeCheckBoxList" style="display:none" class='i_common_box'>
+                                                    <div class='i_common_hd'>
+                                                        从下列案件费用中选择
+                                                        <input type='hidden' id='hidCaseFeeTypeId'>
+                                                        <input type='hidden' id='hidCaseFeeTypeName'>
+                                                    </div>
+                                                    <div class='i_common_bd'>
+                                                        <ul id='caseFeeTypeTree' class='ztree' style="max-height:600px"></ul>
+                                                        <div class="pull-right">
+                                                            <input class='btn btn-primary' type='button' id='btnCaseFeeTypeSelected' value='确定' />
+                                                            <input class='btn btn-default' type='button' id='btnCaseFeeTypeCancel' value='取消' />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                        </th>
+                                        <td>
+                                            <div class="form-group">
+                                                <a href="javascript:void(0);" class="btn btn-primary " id="btnPaymentObjectListSearch">
+                                                    <span>查询</span>
+                                                </a>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </table>
+                                <div class='divcaseconditioncasetypes'></div>
+                                <div class='divcaseconditioncasephases'></div>
+                                <div class='divcaseconditioncasefeetypes'></div>
+                            </form>
+                        </div>
+
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="">
+                            <div class="gridSection" id="paymentgridSection">
+                                <table id="tblPaymentObjectList" class="aps-table aps-widget aps-ani-transition" style="width:100%">
+                                    <colgroup>
+                                        <col style="width: 3%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 30%">
+                                        <col style="width: 10%">
+
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th>
+                                                <input type="checkbox" id="chkPaymentAll" name="chkPaymentAll">
+                                            </th>
+                                            <th style="text-align: center">状态</th>
+                                            <th style="text-align: center">申请人</th>
+                                            <th style="text-align: center">申请日期</th>
+                                            <th style="text-align: center">审核日期</th>
+                                            <th style="text-align: center">收款人</th>
+                                            <th style="text-align: center">提成类型</th>
+                                            <th style="text-align: center">基数</th>
+                                            <th style="text-align: center">参考提成</th>
+                                            <th style="text-align: center">实际提成</th>
+                                            <th style="text-align: center">案件编号</th>
+                                            <th style="text-align: center">案件阶段</th>
+                                            <th style="text-align: center">案件名称</th>
+                                            <th style="text-align: center">付款日期</th>
+                                        </tr>
+                                    </thead>
+
+                                    <tbody>
+                                        <tr style="display: none">
+                                            <td>
+                                                &nbsp;
+                                            </td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: right"></td>
+                                            <td style="text-align: right"></td>
+                                            <td style="text-align: right"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: center"></td>
+                                        </tr>
+                                        <tr style="display: none">
+                                            <td>
+                                                &nbsp;
+                                            </td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: right"></td>
+                                            <td style="text-align: right"></td>
+                                            <td style="text-align: right"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: center"></td>
+                                        </tr>
+                                    </tbody>
+
+                                    <tfoot class="" style="display: none">
+                                        <tr>
+                                            <td width="1">
+                                                <input type="checkbox" id="chkPaymentAll" name="chkPaymentAll">
+                                            </td>
+                                            <td colspan="13">
+                                                <div class="pull-left">
+                                                    <input type="button" id="btnPaymentPay" class="btn btn-default" style="height:32px" value="打包付款" />
+                                                    <label>
+                                                        <span class="text-danger">
+                                                            提示:选择同一收款进行打包付款.
+                                                        </span>
+                                                    </label>
+                                                </div>
+                                                <div class="">
+                                                    <div class="pull-right page-box paymentObjectList">
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                            <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center  ">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                            <span class="">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+                    <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

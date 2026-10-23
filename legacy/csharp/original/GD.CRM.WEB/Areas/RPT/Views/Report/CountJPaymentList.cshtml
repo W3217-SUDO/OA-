@@ -1,0 +1,150 @@
+﻿@{
+    ViewBag.Title = "回款统计";
+}
+
+@model Dchien.Legal.Web.Areas.RPT.ViewModels.Report.CountJPaymentListModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+
+<script src="@Url.Content("~/Scripts/RPT/AR/FAM.JAR.Report.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+@*<script src="@Url.Content("~/Scripts/RPT/AR/FAM.JAR.Report.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>*@
+
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body">
+
+        <div ng-transclude="">
+            <div class="console-container ng-scope">
+                <div class="row ng-scope">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5 class="ng-binding">回款统计</h5>
+                            </div>
+                        </div>
+                        <div class="pull-left margin-top-1 col-sm-12">
+                            <form class="form-inline" id="postForm">
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                @Html.TextAreaFor(m => m.SearchCondition.PageId, new { @style="display:none" })
+                                    <div class="simple-form-field">
+                                        <div class="form-group ">
+                                            <label class="control-label">
+                                                <span contenteditable="" class="text-danger "></span>
+                                                <span class="">回款日期：</span>
+                                            </label>
+                                            <div class="form-control-wrap">
+                                                @Html.TextBoxFor(m => m.SearchCondition.CashedDateStart, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                                -
+                                                @Html.TextBoxFor(m => m.SearchCondition.CashedDateEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                            </div>
+                                        </div>
+
+                                            <div class="form-group ">
+                                                <label class="control-label">
+                                                    <span contenteditable="" class="text-danger "></span>
+                                                    <span class="">客戶管理人：</span>
+                                                </label>
+                                                <div class="form-control-wrap">
+                                                    @Html.HiddenFor(m => m.SearchCondition.BusinessOwner, new { @class = "form-control", @style = "" })
+                                                    @Html.TextBoxFor(m => m.SearchCondition.BusinessOwnerName, new { @class = "form-control", @style = "" })
+                                                </div>
+                                            </div>
+                                    </div>
+
+                                <div class="simple-form-field">
+                                    <div class="form-group">
+                                        <label class="control-label">
+                                            <span class="">
+                                            </span>
+                                        </label>
+                                        <div class="form-control-wrap text-right">
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnPaymentSearch">
+                                                <span>查询</span>
+                                            </a>
+                                        </div>
+
+                                    </div>
+                                </div>
+                                <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                                    <div class="i_common_wrap">
+                                        <div class="i_common_list"></div>
+                                    </div>
+                                </div>
+                  
+                            </form>
+
+                        </div>
+                    </div>
+                    <div class="col-sm-6">
+                        <div class="ng-scope">
+                            <div class="gridSection" id="customergridSection">
+                                <table id="tblPaymentList" class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                         
+                                            <th>
+                                                客戶管理人
+                                            </th>
+                                            <th>
+                                                官费
+                                            </th>
+                                            <th>
+                                                代理费
+                                            </th>
+                           
+                                            <th>
+                                                佣金
+                                            </th>
+
+                                            <th>
+                                                合计
+                                            </th>
+
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr style="display: none">
+                                            <td>
+                                                &nbsp;
+                                            </td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                        </tr>
+                                    </tbody>
+                                    <tfoot class="ng-scope" style="display: none">
+                                        <tr>
+                                            <td colspan="5">
+                                                <div class="pull-left"></div>
+                                                <div class="ng-scope">
+                                                    <div class="pull-right page-box customer">
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                           <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left ng-binding">没有查询到符合条件的记录</span>
+                                            <span class="ng-binding">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+

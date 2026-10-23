@@ -1,0 +1,729 @@
+﻿@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service.IPR.Case
+@using Dchien.Legal.Service
+@using Dchien.Legal.Entity.IPR.Case
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var id = string.Empty;
+    if (ViewContext.RouteData.Values.ContainsKey("id"))
+    {
+        id = ViewContext.RouteData.Values["id"].ToString().ToLower();
+    }
+    var actived = "active";
+
+    var menus = MenuService.Instance.GetMenusByCurrentUser();
+}
+<div class="product-nav-stage ng-scope product-nav-stage-main" style="width:220px">
+    <div class="product-nav-scene product-nav-main-scene" style="width: 220px">
+        <div class="product-nav-title ng-binding" style="width: 220px">商标转文</div>
+        <div class="ng-isolate-scope"></div>
+        <div class="product-nav-list">
+            <ul class="top-level">
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009001) != null)
+                {
+                    actived = id == PageId.PageId_1001009001 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009001)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_420008);
+                                    serach.PageId = PageId.PageId_1001009001;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转商标注册证书(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                                    }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009002) != null)
+                {
+                    actived = id == PageId.PageId_1001009002 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009002)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_420001);
+                                    serach.PageId = PageId.PageId_1001009002;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转商标注册申请受理通知书(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                                    }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009003) != null)
+                {
+
+                    actived = id == PageId.PageId_1001009003 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009003)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_420007);
+
+                                    serach.PageId = PageId.PageId_1001009003;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转异议受理通知书(@totalCount)</div>
+                            </a>
+
+                        </div>
+                    </li>
+                                    }
+
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009004) != null)
+                {
+
+                    actived = id == PageId.PageId_1001009004 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009004)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_420016);
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_420017);
+
+                                    serach.PageId = PageId.PageId_1001009004;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转异议决定书(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+
+                                    }
+
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009005) != null)
+                {
+
+                    actived = id == PageId.PageId_1001009005 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009005)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_420012);
+                                    serach.PageId = PageId.PageId_1001009005;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转争议受理通知书(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                                    }
+
+
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009006) != null)
+                {
+
+                    actived = id == PageId.PageId_1001009006 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009006)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_420018);
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_420019);
+                                    serach.PageId = PageId.PageId_1001009006;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转复审决定书(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                                    }
+
+
+                                    @*@if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009007) != null)
+                                        {
+
+                                            actived = id == PageId.PageId_1001009007 ? "class=active" : "";
+                                            <li @actived>
+                                                <div class="ng-isolate-scope">
+                                                    <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009007)) class="ng-scope" style="width:220px">
+                                                        <div class="nav-icon"></div>
+
+                                                        @{
+                                                            var serach = new CaseFileSearchCondition();
+                                                            serach.UserId = LoginHelper.GetUserName();
+                                                            serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                            serach.FileTypeIds.Add((int)CaseFileType.FileType_210306);
+                                                            serach.PageId = PageId.PageId_1001009007;
+                                                            serach.IsTransmitted = false;
+
+                                                            var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                        }
+                                                        <div class="nav-title ng-binding" style="width:188px">转异议答辩通知书(@totalCount)</div>
+                                                    </a>
+                                                </div>
+                                            </li>
+                                        }*@
+
+                                    @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009008) != null)
+                                    {
+
+                                        actived = id == PageId.PageId_1001009008 ? "class=active" : "";
+
+                                        <li @actived>
+                                            <div class="ng-isolate-scope">
+                                                <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009008)) class="ng-scope" style="width:220px">
+                                                    <div class="nav-icon"></div>
+                                                    @{
+                                                        var serach = new CaseFileSearchCondition();
+                                                        serach.UserId = LoginHelper.GetUserName();
+                                                        serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                        serach.FileTypeIds.Add((int)CaseFileType.FileType_4100005);
+                                                        serach.PageId = PageId.PageId_1001009008;
+                                                        serach.IsTransmitted = false;
+
+                                                        var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                    }
+                                                    <div class="nav-title ng-binding" style="width:188px">转商标续展注册证明(@totalCount)</div>
+                                                </a>
+                                            </div>
+                                        </li>
+                                                        }
+
+                                    @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009009) != null)
+                                    {
+
+                                        actived = id == PageId.PageId_1001009009 ? "class=active" : "";
+                                        <li @actived>
+                                            <div class="ng-isolate-scope">
+                                                <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009009)) class="ng-scope" style="width:220px">
+                                                    <div class="nav-icon"></div>
+                                                    @{
+                                                        var serach = new CaseFileSearchCondition();
+                                                        serach.UserId = LoginHelper.GetUserName();
+
+                                                        serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                        serach.FileTypeIds.Add((int)CaseFileType.FileType_420013);
+                                                        serach.PageId = PageId.PageId_1001009009;
+                                                        serach.IsTransmitted = false;
+
+                                                        var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                    }
+                                                    <div class="nav-title ng-binding" style="width:188px">转不予受理通知书(@totalCount)</div>
+                                                </a>
+
+                                            </div>
+                                        </li>
+                                                        }
+
+
+                                    @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009010) != null)
+                                    {
+
+                                        actived = id == PageId.PageId_1001009010 ? "class=active" : "";
+                                        <li @actived>
+                                            <div class="ng-isolate-scope">
+                                                <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009010)) class="ng-scope" style="width:220px">
+                                                    <div class="nav-icon"></div>
+                                                    @{
+                                                        var serach = new CaseFileSearchCondition();
+                                                        serach.UserId = LoginHelper.GetUserName();
+                                                        serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                        serach.FileTypeIds.Add((int)CaseFileType.FileType_420011);
+                                                        serach.PageId = PageId.PageId_1001009010;
+                                                        serach.IsTransmitted = false;
+
+                                                        var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                    }
+                                                    <div class="nav-title ng-binding" style="width:188px">转商标驳回通知书(@totalCount)</div>
+                                                </a>
+
+                                            </div>
+                                        </li>
+                                                        }
+
+
+                                    @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009011) != null)
+                                    {
+
+                                        actived = id == PageId.PageId_1001009011 ? "class=active" : "";
+                                        <li @actived>
+                                            <div class="ng-isolate-scope">
+                                                <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009011)) class="ng-scope" style="width:220px">
+                                                    <div class="nav-icon"></div>
+                                                    @{
+                                                        var serach = new CaseFileSearchCondition();
+                                                        serach.UserId = LoginHelper.GetUserName();
+                                                        serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                        serach.FileTypeIds.Add((int)CaseFileType.FileType_420027);
+                                                        serach.PageId = PageId.PageId_1001009011;
+                                                        serach.IsTransmitted = false;
+
+                                                        var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                    }
+                                                    <div class="nav-title ng-binding" style="width:188px">转商标部分驳回通知书(@totalCount)</div>
+                                                </a>
+                                            </div>
+                                        </li>
+                                                        }
+
+
+                                    @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009012) != null)
+                                    {
+
+                                        actived = id == PageId.PageId_1001009012 ? "class=active" : "";
+                                        <li @actived>
+                                            <div class="ng-isolate-scope">
+                                                <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009012)) class="ng-scope" style="width:220px">
+                                                    <div class="nav-icon"></div>
+                                                    @{
+                                                        var serach = new CaseFileSearchCondition();
+                                                        serach.UserId = LoginHelper.GetUserName();
+                                                        serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+
+                                                        serach.FileTypeIds.Add((int)CaseFileType.FileType_420015);
+
+                                                        serach.PageId = PageId.PageId_1001009012;
+                                                        serach.IsTransmitted = false;
+
+                                                        var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                    }
+                                                    <div class="nav-title ng-binding" style="width:188px">转商标复审受理通知(@totalCount)</div>
+                                                </a>
+                                            </div>
+                                        </li>
+                                                        }
+
+                                    @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009013) != null)
+                                    {
+
+                                        actived = id == PageId.PageId_1001009013 ? "class=active" : "";
+                                        <li @actived>
+                                            <div class="ng-isolate-scope">
+                                                <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009013)) class="ng-scope" style="width:220px">
+                                                    <div class="nav-icon"></div>
+                                                    @{
+                                                        var serach = new CaseFileSearchCondition();
+                                                        serach.UserId = LoginHelper.GetUserName();
+                                                        serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                        serach.FileTypeIds.Add((int)CaseFileType.FileType_4100010);
+                                                        serach.PageId = PageId.PageId_1001009013;
+                                                        serach.IsTransmitted = false;
+
+                                                        var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                    }
+                                                    <div class="nav-title ng-binding" style="width:188px">转商标核准转让证明(@totalCount)</div>
+                                                </a>
+                                            </div>
+                                        </li>
+                                                        }
+
+
+                                    @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009014) != null)
+                                    {
+
+                                        actived = id == PageId.PageId_1001009014 ? "class=active" : "";
+                                        <li @actived>
+                                            <div class="ng-isolate-scope">
+                                                <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009014)) class="ng-scope" style="width:220px">
+                                                    <div class="nav-icon"></div>
+                                                    @{
+                                                        var serach = new CaseFileSearchCondition();
+                                                        serach.UserId = LoginHelper.GetUserName();
+                                                        serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                        serach.FileTypeIds.Add((int)CaseFileType.FileType_420039);
+                                                        serach.PageId = PageId.PageId_1001009014;
+                                                        serach.IsTransmitted = false;
+
+                                                        var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                    }
+                                                    <div class="nav-title ng-binding" style="width:188px">转商标注册申请初步审定公告通知书(@totalCount)</div>
+                                                </a>
+                                            </div>
+                                        </li>
+                                                        }
+
+
+                                    @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009015) != null)
+                                    {
+
+                                        actived = id == PageId.PageId_1001009015 ? "class=active" : "";
+                                        <li @actived>
+                                            <div class="ng-isolate-scope">
+                                                <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009015)) class="ng-scope" style="width:220px">
+                                                    <div class="nav-icon"></div>
+                                                    @{
+                                                        var serach = new CaseFileSearchCondition();
+                                                        serach.UserId = LoginHelper.GetUserName();
+                                                        serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                        serach.FileTypeIds.Add((int)CaseFileType.FileType_420002);
+                                                        serach.PageId = PageId.PageId_1001009015;
+                                                        serach.IsTransmitted = false;
+
+                                                        var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                    }
+                                                    <div class="nav-title ng-binding" style="width:188px">转商标注册申请补正通知书(@totalCount)</div>
+                                                </a>
+                                            </div>
+                                        </li>
+                                                        }
+
+                                    @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009016) != null)
+                                    {
+
+                                        actived = id == PageId.PageId_1001009016 ? "class=active" : "";
+                                        <li @actived>
+                                            <div class="ng-isolate-scope">
+                                                <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009016)) class="ng-scope" style="width:220px">
+                                                    <div class="nav-icon"></div>
+                                                    @{
+                                                        var serach = new CaseFileSearchCondition();
+                                                        serach.UserId = LoginHelper.GetUserName();
+                                                        serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                        serach.FileTypeIds.Add((int)CaseFileType.FileType_420022);
+                                                        serach.PageId = PageId.PageId_1001009016;
+                                                        serach.IsTransmitted = false;
+
+                                                        var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                    }
+                                                    <div class="nav-title ng-binding" style="width:188px">转许可备案通知书(@totalCount)</div>
+                                                </a>
+                                            </div>
+                                        </li>
+                                                        }
+
+
+                                    @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009017) != null)
+                                    {
+
+                                        actived = id == PageId.PageId_1001009017 ? "class=active" : "";
+                                        <li @actived>
+                                            <div class="ng-isolate-scope">
+                                                <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009017)) class="ng-scope" style="width:220px">
+                                                    <div class="nav-icon"></div>
+                                                    @{
+                                                        var serach = new CaseFileSearchCondition();
+                                                        serach.UserId = LoginHelper.GetUserName();
+                                                        serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                        serach.FileTypeIds.Add((int)CaseFileType.FileType_4100012);
+                                                        serach.PageId = PageId.PageId_1001009017;
+                                                        serach.IsTransmitted = false;
+
+                                                        var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                    }
+                                                    <div class="nav-title ng-binding" style="width:188px">转商标变更证明(@totalCount)</div>
+                                                </a>
+                                            </div>
+                                        </li>
+                                                        }
+
+
+                                    @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009018) != null)
+                                    {
+
+                                        actived = id == PageId.PageId_1001009018 ? "class=active" : "";
+                                        <li @actived>
+                                            <div class="ng-isolate-scope">
+                                                <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009018)) class="ng-scope" style="width:220px">
+                                                    <div class="nav-icon"></div>
+                                                    @{
+                                                        var serach = new CaseFileSearchCondition();
+                                                        serach.UserId = LoginHelper.GetUserName();
+                                                        serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                        serach.FileTypeIds.Add((int)CaseFileType.FileType_420026);
+                                                        serach.PageId = PageId.PageId_1001009018;
+                                                        serach.IsTransmitted = false;
+
+                                                        var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                    }
+                                                    <div class="nav-title ng-binding" style="width:188px">转商标变更申请补正通知书(@totalCount)</div>
+                                                </a>
+                                            </div>
+                                        </li>
+                                                        }
+
+                                    @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009019) != null)
+                                    {
+
+                                        actived = id == PageId.PageId_1001009019 ? "class=active" : "";
+                                        <li @actived>
+                                            <div class="ng-isolate-scope">
+                                                <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009019)) class="ng-scope" style="width:220px">
+                                                    <div class="nav-icon"></div>
+                                                    @{
+                                                        var serach = new CaseFileSearchCondition();
+                                                        serach.UserId = LoginHelper.GetUserName();
+                                                        serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                        serach.FileTypeIds.Add((int)CaseFileType.FileType_420004);
+                                                        serach.PageId = PageId.PageId_1001009019;
+                                                        serach.IsTransmitted = false;
+
+                                                        var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                    }
+                                                    <div class="nav-title ng-binding" style="width:188px">转视为撤回通知书(@totalCount)</div>
+                                                </a>
+                                            </div>
+                                        </li>
+                                                        }
+
+                                    @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009020) != null)
+                                    {
+
+                                        actived = id == PageId.PageId_1001009020 ? "class=active" : "";
+                                        <li @actived>
+                                            <div class="ng-isolate-scope">
+                                                <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009020)) class="ng-scope" style="width:220px">
+                                                    <div class="nav-icon"></div>
+                                                    @{
+                                                        var serach = new CaseFileSearchCondition();
+                                                        serach.UserId = LoginHelper.GetUserName();
+                                                        serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                        serach.FileTypeIds.Add((int)CaseFileType.FileType_420023);
+                                                        serach.PageId = PageId.PageId_1001009020;
+                                                        serach.IsTransmitted = false;
+
+                                                        var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                    }
+                                                    <div class="nav-title ng-binding" style="width:188px">转异议答辩通知书(@totalCount)</div>
+                                                </a>
+                                            </div>
+                                        </li>
+                                                        }
+
+
+
+                                                        @*@if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009021) != null)
+                                                            {
+                                                                actived = id == PageId.PageId_1001009021 ? "class=active" : "";
+                                                                <li @actived>
+                                                                    <div class="ng-isolate-scope">
+                                                                        <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009021)) class="ng-scope" style="width:220px">
+                                                                            <div class="nav-icon"></div>
+                                                                            @{
+                                                                                var serach = new CaseFileSearchCondition();
+                                                                                serach.UserId = LoginHelper.GetUserName();
+                                                                                serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                                                serach.FileTypeIds.Add((int)CaseFileType.FileType_420008);
+                                                                                serach.PageId = PageId.PageId_1001009021;
+                                                                                //serach.IsTransmitted = false;
+
+                                                                                var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                                            }
+                                                                            <div class="nav-title ng-binding" style="width:188px">通知商标续展(@totalCount)</div>
+                                                                        </a>
+                                                                    </div>
+                                                                </li>
+                                                                                }*@
+
+
+                                                        @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009022) != null)
+                                                        {
+
+                                                            actived = id == PageId.PageId_1001009022 ? "class=active" : "";
+                                                            <li @actived>
+                                                                <div class="ng-isolate-scope">
+                                                                    <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009022)) class="ng-scope" style="width:220px">
+                                                                        <div class="nav-icon"></div>
+                                                                        @{
+                                                                            var serach = new CaseFileSearchCondition();
+                                                                            serach.UserId = LoginHelper.GetUserName();
+                                                                            serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                                            serach.FileTypeIds.Add((int)CaseFileType.FileType_420409);
+                                                                            serach.PageId = PageId.PageId_1001009022;
+                                                                            serach.IsTransmitted = false;
+
+                                                                            var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                                        }
+                                                                        <div class="nav-title ng-binding" style="width:188px">转商标转让受理通知书(@totalCount)</div>
+                                                                    </a>
+                                                                </div>
+                                                            </li>
+                                                                            }
+
+                                                        @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009023) != null)
+                                                        {
+
+                                                            actived = id == PageId.PageId_1001009023 ? "class=active" : "";
+                                                            <li @actived>
+                                                                <div class="ng-isolate-scope">
+                                                                    <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009023)) class="ng-scope" style="width:220px">
+                                                                        <div class="nav-icon"></div>
+                                                                        @{
+                                                                            var serach = new CaseFileSearchCondition();
+                                                                            serach.UserId = LoginHelper.GetUserName();
+                                                                            serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                                            serach.FileTypeIds.Add((int)CaseFileType.FileType_420414);
+                                                                            serach.PageId = PageId.PageId_1001009023;
+                                                                            serach.IsTransmitted = false;
+
+                                                                            var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                                        }
+                                                                        <div class="nav-title ng-binding" style="width:188px">转商标转让申请补正通知书(@totalCount)</div>
+                                                                    </a>
+                                                                </div>
+                                                            </li>
+                                                                            }
+
+                                                        @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009024) != null)
+                                                        {
+
+                                                            actived = id == PageId.PageId_1001009024 ? "class=active" : "";
+                                                            <li @actived>
+                                                                <div class="ng-isolate-scope">
+                                                                    <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009024)) class="ng-scope" style="width:220px">
+                                                                        <div class="nav-icon"></div>
+                                                                        @{
+                                                                            var serach = new CaseFileSearchCondition();
+                                                                            serach.UserId = LoginHelper.GetUserName();
+                                                                            serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                                            serach.FileTypeIds.Add((int)CaseFileType.FileType_420032);
+                                                                            serach.PageId = PageId.PageId_1001009024;
+                                                                            serach.IsTransmitted = false;
+
+                                                                            var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                                        }
+                                                                        <div class="nav-title ng-binding" style="width:188px">转撤销连续三年不使用注册商标受理通知书(@totalCount)</div>
+                                                                    </a>
+                                                                </div>
+                                                            </li>
+                                                                            }
+
+                                                        @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009025) != null)
+                                                        {
+
+                                                            actived = id == PageId.PageId_1001009025 ? "class=active" : "";
+                                                            <li @actived>
+                                                                <div class="ng-isolate-scope">
+                                                                    <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009025)) class="ng-scope" style="width:220px">
+                                                                        <div class="nav-icon"></div>
+                                                                        @{
+                                                                            var serach = new CaseFileSearchCondition();
+                                                                            serach.UserId = LoginHelper.GetUserName();
+                                                                            serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                                            serach.FileTypeIds.Add((int)CaseFileType.FileType_420031);
+                                                                            serach.PageId = PageId.PageId_1001009025;
+                                                                            serach.IsTransmitted = false;
+
+                                                                            var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                                        }
+                                                                        <div class="nav-title ng-binding" style="width:188px">转注册商标连续三年不使用撤销申请的决定(@totalCount)</div>
+                                                                    </a>
+                                                                </div>
+                                                            </li>
+                                                                            }
+
+                                                        @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009026) != null)
+                                                        {
+
+                                                            actived = id == PageId.PageId_1001009026 ? "class=active" : "";
+                                                            <li @actived>
+                                                                <div class="ng-isolate-scope">
+                                                                    <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009026)) class="ng-scope" style="width:220px">
+                                                                        <div class="nav-icon"></div>
+                                                                        @{
+                                                                            var serach = new CaseFileSearchCondition();
+                                                                            serach.UserId = LoginHelper.GetUserName();
+                                                                            serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                                            serach.FileTypeIds.Add((int)CaseFileType.FileType_420416);
+                                                                            serach.PageId = PageId.PageId_1001009026;
+                                                                            serach.IsTransmitted = false;
+
+                                                                            var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                                        }
+                                                                        <div class="nav-title ng-binding" style="width:188px">转关于提供注册商标使用证据的通知(@totalCount)</div>
+                                                                    </a>
+                                                                </div>
+                                                            </li>
+                                                                            }
+
+                                                        @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009027) != null)
+                                                        {
+
+                                                            actived = id == PageId.PageId_1001009027 ? "class=active" : "";
+                                                            <li @actived>
+                                                                <div class="ng-isolate-scope">
+                                                                    <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009027)) class="ng-scope" style="width:220px">
+                                                                        <div class="nav-icon"></div>
+                                                                        @{
+                                                                            var serach = new CaseFileSearchCondition();
+                                                                            serach.UserId = LoginHelper.GetUserName();
+                                                                            serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                                            serach.FileTypeIds.Add((int)CaseFileType.FileType_420411);
+                                                                            serach.PageId = PageId.PageId_1001009027;
+                                                                            serach.IsTransmitted = false;
+
+                                                                            var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                                                        }
+                                                                        <div class="nav-title ng-binding" style="width:188px">转商标评审案件答辩通知书(@totalCount)</div>
+                                                                    </a>
+                                                                </div>
+                                                            </li>
+                                                                            }
+
+
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001009028) != null)
+                {
+
+                    actived = id == PageId.PageId_1001009028 ? "class=active" : "";
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CaseTrademarkOfficeFile/List", PageId.PageId_1001009028)) class="ng-scope" style="width:220px">
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FileTypeIds.Add((int)CaseFileType.FileType_420391);
+                                    serach.PageId = PageId.PageId_1001009028;
+                                    serach.IsTransmitted = false;
+
+                                    var totalCount = CaseFileSearchService.Instance.GetCaseFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" style="width:188px">转商标无效宣告请求裁定书(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                                    }
+                                                    </ul>
+                                                </div>
+                                            </div>
+
+                                        </div>

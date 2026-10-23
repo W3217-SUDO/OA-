@@ -1,0 +1,83 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity
+@using Dchien.Legal.Entity.IPR.Case
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.IPR.Case
+
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.AR.CaseFeeModel
+
+<div class="modal fade" id="createModal">
+    <div class="modal-dialog" style="width:1200px">
+        <div class="modal-content">
+            @using (Html.BeginForm("Create", "ARCaseFee", FormMethod.Post, new { id = "create", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+            {
+                <div class="modal-header">
+                    <button type="button" class="close" id="btnCaseFeeCreateClose">×</button>
+                    <h5 class="modal-title ng-binding">新增费用</h5>
+                </div>
+
+                <div class="modal-body">
+                    <div class="form-group">
+                        <div class="col-sm-12">
+                            <div class="gridSection">
+                                    <table class='table table-hover' id="tblContractObjectList" width="100%">
+                                        <colgroup>
+                                            <col style="width: 12%">
+                                            <col style="width: 10%">
+                                            <col style="width: 14%">
+                                            <col style="width: 6%">
+                                            <col style="width: 14%">
+                                            <col style="width: 6%">
+                                            <col style="width: 6%">
+                                            <col style="width: 14%">
+                                            <col style="width: 6%">
+                                            <col style="width: 6%">
+                                            <col style="width: 15%">
+                                            <col style="width: 6%">
+                                        </colgroup>
+                                        <thead>
+                                            <tr>
+                                                <th>合同</th>
+                                                <th>申请日</th>
+                                                <th>官费类型</th>
+                                                <th>官费金额</th>
+                                                <th>年度</th>
+                                                <th>首年</th>
+                                                <th>客户自缴</th>
+                                                <th>代理费类型</th>
+                                                <th>代理费</th>
+                                                <th>其他费用</th>
+                                                <th>说明</th>
+                                                <th>操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr style="display: none">
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                            </div>
+                        </div>
+                    </div>
+                 </div>
+                <div class="modal-footer">
+                    <input class="btn btn-primary ng-binding" type="button" id="btnCaseFeeCreateUpdate" value="保存" />
+                    <input class="btn btn-default ng-binding" type="button" id="btnCaseFeeCreateCancel" value="取消" />
+                </div>
+            }
+        </div>
+    </div>
+</div>
+

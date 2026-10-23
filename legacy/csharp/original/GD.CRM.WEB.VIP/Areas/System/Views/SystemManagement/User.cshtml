@@ -1,0 +1,256 @@
+﻿@using System.Activities.Expressions
+@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.System.ViewModels.SystemManagement.UserModel
+
+@{
+    object htmlAttribute = null;
+    var departments = DepartmentService.Instance.GetAll();
+}
+
+<script type="text/javascript"></script>
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+
+<div class="modal fade" id="userModal" >
+   
+        <div class="modal-dialog" style="width:700px">
+            <div class="modal-content" ng-transclude="">
+                <div class="ng-scope">
+                    <form class="form-horizontal ng-invalid ng-invalid-required" id="postForm">
+                        @Html.HiddenFor(m => m.User.UserId)
+
+                        <div class="modal-header">
+                            <button type="button" class="close" id="btnUserClose">×</button>
+                            <h5 class="modal-title ng-binding">用户维护</h5>
+                        </div>
+                        <div class="modal-body" id="">
+                            <div>
+                                <div class="form-group">
+                                    <label for="" class="col-sm-2 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">员工登录名</span>
+                                    </label>
+                                    <div class="col-sm-4">
+                                        @Html.TextBoxFor(m => m.User.UserName, new { @class = "form-control" })
+                                    </div>
+                                    <label for="" class="col-sm-2 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">真实姓名</span>
+                                    </label>
+                                    <div class="col-sm-4">
+                                        @Html.TextBoxFor(m => m.User.EmployeeName, new { @class = "form-control" })
+                                    </div>
+                                </div>
+                                
+
+                                @if (Model.User == null || Model.User.UserId < 1)
+                                {
+                                    <div class="form-group">
+                                        <label for="" class="col-sm-2 control-label">
+                                            <span class="text-danger ng-binding">*</span>
+                                            <span class="ng-binding">密码</span>
+                                        </label>
+                                        <div class="col-sm-4">
+                                            @Html.PasswordFor(m => m.User.Password, new { @class = "form-control" })
+                                        </div>
+
+                                        <label for="" class="col-sm-2 control-label">
+                                            <span class="text-danger ng-binding">*</span>
+                                            <span class="ng-binding">确认密码</span>
+                                        </label>
+                                        <div class="col-sm-4">
+                                            @Html.PasswordFor(m => m.User.PasswordConfirm, new { @class = "form-control" })
+                                        </div>
+                                    </div>
+                                }
+
+
+                                <div class="form-group">
+                                    <label for="" class="col-sm-2 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">固定电话</span>
+                                    </label>
+                                    <div class="col-sm-4">
+                                        @Html.TextBoxFor(m => m.User.OfficePhone, new { @class = "form-control" })
+                                    </div>
+                                    
+                                    <label for="" class="col-sm-2 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">手机号码</span>
+                                    </label>
+                                    <div class="col-sm-4">
+                                        @Html.TextBoxFor(m => m.User.MobilePhone, new
+                                        {
+                                            @class = "form-control",
+                                            @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')",
+                                            @onafterpaste = "this.value=this.value.replace(/\\D/g,'')"
+                                        })
+                                    </div>
+                                </div>
+ 
+
+
+                                <div class="form-group">
+                                    <label for="" class="col-sm-2 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">Email</span>
+                                    </label>
+                                    <div class="col-sm-4">
+                                        @Html.TextBoxFor(m => m.User.Email, new { @class = "form-control" })
+                                    </div>
+                                    <label class="col-sm-2 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">数据查看权限</span>
+                                    </label>
+                                    <div class="col-sm-4">
+                                        @Html.DropDownListFor(m => m.User.AccessLevel, UserService.Instance.GetAccessLevelList(), new { @class = "form-control" })
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+
+                                    <label for="" class="col-sm-2 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">角色</span>
+                                    </label>
+                                    <div class="col-sm-4" id="divRole">
+                                        @{  var roleNames = string.Empty;
+                                            var roleIds = string.Join(",", Model.RoleIds ?? new List<int>());
+                                            if (Model.Roles != null && Model.Roles.Count > 0)
+                                            {
+                                                roleNames = Model.Roles.Where(role => Model.RoleIds.Contains(role.RoleId)).Aggregate(roleNames, (current, role) => current + (role.RoleName + ","));
+                                            }
+
+                                            if (roleNames.Length > 1)
+                                            {
+                                                roleNames = roleNames.Substring(0, roleNames.Length - 1);
+                                            }
+                                        }
+                                        <input type="text" id="Role_Name" readonly value="@roleNames" class="form-control">
+                                        <input type="hidden" id="Role_Id" value="@roleIds">
+                                    </div>
+
+                                    <label for="" class="col-sm-2 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">所属部门</span>
+                                    </label>
+                                    <div class="col-sm-4" id="divDepartment">
+                                        @Html.HiddenFor(m => m.User.DepartmentId)
+                                        @Html.TextBoxFor(m => m.User.DepartmentName, new { @class = "form-control", @readonly = true })
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="col-sm-2 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">是否部门经理</span>
+                                    </label>
+                                    <div class="col-sm-4">
+                                        @Html.CheckBoxFor(m => m.User.IsDepartmentManager, new { @style = "height: 32px;width: 10%;font-size: 12px" })
+                                    </div>
+                                    <label class="col-sm-2 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">是否管理员</span>
+                                    </label>
+                                    <div class="col-sm-4">
+                                        @Html.CheckBoxFor(m => m.User.IsAdmin, new { @style = "height: 32px;width: 10%;font-size: 12px" })
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="col-sm-2 control-label">
+                                        <span class="text-danger ng-binding"></span>
+                                        <span class="ng-binding">上级领导</span>
+                                    </label>
+                                    <div class="col-sm-4">
+                                        @Html.HiddenFor(m => m.User.OrgId)
+                                        @Html.TextBoxFor(m => m.User.OrgName, new { @class = "form-control", @readonly = true })
+
+                                    </div>
+                                    <label class="col-sm-2 control-label">
+                                        <span class="text-danger ng-binding"></span>
+                                        <span class="ng-binding">案源提成比</span>
+                                    </label>
+                                    <div class="col-sm-4">
+                                        @Html.TextBoxFor(m => m.User.LeadRate, new
+                                        {
+                                            @class = "form-control",
+                                            @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')",
+                                            @onafterpaste = "this.value=this.value.replace(/\\D/g,'')"
+                                        })
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label class="col-sm-2 control-label">
+                                        <span class="text-danger ng-binding"></span>
+                                        <span class="ng-binding">撰稿提成比</span>
+                                    </label>
+                                    <div class="col-sm-4">
+                                        @Html.TextBoxFor(m => m.User.CopyRate, new
+                                        {
+                                            @class = "form-control",
+                                            @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')",
+                                            @onafterpaste = "this.value=this.value.replace(/\\D/g,'')"
+                                        })
+                                    </div>
+                                    <label class="col-sm-2 control-label">
+                                        <span class="text-danger ng-binding"></span>
+                                        <span class="ng-binding"></span>
+                                    </label>
+                                    <div class="col-sm-4">
+                                       
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="i_common_box" style="display: none;" id="divRoleList">
+                                <div class="i_common_hd">
+                                    从下列角色中选择
+                                </div>
+                                <div class="i_common_bd">
+                                    <ul class="i_common_ul layoutfix">
+                                        @if (Model.Roles != null && Model.Roles.Count > 0)
+                                        {
+                                            foreach (var role in Model.Roles)
+                                            {
+                                                <li><a href="javascript:void(0)" id="@role.RoleId">@role.RoleName</a></li>
+                                            }
+                                        }
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div class="i_common_box" style="display: none;" id="divDepartmentList">
+                                <div class="i_common_hd">
+                                    从下列部门中选择
+                                </div>
+                                <div class="i_common_bd">
+                                    <ul class="i_common_ul layoutfix">
+                                        @if (departments != null && departments.Count > 0)
+                                        {
+                                            foreach (var d in departments)
+                                            {
+                                                <li><a href="javascript:void(0)" id="@d.DepartmentId">@d.DepartmentName</a></li>
+                                            }
+                                        }
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div style="display: none;" id="divUserList">
+                                @Html.Partial("~/Areas/IPR/Views/IPRBase/UserList.cshtml")
+                            </div>
+
+                        </div>
+                        <div class="modal-footer">
+                            <input class="btn btn-primary ng-binding" type="button" id="btnUser" value="确定" />
+                            <input class="btn btn-default ng-binding" type="button" id="btnUserCancel" value="取消" />
+                        </div>
+
+                    </form>
+                </div>
+            </div>
+        </div><!-- /.modal -->
+    
+</div>
+

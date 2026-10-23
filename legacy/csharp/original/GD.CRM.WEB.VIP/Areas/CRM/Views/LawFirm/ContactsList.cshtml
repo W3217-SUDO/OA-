@@ -1,0 +1,116 @@
+﻿@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.CRM.ViewModels.LawFirm.ContactsListModel
+
+@{
+    object htmlAttribute = null;
+}
+
+<script src="@Url.Content("~/Scripts/CRM/LawFirm/Contacts.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<div class="modal fade" id="contactsListModal" tabindex="-1" >
+    <div class="modal-dialog" style="width: 950px;">
+        <div class="modal-content" ng-transclude="">
+            <div class="ng-scope">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" data-ng-click="close(false)" aria-hidden="true" id="btnClose">×</button>
+                    <h5 class="modal-title ng-binding">联系人管理</h5>
+                </div>
+                <div class="modal-body">
+                    <div>
+                        <div class="ng-isolate-scope">
+                            <div class="ng-scope">
+                                <div>
+                                    <div class="searchSection inline-block"></div>
+                                    <div>
+                                        <form id="contactsListForm" action="@Url.Content("~/LawFirm/ContactsList")">
+                                            @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                            @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                            @Html.HiddenFor(m => m.LawFirmId)
+                                        </form>
+                                    </div>
+                                    <div class="tagSearchSection inline-block margin-left"></div>
+                                </div>
+
+
+
+                                <div class="gridSection">
+                                    <table id="tblContactsList" class="table table-hover" style="margin-bottom: 57px;">
+                                        <thead>
+                                            <tr>
+                                                <th>
+                                                    律所序号
+                                                </th>
+                                                <th>
+                                                    联系人
+                                                </th>
+                                                <th>
+                                                    联系地址
+                                                </th>
+                                                <th>
+                                                    联系邮编
+                                                </th>
+                                                <th>
+                                                    联系电话
+                                                </th>
+                                                <th>
+                                                    联系传真
+                                                </th>
+                                                <th>
+                                                    联系EMAIL
+                                                </th>
+                                                <th>
+                                                    创建人
+                                                </th>
+                                                <th>
+                                                    创建时间
+                                                </th>
+                                                <th>
+                                                    操作
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr style="display: none">
+                                                <td>
+                                                    &nbsp;
+                                                </td>
+                                                <td></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                            </tr>
+
+                                        </tbody>
+                                        <tfoot class="ng-scope" style="display: none">
+                                            <tr>
+                                                <td colspan="10">
+                                                    <div class="pull-left"></div>
+                                                    <div class="ng-scope">
+                                                        <div class="pull-right" id="contactslistpaging">
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <input class="btn btn-primary ng-binding" type="button" id="btnContactsListCreate" value="新建联系人" />
+                    <button class="btn btn-default ng-binding" id="btnContactsListCancel">取消</button>
+                </div>
+
+            </div>
+        </div>
+    </div><!-- /.modal -->
+</div>
+

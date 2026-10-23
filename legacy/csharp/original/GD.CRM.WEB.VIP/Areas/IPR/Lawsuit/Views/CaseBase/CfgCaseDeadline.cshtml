@@ -1,0 +1,65 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+
+ 
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<div class="i_common_box" style='width:400px'>
+    <div class="i_common_hd">
+        <input type="hidden" id="hidControlId">
+        截止日期设定
+    </div>
+    <div class="i_common_bd">
+        <fieldset>
+            <div class="form-group">
+                <label class="col-sm-1 control-label label-width" style="width:6%;padding: 1px; padding-top: 7px ;text-align: center">
+                    <span>于</span>
+                </label>
+                <div class="col-sm-3 " style="padding: 1px;">
+                    <input class="input_time form-control" data-val="true" data-val-date="The field 提交日： must be a date." id="Cfg_Case_CaseBasicInfo_Deadline_Date" onfocus="WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" type="text" value="@DateTime.Now.ToString("yyyy-MM-dd")">
+                </div>
+
+                <label class="col-sm-1 control-label label-width" style="width: 6%; padding: 1px; padding-top: 7px; text-align: center">
+                    <span>后(</span>
+                </label>
+
+                <div class="col-sm-1 " style="width: 8%; padding: 1px;">
+                    <input class="form-control" id="Cfg_Case_CaseBasicInfo_Deadline_Year" onafterpaste="this.value=this.value.replace(/\D/g,'')"
+                           onkeyup="javascript:this.value=this.value.replace(/\D/g,'')" style="width: 100%" type="text" value="0">
+                </div>
+
+                <label class="col-sm-1 control-label label-width" style="width: 6%; padding: 1px; padding-top: 7px;; text-align: center">年</label>
+
+                <div class="col-sm-1 " style="width: 8%; padding: 1px;">
+                    <input class="form-control" id="Cfg_Case_CaseBasicInfo_Deadline_Month" onafterpaste="this.value=this.value.replace(/\D/g,'')"
+                           onkeyup="javascript:this.value=this.value.replace(/\D/g,'')" style="width: 100%" value="0">
+                </div>
+
+                <label class="col-sm-1 control-label label-width" style="width: 6%; padding: 1px; padding-top: 7px; text-align: center">月</label>
+
+                <div class="col-sm-1 " style="width: 8%; padding: 1px;">
+                    <input class="form-control" id="Cfg_Case_CaseBasicInfo_Deadline_Day" onafterpaste="this.value=this.value.replace(/\D/g,'')"
+                           onkeyup="javascript:this.value=this.value.replace(/\D/g,'')" style="width: 100%" value="0">
+                </div>
+
+                <label class="col-sm-1 control-label label-width" style="width: 6%; padding: 1px; padding-top: 7px; text-align: center">日)</label>
+
+            </div>
+        </fieldset>
+
+        <div class="form-group">
+            @*<label class="col-sm-4 control-label label-width"></label>*@
+            <div class="col-sm-12 row clearfix">
+
+                <input class="btn btn-primary ng-binding" type="button" id="btnCfgDeadlineCreateUpdate" value="确定" />
+                <input class="btn btn-default ng-binding" type="button" id="btnCfgDeadlineCreateUpdateCancel" value="取消" />
+
+            </div>
+        </div>
+    </div>
+
+
+
+</div>
+
+

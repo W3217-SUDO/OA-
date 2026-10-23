@@ -1,0 +1,982 @@
+﻿@using Dchien.Legal.Entity.System;
+
+@using Dchien.Legal.Service.TP.Task;
+@using Dchien.Legal.Entity.TP.Task;
+@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service;
+@using Dchien.Legal.Entity.Legal.Investigation.Clue;
+
+@model Dchien.Legal.Web.Areas.Console.ViewModels.Index.IndexModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/index.css")" />
+<link href="@Url.Content("~/Resource/css/home.console.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" rel="stylesheet">
+<link href="@Url.Content("~/Resource/css/font-awesome.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" rel="stylesheet">
+<script src="@Url.Content("~/Scripts/Common/charts/Chart.min.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Dashboard/Console.Dashboard.Index.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<style>
+    .y-row {
+        min-width: 1000px;
+        max-width: 1200px;
+        margin-left: auto;
+        margin-right: auto;
+        zoom: 1;
+    }
+
+
+    .dashboard-stats {
+        float: left;
+        width: 25%;
+    }
+
+    .dashboard-stats-item {
+        position: relative;
+        overflow: hidden;
+        color: #fff;
+        cursor: pointer;
+        height: 85px;
+        margin-right: 10px;
+        margin-bottom: 10px;
+        padding-left: 15px;
+        padding-top: 20px;
+    }
+
+        .dashboard-stats-item .m-top-none {
+            margin-top: 5px;
+        }
+
+        .dashboard-stats-item h2 {
+            font-size: 28px;
+            font-family: inherit;
+            line-height: 1.1;
+            font-weight: 500;
+            padding-left: 70px;
+        }
+
+            .dashboard-stats-item h2 span {
+                font-size: 12px;
+                padding-left: 5px;
+            }
+
+        .dashboard-stats-item h5 {
+            font-size: 12px;
+            font-family: inherit;
+            margin-top: 1px;
+            line-height: 1.1;
+            padding-left: 70px;
+        }
+
+
+        .dashboard-stats-item .stat-icon {
+            position: absolute;
+            top: 18px;
+            font-size: 50px;
+            opacity: .3;
+        }
+
+    .dashboard-stats i.fa.stats-icon {
+        width: 50px;
+        padding: 20px;
+        font-size: 50px;
+        text-align: center;
+        color: #fff;
+        height: 50px;
+        border-radius: 10px;
+    }
+
+    .panel-default {
+        border: none;
+        border-radius: 0px;
+        margin-bottom: 0px;
+        box-shadow: none;
+        -webkit-box-shadow: none;
+    }
+
+        .panel-default > .panel-heading {
+            color: #777;
+            background-color: #fff;
+            border-color: #e6e6e6;
+            padding: 10px 10px;
+        }
+
+        .panel-default > .panel-body {
+            padding: 10px;
+            padding-bottom: 0px;
+        }
+
+            .panel-default > .panel-body ul {
+                overflow: hidden;
+                padding: 0;
+                margin: 0px;
+                margin-top: -5px;
+            }
+
+                .panel-default > .panel-body ul li {
+                    line-height: 27px;
+                    list-style-type: none;
+                    white-space: nowrap;
+                    text-overflow: ellipsis;
+                }
+
+                    .panel-default > .panel-body ul li .time {
+                        color: #a1a1a1;
+                        float: right;
+                        padding-right: 5px;
+                    }
+</style>
+
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body">
+        <div ng-transclude="">
+            <div class="ng-scope">
+                <div class="home-v2 ng-scope">
+                    <div class="home-section-main clearfix" style="margin: 10px 10px 0px; padding: 0px; height: 356px;">
+                        <div class="rows" style="margin-bottom: 0.8%; overflow: hidden;">
+                            <div style="float: left; width: 69.2%;">
+                                <div style="height: 100%;  overflow: hidden;">
+                                    <div class="dashboard-stats">
+                                        <a href='#' onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/FAM/CaseFee/CaseFeeList", PageId.PageId_5001010002))','待缴官费')">
+                                            <div class="dashboard-stats-item" style="background-color: #578ebe;">
+                                                <div class="stat-icon">
+                                                    <i class="fa fa-clock-o"></i>
+                                                </div>
+                                                <h5 class="m-top-none">@Model.CaseOfficeFee1_Counts<span>件</span></h5>
+                                                <h5>待缴官费</h5>
+                                            </div>
+                                        </a>
+                                    </div>
+
+                                    @if (CommonService.Instance.CheckPermission(long.Parse(PageId.PageId_1001103010)))
+                                    {
+                                        <div class="dashboard-stats">
+                                            <a href='#' onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/FAM/CaseFee/RefundCaseFeeList", PageId.PageId_5001010001))','待退费')">
+                                                <div class="dashboard-stats-item" style="background-color: #44b6ae;">
+                                                    <h5 class="m-top-none">@Model.CaseOfficeFee2_Counts<span>件</span></h5>
+                                                    <h5>待退费</h5>
+                                                    <div class="stat-icon">
+                                                        <i class="fa fa-envelope-o"></i>
+                                                    </div>
+                                                </div>
+                                            </a>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="dashboard-stats">
+                                            <a href='#' onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/FAM/CaseFee/RefundCaseFeeList", PageId.PageId_5001010003))','待退费')">
+                                                <div class="dashboard-stats-item" style="background-color: #44b6ae;">
+                                                    <h5 class="m-top-none">@Model.CaseOfficeFee2_Counts<span>件</span></h5>
+                                                    <h5>待退费</h5>
+                                                    <div class="stat-icon">
+                                                        <i class="fa fa-envelope-o"></i>
+                                                    </div>
+                                                </div>
+                                            </a>
+                                        </div>
+
+                                    }
+
+                                    <div class="dashboard-stats">
+                                        <a href='#' onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/Legal/CaseList/List", PageId.PageId_1001104030))','补充证据')">
+                                            <div class="dashboard-stats-item" style="background-color: #e35b5a;">
+                                                <h5 class="m-top-none">@Model.CaseOfficeFee3_Counts<span>件</span></h5>
+                                                <h5>补充证据</h5>
+                                                <div class="stat-icon">
+                                                    <i class="fa fa-bell"></i>
+                                                </div>
+                                            </div>
+                                        </a>
+                                    </div>
+
+                                    <div class="dashboard-stats">
+
+                                        <a href='#' onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/Legal/CaseList/List", PageId.PageId_1001104040))','补充意见')">
+                                            <div class="dashboard-stats-item" style="background-color: #8775a7;margin-right: 0px; ">
+                                                <h5 class="m-top-none">@Model.CaseOfficeFee4_Counts<span>件</span></h5>
+                                                <h5>补充意见</h5>
+                                                <div class="stat-icon">
+                                                    <i class="fa fa-gavel"></i>
+                                                </div>
+                                            </div>
+                                        </a>
+                                    </div>
+
+                                    <div class="dashboard-stats">
+
+                                        <a href='#' onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/Legal/CaseList/List", PageId.PageId_1001104050))','待上诉')">
+                                            <div class="dashboard-stats-item" style="background-color:#4f5c65; margin-bottom: 0px;">
+                                                <h5 class="m-top-none">@Model.CaseOfficeFee5_Counts<span>件</span></h5>
+                                                <h5>待上诉</h5>
+                                                <div class="stat-icon">
+                                                    <i class="fa fa-shopping-cart"></i>
+                                                </div>
+                                            </div>
+                                        </a>
+                                    </div>
+
+                                    <div class="dashboard-stats">
+
+                                        <a href='#' onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/Legal/CaseList/List", PageId.PageId_1001104060))','待执行')">
+                                            <div class="dashboard-stats-item" style="background-color: #14aae4; margin-bottom: 0px;">
+
+                                                <h5 class="m-top-none">@Model.CaseOfficeFee6_Counts<span>件</span></h5>
+                                                <h5>待执行</h5>
+                                                <div class="stat-icon">
+                                                    <i class="fa fa-file-text-o"></i>
+                                                </div>
+
+                                            </div>
+                                        </a>
+                                    </div>
+                                    <div class="dashboard-stats">
+
+                                        <a href='#' onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/Legal/CaseList/List", PageId.PageId_1001104070))','紧急案件')">
+                                            <div class="dashboard-stats-item" style="background-color: #949FB1; margin-bottom: 0px;">
+
+                                                <h5 class="m-top-none">@Model.CaseOfficeFee7_Counts<span>件</span></h5>
+                                                <h5>紧急案件</h5>
+                                                <div class="stat-icon">
+                                                    <i class="fa fa-coffee"></i>
+                                                </div>
+
+                                            </div>
+                                        </a>
+                                    </div>
+                                    <div class="dashboard-stats">
+
+                                        <a href='#' onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/FCM/AR/ItemList", PageId.PageId_4001013))','未到官费金额')">
+                                            <div class="dashboard-stats-item" style="background-color: #f29503; margin-right: 0px; margin-bottom: 0px;">
+                                                <h5 class="m-top-none">@Model.TotalUnCashedCaseOfficeFeeAmount<span>元</span></h5>
+                                                <h5>未到官费金额</h5>
+                                                <div class="stat-icon">
+                                                    <i class="fa fa-rmb" style="padding-left: 10px;"></i>
+                                                </div>
+                                            </div>
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="float: right; width: 30%;  ">
+                                <div style="height:180px;  background-color: #fff;">
+                                    <div id="divTaskList" class="panel panel-default">
+                                        <div class="panel-heading"><i class="fa fa-send fa-lg" style="padding-right: 5px;"></i>待办事项</div>
+                                        <div class="panel-body" style="height: 142px">
+
+                                            <table id="tblNewCaseList" class="aps-table aps-widget aps-ani-transition " style="width:100%">
+                                                <colgroup>
+                                                    <col style="width: 26%">
+                                                    <col style="width: 12%">
+                                                    <col style="width: 12%">
+                                                    <col style="width: 26%">
+                                                    <col style="width: 12%">
+                                                    <col style="width: 12%">
+                                                </colgroup>
+                                                <tbody>
+
+                                                    <tr>
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            待处理任务
+                                                        </td>
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            @{
+
+                                                                var search = new Dchien.Legal.Entity.TP.Task.TaskSearchCondition();
+                                                                search.PageNo = 1;
+                                                                search.PageSize = 1;
+                                                                search.Officer = LoginHelper.GetUserName();
+                                                                search.NodeStatus = NodeStatus.Pending;
+                                                                search.PageId = PageId.PageId_9001001020;
+                                                                var pendingCount = TaskService.Instance.GetTaskListTotalCount(search);
+
+                                                                <a href="javascript:void(0);" style="color:#3498db" onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/TP/Task/TaskList", PageId.PageId_9001001020))','待处理任务')"> @(pendingCount)</a>
+                                                            }
+                                                        </td>
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            @{
+
+                                                                var search_0 = new Dchien.Legal.Entity.TP.Task.TaskSearchCondition();
+                                                                search_0.PageNo = 1;
+                                                                search_0.PageSize = 1;
+                                                                search_0.Initiator = LoginHelper.GetUserName();
+                                                                search_0.TaskStatus = TaskStatus.Rejected;
+                                                                search_0.PageId = PageId.PageId_9001001010;
+                                                                var pendingCount_0 = TaskService.Instance.GetTaskListTotalCount(search_0);
+
+                                                                <a href="javascript:void(0);" style="color:#f39c12" onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/TP/Task/TaskList", PageId.PageId_9001001010))','已拒绝任务')"> @(pendingCount_0)</a>
+                                                            }
+                                                        </td>
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            待审批官方费用
+                                                        </td>
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            @{
+                                                                if (CommonService.Instance.CheckPermission(long.Parse(PageId.PageId_5001003002)))
+                                                                {
+                                                                    var search3 = new Dchien.Legal.Entity.FAM.AP.Payment.PaymentSearchCondition();
+                                                                    search3.PageNo = 1;
+                                                                    search3.PageSize = 1;
+                                                                    search3.PageId = PageId.PageId_5001003002;
+                                                                    search3.Auditor = LoginHelper.GetUserName();
+                                                                    var paymentList = Dchien.Legal.Service.FAM.AP.Payment.PaymentService.Instance.GetPendingPaymentList(search3);
+
+                                                                    <a href="javascript:void(0);" style="color:#3498db" onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/FAM/AP/PaymentAuditList", PageId.PageId_5001003002))','待审批请款单')"> @(search3.TotalCount)</a>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <a href="javascript:void(0);" onclick="javascript:void(0);">0</a>
+                                                                }
+                                                            }
+
+                                                        </td>
+
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            @{
+                                                                if (CommonService.Instance.CheckPermission(long.Parse(PageId.PageId_5001003001)))
+                                                                {
+                                                                    var search3 = new Dchien.Legal.Entity.FAM.AP.Payment.PaymentSearchCondition();
+                                                                    search3.PageNo = 1;
+                                                                    search3.PageSize = 1;
+                                                                    search3.PageId = PageId.PageId_5001003001;
+                                                                    search3.PaymentStatus = (int)Dchien.Legal.Entity.FAM.AP.Payment.PaymentStatus.R;
+                                                                    search3.Applicant = LoginHelper.GetUserName();
+                                                                    var paymentList = Dchien.Legal.Service.FAM.AP.Payment.PaymentService.Instance.GetPaymentList(search3);
+
+                                                                    <a href="javascript:void(0);" style="color:#f39c12" onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/FAM/AP/PaymentList?paymentStatus=4", PageId.PageId_5001003001))','已驳回请款单')"> @(search3.TotalCount)</a>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <a href="javascript:void(0);" onclick="javascript:void(0);">0</a>
+                                                                }
+                                                            }
+
+                                                        </td>
+
+                                                    </tr>
+                                                    <tr>
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            待审批线索
+                                                        </td>
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            @{
+                                                                if (CommonService.Instance.CheckPermission(long.Parse(PageId.PageId_1401004001)))
+                                                                {
+                                                                    var search2 = new Dchien.Legal.Entity.Legal.Investigation.Clue.InvestigationClueSearchCondition();
+                                                                    search2.PageNo = 1;
+                                                                    search2.PageSize = 1;
+                                                                    search2.PageId = PageId.PageId_1401004001;
+                                                                    var list = Dchien.Legal.Service.Legal.Investigation.Clue.InvestigationClueService.Instance.GetInvestigationClueList(search2);
+                                                                    <a href="javascript:void(0);" style="color:#3498db" onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/CIT/InvestigationClue/List", PageId.PageId_1401004001))','待审批线索')"> @(search2.TotalCount)</a>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <a href="javascript:void(0);" onclick="javascript:void(0);">0</a>
+                                                                }
+                                                            }
+
+                                                        </td>
+
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            @{
+                                                                if (CommonService.Instance.CheckPermission(long.Parse(PageId.PageId_1401003004)))
+                                                                {
+                                                                    var search2 = new Dchien.Legal.Entity.Legal.Investigation.Clue.InvestigationClueSearchCondition();
+                                                                    search2.PageNo = 1;
+                                                                    search2.PageSize = 1;
+                                                                    search2.PageId = PageId.PageId_1401003004;
+                                                                    var list = Dchien.Legal.Service.Legal.Investigation.Clue.InvestigationClueService.Instance.GetInvestigationClueList(search2);
+                                                                    <a href="javascript:void(0);" style="color:#f39c12" onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/CIT/InvestigationClue/List", PageId.PageId_1401003004))','已驳回线索')"> @(search2.TotalCount)</a>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <a href="javascript:void(0);" onclick="javascript:void(0);">0</a>
+                                                                }
+                                                            }
+
+                                                        </td>
+   
+
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            待审批内部费用
+                                                        </td>
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            @{
+                                                                if (CommonService.Instance.CheckPermission(long.Parse(PageId.PageId_5001004002)))
+                                                                {
+                                                                    var search4 = new Dchien.Legal.Entity.FAM.InternalFee.Payment.PaymentSearchCondition();
+                                                                    search4.PageNo = 1;
+                                                                    search4.PageSize = 1;
+                                                                    search4.Auditor = LoginHelper.GetUserName();
+                                                                    search4.PageId = PageId.PageId_5001004002;
+                                                                    var list4 = Dchien.Legal.Service.FAM.InternalFee.Payment.PaymentService.Instance.GetPendingPaymentList(search4);
+                                                                    <a href="javascript:void(0);" style="color:#3498db" onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/FAM/InternalFee/PaymentAuditList", PageId.PageId_5001004002))','待审批内部费用')"> @(search4.TotalCount)</a>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <a href="javascript:void(0);" onclick="javascript:void(0);">0</a>
+                                                                }
+                                                            }
+
+                                                        </td>
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            @{
+                                                                if (CommonService.Instance.CheckPermission(long.Parse(PageId.PageId_5001004001)))
+                                                                {
+                                                                    var search4 = new Dchien.Legal.Entity.FAM.InternalFee.Payment.PaymentSearchCondition();
+                                                                    search4.PageNo = 1;
+                                                                    search4.PageSize = 1;
+                                                                    search4.Applicant = LoginHelper.GetUserName();
+                                                                    search4.PaymentStatus = (int)Dchien.Legal.Entity.FAM.InternalFee.Payment.PaymentStatus.R;
+                                                                    search4.PageId = PageId.PageId_5001004001;
+                                                                    var list4 = Dchien.Legal.Service.FAM.InternalFee.Payment.PaymentService.Instance.GetPaymentList(search4);
+                                                                    <a href="javascript:void(0);" style="color:#f39c12" onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/FAM/InternalFee/PaymentList?paymentStatus=4", PageId.PageId_5001004001))','已驳回内部费用')"> @(search4.TotalCount)</a>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <a href="javascript:void(0);" onclick="javascript:void(0);">0</a>
+                                                                }
+                                                            }
+
+                                                        </td>
+
+                                                    </tr>
+                                                    <tr>
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            待审批合同
+                                                        </td>
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            @{
+                                                                if (CommonService.Instance.CheckPermission(long.Parse(PageId.PageId_4001003001)))
+                                                                {
+                                                                    var search5 = new Dchien.Legal.Entity.FCM.Contract.ContractSearchCondition();
+                                                                    search5.PageNo = 1;
+                                                                    search5.PageSize = 1;
+                                                                    search5.PageId = PageId.PageId_4001003001;
+                                                                    search5.AuditStatus = AuditStatus.P;
+                                                                    search5.CurrentAuditor = LoginHelper.GetUserName();
+                                                                    var list5 = Dchien.Legal.Service.FCM.Contract.ContractService.Instance.GetPendingContractList(search5);
+                                                                    <a href="javascript:void(0);" style="color:#3498db" onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/FCM/ContractAudit/PendingList", PageId.PageId_4001003001))','待审批合同')"> @(search5.TotalCount)</a>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <a href="javascript:void(0);" onclick="javascript:void(0);">0</a>
+                                                                }
+                                                            }
+                                                        </td>
+
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            @{
+                                                                if (CommonService.Instance.CheckPermission(long.Parse(PageId.PageId_4001002)))
+                                                                {
+                                                                    var search5 = new Dchien.Legal.Entity.FCM.Contract.ContractSearchCondition();
+                                                                    search5.PageNo = 1;
+                                                                    search5.PageSize = 1;
+                                                                    search5.PageId = PageId.PageId_4001002;
+                                                                    search5.ContractStatus = Dchien.Legal.Entity.FCM.Contract.ContractStatus.R;
+                                                                    search5.BusinessOwner = LoginHelper.GetUserName();
+                                                                    var list5 = Dchien.Legal.Service.FCM.Contract.ContractService.Instance.GetContractList(search5);
+                                                                    <a href="javascript:void(0);" style="color:#f39c12" onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/FCM/Contract/ContractList?contractStatus=4", PageId.PageId_4001002))','已驳回合同')"> @(search5.TotalCount)</a>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <a href="javascript:void(0);" onclick="javascript:void(0);">0</a>
+                                                                }
+                                                            }
+                                                        </td>
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            待审批结算费用
+                                                        </td>
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            @{
+                                                                if (CommonService.Instance.CheckPermission(long.Parse(PageId.PageId_5001007002)))
+                                                                {
+                                                                    var search9 = new Dchien.Legal.Entity.FAM.AR.ReceivedPayment.PaymentSearchCondition();
+                                                                    search9.PageNo = 1;
+                                                                    search9.PageSize = 1;
+                                                                    search9.PageId = PageId.PageId_5001007002;
+                                                                    search9.SettlementStatus = Dchien.Legal.Entity.FAM.AR.ReceivedPayment.SettlementStatus.P;
+                                                                    var list9 = Dchien.Legal.Service.FAM.AR.ReceivedPayment.PaymentService.Instance.GetPaymentList(search9);
+
+                                                                    <a href="javascript:void(0);" style="color:#3498db" onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/FAM/Settlement/ProcessingList", PageId.PageId_5001007002))','待审批结算费用')"> @(search9.TotalCount)</a>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <a href="javascript:void(0);" onclick="javascript:void(0);">0</a>
+                                                                }
+                                                            }
+                                                        </td>
+
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            @{
+                                                                if (CommonService.Instance.CheckPermission(long.Parse(PageId.PageId_5001007005)))
+                                                                {
+                                                                    var search9 = new Dchien.Legal.Entity.FAM.AR.ReceivedPayment.PaymentSearchCondition();
+                                                                    search9.PageNo = 1;
+                                                                    search9.PageSize = 1;
+                                                                    search9.PageId = PageId.PageId_5001007005;
+                                                                    search9.SettlementStatus = Dchien.Legal.Entity.FAM.AR.ReceivedPayment.SettlementStatus.R;
+                                                                    var list9 = Dchien.Legal.Service.FAM.AR.ReceivedPayment.PaymentService.Instance.GetPaymentList(search9);
+
+                                                                    <a href="javascript:void(0);" style="color:#f39c12" onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/FAM/Settlement/RejectedList", PageId.PageId_5001007005))','已驳回结算费用')"> @(search9.TotalCount)</a>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <a href="javascript:void(0);" onclick="javascript:void(0);">0</a>
+                                                                }
+                                                            }
+                                                        </td>
+
+                                                    </tr>
+
+                                                    <tr>
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            待审批用印
+                                                        </td>
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            @{
+                                                                if (CommonService.Instance.CheckPermission(long.Parse(PageId.PageId_8101002001)))
+                                                                {
+                                                                    var search6 = new Dchien.Legal.Entity.AWS.OfficialDocument.OfficialDocumentSearchCondition();
+                                                                    search6.PageNo = 1;
+                                                                    search6.PageSize = 1;
+                                                                    search6.PageId = PageId.PageId_8101002001;
+                                                                    search6.Auditor = LoginHelper.GetUserName();
+                                                                    search6.OfficialDocumentStatus = (int)Dchien.Legal.Entity.AWS.OfficialDocument.OfficialDocumentStatus.P;
+                                                                    var list6 = Dchien.Legal.Service.AWS.OfficialDocument.OfficialDocumentService.Instance.GetOfficialDocumentList(search6);
+                                                                    <a href="javascript:void(0);" style="color:#3498db" onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/AWS/OfficialDocument/List", PageId.PageId_8101002001))','待审批用印')"> @(search6.TotalCount)</a>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <a href="javascript:void(0);" onclick="javascript:void(0);">0</a>
+                                                                }
+                                                            }
+                                                        </td>
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            @{
+                                                                if (CommonService.Instance.CheckPermission(long.Parse(PageId.PageId_8101001004)))
+                                                                {
+                                                                    var search6 = new Dchien.Legal.Entity.AWS.OfficialDocument.OfficialDocumentSearchCondition();
+                                                                    search6.PageNo = 1;
+                                                                    search6.PageSize = 1;
+                                                                    search6.PageId = PageId.PageId_8101001004;
+                                                                    search6.BusinessOwner = LoginHelper.GetUserName();
+                                                                    search6.OfficialDocumentStatus = (int)Dchien.Legal.Entity.AWS.OfficialDocument.OfficialDocumentStatus.R;
+                                                                    var list6 = Dchien.Legal.Service.AWS.OfficialDocument.OfficialDocumentService.Instance.GetOfficialDocumentList(search6);
+                                                                    <a href="javascript:void(0);" style="color:#f39c12" onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/AWS/OfficialDocument/List", PageId.PageId_8101001004))','已驳回用印')"> @(search6.TotalCount)</a>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <a href="javascript:void(0);" onclick="javascript:void(0);">0</a>
+                                                                }
+                                                            }
+                                                        </td>
+
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            待审批归档费用
+                                                        </td>
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            @{
+
+                                                                if (CommonService.Instance.CheckPermission(long.Parse(PageId.PageId_5001008002)))
+                                                                {
+                                                                    var search10 = new Dchien.Legal.Entity.FAM.AR.ReceivedPayment.PaymentObjectSearchCondition();
+                                                                    search10.PageNo = 1;
+                                                                    search10.PageSize = 1;
+                                                                    search10.PageId = PageId.PageId_5001008002;
+                                                                    search10.FeeTypeId = (int)Dchien.Legal.Entity.BAS.Type.CaseFeeTypeId.NonOffice;
+                                                                    search10.ArchiveAmountSettlementStatus = (int)Dchien.Legal.Entity.FAM.AR.ReceivedPayment.ArchiveAmountSettlementStatus.P;
+                                                                    var list10 = Dchien.Legal.Service.FAM.AR.ReceivedPayment.PaymentService.Instance.GetPaymentObjectList(search10);
+
+                                                                    <a href="javascript:void(0);" style="color:#3498db" onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/FAM/ArchiveSettlement/ProcessingList", PageId.PageId_5001008002))','待审批归档结算费用')"> @(search10.TotalCount)</a>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <a href="javascript:void(0);" onclick="javascript:void(0);">0</a>
+                                                                }
+                                                            }
+                                                        </td>
+
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            @{
+
+                                                                if (CommonService.Instance.CheckPermission(long.Parse(PageId.PageId_5001008002)))
+                                                                {
+                                                                    var search10 = new Dchien.Legal.Entity.FAM.AR.ReceivedPayment.PaymentObjectSearchCondition();
+                                                                    search10.PageNo = 1;
+                                                                    search10.PageSize = 1;
+                                                                    search10.PageId = PageId.PageId_5001008004;
+                                                                    search10.FeeTypeId = (int)Dchien.Legal.Entity.BAS.Type.CaseFeeTypeId.NonOffice;
+                                                                    search10.ArchiveAmountSettlementStatus = (int)Dchien.Legal.Entity.FAM.AR.ReceivedPayment.ArchiveAmountSettlementStatus.Rejected;
+                                                                    var list10 = Dchien.Legal.Service.FAM.AR.ReceivedPayment.PaymentService.Instance.GetPaymentObjectList(search10);
+
+                                                                    <a href="javascript:void(0);" style="color:#f39c12" onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/FAM/ArchiveSettlement/ProcessingList", PageId.PageId_5001008004))','已驳回归档结算费用')"> @(search10.TotalCount)</a>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <a href="javascript:void(0);" onclick="javascript:void(0);">0</a>
+                                                                }
+                                                            }
+                                                        </td>
+                                                    </tr>
+
+                                                    <tr>
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            待审核归档
+                                                        </td>
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            @{
+                                                                if (CommonService.Instance.CheckPermission(long.Parse(PageId.PageId_1001017001)))
+                                                                {
+                                                                    var search7 = new Dchien.Legal.Entity.Legal.Case.CaseSearchCondition();
+                                                                    search7.PageNo = 1;
+                                                                    search7.PageSize = 1;
+                                                                    search7.PageId = PageId.PageId_1001017001;
+                                                                    search7.CaseTypeId = ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_110).ToString();
+                                                                    search7.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                                    var list7 = Dchien.Legal.Service.Legal.Case.CaseSearchService.Instance.GetCaseList(search7);
+                                                                    <a href="javascript:void(0);" style="color:#3498db" onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/Legal/CaseArchive/PendingList", PageId.PageId_1001017001))','案件归档审核')"> @(search7.TotalCount)</a>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <a href="javascript:void(0);" onclick="javascript:void(0);">0</a>
+                                                                }
+                                                            }
+                                                        </td>
+
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            @{
+                                                                if (CommonService.Instance.CheckPermission(long.Parse(PageId.PageId_1001017003)))
+                                                                {
+                                                                    var search7 = new Dchien.Legal.Entity.Legal.Case.CaseSearchCondition();
+                                                                    search7.PageNo = 1;
+                                                                    search7.PageSize = 1;
+                                                                    search7.PageId = PageId.PageId_1001017003;
+                                                                    search7.CaseTypeId = ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_110).ToString();
+                                                                    search7.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                                    var list7 = Dchien.Legal.Service.Legal.Case.CaseSearchService.Instance.GetCaseList(search7);
+                                                                    <a href="javascript:void(0);" style="color:#f39c12" onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/Legal/CaseArchive/RejectedList", PageId.PageId_1001017003))','案件驳回审核')"> @(search7.TotalCount)</a>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <a href="javascript:void(0);" onclick="javascript:void(0);">0</a>
+                                                                }
+                                                            }
+                                                        </td>
+
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            待审核预损费用
+                                                        </td>
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            @{
+                                                                if (CommonService.Instance.CheckPermission(long.Parse(PageId.PageId_1001017004)))
+                                                                {
+                                                                    var search8 = new Dchien.Legal.Entity.Legal.Case.CaseSearchCondition();
+                                                                    search8.PageNo = 1;
+                                                                    search8.PageSize = 1;
+                                                                    search8.PageId = PageId.PageId_1001017004;
+                                                                    search8.CaseTypeId = ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_110).ToString();
+                                                                    search8.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                                    var list8 = Dchien.Legal.Service.Legal.Case.CaseSearchService.Instance.GetCaseList(search8);
+                                                                    <a href="javascript:void(0);" style="color:#3498db" onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/Legal/CaseArchive/PendingList", PageId.PageId_1001017004))','案件亏损审核')"> @(search8.TotalCount)</a>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <a href="javascript:void(0);" onclick="javascript:void(0);">0</a>
+                                                                }
+                                                            }
+                                                        </td>
+
+                                                        <td style="text-align: left;padding-left:5px">
+                                                            @{
+                                                                if (CommonService.Instance.CheckPermission(long.Parse(PageId.PageId_1001017006)))
+                                                                {
+                                                                    var search8 = new Dchien.Legal.Entity.Legal.Case.CaseSearchCondition();
+                                                                    search8.PageNo = 1;
+                                                                    search8.PageSize = 1;
+                                                                    search8.PageId = PageId.PageId_1001017006;
+                                                                    search8.CaseTypeId = ((int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_110).ToString();
+                                                                    search8.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                                                    var list8 = Dchien.Legal.Service.Legal.Case.CaseSearchService.Instance.GetCaseList(search8);
+                                                                    <a href="javascript:void(0);" style="color:#f39c12" onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/Legal/CaseArchive/RejectedList", PageId.PageId_1001017006))','已驳回审核')"> @(search8.TotalCount)</a>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <a href="javascript:void(0);" onclick="javascript:void(0);">0</a>
+                                                                }
+                                                            }
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <div class="rows" style="margin-bottom: 0.8%; overflow: hidden;">
+                            <div style="float: left; width: 69.2%;">
+                                <div style="height: 290px;  background-color: #fff;">
+                                    <div class="panel panel-default">
+                                        <div class="panel-heading">
+
+                                            @if (!LoginHelper.IsAdmin())
+                                            {
+                                                <a href='#' onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/Legal/CaseList/ScheduleList", PageId.PageId_1001101100))','开庭排期')">
+                                                    <i class="fa fa-bar-chart fa-lg" style="padding-right: 5px;"></i>开庭排期
+                                                </a>
+                                            }
+                                            else
+                                            {
+                                                <a href='#' onclick="javascript:addtabs('@Url.Content(string.Format("~/{0}/Legal/CaseList/ScheduleList", PageId.PageId_1001103100))','开庭排期')">
+                                                    <i class="fa fa-bar-chart fa-lg" style="padding-right: 5px;"></i>开庭排期
+                                                </a>
+                                            }
+
+
+                                        </div>
+                                        <div class="panel-body">
+
+                                            @if (Model.Top10Cases != null && Model.Top10Cases.Count > 0)
+                                            {
+                                                <table id="tblCaseList" class="aps-table aps-widget aps-ani-transition " style="width:100%">
+                                                    <colgroup>
+                                                        <col style="width: 6%">
+                                                        <col style="width: 8%">
+                                                        <col style="width: 6%">
+                                                        <col style="width: 15%">
+                                                        <col style="width: 10%">
+                                                        <col style="width: 15%">
+                                                        <col style="width: 8%">
+                                                        <col style="width: 8%">
+                                                        <col style="width: 8%">
+                                                    </colgroup>
+                                                    <thead>
+                                                        <tr>
+
+                                                            <th style="text-align: center">
+                                                                星期
+                                                            </th>
+                                                            <th style="text-align: center">日期</th>
+                                                            <th style="text-align: center">时间</th>
+                                                            <th style="text-align: left">开庭法院</th>
+                                                            <th style="text-align: center">案号</th>
+                                                            <th style="text-align: left">客户</th>
+                                                            <th style="text-align: center">
+                                                                开庭律师
+                                                            </th>
+                                                            <th style="text-align: center">
+                                                                经办律师
+                                                            </th>
+                                                            <th style="text-align: center">律师助理 </th>
+
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+
+                                                        @foreach (var c in Model.Top10Cases)
+                                                        {
+                                                            if (c.Basic.LawfulDay.HasValue)
+                                                            {
+                                                                string[] days = new string[] { "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六" };
+                                                                string dayofweek = days[Convert.ToInt16(c.Basic.LawfulDay.Value.DayOfWeek)];
+
+                                                                <tr>
+                                                                    <td>
+                                                                        @dayofweek
+                                                                    </td>
+
+                                                                    @if (c.Basic.LastIntanceLawfulDay.HasValue && c.Basic.LastIntanceLawfulDay >= DateTime.Now.Date && c.Basic.LastIntanceLawfulDay <= DateTime.Now.Date.AddDays(100))
+                                                                    {
+                                                                        <td style="text-align: center">@c.Basic.LastIntanceLawfulDay.Value.ToString("yyyy-MM-dd")</td>
+                                                                        <td style="text-align: center">@c.Basic.LastIntanceLawfulDay.Value.ToString("HH:mm:ss")</td>
+                                                                        <td style="text-align: left;white-space:nowrap">@c.Basic.LastIntanceCourtName</td>
+                                                                    }
+                                                                    else if (c.Basic.ExecutionIntanceLawfulDay.HasValue && c.Basic.ExecutionIntanceLawfulDay >= DateTime.Now.Date && c.Basic.ExecutionIntanceLawfulDay <= DateTime.Now.Date.AddDays(100))
+                                                                    {
+                                                                        <td style="text-align: center">@c.Basic.ExecutionIntanceLawfulDay.Value.ToString("yyyy-MM-dd")</td>
+                                                                        <td style="text-align: center">@c.Basic.ExecutionIntanceLawfulDay.Value.ToString("HH:mm:ss")</td>
+                                                                        <td style="text-align: left;white-space:nowrap">@c.Basic.ExecutionIntanceCourtName</td>
+                                                                    }
+                                                                    else if (c.Basic.SecondIntanceLawfulDay.HasValue && c.Basic.SecondIntanceLawfulDay >= DateTime.Now.Date && c.Basic.SecondIntanceLawfulDay <= DateTime.Now.Date.AddDays(100))
+                                                                    {
+                                                                        <td style="text-align: center">@c.Basic.SecondIntanceLawfulDay.Value.ToString("yyyy-MM-dd")</td>
+                                                                        <td style="text-align: center">@c.Basic.SecondIntanceLawfulDay.Value.ToString("HH:mm:ss")</td>
+                                                                        <td style="text-align: left;white-space:nowrap">@c.Basic.SecondIntanceCourtName</td>
+                                                                    }
+                                                                    else if (c.Basic.FirstIntanceLawfulDay.HasValue && c.Basic.FirstIntanceLawfulDay >= DateTime.Now.Date && c.Basic.FirstIntanceLawfulDay <= DateTime.Now.Date.AddDays(100))
+                                                                    {
+                                                                        <td style="text-align: center">@c.Basic.FirstIntanceLawfulDay.Value.ToString("yyyy-MM-dd")</td>
+                                                                        <td style="text-align: center">@c.Basic.FirstIntanceLawfulDay.Value.ToString("HH:mm:ss")</td>
+                                                                        <td style="text-align: left;white-space:nowrap">@c.Basic.FirstIntanceCourtName</td>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <td style="text-align: center"></td>
+                                                                        <td style="text-align: center"></td>
+                                                                        <td style="text-align: center"></td>
+                                                                    }
+
+                                                                    <td style="text-align: center">
+                                                                        <a href='#' style="color:#06C" onclick="javascript:addtabs('@Url.Content("~/100110110/Legal/Case/CaseView?caseNo=" + c.Basic.CaseNo)','@c.Basic.CaseNo')">
+                                                                            @c.Basic.CaseNo
+                                                                    </a>
+
+                                                                </td>
+                                                                <td style="text-align: left;white-space:nowrap">@c.Basic.CustomerName</td>
+                                                                <td style="text-align: center">@c.Basic.CourtLawyerName</td>
+                                                                <td style="text-align: center;@(c.Basic.CaseLawyer.Contains(c.Basic.CourtLawyer) ? string.Empty : "background:red;" )" >@c.Basic.CaseLawyerName</td>
+                                                                <td style="text-align: center">@c.Basic.CaseAssistantName</td>
+
+                                                            </tr>
+                                                        }
+
+
+                                                    }
+
+                                                    </tbody>
+
+                                                </table>
+
+
+                                            }
+                                            else
+                                            { <ul>
+                                                    <li><span> 无待开庭案件 </span></li>
+                                                </ul>
+                                            }
+
+                                        </div>
+
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="float: right; width: 30%;">
+                                <div style="height: 290px;   background-color: #fff;">
+                                    <div class="panel panel-default">
+                                        <div class="panel-heading"><i class="fa fa-area-chart fa-lg" style="padding-right: 5px;"></i>案件趋势</div>
+                                        <div class="panel-body">
+                                            <canvas id="Canvas2" style="height: 230px; width: 100%;"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+
+
+                        </div>
+                        <div class="rows" style="overflow: hidden;">
+
+                            <div style="float: left; width: 69.2%;">
+                                <div style="background-color:#fff;">
+                                    <div id="divCaseList" class="panel panel-default">
+                                        <div class="panel-heading"><i class="fa fa-rss fa-lg" style="padding-right: 5px;"></i>最新案件</div>
+                                        <div class="panel-body" style="height: 365px; ">
+                                            @if (Model.New10Cases != null && Model.New10Cases.Count > 0)
+                                            {
+                                                <table id="tblNewCaseList" class="aps-table aps-widget aps-ani-transition " style="width:100%">
+                                                    <colgroup>
+                                                        <col style="width: 10%">
+                                                        <col style="width: 8%">
+                                                        <col style="width: 15%">
+                                                        <col style="width: 15%">
+                                                        <col style="width: 10%">
+                                                        <col style="width: 8%">
+                                                        <col style="width: 8%">
+                                                        <col style="width: 8%">
+                                                        <col style="width: 8%">
+                                                    </colgroup>
+                                                    <thead>
+                                                        <tr>
+                                                            <th style="text-align: center">
+                                                                案号
+                                                            </th>
+                                                            <th style="text-align: center">阶段</th>
+                                                            <th style="text-align: center">原告</th>
+                                                            <th style="text-align: center">被告</th>
+                                                            <th style="text-align: left">案源日期</th>
+                                                            <th style="text-align: center">客户管理人</th>
+                                                            <th style="text-align: center">
+                                                                开庭律师
+                                                            </th>
+                                                            <th style="text-align: center">
+                                                                经办律师
+                                                            </th>
+                                                            <th style="text-align: center">律师助理 </th>
+
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+
+                                                        @foreach (var c in Model.New10Cases)
+                                                        {
+
+                                                            <tr>
+                                                                <td style="text-align: center">
+                                                                    <a href='#' style="color:#06C" onclick="javascript:addtabs('@Url.Content("~/100110110/Legal/Case/CaseView?caseNo=" + c.Basic.CaseNo)','@c.Basic.CaseNo')">
+                                                                        @c.Basic.CaseNo
+                                                                    </a>
+                                                                </td>
+                                                                <td style="text-align: left;white-space:nowrap">@c.Basic.CasePhaseName</td>
+                                                                <td style="text-align: left;white-space:nowrap">@c.Basic.AppellantNames</td>
+                                                                <td style="text-align: left;white-space:nowrap">@c.Basic.AppelleeNames</td>
+                                                                <td style="text-align: left;white-space:nowrap">@c.Basic.CaseRegisterDate.Value.ToString("yyyy-MM-dd")   </td>
+                                                                <td style="text-align: center;white-space:nowrap">@c.Basic.FirstCoordinatorName</td>
+                                                                <td style="text-align: center">@c.Basic.CourtLawyerName</td>
+                                                                <td style="text-align: center">@c.Basic.CaseLawyerName</td>
+                                                                <td style="text-align: center">@c.Basic.CaseAssistantName</td>
+                                                            </tr>
+
+                                                        }
+
+                                                    </tbody>
+
+                                                </table>
+
+                                            }
+                                            else
+                                            { <ul>
+                                                    <li><span>无最新案件</span></li>
+                                                </ul>
+                                            }
+
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+
+                            <div style="float: right; width: 30%;">
+                                <div style="height: 365px;  background-color: #fff;">
+                                    <div class="panel panel-default">
+                                        <div class="panel-heading"><i class="fa fa-pie-chart fa-lg" style="padding-right: 5px;"></i>民事案件</div>
+                                        <div class="panel-body">
+                                            <canvas id="Canvas1" style="height: 265px; width: 100%; margin-top: 10px;"></canvas>
+                                            <div style="text-align: center; padding-top: 40px;padding-bottom:40px">
+                                                <span><i class="fa fa-square" style="color: #F7464A; font-size: 20px; padding-right: 5px; vertical-align: middle; margin-top: -3px;"></i>立案待分配</span>
+                                                <span style="margin-left: 10px;"><i class="fa fa-square" style="color: #46BFBD; font-size: 20px; padding-right: 5px; vertical-align: middle; margin-top: -3px;"></i>文书准备</span>
+                                                <span style="margin-left: 10px;"><i class="fa fa-square" style="color: #FDB45C; font-size: 20px; padding-right: 5px; vertical-align: middle; margin-top: -3px;"></i>一审</span>
+                                                <span style="margin-left: 10px;"><i class="fa fa-square" style="color: #8775a7; font-size: 20px; padding-right: 5px; vertical-align: middle; margin-top: -3px;"></i>二审</span>
+                                                <span style="margin-left: 10px;"><i class="fa fa-square" style="color: #949FB1; font-size: 20px; padding-right: 5px; vertical-align: middle; margin-top: -3px;"></i>再审</span>
+                                                <span style="margin-left: 10px;"><i class="fa fa-square" style="color: #333333; font-size: 20px; padding-right: 5px; vertical-align: middle; margin-top: -3px;"></i>执行</span>
+                                            </div>
+
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+
+
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

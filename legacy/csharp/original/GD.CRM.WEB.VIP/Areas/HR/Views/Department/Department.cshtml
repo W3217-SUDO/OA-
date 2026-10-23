@@ -1,0 +1,63 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.HR.ViewModels.DepartmentModel
+ 
+
+<script type="text/javascript"></script>
+
+<div class="modal fade" id="departmentModal" >
+ 
+        <div class="modal-dialog" style="width:560px">
+            <div class="modal-content" ng-transclude="">
+                <div class="ng-scope">
+                    @using (Html.BeginForm("Department", "Department", FormMethod.Post, new { id = "Department", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                    {
+                        @Html.HiddenFor(m => m.Department.DepartmentId)
+
+                        <div class="modal-header">
+                            <button type="button" class="close" id="btnDepartmentClose">×</button>
+                            <h5 class="modal-title ng-binding">部门维护</h5>
+                        </div>
+                        <div class="modal-body">
+                            <div>
+                                <div class="form-group">
+                                    <label for="Department_DepartmentName" class="col-sm-4 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">部门名称</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        @Html.TextBoxFor(m => m.Department.DepartmentName, new { @class = "form-control" })
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="Department_DepartmentCode" class="col-sm-4 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">部门代码</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        @Html.TextBoxFor(m => m.Department.DepartmentCode, new { @class = "form-control" })
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="Department_DepartmentCode" class="col-sm-4 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">上级部门</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        @Html.DropDownListFor(m => m.Department.ParentDepartmentId, DepartmentService.Instance.GetDepartmentList(LoginHelper.GetCompanyId()), new { @class = "form-control", @style = "width:100%" })
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <input class="btn btn-primary ng-binding" type="button" id="btnDepartment" value="确定" />
+                            <input class="btn btn-default ng-binding" type="button" id="btnDepartmentCancel" value="取消" />
+                        </div>
+                    }
+                </div>
+            </div>
+        </div><!-- /.modal -->
+   
+</div>
+

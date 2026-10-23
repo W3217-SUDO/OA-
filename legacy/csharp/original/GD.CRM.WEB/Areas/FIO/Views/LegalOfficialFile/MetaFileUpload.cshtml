@@ -1,0 +1,77 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+
+<style>
+    .btn-expense-file-upload input {
+        position: absolute;
+        top: 0px;
+        right: 0px;
+        left: 0px;
+        bottom: 0px;
+        opacity: 0;
+        filter: alpha(opacity=0);
+        overflow: hidden;
+    }
+</style>
+
+<script src="@Url.Content("~/Scripts/Common/jquery.form.js")" type="text/javascript"></script>
+
+<div class="modal fade" id="metaFileUpload">
+    <div class="modal-dialog" style="width:600px">
+        <div class="modal-content" ng-transclude="">
+            <div class="">
+                @using (Html.BeginForm("MetaFileUpload", "LegalOfficialFile", FormMethod.Post, new { id = "uploadingForm", enctype = "multipart/form-data", @class = "form-horizontal" }))
+                {
+                    <div class="modal-header">
+                        <button type="button" class="close" onclick="javascript: $('#metaFileUpload').modal('hide');" id="btnUploadClose">×</button>
+                        <h5 class="modal-title ng-binding">上传官文</h5>
+                    </div>
+                    <div class="modal-body">
+                        <div>
+                            <div class="form-group">
+                            </div>
+                        </div>
+                        <div>
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    <span class="text-danger">*</span>
+                                    <span class="spanreferencedate">收文日期</span>
+                                </label>
+                                <div class="col-sm-6">
+                                    <input class="input_time form-control" id="MetaFile_InformDate" name="MetaFile.InformDate" onfocus="WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" type="text" value="@DateTime.Now.ToString("yyyy-MM-dd")">
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    <span class="text-danger ">*</span>
+                                    <span class="">官文文件</span>
+                                </label>
+                                <div class="col-sm-6">
+                                    <div class="form-control-wrap">
+                                        <input id="flMetaFilePath" placeholder="选择文件" disabled="disabled" class="form-control ng-valid" style="display: inline-block">
+                                        <div class="btn btn-default btn-xs btn-expense-file-upload" style="height: 0px; line-height: 0px; padding: 0px;border:0px">
+                                            <input type="file" value="" id="flMetaFile" multiple name="flMetaFile" style="height: 40px; width: 250px; margin-left: 10px;">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <input class="btn btn-primary ng-binding" type="button" onclick="javascript: officialFile.MetaFile.Upload();" value="确定" />
+                        <input class="btn btn-default ng-binding" type="button" id="btnUploadCancel" onclick="javascript: $('#metaFileUpload').modal('hide');" value="取消" />
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+
+

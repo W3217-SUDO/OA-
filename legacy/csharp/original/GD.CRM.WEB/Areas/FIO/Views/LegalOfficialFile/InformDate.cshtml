@@ -1,0 +1,35 @@
+﻿<div class="modal fade" id="metaFileInformDateModal">
+    <div class="modal-dialog" style="width:600px">
+        <div class="modal-content">
+            @using (Html.BeginForm("InformDate", "LegalOfficialFile", FormMethod.Post, new { id = "metaFile", @class = "form-horizontal" }))
+            {
+                <div class="modal-header">
+                    <button type="button" class="close"   onclick="javascript: $('#metaFileInformDateModal').modal('hide');">×</button>
+                    <h5 class="modal-title ">变更收文日期</h5>
+                </div>
+
+                <div class="modal-body">
+                    <div>
+                        <div class="form-group">
+                            <label class="col-sm-3 control-label">
+                                <span class="text-danger">*</span>
+                                <span class="">收文日期</span>
+                            </label>
+                            <div class="col-sm-5">
+                                <input class="input_time form-control" data-val="true" data-val-date="The field Deadline must be a date." id="MetaFile_InformDate" name="MetaFile.InformDate" onfocus="WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" required="true" type="text" value="">
+                                <input  id="MetaFileIds" name="MetaFileIds" type="hidden" value="">
+                              </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <input class="btn btn-primary" type="button" id="btnMetaFileInformDateChanged" value="确定" />
+                    <input class="btn btn-default"  type="button"  value="取消" onclick="javascript: $('#metaFileInformDateModal').modal('hide');"/>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+

@@ -1,0 +1,255 @@
+﻿
+@model Dchien.Legal.Web.Areas.CIT.ViewModels.InvestigationTask.InvestigationTaskModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/font-awesome.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/citys/city.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/bootstrap-tagsinput.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<link type="text/css" rel="stylesheet" href=@Url.Content("~/Resource/css/ticketSystem/add.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"]) />
+
+<script src="@Url.Content("~/Scripts/Common/jquery.form.js")" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Common/citys/jquery.citys.json.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Common/citys/jquery.citys.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Common/bootstrap-tagsinput.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/CIT/Investigation/CIT.Investigation.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])">
+</script>
+
+<style>
+    .bootstrap-tagsinput {
+        width: 100%;
+        border-radius: 0px;
+        padding: 2px 4px;
+    }
+
+        .bootstrap-tagsinput input {
+            padding: 0px;
+            width: 50px;
+        }
+</style>
+<div class="viewFramework-product ">
+ 
+    <div class="viewFramework-product-body">
+        <div class="console-container ng-scope">
+            <div class="row ng-scope">
+                <div class="col-sm-12">
+                    <div class="console-title console-title-border clearfix">
+                        <div class="pull-left">
+                            <h5>调查任务</h5>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-sm-12">
+                    <div class="ng-scope">
+                        <div  class="ng-isolate-scope">
+                            <div class="table-viewer-header clearfix" style="margin-top: 10px;height:40px;line-height:40px">
+                                <span class="table-viewer-topbar-title">
+                                    分配调查任务
+                                </span>
+                                <div class="pull-right table-viewer-topbar-content"></div>
+                            </div>
+                            <div class="console-box-border ">
+                                <div class="form-horizontal margin-top-3 " novalidate="">
+                                    <div class="form-group">
+                                        <label class="col-sm-2 control-label">
+                                            <span class="text-danger">*</span>
+                                            <span>调查员：</span>
+                                        </label>
+                                        <div class="col-sm-6">
+                                            @Html.HiddenFor(m => m.InvestigationTask.Basic.InvestigationNo)
+                                            @Html.HiddenFor(m => m.Investigation.Basic.InvestigationScope )
+                                            @Html.HiddenFor(m => m.Investigation.Basic.City)
+                                            @Html.HiddenFor(m => m.Investigation.Basic.Province)
+                                            <div class="bootstrap-tagsinput">
+                                                <input type="text" placeholder="调查员"  class = "form-control inline-block"  style="height:22px;width: 80px;margin-left: 6px;" id="InvestigationTask_Basic_Investigator_Input" autocomplete="off" size="1" >
+                                            </div>
+                                            <div class="i_common_select" id="div_userlist" style="display: none;">
+                                                <div class="i_common_wrap">
+                                                    <div class="i_common_list"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="col-sm-2 control-label">
+                                            <span class="text-danger">*</span>
+                                            <span>调查区域：</span>
+                                        </label>
+                                        <div class="col-sm-6">
+                                            @Html.HiddenFor(m => m.InvestigationTask.Basic.City)
+                                            @Html.TextBoxFor(m => m.InvestigationTask.Basic.Province,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "调查区域",
+                                                   style = "height:29px;width:100%",
+                                                   @value = "",
+                                                   cityvalue = "",
+                                                   autocomplete = "off"
+                                               })
+                                            <p id="custom_text3_description" class="help-block">
+                                                授权区域：@Html.DisplayFor(m => m.Investigation.Basic.InvestigationRegion)
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="col-sm-2 control-label">
+                                            <span class="text-danger">*</span>
+                                            <span>调查期限：</span>
+                                        </label>
+                                        <div class="col-sm-6">
+                                            <div>
+                                                @Html.HiddenFor(m => m.Investigation.Basic.AuthorizationBeginTime)
+                                                @Html.HiddenFor(m => m.Investigation.Basic.AuthorizationEndTime)
+
+                                                <div style="float:left;height:32px;width:50%;padding-right:10px">
+                                                    <input class="form-control inline-block" data-val="true" 
+                                                           id="InvestigationTask_Basic_BeginTime" name="InvestigationTask.Basic.BeginTime" 
+                                                           onfocus="WdatePicker({ doubleCalendar: true, dateFmt:'yyyy-MM-dd', minDate:'@Model.Investigation.Basic.AuthorizationBeginTime', maxDate:'@Model.Investigation.Basic.AuthorizationEndTime'})" 
+                                                           placeholder="开始时间" 
+                                                           style="height:29px;" 
+                                                           type="text" value="@Model.InvestigationTask.Basic.BeginTime.Value.ToString("yyyy-MM-dd")"  >
+
+           
+                                                </div>
+
+                                                <div style="float:right;height:32px;width:50%;padding-left:10px">
+
+                                                    <input class="form-control inline-block" data-val="true"
+                                                           id="InvestigationTask_Basic_EndTime" name="InvestigationTask.Basic.EndTime"
+                                                           onfocus="WdatePicker({ doubleCalendar: true, dateFmt:'yyyy-MM-dd', minDate:'@Model.Investigation.Basic.AuthorizationBeginTime', maxDate:'@Model.Investigation.Basic.AuthorizationEndTime'})"
+                                                           placeholder="结束时间"
+                                                           style="height:29px;"
+                                                           type="text" value="@Model.InvestigationTask.Basic.EndTime.Value.ToString("yyyy-MM-dd")">
+
+                                                </div>
+                                                <p id="custom_text3_description" class="help-block" >
+                                                    授权时间：@Html.DisplayFor(m => m.Investigation.Basic.AuthorizationBeginTime) 至 @Html.DisplayFor(m => m.Investigation.Basic.AuthorizationEndTime)
+                                                </p>
+                                            </div>
+
+                                         </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="col-sm-2 control-label">
+                                            <span class="text-danger">*</span>
+                                            <span>备注：</span>
+                                        </label>
+                                        <div class="col-sm-6">
+
+                                            @Html.TextAreaFor(m => m.InvestigationTask.Basic.Remark,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "备注",
+                                                   rows = "5",
+                                                   style="width:100%"
+                                               })
+
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <div class="col-sm-6 col-sm-offset-2">
+                                            <input type="button" id="btnInvestigationTaskCreateUpdate" class="btn btn-primary ng-binding" style="height: 32px; line-height: 14px;    padding: 8px 16px;"  value="完成" />
+                                            <input type="button" id="btnInvestigationTaskCreateOtherOne" class="btn btn-primary ng-binding" style="height: 32px; line-height: 14px;    padding: 8px 16px;" value="继续分配" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div ui-view="myTicket">
+                                <div class="ticket-detail ng-scope">
+                                    <div class="table-viewer-header clearfix" style="margin-top: 12px">
+                                        <span class="table-viewer-topbar-title">
+                                            调查信息
+                                        </span>
+                                        <div class="pull-right table-viewer-topbar-content"></div>
+                                    </div>
+                                    <div class="info-panel">
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-2 ">
+                                                <span class="text-explode">
+                                                    <span> @Html.LabelFor(m => m.Investigation.Basic.InvestigationNo)</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Investigation.Basic.InvestigationNo)
+                                                </span>
+                                            </div>
+
+                                            <div class="col-sm-2">
+                                                <span class="text-explode">
+                                                    <span>@Html.LabelFor(m => m.Investigation.Basic.BusinessOwnerName)</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Investigation.Basic.BusinessOwnerName)
+                                                </span>
+                                            </div>
+
+                                            <div class="col-sm-2 ">
+                                                <span class="text-explode">
+                                                    <span>@Html.LabelFor(m => m.Investigation.Basic.CaseTypeId)</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Investigation.Basic.CaseTypeName)
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-2 ">
+                                                <span class="text-explode">
+                                                    <span>@Html.LabelFor(m => m.Investigation.Basic.IndicterName)</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Investigation.Basic.IndicterName)
+                                                </span>
+                                            </div>
+
+                                            <div class="col-sm-2 ">
+                                                <span class="text-explode">
+                                                    <span>@Html.LabelFor(m => m.Investigation.Basic.AuthorizationBeginTime) </span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayFor(m => m.Investigation.Basic.AuthorizationBeginTime)
+                                                </span>
+                                            </div>
+                                            <div class="col-sm-2 ">
+                                                <span class="text-explode">
+                                                    <span>@Html.LabelFor(m => m.Investigation.Basic.AuthorizationEndTime) </span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayFor(m => m.Investigation.Basic.AuthorizationEndTime)
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-12 ">
+                                                <span class="text-explode">
+                                                    <span>@Html.LabelFor(m => m.Investigation.Basic.Province)</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Investigation.Basic.Province)
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,93 @@
+﻿@using Dchien.Legal.Common
+
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.Case.CaseModel
+
+@{
+    object htmlAttribute = null;
+}
+
+@using (Html.BeginForm("CaseInfo", "Case", FormMethod.Post, new { id = "caseForm",  @class = "form-horizontal ng-invalid ng-invalid-required" }))
+{
+    <div class="ng-scope">
+
+        @Html.HiddenFor(m => m.Case.CaseBasicInfo.CaseId)
+        @Html.HiddenFor(m => m.Case.CaseBasicInfo.CompanyId)
+        @Html.HiddenFor(m => m.Case.CaseBasicInfo.DeadlineLeftDays)
+        @Html.TextBoxFor(m => m.Case.CaseBasicInfo.ReminderDate, "{0:yyyy-MM-dd}", new { @style = "display:none" })
+
+        <table class="input_table" id='tabCase' style='width:100%'>
+            <colgroup>
+                <col style="width: 8%;" />
+                <col style="width: 18%" />
+                <col style="width: 8%;" />
+                <col style="width: 18%" />
+                <col style="width: 8%;" />
+                <col style="width: 18%" />
+                <col style="width: 8%;" />
+                <col style="width: 18%" />
+            </colgroup>
+            <tr>
+                <th>
+                    @Html.LabelFor(m => m.Case.CaseInvestigation.CaseNo)
+                </th>
+                <td>
+                    @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseNo, new { @class = "case-form-control",  @unselectable = "on" })
+                </td>
+
+
+                <th>
+                    @Html.LabelFor(m => m.Case.CasePart.CauseName)
+                </th>
+                <td>
+                    @Html.HiddenFor(m => m.Case.CasePart.Cause)
+                    @Html.TextBoxFor(m => m.Case.CasePart.CauseName, new { @class = "case-form-control",  @unselectable = "on" })
+                </td>
+
+                <th>
+                    @Html.LabelFor(m => m.Case.CaseBasicInfo.CasePhaseId)
+                </th>
+                <td>
+                    @{
+    htmlAttribute = new { maxlength = 60, @class = "case-form-control" };
+                    }
+
+                    @*@Html.DropDownListFor(m => m.Case.CaseBasicInfo.CasePhaseId, CaseTypeService.Instance.GetCasePhaseList(@Model.Case.CaseBasicInfo.CaseTypeId), htmlAttribute)*@
+
+                </td>
+
+                <th>
+                    @Html.LabelFor(m => m.Case.CasePart.CaseRegisterDate)
+                </th>
+                <td>
+                    @Html.TextBoxFor(m => m.Case.CasePart.CaseRegisterDate, "{0:yyyy-MM-dd}", new { @class = "case-form-control input_time ", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                </td>
+
+
+            </tr>
+            <tr>
+                <th>
+                    @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseName)
+                </th>
+                <td colspan=3>
+                    @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseName, new { @class = "case-form-control",  @unselectable = "on" })
+                </td>
+
+
+                <th>
+                    @Html.LabelFor(m => m.Case.CaseBasicInfo.CaseOriginPeople)
+                </th>
+                <td>
+                    @Html.TextBoxFor(m => m.Case.CaseBasicInfo.CaseOriginPeopleName, new { @class = "case-form-control",  @unselectable = "on" })
+                </td>
+
+                <th>
+                    @Html.LabelFor(m => m.Case.CasePart.CaseLawyer)
+                </th>
+                <td>
+                    @Html.TextBoxFor(m => m.Case.CasePart.CaseLawyer, new { @class = "case-form-control",  @unselectable = "on" })
+                </td>
+            </tr>
+ 
+        </table>
+    </div>
+}

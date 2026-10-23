@@ -1,0 +1,36 @@
+﻿@using Dchien.Legal.Common
+
+@using Dchien.Legal.Service.HR.Staff
+
+ @{
+
+    var staffs = StaffService.Instance.GetStaffList();
+    var lst = staffs.GroupBy(x => x.StaffBasic.DepartmentName)
+    .ToList();
+
+ }
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+ 
+
+<div class="i_common_box" style='width:600px'>
+    <input type="hidden" id="hidUserId">
+    <input type="hidden" id="hidUserName">
+    @if (lst != null && lst.Count > 0)
+    {
+        foreach (var x in lst)
+        {
+            <div class="i_common_hd">
+                @x.Key.ToUpper()
+            </div>
+            <div class="i_common_bd">
+                <ul class="i_common_ul layoutfix">
+                    @foreach (var staff in x.ToList<Dchien.Legal.BizModel.HR.BizStaff>().OrderBy(t=>t.StaffBasic.StaffName))
+                    {
+                        <li style='width:80px'><a href="javascript:void(0)" name="@staff.StaffBasic.StaffName">@staff.StaffBasic.StaffChName</a></li>
+                    }
+                </ul>
+            </div>
+        }
+    }
+</div>

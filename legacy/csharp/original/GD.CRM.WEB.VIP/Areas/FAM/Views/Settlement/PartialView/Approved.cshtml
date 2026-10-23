@@ -1,0 +1,34 @@
+﻿ <div class="modal fade" id="settlementAuditModel">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="ng-scope">
+                @using (Html.BeginForm("AuditApproved", "Settlement", FormMethod.Post, new { id = "settlementAuditApproved", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+                    <div class="modal-header">
+                        <button type="button" class="close" onclick="javascript: $('#settlementAuditModel').modal('hide');">×</button>
+                        <h5 class="modal-title ">同意结算</h5>
+                    </div>
+                    <div class="modal-body">
+                        <div>
+                            <div class="form-group">
+                                <label class="col-sm-3 control-label">
+                                    <span class="text-danger "></span>
+                                    <span class=""> 备注:</span>
+                                </label>
+                                <div class="col-sm-6">
+                                    <textarea cols="20" id="Settlement_Audit_Remark" maxlength="1000"  rows="4" style="width:120%"></textarea> 
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <input class="btn btn-primary " type="button" id="btnSettlementAuditApproved" value="同意" />
+                        <input class="btn btn-default " type="button" value="取消" onclick="javascript: $('#settlementAuditModel').modal('hide');" />
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+

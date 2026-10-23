@@ -1,0 +1,28 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+
+@model Dchien.Legal.Web.Areas.Lawsuit.ViewModels.IprBase.CaseFeeTypeListModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+
+<div class="i_common_box" style="display: none;" id="divCaseFeeTypeList">
+    <div class="i_common_hd">
+        从下列费用类型中选择
+        <input type="hidden" id="hidCaseFeeTypeId">
+        <input type="hidden" id="hidCaseFeeTypeName">
+    </div>
+    <div class="i_common_bd">
+        <ul class="i_common_ul layoutfix">
+            @if (Model.CaseFeeTypes != null && Model.CaseFeeTypes.Count > 0)
+            {
+                foreach (var caseType in Model.CaseFeeTypes)
+                {
+                    <li><a href="javascript:void(0)" id="@caseType.FeeTypeId">@caseType.FeeTypeName</a></li>
+                }
+            }
+        </ul>
+    </div>
+</div>
+
+
+

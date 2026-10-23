@@ -1,0 +1,110 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service.BAS.Type
+@model Dchien.Legal.Web.Areas.System.ViewModels.SystemCenter.CasePhase.CasePhaseModel
+<script type="text/javascript"></script>
+<div class="modal fade" id="CasePhaseModal" >
+  
+        <div class="modal-dialog" >
+            <div class="modal-content" ng-transclude="">
+                <div class="ng-scope">
+                    @using (Html.BeginForm("CasePhase", "SystemCenter", FormMethod.Post, new { id = "CasePhase", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                    {
+                        @Html.HiddenFor(m => m.IsNew)
+                        <div class="modal-header">
+                            <button type="button" class="close" id="btnCasePhaseClose">×</button>
+                            <h5 class="modal-title ng-binding">阶段名称</h5>
+                        </div>
+
+                        <div class="modal-body">
+                            <div>
+                                @if (Model.IsNew)
+                                {
+                                    <div class="form-group">
+                                        <label for="" class="col-sm-3 control-label">
+                                            <span class="text-danger ng-binding">*</span>
+                                            <span class="ng-binding">阶段代码</span>
+                                        </label>
+                                        <div class="col-sm-6">
+                                            @Html.TextBoxFor(m => m.CasePhase.CasePhaseId, new
+                                       {
+                                           @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')",
+                                           @onafterpaste = "this.value=this.value.replace(/\\D/g,'')",
+                                           @class = "form-control" })
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="form-group">
+                                        <label for="" class="col-sm-3 control-label">
+                                            <span class="text-danger ng-binding">*</span>
+                                            <span class="ng-binding">阶段代码</span>
+                                        </label>
+                                        <div class="col-sm-6">
+                                            @Html.TextBoxFor(m => m.CasePhase.CasePhaseId, new { @readonly=true,
+                                           @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')",
+                                           @onafterpaste = "this.value=this.value.replace(/\\D/g,'')",
+                                           @class = "form-control" })
+                                        </div>
+                                    </div>
+                                }
+
+                                <div class="form-group">
+                                    <label for="" class="col-sm-3 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">阶段名称</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        @Html.TextBoxFor(m => m.CasePhase.CasePhaseName, new { @class = "form-control"})
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="" class="col-sm-3 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">上级阶段代码</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        @Html.TextBoxFor(m => m.CasePhase.ParentPhaseId, new
+                                   {
+                                       @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')",
+                                       @onafterpaste = "this.value=this.value.replace(/\\D/g,'')",
+                                       @class = "form-control" })
+                                    </div>
+
+                                </div>
+                                <div class="form-group">
+                                    <label for="" class="col-sm-3 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">案件类型</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        @Html.DropDownListFor(m => m.CasePhase.CaseTypeId, CaseTypeService.Instance.GetCaseTypeList(true), new { maxlength = 60, @class = "form-control select", style = " width:100%" })
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="" class="col-sm-3 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">排序索引</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        @Html.TextBoxFor(m => m.CasePhase.SortingIndex, new
+                                   {
+                                       @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')",
+                                       @onafterpaste = "this.value=this.value.replace(/\\D/g,'')",
+                                       @class = "form-control" })
+                                    </div>
+                                </div>
+                            </div>
+ 
+                        </div>
+                        <div class="modal-footer">
+                            <input class="btn btn-primary ng-binding" type="button" id="btnCasePhase" value="确定" />
+                            <input class="btn btn-default ng-binding" type="button" id="btnCasePhaseCancel" value="取消" />
+                        </div>
+                    }
+                </div>
+            </div>
+        </div><!-- /.modal -->
+    
+</div>
+

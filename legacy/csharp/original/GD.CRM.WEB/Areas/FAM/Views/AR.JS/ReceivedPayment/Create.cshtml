@@ -1,0 +1,231 @@
+﻿@using Dchien.Legal.BizModel.FCM.Contract
+@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.Lawsuit.Case
+
+@model  Dchien.Legal.Web.Areas.FAM.ViewModels.AR.ReceivedPayment.PaymentModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/components.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/font-awesome.css")" />
+
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.index.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/case.createupdate.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/messageCenter.console.css")" />
+
+<script src="@Url.Content("~/Scripts/FAM/AR/FAM.AR.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<style>
+    .form-control {
+        height: 28px;
+        border-radius: 0px;
+        padding: 3px;
+        -webkit-transition: none;
+        transition: none;
+        font-size: 12px;
+    }
+    </style>
+
+<div class="viewFramework-product viewFramework-product-col-1">
+    <div class="viewFramework-product-navbar ng-scope">
+         @{
+            Html.RenderPartial("~/Areas/FAM/Views/AR/MenuList.cshtml");
+        }
+    </div> 
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+    <div class="viewFramework-product-body">
+        <div class="console-container ng-scope">
+            <div class="row ng-scope">
+                <div class="col-sm-12">
+                    <div class="console-title console-title-border clearfix">
+                        <div class="pull-left">
+                            <h5>回款登记</h5>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-sm-12">
+                    <div class="ng-scope">
+                        <div style="margin-top:24px" class="ng-isolate-scope">
+
+                            <div ng-repeat="stepView in steps" class="ng-scope">
+                                <div class="ng-scope">
+                                    <div class="ng-scope">
+                                        <style type="text/css" class="ng-scope">
+                                            .tableWrapper .table {
+                                                margin-bottom: 0px;
+                                            }
+
+                                            .table-hover tbody tr.trWarapper:hover td {
+                                                background-color: #FCF8E2;
+                                            }
+                                        </style>
+                                        <div class="ng-scope">
+                                            <div class="alert alert-info clearfix" style="padding: 8px 12px 0px;line-height: 18px;margin-bottom: 6px;border-radius: 0px">
+                                                <div class="pull-left">
+                                                    <span>温馨提示</span> ：
+                                                </div>
+                                                <div class="pull-left">
+                                                    <p>1. <span>请完善以下信息,方便我们更好的为您服务</span> </p>
+                                                    <p>2. <span>如未匹配到客户,这笔回款将放入公海,案源人自行领取.</span> </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="console-box-border">
+                                <div class="col-padding row-padding margin-bottom-2 usage-record-width">
+                                    <div class="ng-isolate-scope">
+                                        <form class="form-horizontal   ng-scope ng-pristine ng-valid">
+
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for="">
+                                                    <span>回款流水号</span>：
+                                                </label>
+                                                <div class="col-sm-3 row">
+                                                    @Html.HiddenFor(m => m.Payment.PaymentBasic.PaymentId)
+                                                    @Html.TextBoxFor(m => m.Payment.PaymentBasic.SequenceNo, new { @readonly=true, @style = "width:100%", @class = "form-control", @autocomplete = "off" })
+                                                    <span class="help-block"></span>
+                                                </div>
+                                            </div>
+
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for="">
+                                                    <span class="text-danger ng-binding">*</span><span>回款单位</span>：
+                                                </label>
+                                                <div class="col-sm-3 row">
+                                                    @Html.TextBoxFor(m => m.Payment.PaymentBasic.PayerName, new { @style = "width:100%", @class = "form-control", @autocomplete = "off" })
+                                                    <span class="help-block"></span>
+                                                </div>
+                                            </div>
+
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for="">
+                                                    <span>客户编号</span>：
+                                                </label>
+                                                <div class="col-sm-3 row">
+                                                    @Html.TextBoxFor(m => m.Payment.PaymentBasic.CustomerNo, new { @readonly=true, @style = "width:100%", @class = "form-control", @autocomplete = "off" })
+                                                    <span class="help-block"></span>
+                                                </div>
+                                            </div>
+
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for="">
+                                                    <span>客户名称</span>：
+                                                </label>
+                                                <div class="col-sm-3 row">
+                                                    @Html.TextBoxFor(m => m.Payment.PaymentBasic.CustomerName, new { @readonly = true, @style = "width:100%", @class = "form-control", @autocomplete = "off" })
+                                                    <span class="help-block"></span>
+                                                </div>
+                                            </div>
+
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for="">
+                                                    <span class="text-danger ng-binding">*</span><span>回款时间</span>：
+                                                </label>
+                                                <div class="col-sm-3 row">
+                                                    @Html.TextBoxFor(m => m.Payment.PaymentBasic.CashedDate, "{0:yyyy-MM-dd}", new { @style = "width:100%", @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                                    <span class="help-block"></span>
+                                                </div>
+                                            </div>
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for="">
+                                                    <span class="text-danger ng-binding">*</span><span>回款金额</span>：
+                                                </label>
+                                                <div class="col-sm-3 row">
+                                                    @Html.TextBoxFor(m => m.Payment.PaymentBasic.CashedAmount, new { @class = "form-control",@onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')",@onafterpaste = "this.value=this.value.replace(/\\D/g,'')"})
+                                                    <span class="help-block"></span>
+                                                </div>
+                                            </div>
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for="">
+                                                    <span class="text-danger ng-binding">*</span><span>回款方式</span>：
+                                                </label>
+                                                <div class="col-sm-3 row">
+                                                    @Html.HiddenFor(m => m.Payment.PaymentBasic.PaymentMode)
+                                                    @Html.TextBoxFor(m => m.Payment.PaymentBasic.PaymentModeName, new { @style = "width:100%", @class = "form-control", @autocomplete = "off" })
+                                                    <span class="help-block"></span>
+                                                </div>
+                                            </div>
+
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for="">
+                                                    <a id="lblInvoiceNo" href="javascript:void(0);" onclick="javascript:void(0);"><span>银行单号</span>：</a>
+                                                </label>
+                                                <div class="col-sm-3 row">
+                                                    @Html.TextBoxFor(m => m.Payment.PaymentBasic.InvoiceNo, new { @style = "width:100%", @class = "form-control", @autocomplete = "off" })
+                                                    <span class="help-block"></span>
+                                                </div>
+                                            </div>
+
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for="">
+                                                    <span>合同编号</span>：
+                                                </label>
+                                                <div class="col-sm-3 row">
+                                                    @Html.TextBoxFor(m => m.Payment.PaymentBasic.ContractNo, new { @style = "width:100%", @class = "form-control", @autocomplete = "off" })
+                                                    <span class="help-block"></span>
+                                                </div>
+                                            </div>
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for="">
+                                                    <span>备注</span>：
+                                                </label>
+                                                <div class="col-sm-3 row">
+                                                    @Html.TextAreaFor(m => m.Payment.PaymentBasic.Remark, new { @required = "true", @class = "form-control", maxlength = 1000, rows = 4, style = "width:100%" })
+                                                    <span class="help-block"></span>
+                                                </div>
+                                            </div>
+
+                                            <div class="i_common_select" id="div_customer" style="display: none;">
+                                                <div class="i_common_wrap">
+                                                    <div class="i_common_list"></div>
+                                                </div>
+                                            </div>
+
+                                            <div style="display: none;" id="divPaymentTypeList">
+                                                @Html.Partial("~/Areas/FAM/Views/AR/Payment/PaymentTypeList.cshtml")
+                                            </div>
+
+                                            <div class="form-group ">
+                                                <label class="col-sm-3 control-label" for=""></label>
+                                                <div class="col-sm-8">
+                                                    <div>
+                                                        <a class="btn btn-default" id="btnPaymentCreateUpdate">
+                                                            <span>提交</span>
+                                                        </a>
+                                                        <a class="btn btn-default" id="btnPaymentCreateAndNextOne">
+                                                            <span>提交并新增</span>
+                                                        </a>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+
+
+
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+

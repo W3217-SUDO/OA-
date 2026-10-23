@@ -1,0 +1,159 @@
+﻿
+@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.System.ViewModels.SystemCenter.CasePhase.CasePhaseListModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<script src="@Url.Content("~/Scripts/System/SystemCenter/CasePhase.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<div class="viewFramework-product viewFramework-product-col-1">
+    <div class="viewFramework-product-navbar ng-scope">
+        <!-- product nav -->
+        @{
+            Html.RenderPartial("MenuList");
+        }
+    </div><!-- /product nav -->
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="viewFramework-product-body">
+        <a tabindex="0" href="javascript:void(0)" id="viewFramework-product-anchor" style="position: absolute;top: -10000px;left: -10000px">let's go</a>
+ 
+ 
+        <div class="console-container ng-scope">
+            <div class="row ng-scope">
+                <div class="col-sm-12">
+                    <div class="console-title console-title-border clearfix">
+                        <div class="pull-left">
+                            <h5>案件阶段列表</h5>
+                        </div>
+ 
+                    </div>
+                    <div class="pull-left  col-sm-12">
+                        <form class="form-inline ng-valid "  id="postForm" action="@Url.Content("~/System/SystemCenter/CasePahseList")">
+                            @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                            @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+
+                            <div class="simple-form-field">
+                                <div class="form-group ">
+                                    <label class="control-label">
+                                        <span contenteditable="" class="text-danger "></span>
+                                        <span class="">案件阶段名称：</span>
+                                    </label>
+                                    <div class="form-control-wrap">
+                                        @Html.TextBoxFor(m => m.SearchCondition.CasePhaseName, new { @class = "form-control" })
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="simple-form-field  ">
+                                <div class="form-group  ">
+                                    <label class="control-label">
+                                        <span class="">
+                                        </span>
+                                    </label>
+                                    <div class="form-control-wrap text-right">
+                                        <a href="javascript:void(0);" class="btn btn-primary " id="btnCasePhaseSearch">
+                                            <span>查询</span>
+                                        </a>
+                                    </div>
+                                    <div class="form-control-wrap text-right">
+                                        <a href="javascript:void(0);" class="btn btn-primary " id="btnCasePhaseCreate">
+                                            <span>新增案件阶段</span>
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                </div>
+                <div class="col-sm-12">
+                    <div class="ng-scope">
+
+                        <div class="gridSection">
+                            <table id="tblCasePhaseList" class="table table-hover">
+                                <colgroup>
+                                    <col style="width: 8%">
+                                    <col style="width: 30%">
+                                    <col style="width: 10%">
+                                    <col style="width: 12%">
+                                    <col style="width: 10%">
+                                    <col style="width: 10%">
+                                    <col style="width: 20%">
+                                    <col style="width: 10%">
+                                    <col style="width: 20%">
+                                    <col style="width: 8%">
+                                </colgroup>
+                                <thead>
+                                    <tr>
+                                        <th>阶段Id</th>
+                                        <th style="text-align: left">案件阶段</th>
+                                        <th style="text-align: center">上级阶段Id</th>
+                                        <th style="text-align: center">案件类型</th>
+                                        <th style="text-align: center">排序号</th>
+                                        <th style="text-align: center">创建人</th>
+                                        <th style="text-align: left">创建时间</th>
+                                        <th style="text-align: center">修改人</th>
+                                        <th style="text-align: left">修改时间</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr style="display: none">
+                                        <td>
+                                            &nbsp;
+                                        </td>
+                                        <td style="text-align: left"></td>
+                                        <td style="text-align: center"></td>
+                                        <td style="text-align: center"></td>
+                                        <td style="text-align: center"></td>
+                                        <td style="text-align: center"></td>
+                                        <td style="text-align: left"></td>
+                                        <td style="text-align: center"></td>
+                                        <td style="text-align: left"></td>
+                                        <td></td>
+                                    </tr>
+                                </tbody>
+                                <tfoot class="ng-scope" style="display: none">
+                                    <tr>
+                                        <td colspan="10">
+                                            <div class="pull-left"></div>
+                                            <div class="ng-scope">
+                                                <div class="pull-right page-box casephase">
+
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+
+                        <div class="simple-grid-none-data-wrap">
+                            <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                                <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                    <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                    <div class="text-size-16 tip-text inline-block">
+                                        <span class="margin-left ng-binding" ng-bind-html="vm.msg">没有查询到符合条件的记录，可以去</span>
+                                        <a href="javascript:void(0);" class="ng-binding"  style="color: #039">新增案件阶段</a>
+                                        <span class="ng-binding">。</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>

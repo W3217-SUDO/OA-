@@ -1,0 +1,65 @@
+﻿@using Dchien.Legal.Entity.System
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+
+    var actived = "active";
+
+}
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding">调查任务</div>
+        <div class="ng-isolate-scope"></div>
+
+        <div class="product-nav-list">
+
+            <ul class="top-level">
+                <li class="J-drop-menu">
+                    <a href="javascript:void(0);" class="J-drop-menu-herf">
+                        <div class="nav-icon">
+                            <span class="icon-arrow-right"></span>
+                        </div>
+
+                        <div class="nav-title ng-binding">
+                            调查任务
+                        </div>
+
+                    </a>
+
+                    <ul style="display: block;">
+
+                        @{ actived = action == "List".ToLower() ? "class=active" : "";}
+                        <li @actived>
+                            <div>
+                                <a href="@Url.Content(string.Format("~/{0}/CIT/Investigation/List", PageId.PageId_1401002))">
+                                  
+                                    <div class="nav-icon"></div><div class="nav-title nav-text-indent">我的调查任务</div>
+                                </a>
+                                <div class="nav-extend">
+                                   
+                                </div>
+                            </div>
+                        </li>
+                        @{ actived = action == "Create".ToLower() ? "class=active" : "";}
+                        <li @actived>
+                            <div>
+                                <a href="@Url.Content(string.Format("~/{0}/CIT/Investigation/Create", PageId.PageId_1401001))">
+                                    <div class="nav-icon"></div><div class="nav-title nav-text-indent">新建调查任务</div>
+                                </a><div class="nav-extend">
+                                     
+                                </div>
+                            </div>
+                        </li>
+                     </ul>
+                </li>
+            </ul>
+        </div>
+
+    </div>
+    <div class="product-nav-scene product-nav-sub-scene">
+        <div class="product-nav-title">xxx</div>
+        <div class="product-nav-list">
+            <ul></ul>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,171 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.IPR.Case
+@model Dchien.Legal.Web.Areas.CRM.ViewModels.CaseFee.CaseFeeInformModel
+
+<script src="@Url.Content("~/Scripts/IPR/Case/Case.CaseFee.Inform.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<div class="modal fade" id="caseFeeInformModal" >
+         <div class="modal-dialog" style="width:65%">
+            <div class="modal-content" ng-transclude="">
+                <div class="ng-scope">
+                    @using (Html.BeginForm("CaseFeeInform", "CaseFee", FormMethod.Post, new { id = "caseFeeInform", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                    {
+                        <div class="modal-header">
+                            <button type="button" class="close" id="btnCaseFeeInformClose">×</button>
+                            <h5 class="modal-title ">批量下费用通知</h5>
+                        </div>
+
+                        <div class="modal-body">
+                            <div>
+                                <div class="form-group">
+                                    <label class="col-sm-1 control-label" style="padding-right: 0px; padding-left: 0px">
+                                        <span class="text-danger ">*</span>
+                                        <span class="">客户编号：</span>
+                                    </label>
+                                    <div class="col-sm-2">
+                                        @Html.TextBoxFor(m => m.CustomerNo, new { @class = "form-control" })
+                                    </div>
+
+                                    <label class="col-sm-1 control-label" style="padding-right: 0px; padding-left: 0px">
+                                        <span class="text-danger ">*</span>
+                                        <span class="">客户名称：</span>
+                                    </label>
+                                    <div class="col-sm-2">
+                                        @Html.TextBoxFor(m => m.CustomerName, new { @class = "form-control" })
+
+                                    </div>
+                                    
+                                    <label class="col-sm-1 control-label" style="padding-right: 0px; padding-left: 0px">
+                                        <span class="text-danger ">*</span>
+                                        <span class="">合同号：</span>
+                                    </label>
+                                    <div class="col-sm-2">
+                                        @Html.TextBoxFor(m => m.ContractNo, new { @class = "form-control" })
+                                    </div>
+                                    <div class="col-sm-1">
+                                        <a href="javascript:void(0)" id="btnCaseFeeInformAddItem" class="btn btn-link">新增费用通知</a>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <div class="col-sm-12">
+                                        <div class="gridSection">
+                                            <table id="tblCaseFeeItemList" class="list_table" style='width:100%'>
+                                                <colgroup>
+                                                    <col style="width: 12%">
+                                                    <col style="width: 12%">
+                                                    <col style="width: 12%">
+                                                    <col style="width: 8%">
+                                                    <col style="width: 12%">
+                                                    <col style="width: 8%">
+                                                    <col style="width: 25%">
+                                                    <col />
+                                                </colgroup>
+                                                <thead>
+                                                    <tr>
+                                                        <th>案号</th>
+                                                        <th>申请号</th>
+                                                        <th>费用类型</th>
+                                                        <th>金额</th>
+                                                        <th>通知日期</th>
+                                                        <th>提交人</th>
+                                                        <th>说明</th>
+                                                        <th>操作</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @if (Model.CaseFees != null && Model.CaseFees.Count > 0)
+                                                    {
+                                                        var caseTypes = CaseTypeService.Instance.GetAllCaseFeeTypes();
+
+                                                        foreach (var item in Model.CaseFees)
+                                                        {
+                                                            var display = item.IsDefalut ? "display:none" : string.Empty;
+
+                                                            <tr style="@display">
+
+                                                                <td>
+                                                                    @Html.TextBoxFor(m => item.CaseNo, new
+                                                                    {
+                                                                        @class = "CaseFeeInform_CaseNo form-control",
+                                                                    })
+                                                                </td>
+                                                                
+                                                                <td>
+                                                                    @Html.TextBoxFor(m => item.CaseRequestNo, new
+                                                                    {
+                                                                        @class = "CaseFeeInform_CaseRequestNo form-control",
+                                                                    })
+                                                                </td>
+
+                                                                <td>
+                                                                    <select id="item_CaseTypeId" class="form-control">
+                                                                        @{
+                                                                            if (caseTypes != null && caseTypes.Any())
+                                                                            {
+                                                                                foreach (var caseType in caseTypes)
+                                                                                {
+                                                                                    <option value=@caseType.FeeTypeId>@caseType.FeeTypeName</option>
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    </select>
+
+                                                                </td>
+                                                                <td>
+                                                                    @Html.TextBoxFor(m => item.Amount, new
+                                                                    {
+                                                                        @class = "form-control",
+                                                                        @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')",
+                                                                        @onafterpaste = "this.value=this.value.replace(/\\D/g,'')"
+                                                                    })
+                                                                </td>
+
+                                                                <td>
+                                                                    @Html.TextBoxFor(m => item.InformDate, "{0:yyyy-MM-dd}", new
+                                                                    {
+                                                                        @class = "input_time form-control",
+                                                                        onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})"
+                                                                    })
+                                                                </td>  
+
+                                                                <td>
+                                                                    @Html.TextBoxFor(m => item.RequestUser, new
+                                                                    {
+                                                                        @class = "form-control"
+                                                                    })
+                                                                </td>
+
+                                                                <td>
+                                                                    @Html.TextBoxFor(m => item.Description, new
+                                                                    {
+                                                                        @class = "form-control"
+                                                                    })
+                                                                </td>
+  
+                                                                <td>
+                                                                    <input type="button" value="重写" class="btn_clear" />
+                                                                    <input type="button" value="移除" class="btn_remove" />
+                                                                </td>
+                                                            </tr>
+                                                        }
+                                                    }
+
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                        <div class="modal-footer">
+                            <input class="btn btn-primary " type="button" id="btnCaseFeeInform" value="确定" />
+                            <input class="btn btn-default " type="button" id="btnCaseFeeInformCancel" value="取消" />
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+</div>

@@ -1,0 +1,60 @@
+﻿@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.System.ViewModels.SystemCenter.CaseType.CasePhaseListModel
+
+@{
+    object htmlAttribute = null;
+}
+
+<script  type="text/javascript"></script>
+
+<div class="modal fade" id="CasePhaseModal" >
+     
+        <div class="modal-dialog" style="width:60%">
+            <div class="modal-content" ng-transclude="">
+                <div class="ng-scope">
+                    @using (Html.BeginForm("CaseTypeCasePhaseList", "SystemCenter", FormMethod.Post, new { id = "CasePhaseId", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                    {
+                        @Html.HiddenFor(m => m.CaseTypeId)
+
+                        <div class="modal-header">
+                            <button type="button" class="close" id="btnCasePhaseClose">×</button>
+                            <h5 class="modal-title ng-binding">关联案件阶段</h5>
+                        </div>
+                        
+                        @*<div style="padding-left:10px;padding-right:10px">
+                                <div class="margin-top-2 alert alert-info">
+                                    <b>提醒：</b><span style="color:#F00" class="ng-binding"></span>
+                                </div>
+                            </div>*@
+
+                        <div class="modal-body">
+                            <div>
+                                <div class="form-group">
+                                    @{if (Model.CasePhasesAll != null && Model.CasePhasesAll.Count > 0)
+                                      {
+                                          foreach (var item in Model.CasePhasesAll)
+                                          {
+                                              var isChecked = Model.CasePhases.Contains(item.CasePhaseId) ? "checked=" : "";
+                                              <div class="col-sm-3" style="padding-left: 40px">
+                                                  <span>
+                                                      <input value="@item.CasePhaseId" @isChecked id=@("CasePhaseIdId" + @item.CasePhaseId) name=@("CasePhaseIdId" + @item.CasePhaseId) style="vertical-align:middle" type="checkbox"><label for=@("CasePhaseIdId" + @item.CasePhaseId)>@item.CasePhaseId @item.CasePhaseName</label>
+                                                  </span>
+                                              </div>
+                                          }
+                                      }
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="modal-footer">
+                            <input class="btn btn-primary ng-binding" type="button" id="btnCasePhaseCreate" value="确定" />
+                            <input class="btn btn-default ng-binding" type="button" id="btnCasePhaseCancel" value="取消" />
+                        </div>
+                    }
+                </div>
+            </div>
+        </div><!-- /.modal -->
+    
+</div>
+

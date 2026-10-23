@@ -1,0 +1,59 @@
+﻿@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.Lawsuit.ViewModels.Case.CaseCustomListModel
+
+<style>
+    a {
+        color: black;
+        text-decoration: none;
+    }
+
+    a:hover {
+        color: black;
+        text-decoration: none;
+    }
+</style>
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/Lawsuit/Case/Case.Create.CustomList.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding ">
+            我的案件
+            <a href="javascrtipt:void(0);" id="btnCaseList">
+                <span class="icon-ecs" style="vertical-align:top"></span>
+            </a>
+            @Html.HiddenFor(m => m.Keyword)
+        </div>
+       
+        <div class="ng-isolate-scope"></div>
+        <div class="product-nav-list">
+            <ul class="top-level">
+
+                @if (Model.Keyword != null)
+                {
+                        var selected = true;
+                        var selectedClass = "class=active";
+                        var dropMenu = "class=J-drop-menu" ;
+
+                        // <li @dropMenu>
+                        <li class=J-drop-menu>
+                            <a href="javascript:void(0);" class="J-drop-menu-herf" @selectedClass>
+                                <div class="nav-icon">
+
+ 
+                                        <span class="icon-arrow-right"></span>
+                                     
+
+                                </div>
+
+                                <div class="nav-title ng-binding" id='coustom'>查询结果</div>
+                            </a>
+                            <ul>
+                            </ul>
+                        </li>
+                    }
+            </ul>
+        </div>
+    </div>
+</div>
+

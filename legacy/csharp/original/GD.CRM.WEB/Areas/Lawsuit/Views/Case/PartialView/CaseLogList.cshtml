@@ -1,0 +1,42 @@
+﻿@using SunHold.Legal.BizModel
+@using SunHold.Legal.BizModel.Lawsuit.Case
+@using SunHold.Legal.Common
+@model SunHold.Legal.Web.Areas.Lawsuit.ViewModels.Case.CaseLogListModel
+
+<script>
+
+    $(function () { $("[data-toggle='tooltip']").tooltip(); });
+
+</script>
+
+
+<form id="postForm" action="">
+
+    @if (Model.CaseLogs != null && Model.CaseLogs.Count > 0)
+    {
+        var lst = Model.CaseLogs.GroupBy(x => new DateTime(x.OperatorDate.Value.Year, x.OperatorDate.Value.Month, 1))
+            .ToList();
+
+        foreach (var x in lst)
+        {
+            <dl class="product-fun-update-list" style="margin-top: 0px; margin-bottom: 0px;">
+
+                <dt> @x.Key.ToString("yyyy-MM")</dt>
+                <dd>
+                    <ul class="month-list">
+                        @foreach (var item in x.ToList<BizCaseLog>())
+                        {
+                            <li class="first border">
+                                <i class="li-icon"></i>
+                                <span style=' float: left;' class="date">@(item.OperatorDate.HasValue ? item.OperatorDate.Value.ToString("yyyy-MM-dd") : "")</span>
+                                <a style='width: 150px; float: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; ' title="@item.Content" data-toggle="tooltip" href="javascript:void(0);">@item.Content</a>
+                            </li>
+                        }
+                    </ul>
+                </dd>
+            </dl>
+        }
+    }
+
+</form>
+

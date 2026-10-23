@@ -1,0 +1,281 @@
+﻿@using Dchien.Legal.Entity.System
+
+@model Dchien.Legal.Web.Areas.TP.ViewModels.Task.TaskModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/font-awesome.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="https://g.alicdn.com/aliyun/ticketsystem/1.6.17//styles/ticketSystem/detail.css" />
+<link type="text/css" rel="stylesheet" href="https://g.alicdn.com/aliyun/ticketsystem/1.6.17//styles/ticketSystem/tip.css" />
+<link type="text/css" rel="stylesheet" href="https://g.alicdn.com/aliyun/ticketsystem/1.6.17//styles/ticketSystem/common.css" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bootstrap-tagsinput.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+
+<script src="@Url.Content("~/Scripts/TP/Task/Legal.Task.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/TP/Task/Legal.Task.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Common/jquery.form.js")" type="text/javascript"></script>
+
+
+<style>
+    .bootstrap-tagsinput {
+        width: 100%;
+        border-radius: 0px;
+        padding: 2px 4px;
+    }
+
+        .bootstrap-tagsinput input {
+            padding: 0px;
+            width: 50px;
+        }
+
+    .chosen-container-multi .chosen-choices {
+        border: 1px solid #cccccc;
+        font-size: 12px;
+    }
+</style>
+
+
+<div class="viewFramework-product">
+    <div class="viewFramework-product-body">
+        <div class="console-container ">
+            <div class="">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div ui-view="myTicket">
+                            <div class="ticket-add ">
+                                <div ng-if="isSmart" class="">
+                                    <div class="console-title console-title-border">
+                                        <div class="ticket-header clearfix">
+                                            <h5 class="pull-left">提交任务</h5>
+                                        </div>
+                                    </div><div class="margin-top-2"></div>
+                                </div>
+
+                                <div class="margin-top-3"></div>
+                                <div style="margin-top:12px" class="">
+                                    <div class="console-step row step-bar">
+                                        <div class="step col-md-3  step-first step-active">
+                                            <span class="">任务填写</span>
+                                        </div>
+                                        <div class="step col-md-3   ">
+                                            <span class="">任务分派</span>
+                                        </div>
+                                        <div class="step col-md-3  ">
+                                            <span class="">任务处理</span>
+                                        </div>
+                                        <div class="step col-md-3  step-end">
+                                            <span class="">任务完成</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="table-viewer-header " style="margin-top: 10px;height:35px;line-height:35px">
+                                    <span class="table-viewer-topbar-title">
+                                        <span>提交任务</span>
+                                    </span>
+                                </div>
+                                <div class="table-content ">
+
+                                    <div class="form-horizontal margin-top-3 ">
+                                       
+                                            <div class="simple-form-field  ">
+                                                <div class="form-group ">
+                                                    <label for="radio0" class="col-sm-2 control-label">
+                                                        <span class="text-danger ng-binding">*</span>
+                                                        <span>优先级:</span>
+                                                    </label>
+                                                    <div class="col-sm-5">
+
+                                                        <div class="radio radio-inline ">
+                                                            <label>
+                                                                <input id="radio0.1" type="radio" value="1"> 重要
+                                                            </label>
+                                                            <div class="tip-holder "></div>
+                                                        </div>
+                                                        <div class="radio radio-inline ">
+                                                            <label>
+                                                                <input id="radio0.0" type="radio" value="0"> 一般
+                                                            </label>
+                                                            <div class="tip-arrow "></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="simple-form-field  ">
+                                                <div class="form-group ">
+                                                    <label for="custom_text3" class="col-sm-2 control-label">
+                                                        <span class="text-danger ng-binding">*</span>
+                                                        <span>案件编号:</span>
+                                                    </label>
+                                                    <div class="col-sm-5">
+                                                        <div class="bootstrap-tagsinput">
+
+                                                                @if (!string.IsNullOrEmpty(Model.CaseNos))
+                                                                {
+                                                                    var caseNos = Model.CaseNos.Split(',');
+                                                                    var i = 0;
+                                                                    foreach (var caseNo in Model.CaseNos.Split(','))
+                                                                    {
+                                                                        <span class="tag label label-info">
+                                                                            <a name="casename" style="color:white; width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                                               username="REDACTED_ARCHIVE_ONLY"   data-toggle="tooltip" data-container="body" href="javacript:void(0);"
+                                                                               target="_blank" data-original-title="@caseNo">@caseNo</a>
+                                                                            <span class="caseremove" data-role="remove"></span>
+                                                                        </span>
+                                                                        i++;
+                                                                    }
+                                                                }
+
+                                                            <input type="text" readonly class="form-control inline-block" style="height:22px;width: 100px;margin-left: 6px;" id="Task_CaseNo_Input" autocomplete="off" size="1">
+                                                         </div>
+                                                        @Html.DisplayTextFor(m => m.ErrorMessages)
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="simple-form-field">
+                                                <div class="form-group">
+                                                    <label for="custom_text3" class="col-sm-2 control-label">
+                                                        <span class="text-danger ng-binding">*</span>
+                                                        <span>任务主标题:</span>
+                                                    </label>
+                                                    <div class="col-sm-5">
+                                                        @Html.TextBoxFor(m => m.Task.TaskTitle, new { @autocomplete = "off", @class = "form-control", @style = "height:29px;width:100%", @placeholder = "任务主标题" })
+                                                     </div>
+                                                </div>
+                                            </div>
+
+
+                                            <div class="simple-form-field  ">
+                                                <div class="form-group ">
+                                                    <label for="custom_text3" class="col-sm-2 control-label">
+                                                        <span class="text-danger ng-binding">*</span>
+                                                        <span>任务副标题:</span>
+                                                    </label>
+                                                    <div class="col-sm-5">
+                                                        @Html.TextBoxFor(m => m.Task.TaskSubTitle, new { @autocomplete = "off", @class = "form-control", @style = "height:29px;width:100%", @placeholder = "任务副标题" })
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="simple-form-field  ">
+                                                <div class="form-group ">
+                                                    <label for="custom_text3" class="col-sm-2 control-label">
+                                                        <span class="text-danger ng-binding">*</span>
+                                                        <span>负责人:</span>
+                                                    </label>
+                                                    <div class="col-sm-5">
+                                                        <div class="bootstrap-tagsinput">
+                                                            <input type="text" placeholder="负责人" class="form-control inline-block" style="height:22px;width: 200px;margin-left: 6px;" id="Task_Officer_Input" autocomplete="off" size="1">
+                                                            <div class="i_common_select" id="div_officerlist" style="display: none;">
+                                                                <div class="i_common_wrap">
+                                                                    <div class="i_common_list"></div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="simple-form-field  ">
+                                                <div class="form-group ">
+                                                    <label for="custom_text3" class="col-sm-2 control-label">
+                                                        <span class="text-danger ng-binding">*</span>
+                                                        <span>协作人:</span>
+                                                    </label>
+                                                    <div class="col-sm-5">
+                                                        <div class="bootstrap-tagsinput">
+                                                            <input type="text" placeholder="协作人" class="form-control inline-block" style="height:22px;width: 200px;margin-left: 6px;" id="Task_Associates_Input" autocomplete="off" size="1">
+                                                            <div class="i_common_select" id="div_associateslist" style="display: none;">
+                                                                <div class="i_common_wrap">
+                                                                    <div class="i_common_list"></div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="simple-form-field  ">
+                                                <div class="form-group ">
+                                                    <label for="custom_text3" class="col-sm-2 control-label">
+                                                        <span class="text-danger ng-binding">*</span>
+                                                        <span>任务时间:</span>
+                                                    </label>
+
+                                                    <div class="col-sm-5">
+
+                                                        <div style="float:left;height:29px;width:50%;padding-right:10px">
+                                                            <input class="form-control inline-block " id="Task_TaskBeginTime" name="Task.TaskBeginTime" onfocus="WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" placeholder="开始时间" required="true" style="height:29px; " type="text" value="">
+                                                        </div>
+
+                                                        <div style="float:right;height:29px;width:50%;padding-left:10px">
+
+                                                            <input class="form-control inline-block " id="Task_TaskEndTime" name="Task.TaskEndTime" onfocus="WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" placeholder="结束时间" required="true" style="height:29px; " type="text" value="">
+
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="simple-form-field  ">
+                                                <div class="form-group ">
+                                                    <label for="custom-textarea1" class="col-sm-2 control-label">
+                                                        <span class="text-danger ng-binding">*</span> <span>任务描述:</span>
+                                                    </label>
+                                                    <div class="col-sm-5">
+                                                        <textarea type="text" class="form-control " id="Task_Content" rows="5"></textarea>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                         
+                         
+                                            <div class="simple-form-field  ">
+                                                <div class="form-group">
+                                                    <label class="col-sm-2 control-label">
+                                                        <span class="text-danger">*</span>
+                                                        <span>任务附件：</span>
+                                                    </label>
+                                                    <div class="col-sm-10">
+                                                        <input class="btn btn-default btn-xs " id="btnFileUpload" style="width:80px;overflow: hidden;" value="上传附件">
+                                                        @*<form action="/1401001001/TP/TaskFile/TaskFileUpload" class="form-horizontal" enctype="multipart/form-data" id="uploadForm" method="post">*@
+
+                                                        @using (Html.BeginForm("TaskFileUpload", "TaskFile", FormMethod.Post, new { id = "uploadForm", enctype = "multipart/form-data", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                                                        {
+                                                            @Html.HiddenFor(m => m.Task.TaskGuid)   
+                                                            @Html.HiddenFor(m => m.Task.MessageGuid)
+                                                            <input type="file" multiple="multiple" id="flTaskFile" name="flTaskFile" accept=".jpg, .jpeg, .bmp, .png, .gif,.txt, .rar, .zip, .doc, .docx, .ini, .conf, .eml, .xlsx, .xls, .pdf" tabindex="-1" style="width: 1px; height: 1px; opacity: 0; position: absolute; padding: 0px; margin: 0px; overflow: hidden;">
+                                                        }
+
+                                                        <p id="custom5_description" class="help-block">
+                                                            <span class="ng-binding">
+                                                            </span>
+                                                        </p><div class="text-muted">
+                                                            附件支持的格式有:'jpg', 'bmp', 'png','gif','txt','rar','zip','doc','docx','ini','conf','eml','pdf', 'xlsx', 'xls'
+                                                        </div>
+
+                                                        <p></p>
+                                                        <div id="taskfileattachments"></div>
+                                                        <div class="help-block" style="display:none">上传失败</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="simple-form-field  ">
+                                                <div class="form-group simple-form-submit ">
+                                                    <label for="submit10" class="col-sm-2 control-label"><span></span></label>
+                                                    <div class="col-sm-5">
+                                                        <input type="button" id="btnTaskCreateUpdate" class="btn btn-primary ng-binding" style="height: 32px; line-height: 14px;    padding: 8px 16px;" value="提交">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+

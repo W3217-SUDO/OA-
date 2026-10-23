@@ -1,0 +1,104 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.FAM.InternalFee.Payment
+@using Newtonsoft.Json.Linq
+@using Dchien.Legal.Entity.Account
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.InternalFee.Payment.Packing.PackingModel
+
+<div class="modal fade" id="packingVerifyModal">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            @using (Html.BeginForm("PackingVerify", "AP", FormMethod.Post, new { id = "paymentPackingForm", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+            {
+                <div class="modal-header">
+                    <button type="button" class="close" id="btnPackingVerifyClose">×</button>
+                    <h5 class="modal-title ">付款核销</h5>
+                </div>
+
+                <div class="modal-body">
+                    <div>
+                        <div class="form-group">
+                            <label class="col-sm-3 control-label">
+                                <span class="text-danger">*</span>
+                                <span class="">付款打包号</span>
+                            </label>
+                            <div class="col-sm-6">
+                                @Html.HiddenFor(m => m.Packing.PaymentPackingBasic.PackingId)
+                                @Html.TextBoxFor(m => m.Packing.PaymentPackingBasic.PackageNo, new { @class = "input_text form-control", @readonly = true, @autocomplete = "off" })
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="form-group">
+                            <label class="col-sm-3 control-label">
+                                <span class="text-danger">*</span>
+                                <span>请确认付款金额</span>
+                            </label>
+                            <div class="col-sm-6">
+                                @Html.TextBoxFor(m => m.Packing.PaymentPackingBasic.PackingAmount, new { @class = "input_text form-control", @readonly = true })
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <div class="form-group">
+                            <label class="col-sm-3 control-label">
+                                <span class="text-danger">*</span>
+                                <span>请输入付款日期</span>
+                            </label>
+                            <div class="col-sm-6">
+                                @Html.TextBoxFor(m => m.Packing.PaymentPackingBasic.PaidDate, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="form-group">
+                            <label class="col-sm-3 control-label">
+                                <span class="text-danger">*</span>
+                                <span>请选择付款方式</span>
+                            </label>
+                            <div class="col-sm-6">
+                                @Html.DropDownListFor(m => m.Packing.PaymentPackingBasic.PaymentMode, PaymentModeService.Instance.GetPaymentModeList(PaymentType.Payment), new { @class = " form-control" })
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="form-group">
+                            <label class="col-sm-3 control-label">
+                                <span class="text-danger">*</span>
+                                <span>请输入付款单据号</span>
+                            </label>
+                            <div class="col-sm-6">
+                                @Html.TextBoxFor(m => m.Packing.PaymentPackingBasic.InvoiceNo, new { @class = "input_text form-control"})
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="form-group">
+                            <label class="col-sm-3 control-label">
+                                <span>请输入付款备注</span>
+                            </label>
+                            <div class="col-sm-6">
+                                @Html.TextAreaFor(m => m.Packing.PaymentPackingBasic.Remark, new { @required = "true", maxlength = 1000, rows = 2, style = "width:100%" })
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="modal-footer">
+
+                    @if (CommonService.Instance.CheckPermission((int)Permission.PackingVerify))
+                    {
+                        <input class="btn btn-primary " type="button" id="btnPackingVerify" value="确定" />
+                    }
+                    <input class="btn btn-default " type="button" id="btnPackingVerifyCancel" value="取消" />
+                </div>
+            }
+
+        </div>
+    </div>
+</div>

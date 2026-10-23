@@ -1,0 +1,268 @@
+﻿@using Dchien.Legal.Service
+@using Dchien.Legal.Service.FAM.Invoice
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.Invoice.ListModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<script src="@Url.Content("~/Scripts/FAM/Invoice/FAM.Invoice.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/FAM/Invoice/FAM.Invoice.Process.InvoicedList.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<div class="viewFramework-product ">
+    @*<div class="viewFramework-product-navbar ng-scope">
+       
+        @{
+            Html.RenderPartial("~/Areas/FAM/Views/Invoice/MenuList.cshtml");
+        }
+    </div> 
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>*@
+    <div class="viewFramework-product-body">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>@(Model.SearchCondition.PageId == "5001006005" ? "平台开票" : "公司开票")</h5>
+                            </div>
+                        </div>
+                        <div class="pull-left margin-top-1 col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm" action="@Url.Content("~/FAM/Invoice/InvoiceList")">
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageId)
+                                <table class="search_table" style="width: 600px">
+                                    <colgroup>
+                                        <col style="width: 60px;" />
+                                        <col style="width: 250px" />
+                                        <col style="width: 80px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+
+                                        <col>
+                                    </colgroup>
+                                    <tr>
+                                        <th>
+                                            客户名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control", @style = "width:94%" })
+                                        </td>
+
+                                        <th>
+                                            请票单号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.ApplicationNo, new { @class = "form-control", @style = "" })
+                                        </td>
+
+                                        <th>
+                                            发票类别
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.InvoiceType, InvoiceTypeService.Instance.GetInvoiceTypeList(true), new { maxlength = 60, @class = "form-control select", style = "width:147px" })
+
+                                        </td>
+
+
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            开票抬头：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.InvoiceName, new { @class = "form-control", @style = "width:94%" })
+                                        </td>
+                                        <th>
+                                            发票号码：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.InvoiceNo, new { @class = "form-control", @style = "" })
+                                        </td>
+                                        <th>
+                                            发票状态：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.InvoiceStatus, Dchien.Legal.Service.FAM.Invoice.InvoiceStatusService.Instance.GetInvoiceStatusList(true), new { @class = "form-control", style = "width:147px" })
+                                        </td>
+                                    </tr>
+
+                                    <tr>
+                                        <th>
+                                            开票日期：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.InvoiceDateStart, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", style = "width:110px", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.InvoiceDateEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", style = "width:110px", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                        </td>
+
+                                        <th>
+                                            申请人：
+                                        </th>
+                                        <td>
+                                            @Html.HiddenFor(m => m.SearchCondition.InvoiceApplicant, new { @class = "form-control", @style = "" })
+                                            @Html.TextBoxFor(m => m.SearchCondition.InvoiceApplicantName, new { @class = "form-control", @style = "" })
+                                        </td>
+
+                                        <th>
+                                            案件编号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseNo, new { @class = "form-control", @style = "" })
+                                        </td>
+                                        </tr>
+                                    <tr>
+                                        <th>
+                                            
+                                        </th>
+                                        <td >
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnInvoiceListSearch">
+                                                <span>查询</span>
+                                            </a>
+
+                                        </td>
+                                    </tr>
+
+                                </table>
+                                <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                                    <div class="i_common_wrap">
+                                        <div class="i_common_list"></div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="">
+                            <div class="gridSection" id="invoicedgridsection">
+                                <table id="tblInvoiceList" class="aps-table aps-widget aps-ani-transition">
+                                    <colgroup>
+                                        <col style="width: 3%">
+                                        <col style="width: 15%">
+                                        <col style="width: 10%">
+                                        <col style="width: 15%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 15%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 6%">
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th>
+                                                <input type="checkbox" id="chkInvoiceAll" name="chkInvoiceAll">
+                                            </th>
+                                            <th style="text-align: center">操作</th>
+                                            <th style="text-align: center">请票单号</th>
+                                            <th style="text-align: center">客户名称</th>
+                                            <th style="text-align: center">开票金额</th>
+                                            <th style="text-align: center">高开金额</th>
+                                            <th style="text-align: center">开票抬头</th>
+                                            <th style="text-align: center">发票号码</th>
+                                            <th style="text-align: center">申请人</th>
+                                            <th style="text-align: center">领票人</th>
+                                            <th style="text-align: center">开票日期</th>
+                                            <th style="text-align: center">状态</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr style="display: none">
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: left;white-space:nowrap"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left;white-space:nowrap"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                        </tr>
+                                        <tr style="display: none">
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: left;white-space:nowrap"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left;white-space:nowrap"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                        </tr>
+                                    </tbody>
+                                    <tfoot class="" style="display: none">
+                                        <tr>
+                                            <td width="1">
+                                                <input type="checkbox" id="chkInvoiceAll" name="chkInvoiceAll">
+                                            </td>
+                                            <td colspan="11">
+                                                <div class="pull-left">
+                                                    <input type="button" id="btnInvoiceListExportToExcel" class="btn btn-default" style="height:32px" value="导出全部" />
+                                                    <input type="button" id="btnInvoiceListExportSelectedToExcel" class="btn btn-default" style="height:32px" value="导出选中" />
+                                                </div>
+                                                <div class="">
+                                                    <div class="pull-right page-box invoiceList">
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                            <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center  ">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                            <span class="">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="contextMenu" id="invoicedMenu" style="display: none;">
+                        <ul style="width:150px">
+                            <li id="view">查看</li>
+                            <li id="cancel">作废</li>
+                            <li id="invoiceno">修改发票号</li>
+                            <li id="invoicedatechange">修改发票日期</li>
+                        </ul>
+                    </div>
+
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+                    <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+                    <div style="display: none;" id="divUserList">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>

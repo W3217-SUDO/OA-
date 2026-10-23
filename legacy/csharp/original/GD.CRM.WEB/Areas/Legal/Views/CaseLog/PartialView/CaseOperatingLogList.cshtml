@@ -1,0 +1,117 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity
+@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Service;
+@using Dchien.Legal.Service.Legal.Case
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.Case.CaseLogListModel
+
+@{
+    var display = "display:block";
+   
+    if (@Model.CaseLogs != null && @Model.CaseLogs.Count > 0)
+    {
+        display = "display:none";
+    }
+}
+
+<form id="postForm" action="">
+    <div id="casegridSection" class="gridSection">
+ 
+        <div id='divContextList' style="overflow-y: auto; margin-top: -1px; overflow-x: hidden; overflow-y: auto; ">
+            <table class='table table-hover' id="tblCaseLog" width="100%">
+                <colgroup>
+                    <col style="width: 5%">
+                    <col style="width: 60%">
+                    <col style="width: 10%">
+                    <col style="width: 15%">
+                    <col style="width: 5%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th style="text-align: center">
+                            序号
+                        </th>
+                        <th style="text-align: center">
+                            操作内容
+                        </th>
+                        <th style="text-align: center">
+                            操作人
+                        </th>
+                        <th style="text-align: center">
+                            操作日期
+                        </th>
+                        <th style="text-align: center">
+                            查看
+                        </th>
+                    </tr>
+
+                </thead>
+
+                <tbody>
+                    @if (Model.CaseLogs != null)
+                        {
+
+                             foreach (var item in Model.CaseLogs)
+                            {
+
+                            <tr>
+
+                                <td>
+                                    <span>@(Model.CaseLogs.IndexOf(item) + 1)</span>
+                                </td>
+                
+                                <td style="text-align: left">
+                                    <span>@item.Content</span>
+                                </td>
+ 
+                                <td style="text-align: center; ">
+                                    <span >@item.Operator</span>
+                                </td>
+
+                                <td style="text-align: center">
+                                    <span>@item.OperatorDate.Value.ToString("yyyy-MM-dd HH:mm:ss")</span>
+                                </td>
+               
+                                <td style="text-align: center">
+                                    <a style='color: #039' href="javascript:void(0);" onclick="javascript:c.Cases.Case.CaseLogs.CaseLog.View('@item.LogId'); "><span>查看</span></a>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+                <tfoot class="ng-scope" style="display:none">
+                    <tr>
+                        <td colspan="5">
+                            <div class="pull-left"></div>
+                            <div class="ng-scope">
+                                <div class="pull-right page-box caselog">
+
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            <div class="simple-grid-none-data-wrap" style="@display">
+                <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                        <div class="text-size-16 tip-text inline-block">
+                            <span class="margin-left ng-binding"></span>没有查询到案件操作日志
+                            <span class="ng-binding">.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+
+    @Html.HiddenFor(m => m.TotalCount, new { name = "TotalCount" })
+    @Html.HiddenFor(m => m.PageNo, new { name = "PageNo" })
+    @Html.HiddenFor(m => m.PageSize, new { name = "PageSize" })
+
+</form>
+

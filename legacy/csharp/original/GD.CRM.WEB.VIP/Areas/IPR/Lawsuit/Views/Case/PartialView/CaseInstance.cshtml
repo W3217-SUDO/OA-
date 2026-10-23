@@ -1,0 +1,44 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.Lawsuit.Case
+
+@model Dchien.Legal.Web.Areas.Lawsuit.ViewModels.Case.CaseModel
+
+
+<div class="modal fade" id="caseInstanceModal" >
+        <div class="modal-dialog">
+            <div class="modal-content" ng-transclude="">
+                <div class="ng-scope">
+                    @using (Html.BeginForm("CaseInstance", "Case", FormMethod.Post, new { id = "caseInstance", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                    {
+                        @Html.HiddenFor(m => m.CaseId)
+                        <div class="modal-header">
+                            <button type="button" class="close" id="btnCaseInstanceClose">×</button>
+                            <h5 class="modal-title ng-binding">选择审级</h5>
+                        </div>
+                        <div class="modal-body">
+                            <div>
+                                <div class="form-group">
+                                    <label for="CaseInstance_Deadline" class="col-sm-3 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">级别:</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        @Html.DropDownListFor(m => m.Case.CurrentCaseLevel, CaseTypeService.Instance.GetCaseLevelList(), new { @class = "form-control",  @unselectable = "on" })
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <input class="btn btn-primary ng-binding" type="button" id="btnCaseInstance" value="确定" />
+                            <input class="btn btn-default ng-binding" type="button" id="btnCaseInstanceCancel" value="取消" />
+
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+</div>
+
+
+

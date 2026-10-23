@@ -1,0 +1,200 @@
+﻿@{
+    ViewBag.Title = "system parameter setting";
+}
+<link rel="stylesheet" type="text/css" href="//g.alicdn.com/dchien/accountcenter/0.3.32/styles/accountcenter/accountcenter.console.css" />
+
+<div class="viewFramework-product viewFramework-product-col-1" ng-class="{'viewFramework-product-col-1':config.productNavBar=='col-1','viewFramework-product-col-2': config.productNavBar=='col-2'}">
+    <!-- <div class="viewFramework-product-navbar-bg"></div> --><!-- ngIf: config.productNavBar != 'disabled' -->
+    <div class="viewFramework-product-navbar ng-scope" data-spm="103" ng-if="config.productNavBar != 'disabled'" data-spm-max-idx="7">
+        <!-- product nav -->
+        <div class="product-nav-stage ng-scope product-nav-stage-main" ng-show="navScene" ng-class="{'product-nav-stage-main':navScene=='main','product-nav-stage-sub':navScene=='sub'}"
+             product-nav="">
+            <div class="product-nav-scene product-nav-main-scene">
+                <div class="product-nav-title ng-binding" ng-bind="config.title">内部邮件</div><!-- 自定义内容插入点，比如商标、logo -->
+                <div customized-content="" class="ng-isolate-scope"></div>
+                <div class="product-nav-list">
+                    <ul>
+                        <!-- ngRepeat: item in config.mainNav -->
+                        <li ng-repeat="item in config.mainNav" class="active" ng-class="{'active':checkActive(item,'main')&amp;&amp;!item.showChild,'nav-showchild':item.showChild}"
+                            dchien-console-spm="100" data-spm-click="gostr=/dchien;locaid=d100;;" data-spm-anchor-id="5176.2020520207.103.d100">
+                            <div product-nav-link="" item="item" class="ng-isolate-scope ">
+                                <a href="#/secure" ui-sref="secure()" class="ng-scope" data-spm-anchor-id="5176.2020520207.103.1">
+                                    <div class="nav-icon"></div>
+                                    <div class="nav-title ng-binding" ng-bind="item.title">内部邮件</div>
+                                </a>
+                            </div><!-- ngIf: item.childs -->
+                        </li><!-- end ngRepeat: item in config.mainNav -->
+                    </ul>
+                </div>
+            </div>
+            <div class="product-nav-scene product-nav-sub-scene">
+                <div class="product-nav-title"><!-- ngIf: config.backNav --></div>
+                <div class="product-nav-list">
+                    <ul><!-- ngRepeat: item in config.subNav --></ul>
+                </div>
+            </div>
+        </div>
+    </div><!-- /product nav -->
+    <!-- ngIf: config.productNavBar != 'disabled' -->
+    <div class="viewFramework-product-navbar-collapse ng-scope" ng-click="collapseProductNavbar()" data-spm="103" ng-if="config.productNavBar != 'disabled'">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse" dchien-console-spm="4" data-spm-click="gostr=/dchien;locaid=d4;;">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div><!-- end ngIf: config.productNavBar != 'disabled' --><!-- /product nav collapse-->
+    <div class="viewFramework-product-body">
+        <a tabindex="0" href="javascript:void(0)" id="viewFramework-product-anchor" role="landmark" style="position: absolute;top: -10000px;left: -10000px">let's go</a>
+        <!-- product body -->
+        <div ng-transclude="">
+            <!-- <div dchien-console-topbar-new product-id="messageCenter"></div>
+            <div dchien-console-navbar></div> -->
+            <div ui-view="" class="console-container ng-scope" ng-animate="{enter:'fade-enter'}">
+                <div class="row ng-scope" bindonce="" data-spm="101">
+                    <div class="col-sm-12">
+                        <div class="console-title clearfix">
+                            <div class="pull-left">
+                                <h5 bo-text="'msg.sub.btn.toContacts'|translate">内部邮件</h5>
+                                @*<a data-ng-click="vm.gotoSubscription()" class="btn btn-xs btn-toinstlist">
+                                        <span class="icon-goback"></span>
+                                        <span bo-text="'msg.sub.btn.backto.settings'|translate">返回消息接收管理</span>
+                                    </a>*@
+                                <!-- 返回上级 -->
+                            </div>
+                            <div class="pull-right" data-spm="102">
+                                <a class="btn btn-primary ng-isolate-scope" dchien-console-spm="" spm-id="2" target="_blank"
+                                   contact-list-add="" data-spm-click="gostr=/dchien;locaid=d2;;">
+                                    <span bo-text="'msg.sub.btn.addReceiver'|translate">新建邮件</span>
+                                </a>
+                            </div>
+                        </div>
+                        <div class="alert alert-info" bo-bind="'account.basic.tip' | translate">请完善以下信息,方便我们更好的为您服务</div>
+
+                        @*<div class="margin-top-2 alert alert-info">
+                                <b bo-text="'msg.cm.lb.tips'|translate">提醒：</b>
+                                <span bo-text="'msg.sub.contact.tip'|translate"></span>
+                            </div>*@<!--main table-->
+                        <div dchien-simple-grid="" columns="vm.columns" store="vm.itemList" refresh-grid-view="vm.config.refreshGridView"
+                             loading-state="vm.loadingState" render-table="vm.updateTableData(data)"
+                             pagination-info="vm.pageInfo" config="vm.config" class="ng-isolate-scope">
+                            <div class="ng-scope">
+                                <div>
+                                    <div class="searchSection inline-block"></div>
+                                    <div class="tagSearchSection inline-block margin-left"></div>
+                                </div>
+                                <div class="gridSection">
+                                    <table class="table table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>邮件序列号</th>
+                                                <th>接收者</th>
+                                                <th>标题</th>
+                                                <th>内容</th>
+                                                <th>发送时间</th>
+                                                <th>操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <!-- ngRepeat: item in store --><!-- ngIf: !loadingState -->
+                                            <tr text-editor-trigger-target="" data-ng-if="!loadingState" bindonce="" data-ng-repeat="item in store" class="ng-scope">
+                                                <td>
+                                                    <!-- ngIf: item.EmailDirty && !item.IsSelf --> <!-- ngIf: !item.EmailDirty || item.IsSelf -->
+                                                    <span>邮件序列号</span>
+                                                    <!-- end ngIf: !item.EmailDirty || item.IsSelf -->
+
+                                                </td>
+                                                <td>
+                                                    <!-- ngIf: item.EmailDirty && !item.IsSelf --> <!-- ngIf: !item.EmailDirty || item.IsSelf -->
+                                                    <span>接收者</span>
+                                                    <!-- end ngIf: !item.EmailDirty || item.IsSelf -->
+
+                                                </td>
+                                                <td>
+                                                    <!-- ngIf: item.EmailDirty && !item.IsSelf --> <!-- ngIf: !item.EmailDirty || item.IsSelf -->
+                                                    <span>标题</span>
+                                                    <!-- end ngIf: !item.EmailDirty || item.IsSelf -->
+
+                                                </td>
+                                                <td>
+                                                    <!-- ngIf: item.EmailDirty && !item.IsSelf --> <!-- ngIf: !item.EmailDirty || item.IsSelf -->
+                                                    <span>内容</span>
+                                                    <!-- end ngIf: !item.EmailDirty || item.IsSelf -->
+
+                                                </td>
+                                                <td>
+                                                    <!-- ngIf: item.EmailDirty && !item.IsSelf --> <!-- ngIf: !item.EmailDirty || item.IsSelf -->
+                                                    <span>发送时间</span>
+                                                    <!-- end ngIf: !item.EmailDirty || item.IsSelf -->
+
+                                                </td>
+                                                <td>
+                                                    <div contact-action="" item="item" class="ng-isolate-scope">
+                                                        <span bo-text="item.Pos">修改</span>
+                                                        <span bo-text="item.Pos">删除</span>
+
+                                                    </div>
+                                                </td>
+                                            </tr><!-- end ngIf: !loadingState --><!-- end ngRepeat: item in store -->
+                                            <!-- ngRepeat: item in store --><!-- ngIf: !loadingState -->
+                                            <tr text-editor-trigger-target="" data-ng-if="!loadingState" bindonce="" data-ng-repeat="item in store" class="ng-scope">
+                                                <td>
+                                                    <!-- ngIf: item.EmailDirty && !item.IsSelf --> <!-- ngIf: !item.EmailDirty || item.IsSelf -->
+                                                    <span>邮件序列号</span>
+                                                    <!-- end ngIf: !item.EmailDirty || item.IsSelf -->
+
+                                                </td>
+                                                <td>
+                                                    <!-- ngIf: item.EmailDirty && !item.IsSelf --> <!-- ngIf: !item.EmailDirty || item.IsSelf -->
+                                                    <span>接收者</span>
+                                                    <!-- end ngIf: !item.EmailDirty || item.IsSelf -->
+
+                                                </td>
+                                                <td>
+                                                    <!-- ngIf: item.EmailDirty && !item.IsSelf --> <!-- ngIf: !item.EmailDirty || item.IsSelf -->
+                                                    <span>标题</span>
+                                                    <!-- end ngIf: !item.EmailDirty || item.IsSelf -->
+
+                                                </td>
+                                                <td>
+                                                    <!-- ngIf: item.EmailDirty && !item.IsSelf --> <!-- ngIf: !item.EmailDirty || item.IsSelf -->
+                                                    <span>内容</span>
+                                                    <!-- end ngIf: !item.EmailDirty || item.IsSelf -->
+
+                                                </td>
+                                                <td>
+                                                    <!-- ngIf: item.EmailDirty && !item.IsSelf --> <!-- ngIf: !item.EmailDirty || item.IsSelf -->
+                                                    <span>发送时间</span>
+                                                    <!-- end ngIf: !item.EmailDirty || item.IsSelf -->
+
+                                                </td>
+                                                <td>
+                                                    <div contact-action="" item="item" class="ng-isolate-scope">
+                                                        <span bo-text="item.Pos">修改</span>
+                                                        <span bo-text="item.Pos">删除</span>
+
+                                                    </div>
+                                                </td>
+                                            </tr><!-- end ngIf: !loadingState --><!-- end ngRepeat: item in store -->
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <!-- ngIf: showNoneDataInfoTip && !loadingState -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div data-ng-controller="dchienCommonController" class="ng-scope">
+
+        </div>
+        <div growl="" class="ng-scope">
+            <div class="growl">
+                <!-- ngRepeat: message in messages -->
+            </div>
+        </div>
+    </div><!-- /product body -->
+</div><!-- end ngIf: config.productNavBar != 'disabled' --><!-- product nav collapse-->

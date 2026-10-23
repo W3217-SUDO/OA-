@@ -1,0 +1,606 @@
+﻿@using Dchien.Legal.Entity.FAM.AR.CaseFee
+@using Dchien.Legal.Entity.Legal.Case
+@using Dchien.Legal.Service
+@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.CaseFee.CaseFeeListModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.CaseFee.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.CaseFee.Refund.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.core.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.excheck.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.exedit.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/zTree/zTreeStyle.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+
+<style type="text/css">
+    ul.ztree {
+        margin-top: 0px;
+        border-right: 0px solid #e1e6eb;
+        overflow-y: auto;
+        overflow-x: auto;
+    }
+
+    .ztree li {
+        line-height: 20px;
+    }
+
+        .ztree li a {
+            width: 150px;
+            height: 20px;
+            padding-top: 0px;
+        }
+
+            .ztree li a:hover {
+                text-decoration: none;
+                background-color: #E7E7E7;
+            }
+
+            .ztree li a span.button.switch {
+                visibility: hidden;
+            }
+
+    .ztree.showIcon li a span.button.switch {
+        visibility: hidden;
+    }
+
+    .ztree li a.curSelectedNode {
+        background-color: #D4D4D4;
+        border: 0;
+        height: 20px;
+    }
+
+    .ztree li span {
+        line-height: 20px;
+    }
+
+        .ztree li span.button {
+            margin-top: 2px;
+        }
+
+            .ztree li span.button.switch {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+
+            .ztree li span.button.add {
+                margin-left: 2px;
+                margin-right: -1px;
+                background-position: -144px 0;
+                vertical-align: top;
+                *vertical-align: middle;
+            }
+
+
+            /*.ztree li span.button {background-image:url("./left_menuForOutLook.png"); *background-image:url("./left_menuForOutLook.gif")}*/
+
+            .ztree li span.button.ico_docu {
+                background-position: -110px -16px;
+            }
+
+            .ztree li span.button.switch.level0 {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+
+            .ztree li span.button.switch.level1 {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+    /*.ztree li span.button.noline_open {background-position: 0 0;}
+    .ztree li span.button.noline_close {background-position: -18px 0;}
+    .ztree li span.button.noline_open.level0 {background-position: 0 -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}*/
+
+    .node_name {
+        margin-left: 10px;
+    }
+
+    div#rMenu {
+        position: absolute;
+        visibility: hidden;
+        top: 0;
+        background-color: #555;
+        text-align: left;
+        padding: 2px;
+    }
+
+        div#rMenu ul li {
+            margin: 1px 0;
+            padding: 0 5px;
+            cursor: pointer;
+            list-style: none outside none;
+            background-color: #DFDFDF;
+        }
+</style>
+
+<div class="viewFramework-product">
+    <div class="viewFramework-product-body"  style="overflow-y:hidden">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                 <h5>退费查询</h5>
+                            </div>
+                        </div>
+                        <div class="pull-left  col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm">
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageId, new { name = "PageId" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.Sorting)
+                                @Html.HiddenFor(m => m.SearchCondition.HasRefundFee)
+                                @Html.HiddenFor(m => m.SearchCondition.HasUnPaidOfficeFee)
+                                <table class="search_table" style="width: 600px">
+                                    <colgroup>
+                                        <col style="width: 60px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 190px" />
+                                        <col>
+                                    </colgroup>
+                                    <tr>
+                                        <th>
+                                            案件编号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseNo, new { @class = "form-control", @placeholder = "案件编号", @style = "width:90%" })
+                                        </td>
+                                        <th>
+                                            法院案号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.IntanceCaseNo, new { @class = "form-control", @placeholder = "法院案号", @style = "width:90%" })
+                                        </td>
+                                        <th>
+                                            法院名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CourtName, new { @class = "form-control", @placeholder = "法院名称", @style = "width:90%" })
+                                        </td>
+                                        <th>
+                                            付款时间：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.PaidDateFrom, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.PaidDateTo, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            客户名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control", @placeholder = "客户名称", @style = "width:90%" })
+                                        </td>
+                                        <th>
+                                            收款单位：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.PaidOrganizationName, new { @class = "form-control", @placeholder = "收款单位", @style = "width:90%" })
+                                        </td>
+                                        <th>
+                                            退费进度：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.RefundStatus, Dchien.Legal.Service.FAM.AR.ReceivedPayment.PaymentStatusService.Instance.GetRefundStatusList(true), new { @class = "form-control", style = "width:90%" })
+                                        </td>
+                                        <th>
+                                            退费金额：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.RefundFeeAmountFrom
+                                           , new
+                                           {
+                                               @class = "form-control",
+                                               @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')",
+                                               @onafterpaste = "this.value=this.value.replace(/\\D/g,'')",
+                                               @style = "width:80px"
+                                           })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.RefundFeeAmountTo, new
+                                       {
+                                           @class = "form-control",
+                                           @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')",
+                                           @onafterpaste = "this.value=this.value.replace(/\\D/g,'')",
+                                           @style = "width:80px"
+                                       })
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            开庭律师：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CourtLawyer, new { @class = "form-control", @placeholder = "开庭律师", @style = "width:90%" })
+                                        </td>
+                                        <th>
+                                            律师助理：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseAssistant, new { @class = "form-control", @placeholder = "律师助理", @style = "width:90%" })
+                                        </td>
+                                        <th>
+                                            案件阶段：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CasePhaseName, new { @class = "form-control", @autocomplete = "off", @placeholder = "案件阶段", @style = "width:90%" })
+                                            @Html.HiddenFor(m => m.SearchCondition.CasePhaseId)
+                                        </td>
+                                        <th>
+                                            费用类型：
+                                        </th>
+                                        <td>
+                                            @Html.HiddenFor(m => m.SearchCondition.CaseFeeTypeId, new { @style = "" })
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseFeeTypeName, new { @class = "form-control", @autocomplete = "off" , @placeholder = "费用类型", @style = "width:91.7%" })
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                        </th>
+                                        <td>
+                                            <div class="form-group">
+                                                <a href="javascript:void(0);" class="btn btn-primary " id="btnRefundCaseFeeSearch">
+                                                    <span>查询</span>
+                                                </a>
+                                                <a href="javascript:void(0);" class="btn btn-default " id="btnSearchClear">
+                                                    <span>清空</span>
+                                                </a>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </table>
+                                <div class='divcaseconditioncasetypes'></div>
+                                <div class='divcaseconditioncasephases' style='overflow-y: scroll; '>
+                                    <div id="divCasePhaseCheckBoxList" style="display:none" class='i_common_box'>
+                                        <div class='i_common_hd'>
+                                            从下列案件阶段中选择
+                                            <input type='hidden' id='hidCasePhaseId'>
+                                            <input type='hidden' id='hidCasePhaseName'>
+                                        </div>
+                                        <div class='i_common_bd'>
+                                            <ul id='casePhaseTree' class='ztree' style="max-height:600px"></ul>
+                                            <div class="pull-right">
+                                                <input class='btn btn-primary' type='button' id='btnCasePhaseSelected' value='确定' />
+                                                <input class='btn btn-default' type='button' value='取消' />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class='divcaseconditioncasefeetypes' style='overflow-y: scroll; '>
+                                    <div id="divCaseFeeTypeCheckBoxList" style="display:none" class='i_common_box'>
+                                        <div class='i_common_hd'>
+                                            从下列案件阶段中选择
+                                            <input type='hidden' id='hidCaseFeeTypeId'>
+                                            <input type='hidden' id='hidCaseFeeTypeName'>
+                                        </div>
+                                        <div class='i_common_bd'>
+                                            <ul id='caseFeeTypeTree' class='ztree' style="max-height:600px"></ul>
+                                            <div class="pull-right">
+                                                <input class='btn btn-primary' type='button' id='btnCaseFeeTypeSelected' value='确定' />
+                                                <input class='btn btn-default' type='button' id='btnCaseFeeTypeCancel' value='取消' />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="">
+                            <div class="gridSection">
+                                <table  class="aps-table aps-widget aps-ani-transition" style="width:100%">
+                                        <colgroup>
+                                            <col style="width: 3%">
+                                            <col style="width: 10%">
+                                            <col style="width: 16%">
+                                            <col style="width: 25%">
+                                            <col style="width: 8%">
+                                            <col style="width: 6%">
+                                            <col style="width: 6%">
+                                            <col style="width: 6%">
+                                            <col style="width: 6%">
+                                            <col style="width: 6%">
+                                            <col style="width: 8%">
+                                            <col style="width: 15%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 6%">
+                                            <col style="width:17px">
+                                        </colgroup>
+                                        <thead>
+                                            <tr>
+                                                <th>
+                                                    <input type="checkbox" id="chkCaseAll" name="chkCaseAll">
+                                                </th>
+                                                <th>案号
+                                                    <span>
+                                                        <span class="aps-state-hidden"></span>
+                                                        <span data-field="T.CaseNo" class="aps-widget aps-ani-transition aps-sort aps-state-visible">
+                                                            <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                                                            <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                                                               style="top:9px">
+                                                            </i>
+                                                        </span>
+                                                    </span>
+                                                </th>
+                                                <th>原告</th>
+                                                <th>被告</th>
+                                                <th>案件阶段</th>
+                                                <th>律师助理</th>
+                                                <th>开庭律师</th>
+                                                <th>费用类型</th>
+                                                <th>金额</th>
+                                                <th>退费<br>金额</th>
+                                                <th>新建时间</th>
+                                                <th>法院名称</th>
+                                                <th>退费进度</th>
+                                                <th>进度时长<span>
+                                                        <span class="aps-state-hidden"></span>
+                                                        <span data-field="T.RefundStatusStartTime" class="aps-widget aps-ani-transition aps-sort aps-state-visible">
+                                                            <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                                                            <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                                                               style="top:9px">
+                                                            </i>
+                                                        </span>
+                                                    </span>
+                                                </th>
+                                                <th>操作</th>
+                                                <th></th>
+                                            </tr>
+                                        </thead>
+ 
+                                    </table>
+                                <div id="divList" style="border-top: 0;margin-top: -1px; overflow-x:hidden; overflow-y: scroll;">
+                                    <table id="tblCaseFeeList" class="aps-table aps-widget aps-ani-transition" style="width:100%">
+                                        <colgroup>
+                                            <col style="width: 3%">
+                                            <col style="width: 10%">
+                                            <col style="width: 16%">
+                                            <col style="width: 25%">
+                                            <col style="width: 8%">
+                                            <col style="width: 6%">
+                                            <col style="width: 6%">
+                                            <col style="width: 6%">
+                                            <col style="width: 6%">
+                                            <col style="width: 6%">
+                                            <col style="width: 8%">
+                                            <col style="width: 15%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 6%">
+                                        </colgroup>
+                                        <tbody>
+                                            <tr style="display: none">
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                            </tr>
+                                            <tr style="display: none">
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: left"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                            </tr>
+                                        </tbody>
+                                        <tfoot class="" style="display: none">
+                                            <tr>
+                                                <td width="1">
+                                                    <input type="checkbox" id="chkCaseAll" name="chkCaseAll">
+                                                </td>
+
+                                                <td colspan="15">
+                                                    <div class="pull-left" style="position:absolute;z-index: 1000;">
+                                                        <div class="divdropdown inline-block dropdown" style="margin-left: 4px">
+                                                            <div class="dropdown ng-scope">
+                                                                <button class="btn btn-default dropdown-toggle" style="height:32px" data-toggle="dropdown">
+                                                                    导出
+                                                                    <span class="caret"></span>
+                                                                </button>
+                                                                <ul class="dropdown-menu" style="position:absolute;z-index: 99999;text-align: left;">
+                                                                    <li>
+                                                                        <a href="javascript:;" id="btnCaseFeeExportSelected" onclick="javascript:void(0);">
+                                                                            <span style="font-size:12px">导出选中</span>
+                                                                        </a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="javascript:;" id="btnCaseFeeExportAll" onclick="javascript:void(0);">
+                                                                            <span style="font-size:12px">导出全部</span>
+                                                                        </a>
+                                                                    </li>
+                                                                </ul>
+                                                            </div>
+                                                        </div>
+                                                        <div class="divdropdown inline-block dropdown" style="margin-left: 4px">
+                                                            <div class="dropdown ng-scope">
+                                                                <button class="btn btn-default dropdown-toggle" style="height:32px" data-toggle="dropdown">
+                                                                    更多操作
+                                                                    <span class="caret"></span>
+                                                                </button>
+                                                                <ul class="dropdown-menu" style="position:absolute;z-index: 99999;text-align: left;">
+                                                                    <li>
+                                                                        <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.CaseFiles.CaseFile.MultiOpen($.checkbox.vals('chkCaseId'));">
+                                                                            <span style="font-size:12px">上传案件文档</span>
+                                                                        </a>
+                                                                    </li>
+                                                                    <li class="dropdown-submenu">
+                                                                        <a tabindex="-1" href="javascript:;">新增案件费用</a>
+                                                                        <ul class="dropdown-menu">
+                                                                            <li>
+                                                                                <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.CaseFees.CaseFee.MultiCreate($.checkbox.vals('chkCaseId'), $.lsCaseFeeType.TypeId.OfficeFee);">
+                                                                                    <span>新增官费</span>
+                                                                                </a>
+                                                                            </li>
+                                                                            <li>
+                                                                                <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.CaseFees.CaseFee.MultiCreate($.checkbox.vals('chkCaseId'), $.lsCaseFeeType.TypeId.NonOfficeFee);">
+                                                                                    <span>新增代理费</span>
+                                                                                </a>
+                                                                            </li>
+                                                                            <li>
+                                                                                <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.CaseFees.CaseFee.MultiCreate($.checkbox.vals('chkCaseId'), $.lsCaseFeeType.TypeId.CommissionFee);">
+                                                                                    <span>新增其他费用</span>
+                                                                                </a>
+                                                                            </li>
+                                                                        </ul>
+                                                                    </li>
+
+
+                                                                    <li>
+                                                                        <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.InternalFees.InternalFee.MultiOpen($.checkbox.vals('chkCaseId'));"><span style="font-size:12px">新增内部费用</span></a>
+                                                                    </li>
+
+                                                                    <li class="dropdown-submenu">
+                                                                        <a tabindex="-1" href="javascript:;">批量修改</a>
+                                                                        <ul class="dropdown-menu">
+                                                                            <li>
+                                                                                <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.Participant.Open($.checkbox.vals('chkCaseId'));">
+                                                                                    <span>修改开庭律师</span>
+                                                                                </a>
+                                                                            </li>
+                                                                            <li>
+                                                                                <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.Participant.Open($.checkbox.vals('chkCaseId'));">
+                                                                                    <span>修改经办律师</span>
+                                                                                </a>
+                                                                            </li>
+                                                                            <li>
+                                                                                <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.Participant.Open($.checkbox.vals('chkCaseId'));">
+                                                                                    <span>修改律师助理</span>
+                                                                                </a>
+                                                                            </li>
+                                                                            <li>
+                                                                                <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.Participant.Open($.checkbox.vals('chkCaseId'));">
+                                                                                    <span>修改案件阶段</span>
+                                                                                </a>
+                                                                            </li>
+                                                                        </ul>
+                                                                    </li>
+
+                                                                    <li>
+                                                                        <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.CaseFiles.CaseFile.AuthorizationLetter.Create($.checkbox.vals('chkCaseId'));"><span style="font-size:12px">生成授权委托书</span></a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.CaseFiles.CaseFile.LawyersLetter.Create($.checkbox.vals('chkCaseId'));"><span style="font-size:12px">生成律所函</span></a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.CaseFiles.CaseFile.IdentificationLetter.Create($.checkbox.vals('chkCaseId'));"><span style="font-size:12px">生成身份证明</span></a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.CaseFiles.CaseFile.SettlementList.Create($.checkbox.vals('chkCaseId'));"><span style="font-size:12px">生成结算提成表</span></a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3) ;return false;} c.Cases.Case.CaseTasks.CaseTask.OpenTasks($.checkbox.vals('chkCaseId'));"><span style="font-size:12px">案件任务</span></a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.CaseLogs.CaseLog.Open($.checkbox.vals('chkCaseId'));"><span style="font-size:12px">案件日志</span></a>
+                                                                    </li>
+                                                                </ul>
+                                                            </div>
+                                                        </div>
+                                                        <div class="divdropdown inline-block dropdown" style="margin-left: 4px">
+                                                            <div class="dropdown ng-scope">
+                                                                <button class="btn btn-default dropdown-toggle" style="height:32px" data-toggle="dropdown">
+                                                                    退费操作
+                                                                    <span class="caret"></span>
+                                                                </button>
+                                                                <ul class="dropdown-menu" style="position:absolute;z-index: 99999;text-align: left;">
+                                                                    <li>
+                                                                        <a href="javascript:;" id="btnRefundStatusChange" onclick="javascript:void(0);">
+                                                                            <span style="font-size:12px">退费进度修改</span>
+                                                                        </a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="javascript:;"  onclick="javascript: if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.CaseLogs.CaseLog.OpenForCourt($.checkbox.vals('chkCaseId'));">
+                                                                            <span style="font-size:12px">添加法院日志</span>
+                                                                        </a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="javascript:;"   onclick="javascript:if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.CaseLogs.CaseLog.OpenForCashed($.checkbox.vals('chkCaseId'));">
+                                                                            <span style="font-size:12px">添加到账日志</span>
+                                                                        </a>
+                                                                    </li>
+                                                                    <li>
+                                                                        <a href="javascript:;"  onclick="javascript:if ($.checkbox.vals('chkCaseId').length == 0) { $.showTips('请选择案件.', 0, 3); return false; } c.Cases.Case.CaseLogs.CaseLog.Open($.checkbox.vals('chkCaseId'));">
+                                                                            <span style="font-size:12px">添加其他日志</span>
+                                                                        </a>
+                                                                    </li>
+                                                                </ul>
+                                                            </div>
+                                                        </div>
+
+                                                        @if (CommonService.Instance.CheckPermission((int)Permission.RefundFee_NotRequired))
+                                                        {
+                                                            <input type="button" id="btnRefundNotRequired" class="btn btn-default" style="height:32px" value="标记不再办理退费" />
+                                                        }
+
+
+                                                    </div>
+                                                    <div class="">
+                                                        <div class="pull-right page-box caseFeeList">
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                 </div>
+                            </div>
+                            <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center  ">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                            <span class="">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

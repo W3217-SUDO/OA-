@@ -1,0 +1,332 @@
+﻿@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service.BAS
+@using Dchien.Legal.Service.BAS.Type
+
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.Case.CaseModel
+
+<link type="text/css" rel="stylesheet" href=@Url.Content("~/Resource/css/ticketSystem/add.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"]) />
+<script src="@Url.Content("~/Scripts/Common/bootstrap-tagsinput.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.Litigant.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<style>
+    .bootstrap-tagsinput {
+        width: 90%;
+        border-radius: 0px;
+        padding: 2px 4px;
+        box-shadow: inset 0 0px 0px rgba(0, 0, 0, 0.075);
+    }
+
+        .bootstrap-tagsinput input {
+            padding: 0px;
+            width: 50px;
+        }
+
+        .bootstrap-tagsinput span {
+            line-height: 1.4;
+        }
+
+    .chosen-container-multi .chosen-choices {
+        border: 1px solid #cccccc;
+        font-size: 12px;
+    }
+</style>
+
+
+
+<div class="slide-panels">
+    <div class="slide-panel active medium">
+        <div class="slide-panel-content">
+            <div class="panel-header">
+                <h5>生成案件</h5>
+                <a class="panel-close" onclick="javascript: $('.slide-panel-container').empty(); $('.slide-panel-container').removeClass('show-panel');">
+                    <i class="next-icon next-icon-close next-small" style="font-size: 0px;">close</i>
+                </a>
+                <div class="head-custom"></div>
+            </div>
+            <div class="placeholder">...</div>
+            <div class="panel-body">
+                <div class="panel-body-content">
+                    <div class="page-overview-panel-apply">
+                        <div ui-view="myTicket">
+                            <div class="ticket-detail ">
+                                <div class="create-ticket-step clearfix" style="margin-top: 0px;margin-bottom: 20px;">
+                                    <div class="create-ticket-step-item ">
+                                        <div class="item-wrap">
+                                            <span class="icon-step">1</span>
+                                            <span class="dingding-text">基本信息</span>
+                                        </div>
+                                    </div>
+                                    <div class="create-ticket-step-item active">
+                                        <div class="item-wrap">
+                                            <span class="icon-step">2</span>
+                                            <span class="dingding-text">当事人信息</span>
+                                        </div>
+                                    </div>
+                                    <div class="create-ticket-step-item">
+                                        <div class="item-wrap">
+                                            <span class="icon-step">3</span>
+                                            <span class="dingding-text">法院信息</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div role="grid" class="next-form next-medium">
+                                    <div class="next-row next-form-item next-medium">
+                                        <div class="next-col next-col-5 next-form-item-label">
+                                            <label required="">原告：</label>
+                                        </div>
+                                        <div class="next-col next-col-18 next-form-item-control">
+                                            <div class="bootstrap-tagsinput">
+
+                                                @if (!string.IsNullOrEmpty(Model.Case.Basic.AppellantNos))
+                                                {
+                                                    var appellantNames = Model.Case.Basic.AppellantNames.Split(',');
+                                                    var i = 0;
+                                                    foreach (var appellantNo in Model.Case.Basic.AppellantNos.Split(','))
+                                                    {
+                                                        <span class="tag label label-info">
+                                                            <a name="appellant" style="color:white; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                               customerno="@appellantNo" customername="@appellantNames[i]"
+                                                               data-toggle="tooltip" data-container="body" href="javascript:$.customer.View('@appellantNo');"
+                                                               target="_blank" data-original-title="@appellantNames[i]">@appellantNames[i]</a>
+                                                            <span class="appellantremove" data-role="remove"></span>
+                                                        </span>
+                                                        i++;
+                                                    }
+                                                }
+
+                                                <input type="text" placeholder="原告" class="form-control inline-block" style="height:22px;width: 100px;margin-left: 6px;" id="Case_Basic_Appellant_Input" autocomplete="off" size="1">
+                                                <div style="float:right;margin-top:4px;background-color:white; important" class="label">
+                                                    <a style="color:green;" title="新增" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                        <span class="btn_appellant_add fa fa-user-plus"></span>
+                                                    </a>
+                                                </div>
+
+                                            </div>
+                                            <div class="i_common_select" id="div_appellantlist" style="display: none;">
+                                                <div class="i_common_wrap">
+                                                    <div class="i_common_list"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+
+                                    <div class="e_ec next-row next-form-item next-medium">
+                                        <div class="next-col next-col-5 next-form-item-label">
+                                            <label required="">原告代理人：</label>
+                                        </div>
+                                        <div class="next-col next-col-18 next-form-item-control">
+                                            <div class="bootstrap-tagsinput">
+
+                                                @if (Model.Case.Basic.AppellantAgents != null && Model.Case.Basic.AppellantAgents.Any())
+                                                {
+                                                    foreach (var appellant in Model.Case.Basic.AppellantAgents)
+                                                    {
+                                                        <span class="tag label label-info">
+                                                            <a name="appellantAgent" style="color:white; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                               data-toggle="tooltip" data-container="body" href="javascript:$.customer.ViewCustomer('@appellant.Name');"
+                                                               litigantno="@appellant.Name" litigantname="@appellant.Name" litigantposition="@appellant.Position" litigantauthcode="@appellant.AgentAuthCode"
+                                                               target="_blank" data-original-title="@appellant.Name">@appellant.Name</a>
+                                                            <span class="appellantagentremove" data-role="remove"></span>
+                                                        </span>
+                                                    }
+                                                }
+
+                                                <input type="text" placeholder="原告代理人" class="form-control inline-block" style="height:22px;width: 100px;margin-left: 6px;" id="Case_Basic_AppellantAgent_Input" autocomplete="off" size="1">
+                                                <div style="display:none;float:right;margin-top:4px;background-color:white; important" class="label">
+                                                    <a style="color:green;" title="新增" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                        <span class="btn_appellantagent_add glyphicon glyphicon-plus"></span>
+                                                    </a>
+                                                </div>
+                                            </div>
+                                            <div class="i_common_select" id="div_lawyerlist" style="display: none;">
+                                                <div class="i_common_wrap">
+                                                    <div class="i_common_list"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="e_ec next-row next-form-item next-medium">
+                                        <div class="next-col next-col-5 next-form-item-label">
+
+                                            <label required="">被告：</label>
+                                        </div>
+                                        <div class="next-col next-col-18 next-form-item-control">
+                                            <div class="bootstrap-tagsinput">
+
+                                                @if (!string.IsNullOrEmpty(Model.Case.Basic.AppelleeNos))
+                                                {
+                                                    var appelleeNames = Model.Case.Basic.AppelleeNames.Split(',');
+                                                    var i = 0;
+                                                    foreach (var appelleeNo in Model.Case.Basic.AppelleeNos.Split(','))
+                                                    {
+                                                        <span class="tag label label-info">
+                                                            <a name="appellee" style="color:white; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                               customerno="@appelleeNo" customername="@appelleeNames[i]"
+                                                               data-toggle="tooltip" data-container="body" href="javascript:$.customer.View('@appelleeNo');"
+                                                               target="_blank" data-original-title="@appelleeNames[i]">@appelleeNames[i]</a>
+                                                            <span class="appelleeremove" data-role="remove"></span>
+                                                        </span>
+                                                        i++;
+                                                    }
+                                                }
+
+                                                <input type="text" placeholder="被告" class="form-control inline-block" style="height:22px;width: 100px;margin-left: 6px;" id="Case_Basic_Appellee_Input" autocomplete="off" size="1">
+                                                <div style="float:right;margin-top:4px;background-color:white; important" class="label">
+                                                    <a style="color:green;" title="新增" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                        <span class="btn_appellee_add fa fa-user-plus"></span>
+                                                    </a>
+                                                </div>
+                                            </div>
+                                            <div class="i_common_select" id="div_appelleelist" style="display: none;">
+                                                <div class="i_common_wrap">
+                                                    <div class="i_common_list"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="next-row next-form-item next-medium">
+                                        <div class="next-col next-col-5 next-form-item-label">
+
+                                            <label required="">被告代理人：</label>
+                                        </div>
+                                        <div class="next-col next-col-18 next-form-item-control">
+                                            <div class="bootstrap-tagsinput">
+
+                                                @if (Model.Case.Basic.AppelleeAgents != null && Model.Case.Basic.AppelleeAgents.Any())
+                                                {
+                                                    foreach (var appellee in Model.Case.Basic.AppelleeAgents)
+                                                    {
+                                                        <span class="tag label label-info">
+                                                            <a name="appelleeAgent" style="color:white; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                               litigantno="@appellee.Name" litigantname="@appellee.Name" litigantposition="@appellee.Position" litigantauthcode="@appellee.AgentAuthCode"
+                                                               data-toggle="tooltip" data-container="body" href="javascript:caseInfo.CaseCustomer.ViewCustomer('@appellee.Name');"
+                                                               target="_blank" data-original-title="@appellee.Name">@appellee.Name</a>
+                                                            <span class="appelleeagentremove" data-role="remove"></span>
+                                                        </span>
+                                                    }
+                                                }
+
+                                                <input type="text" placeholder="被告代理人" class="form-control inline-block" style="height:22px;width: 100px;margin-left: 6px;" id="Case_Basic_AppelleeAgent_Input" autocomplete="off" size="1">
+                                                <div class="label" style="display:none;float:right;margin-top:4px;background-color:white; important">
+                                                    <a style="color:green;" title="新增" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                        <span class="btn_appelleeagent_add glyphicon glyphicon-plus"></span>
+                                                    </a>
+                                                </div>
+                                            </div>
+                                            <div class="i_common_select" id="div_appelleeagentlist" style="display: none;">
+                                                <div class="i_common_wrap">
+                                                    <div class="i_common_list"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+
+                                    <div class="s_st next-row next-form-item next-medium">
+
+                                        <div class="next-col next-col-5 next-form-item-label">
+
+                                            <label required="">第三人：</label>
+                                        </div>
+                                        <div class="next-col next-col-18 next-form-item-control">
+                                            <div class="bootstrap-tagsinput">
+                                                @if (!string.IsNullOrEmpty(Model.Case.Basic.TheThirdNos))
+                                                {
+                                                    var theThirdNames = Model.Case.Basic.TheThirdNames.Split(',');
+                                                    var i = 0;
+                                                    foreach (var theThirdNo in Model.Case.Basic.TheThirdNos.Split(','))
+                                                    {
+                                                        <span class="tag label label-info">
+                                                            <a name="thethird" style="color:white; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                               customerno="@theThirdNo" customername="@theThirdNames[i]"
+                                                               data-toggle="tooltip" data-container="body" href="javascript:$.customer.View('@theThirdNo');"
+                                                               target="_blank" data-original-title="@theThirdNames[i]">@theThirdNames[i]</a>
+                                                            <span class="thethirdremove" data-role="remove"></span>
+                                                        </span>
+                                                        i++;
+                                                    }
+                                                }
+                                                <input type="text" placeholder="第三人" class="form-control inline-block" style="height:22px;width: 100px;margin-left: 6px;" id="Case_Basic_TheThird_Input" autocomplete="off" size="1">
+                                                <div style="float:right;margin-top:4px;background-color:white; important" class="label">
+                                                    <a style="color:green;" title="新增" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                        <span class="btn_thethird_add fa fa-user-plus"></span>
+                                                    </a>
+                                                </div>
+
+                                            </div>
+                                            <div class="i_common_select" id="div_thethirdlist" style="display: none;">
+                                                <div class="i_common_wrap">
+                                                    <div class="i_common_list"></div>
+                                                </div>
+                                            </div>
+
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div class="s_st next-row next-form-item next-medium">
+
+                                        <div class="next-col next-col-5 next-form-item-label">
+
+                                            <label required="">第三人代理人：</label>
+                                        </div>
+                                        <div class="next-col next-col-18 next-form-item-control">
+                                            <div class="bootstrap-tagsinput">
+
+                                                @if (Model.Case.Basic.TheThirdAgents != null && Model.Case.Basic.TheThirdAgents.Any())
+                                                {
+                                                    foreach (var thethird in Model.Case.Basic.TheThirdAgents)
+                                                    {
+                                                        <span class="tag label label-info">
+                                                            <a name="theThirdAgent" style="color:white; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                               litigantno="@thethird.Name" litigantname="@thethird.Name" litigantposition="@thethird.Position" litigantauthcode="@thethird.AgentAuthCode"
+                                                               data-toggle="tooltip" data-container="body" href="javascript:caseInfo.CaseCustomer.ViewCustomer('@thethird.Name');"
+                                                               target="_blank" data-original-title="@thethird.Name">@thethird.Name</a>
+                                                            <span class="thethirdagentremove" data-role="remove"></span>
+                                                        </span>
+                                                    }
+                                                }
+
+                                                <input type="text" placeholder="第三人代理人" class="form-control inline-block" style="height:22px;width: 100px;margin-left: 6px;" id="Case_Basic_TheThirdAgent_Input" autocomplete="off" size="1">
+                                                <div style=" display:none;float:right;margin-top:4px;background-color:white; important" class="label">
+                                                    <a style="color:green;" title="新增" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                        <span class="btn_thethird_add glyphicon glyphicon-plus"></span>
+                                                    </a>
+                                                </div>
+                                            </div>
+                                            <div class="i_common_select" id="div_thethirdagentlist" style="display: none;">
+                                                <div class="i_common_wrap">
+                                                    <div class="i_common_list"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-footer">
+                <div class="btn-con">
+
+                    <input type="button" id="btnLitigantCreateUpdateNext" class="btn btn-primary" style="height: 32px; line-height: 14px;    padding: 8px 16px;" value="下一步" />
+                    <input type="button" id="btnLitigantCreateUpdate" class="btn btn-primary" style="height: 32px; line-height: 14px;    padding: 8px 16px;" value="完成" />
+
+                    <input type="button" class="btn  btn-normal" style="border-radius: 0;
+                                                                        padding: 0 16px;
+                                                                        height: 32px;
+                                                                        line-height: 30px;
+                                                                        font-size: 12px;
+                                                                        border-width: 1px;" onclick="javascript: $('.slide-panel-container').empty(); $('.slide-panel-container').removeClass('show-panel');" 
+                           value="取消" />
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

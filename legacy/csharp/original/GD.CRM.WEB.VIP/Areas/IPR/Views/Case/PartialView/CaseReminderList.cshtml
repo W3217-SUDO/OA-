@@ -1,0 +1,100 @@
+﻿@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.CaseReminderListModel
+<style>
+    a {
+        color: black;
+        text-decoration: none;
+    }
+
+        a:hover {
+            color: black;
+            text-decoration: none;
+        }
+</style>
+<script type="text/javascript" src="@Url.Content("~/Scripts/IPR/Case/Case.Create.ReminderList.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding ">
+            提醒案件
+            <a href="javascrtipt:void(0);" id="btnCaseList">
+                <span class="icon-ecs" style="vertical-align:top"></span>
+            </a>
+            <input type="hidden" id="hidCaseReminderTypeId" value="-1">
+        </div>
+        <div class="ng-isolate-scope"></div>
+        <div class="product-nav-list">
+            <ul class="top-level">
+
+                @if (Model.CaseReminderTypeList != null)
+                {
+                    foreach (var item in Model.CaseReminderTypeList)
+                    {
+                        var selected = item.ReminderTypeId == Model.CaseReminderTypeId;
+                        var selectedClass = item.ReminderTypeId == Model.CaseReminderTypeId ? "class=active" : "";
+                        var dropMenu = item.CaseNoList != null && item.CaseNoList.Count > 0 ? "class=J-drop-menu" : "";
+
+                        // <li @dropMenu>
+                        <li class=J-drop-menu>
+                            <a href="javascript:void(0);" class="J-drop-menu-herf" @selectedClass>
+                                @Html.HiddenFor(m => item.ReminderTypeId)
+                                <div class="nav-icon">
+
+                                    @if (item.CaseNoList != null && item.CaseNoList.Count > 0 && selected)
+                                    {
+                                        <span class="icon-arrow-down"></span>
+                                    }
+                                    else if (item.CaseNoList != null && item.CaseNoList.Count > 0)
+                                    {
+                                        <span class="icon-arrow-right"></span>
+                                    }
+                                    else
+                                    {
+                                        <span class="icon-arrow-right"></span>
+                                    }
+
+                                </div>
+
+                                <div class="nav-title ng-binding">@item.ReminderTypeName</div>
+                            </a>
+
+                            <ul>
+                                @if (item.CaseNoList != null && item.CaseNoList.Count > 0)
+                                {
+                                    //var display = selected ? "style=display:block;" : "style=display:none;";
+                                    //<ul @display>
+                                    //<ul @display>
+
+                                    foreach (var caseNo in item.CaseNoList)
+                                    {
+                                        <li>
+                                            <div>
+                                                <a href="javascript:void(0);">
+                                                    @*<a href="@Url.Content("~/IPR/Case/CreateUpdateUpdate/?caseId=" + @caseNo)">*@
+                                                    <div class="nav-icon"></div>
+                                                    <div class="nav-text-indent">@caseNo</div>
+                                                </a>
+                                            </div>
+                                        </li>
+                                    }
+                                }
+                                @*//</ul>*@
+
+                            </ul>
+                        </li>
+                    }
+                }
+            </ul>
+        </div>
+
+    </div>
+
+    <div class="caseReminderContextMenu" id="caseReminderMenu" style="display: none;">
+        <ul>
+            <li id="create">新建配置</li>
+            <li id="modify">修改配置</li>
+            <li id="delete">删除配置</li>
+
+        </ul>
+    </div>
+</div>

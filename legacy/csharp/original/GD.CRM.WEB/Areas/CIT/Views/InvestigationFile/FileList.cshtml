@@ -1,0 +1,83 @@
+﻿@using Dchien.Legal.Service;
+@model Dchien.Legal.Web.Areas.CIT.ViewModels.Investigation.File.FileListModel
+
+<form id="postForm" action="">
+    <div class="gridSection">
+        <div id='divContextList' style="overflow-y: auto; margin-top: -1px; overflow-x: hidden; overflow-y: auto; ">
+            <table class='table table-hover' id="tblInvestigationFileList" width="100%" style="margin:0px">
+                <colgroup>
+                    <col style="width: 3%">
+                    <col style="width: 15%">
+                    <col style="width: 30%">
+                    <col style="width: 15%">
+                    <col style="width: 10%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th width="10">
+                            <input type="checkbox" id="chkFileAll" name="chkFileAll" >
+                        </th>
+                        
+                        <th style="text-align: center">
+                            上传人
+                        </th>
+                        <th style="text-align: center">
+                            文件名称
+                        </th>
+                        <th style="text-align: center">
+                            文档日期
+                        </th>
+                        <th style="text-align: center">
+                            查看
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="display: none">
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                    </tr>
+                </tbody>
+                <tfoot class="ng-scope" style="display:none">
+                    <tr>
+                        <td ><input type="checkbox"  id="chkFileAll" name="chkFileAll"></td>
+                      
+                          <td colspan="4">
+                            <div class="pull-left">
+                                <input type="button" id="btnInvestigationFileRefresh" class="btn btn-default" style="height:32px" value="刷新" />
+                       
+                                @if (Model.BusinessOwner == LoginHelper.GetUserName())
+                                {
+                                    <input type="button" id="btnInvestigationFileUpload" class="btn btn-default" style="height:32px" value="上传" />
+                                    <input type="button" id="btnInvestigationFileDelete" class="btn btn-default" style="height:32px" value="批量删除" />
+                                }
+                            </div>
+                            <div class="ng-scope">
+                                <div class="pull-right page-box investigationfile">
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+            <div class="simple-grid-none-data-wrap none-investigationfile">
+                <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                        <div class="text-size-16 tip-text inline-block">
+                            <span class="margin-left ng-binding"></span>没有查询到调查资料.
+                            <span class="ng-binding"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    @Html.HiddenFor(m => m.TotalCount, new { name = "TotalCount" })
+    @Html.HiddenFor(m => m.PageNo, new { name = "PageNo" })
+    @Html.HiddenFor(m => m.PageSize, new { name = "PageSize" })
+</form>
+

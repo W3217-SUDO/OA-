@@ -1,0 +1,118 @@
+﻿@using Dchien.Legal.Entity.System 
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+
+    var actived = "active";
+
+}
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding">系统参数</div>
+        <div class="ng-isolate-scope"></div>
+
+        <div class="product-nav-list">
+            <ul class="top-level">
+
+
+                @{ actived = action == "CaseTypeList".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+
+                        <a href=@Url.Content(string.Format("~/{0}/System/SystemCenter/CaseTypeList", PageId.PageId_7001005)) class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">案件类型</div>
+                        </a>
+                    </div>
+                </li>
+
+
+                @{ actived = action == "CaseFeeTypeList".ToLower() ?  "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        
+                            <a href=@Url.Content(string.Format("~/{0}/System/SystemCenter/CaseFeeTypeList", PageId.PageId_7001004)) class="ng-scope">
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">费用类型</div>
+                            </a>
+                    </div>
+                </li>
+
+
+                @{ actived = action == "CasePhaseList".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                       
+                            <a href=@Url.Content(string.Format("~/{0}/System/SystemCenter/CasePhaseList", PageId.PageId_7001006)) class="ng-scope">
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">案件阶段</div>
+                            </a>
+                    </div>
+                </li>
+                
+                @{ actived = action == "CourtList".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        
+                            <a href=@Url.Content(string.Format("~/{0}/System/SystemCenter/CourtList", PageId.PageId_7001007)) class="ng-scope">
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">法院设置</div>
+                            </a>
+                    </div>
+                </li>
+
+                @{ actived = action == "NotaryOfficeList".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+
+                        <a href=@Url.Content(string.Format("~/{0}/System/SystemCenter/NotaryOfficeList", PageId.PageId_7001011)) class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">公证处设置</div>
+                        </a>
+                    </div>
+                </li>
+                
+                
+                @{ actived = action == "CauseList".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                       
+                            <a href=@Url.Content(string.Format("~/{0}/System/SystemCenter/CauseList", PageId.PageId_7001008)) class="ng-scope">
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">案由设置</div>
+                            </a>
+                    </div>
+                </li>
+
+                @{ actived = action == "PaymentTypeList".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                       
+                            <a href=@Url.Content(string.Format("~/{0}/System/SystemCenter/PaymentTypeList", PageId.PageId_7001009)) class="ng-scope">
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">付款类型</div>
+                            </a>
+                    </div>
+                </li>
+
+                @{ actived = action == "Company".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                       
+                            <a href=@Url.Content(string.Format("~/{0}/System/SystemCenter/Company", PageId.PageId_7001010)) class="ng-scope">
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">公司设置</div>
+                            </a>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+    </div>
+    <div class="product-nav-scene product-nav-sub-scene">
+        <div class="product-nav-title">xxx</div>
+        <div class="product-nav-list">
+            <ul></ul>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,102 @@
+﻿@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.CaseSearchResultListModel
+
+<style>
+    a {
+        color: black;
+        text-decoration: none;
+    }
+
+    a:hover {
+        color: black;
+        text-decoration: none;
+    }
+</style>
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/IPR/Case/Case.Create.SearchResultList.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding ">
+            案件列表
+        </div>
+       
+        <div class="ng-isolate-scope"></div>
+        <div class="product-nav-list">
+            <ul class="top-level">
+                @if (Model.CaseList != null)
+                {
+                        var selected = true;
+                        var selectedClass = "class=active";
+                        var dropMenu = "class=J-drop-menu" ;
+
+                        // <li @dropMenu>
+                        <li class=J-drop-menu>
+                            <a href="javascript:void(0);" class="J-drop-menu-herf" @selectedClass>
+                                <div class="nav-icon">
+                                        <span class="icon-arrow-right"></span>
+                                </div>
+
+                                <div class="nav-title ng-binding" id='coustom'>@(string.IsNullOrEmpty(Model.SearchCondition.PageName) ? "案件列表" : Model.SearchCondition.PageName)</div>
+                            </a>
+                            <ul>
+                                @if (Model.CaseList != null && Model.CaseList.Count > 0)
+                                {
+
+                                    foreach (var c in Model.CaseList)
+                                    {
+                                        <li>
+
+                                            @{
+                                        var deadlinestyle = "deadline-leftdays-normal";
+                                        var actived = c.CaseBasicInfo.CaseId == Model.SearchCondition.CaseId ? "class=active" : "";
+                                        
+                                        if (c.CaseBasicInfo.DeadlineLeftDays < 5)
+                                        {
+                                            deadlinestyle = "deadline-leftdays-warning-red";
+                                        }
+                                        else if (c.CaseBasicInfo.DeadlineLeftDays < 10)
+                                        {
+                                            deadlinestyle = "deadline-leftdays-warning";
+                                        }
+                                        else if (c.CaseBasicInfo.DeadlineLeftDays >= 10)
+                                        {
+                                            deadlinestyle = "deadline-leftdays-normal";
+                                        }
+
+                                        <div>
+                                            <a name="caseno" href='javascript:void(0);' @actived>
+                                                <span style='display:none'>@c.CaseBasicInfo.CaseId</span>
+                                                <div class='nav-icon'></div>
+                                                <div class='nav-text-indent'>@c.CaseBasicInfo.CaseNo</div>
+                                            </a>
+                                            <div class='nav-extend'>
+                                                <span class='ng-isolate-scope'>
+                                                    <span id='REDACTED_ARCHIVE_ONLY' class='@deadlinestyle ng-scope ng-binding'>@c.CaseBasicInfo.DeadlineLeftDays</span>
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                            }
+
+
+                                        </li>
+                                    }
+                                }
+
+                            </ul>
+
+                        </li>
+                }
+            </ul>
+        </div>
+
+    </div>
+    <div class="product-nav-scene product-nav-sub-scene">
+        <div class="product-nav-title">xxx</div>
+        <div class="product-nav-list">
+            <ul></ul>
+        </div>
+    </div>
+</div>
+

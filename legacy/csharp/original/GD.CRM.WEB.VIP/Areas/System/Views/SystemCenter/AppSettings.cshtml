@@ -1,0 +1,89 @@
+﻿@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.System.ViewModels.SystemCenter.LocalModel
+
+@{
+    object htmlAttribute = null;
+}
+
+<script src="@Url.Content("~/Scripts/System/SystemCenter/LocalSetting.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<div class="viewFramework-product viewFramework-product-col-1">
+    <div class="viewFramework-product-navbar ng-scope">
+        <!-- product nav -->
+        @{
+            Html.RenderPartial("MenuList");
+        }
+    </div><!-- /product nav -->
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="viewFramework-product-body">
+        <a tabindex="0" href="javascript:void(0)" id="viewFramework-product-anchor" style="position: absolute;top: -10000px;left: -10000px">let's go</a>
+
+        
+        
+        <div class="console-container ng-scope">
+            <div class="row ng-scope">
+                <div class="col-sm-12">
+                    <div class="console-title console-title-border clearfix">
+                        <div class="pull-left">
+                            <h5>本地设置</h5>
+                        </div>
+                    </div>
+                </div>
+ 
+                <div class="col-sm-12">
+                    <div class="ng-scope">
+                        
+                        <div class="alert alert-info">请完善以下信息,方便我们更好的为您服务</div>
+
+                        <div class="basicinfo-bd">
+                            <form id="localSettingform" class="form-horizontal ">
+                                <fieldset>
+
+                                    @if (Model.LocalSettings != null)
+                                    {
+                                        foreach (var item in Model.LocalSettings)
+                                        {
+                                            <div class="form-group">
+                                                @Html.HiddenFor(m => item.Item1, new { name = "LocalSettingId" })
+                                                @Html.HiddenFor(m => item.Item2, new { name = "LocalSettingName" })
+                                                <label class="col-sm-4 control-label label-width">
+                                                    @*<span class="text-danger">*</span>*@
+                                                    <span>@item.Item2 </span>
+                                                    <span>：</span>
+                                                </label>
+                                                <div class="col-sm-4 row">
+                                                    @Html.TextBoxFor(m => item.Item3, new { @class = "form-control", style = "width:80%" })
+                                                </div>
+                                            </div>
+                                        }
+                                    }
+
+                                </fieldset>
+
+                                <div class="form-group">
+                                    <label class="col-sm-4 control-label label-width"></label>
+                                    <div class="col-sm-8 row clearfix">
+                                        <input class="btn btn-primary ng-binding" type="button" id="btnCreateUpdate" value="保存" />
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>

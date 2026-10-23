@@ -1,0 +1,187 @@
+﻿@using Dchien.Legal.Service
+@using Dchien.Legal.Entity.System
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.InternalFee.Payment.Packing.ListModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/index.css")" />
+
+<script src="@Url.Content("~/Scripts/FAM/InternalFee/Payment/FAM.InternalFee.Payment.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/FAM/InternalFee/Payment/FAM.InternalFee.PaymentPacking.List.Verify.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                 <h5>付款单-核销</h5>
+                            </div>
+                        </div>
+                        <div class="pull-left margin-top-1 col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm" action="@Url.Content("~/FAM/InternalFee/PaymentList")">
+                                @Html.HiddenFor(m => m.SearchCondition.PageId, new { name = "PageId" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                <table class="search_table" style="width: 600px">
+                                    <colgroup>
+                                        <col style="width: 80px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 80px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+
+                                        <col>
+                                    </colgroup>
+                                    <tr>
+                                        <th>
+                                            付款包号码：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.PackageNo, new { @class = "form-control", @placeholder = "", @style = "" })
+
+                                        </td>
+                                        <th>
+                                            付款日期：
+                                        </th>
+                                        <td colspan="2">
+                                            @Html.TextBoxFor(m => m.SearchCondition.PaidDateStart, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.PaidDateEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                        </td>
+                  
+                                        <th>
+                                            收款人：
+                                        </th>
+                                        <td>
+                                            @Html.HiddenFor(m => m.SearchCondition.PaymentObject )
+                                            @Html.TextBoxFor(m => m.SearchCondition.PaymentObjectName, new { @class = "form-control" })
+
+                                            <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                                                <div class="i_common_wrap">
+                                                    <div class="i_common_list"></div>
+                                                </div>
+                                            </div>
+                                        </td>
+
+                                        <td>
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnPackingListSearch">
+                                                <span>查询</span>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                     
+                                </table>
+
+                            </form>
+                        </div>
+                    </div>
+   
+                    <div class="col-sm-12">
+                        <div class="">
+                            <div class="gridSection">
+                                <table id="tblPaymentPackingList" class="aps-table aps-widget aps-ani-transition" style="width:100%">
+                                    <colgroup>
+                                        <col style="width: 5%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 15%">
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align: center">操作</th>
+                                            <th style="text-align: center">付款包号码</th>
+                                            <th style="text-align: center">收款人 </th>
+                                            <th style="text-align: center">付款总金额</th>
+                                            <th style="text-align: center">付款状态</th>
+                                            <th style="text-align: center">付款日期</th>
+                                            <th style="text-align: center">付款单据号</th>
+                                            <th style="text-align: center">备注</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr style="display: none">
+                                            <td>
+                                                &nbsp;
+                                            </td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+
+                                        </tr>
+                                        <tr style="display: none">
+                                            <td>
+                                                &nbsp;
+                                            </td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                        </tr>
+                                    </tbody>
+                                    <tfoot class="" style="display: none">
+                                        <tr>
+                                            <td colspan="8">
+                                                <div class="pull-left"></div>
+                                                <div class="">
+                                                    <div class="pull-right page-box paymentPackingList">
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                            <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center  ">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                            <span class="">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+                    <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+ 
+
+                </div>
+            </div>
+        </div>
+
+
+    </div>
+</div>
+

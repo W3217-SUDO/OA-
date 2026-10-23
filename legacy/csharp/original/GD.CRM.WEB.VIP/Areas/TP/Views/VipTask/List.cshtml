@@ -1,0 +1,80 @@
+﻿@using Dchien.Legal.Entity.System
+@{ 
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var pageId = string.Empty;
+    if (ViewContext.RouteData.Values.ContainsKey("id"))
+    {
+        pageId = ViewContext.RouteData.Values["id"].ToString().ToLower();
+    }
+    var actived = "active";
+}
+
+
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding">任务</div>
+        <div class="ng-isolate-scope"></div>
+
+        <div class="product-nav-list">
+            <ul class="top-level">
+
+                @{ actived = pageId == PageId.PageId_9001001001 ? "class=active" : "";}
+
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                       
+                            <a href=@Url.Content(string.Format("~/{0}/TP/Task/TaskList", PageId.PageId_9001001001)) class="ng-scope">
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">全部任务</div>
+                            </a>
+                    </div>
+                </li>
+
+                @{ actived = pageId == PageId.PageId_9001001002 ? "class=active" : "";}
+
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        
+                            <a href=@Url.Content(string.Format("~/{0}/TP/Task/TaskList", PageId.PageId_9001001002)) class="ng-scope">
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">指派给我的</div>
+                    
+                            </a>
+                    </div>
+                </li>
+
+                @{ actived = pageId == PageId.PageId_9001001003 ? "class=active" : "";}
+
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content(string.Format("~/{0}/TP/Task/TaskList", PageId.PageId_9001001003)) class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">我发布的</div>
+                        </a>
+                    </div>
+                </li>
+
+                @{ actived = pageId == PageId.PageId_9001001004 ? "class=active" : "";}
+
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content(string.Format("~/{0}/TP/Task/TaskList", PageId.PageId_9001001004)) class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">有最新消息的</div>
+                        </a>
+                    </div>
+                </li>
+
+            </ul>
+        </div>
+    </div>
+    <div class="product-nav-scene product-nav-sub-scene">
+        <div class="product-nav-title">xxx</div>
+        <div class="product-nav-list">
+            <ul></ul>
+        </div>
+    </div>
+</div>
+
+

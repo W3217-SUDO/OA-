@@ -1,0 +1,384 @@
+﻿@using Dchien.Legal.Entity.IPR.Case
+@using Dchien.Legal.Entity.System;
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.CaseFeeFileListModel
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var id = string.Empty;
+    if (ViewContext.RouteData.Values.ContainsKey("id"))
+    {
+        id = ViewContext.RouteData.Values["id"].ToString().ToLower();
+    }
+    var actived = "active";
+
+}
+
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<script src="@Url.Content("~/Scripts/IPR/Case/Case.List.Search.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/IPR/Case/Case.List.CaseFeeFileSearch.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<div class="viewFramework-product viewFramework-product-col-1" >
+    <div class="viewFramework-product-navbar ng-scope" >
+        <!-- product nav -->
+        @{
+            Html.RenderPartial("MenuList");
+        }
+    </div><!-- /product nav -->
+    <div class="viewFramework-product-navbar-collapse ng-scope" >
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+    <div class="viewFramework-product-body" >
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>专利费用列表</h5>
+                            </div>
+                        </div>
+                        @*<div class="pull-left margin-top-1 col-sm-12">
+                            <form class="form-inline ng-valid " id="postForm" action="@Url.Content("~/FIO/PatentOffice/PatentOfficeFeeFileList")">
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageId, new { name = "PageId" })
+
+
+                                <div class="simple-form-field">
+                                    <div class="form-group ">
+                                        <label class="control-label">
+                                            <span contenteditable="" class="text-danger "></span>
+                                            <span class="">案号：</span>
+                                        </label>
+                                        <div class="form-control-wrap">
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseNos, new { @class = "form-control", @placeholder = "案件编号或申请号" })
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group ">
+                                        <label class="control-label">
+                                            <span contenteditable="" class="text-danger "></span>
+                                            <span class="">客户/申请人：</span>
+                                        </label>
+                                        <div class="form-control-wrap">
+                                            @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control", @placeholder = "客户/申请人" })
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group ">
+                                        <label class="control-label">
+                                            <span contenteditable="" class="text-danger "></span>
+                                            <span class="">状态：</span>
+                                        </label>
+                                        <div class="form-control-wrap">
+                                            @Html.DropDownListFor(m => m.SearchCondition.IsTransmitted, CommonService.Instance.GetTransmittedStatusList(), new { @class = "form-control", @style = "width:100%" })
+                                        </div>
+                                    </div>
+
+                                </div>
+                                <div class="simple-form-field">
+                                    <div class="form-group  ">
+                                        <label class="  control-label">
+                                            <span class="">
+                                            </span>
+                                        </label>
+                                        <div class="form-control-wrap text-right">
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnCasePatentOfficeFeeFileSearch">
+                                                <span>查询</span>
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+
+                        </div>*@
+
+                        <div class="pull-left margin-top-1 col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm" action="@Url.Content("~/FIO/PatentOffice/PatentOfficeFeeFileList")">
+                                @Html.HiddenFor(m => m.SearchCondition.PageId, new { name = "PageId" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageName, new { name = "PageName" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.BusinessOwnerName)
+                                <table class="search_table" style="width: 100%">
+                                    <colgroup>
+                                        <col style="width: 80px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 85px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 80px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 80px;" />
+                                        <col style="width: 80px;" />
+                                        <col style="width: 80px;" />
+                                        <col style="width: 80px;" />
+                                        <col>
+                                    </colgroup>
+                                    <tr>
+                                        <th>
+                                            客户名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control", @placeholder = "客户名称" })
+                                        </td>
+                                        <th>
+                                            案号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseNos, new { @class = "form-control", @placeholder = "案号", @style = "" })
+                                        </td>
+                                        <th>
+                                            合同号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.ContractNo, new { @class = "form-control", @placeholder = "合同号", @style = "" })
+                                        </td>
+
+                                    </tr>
+
+                                    <tr>
+                                        <th>
+                                            案件阶段：
+                                        </th>
+                                        <td>
+                                            @Html.HiddenFor(m => m.SearchCondition.CasePhaseId)
+                                            @Html.TextBoxFor(m => m.SearchCondition.CasePhaseName, new { @class = "form-control", @placeholder = "案件阶段", @style = "" })
+                                        </td>
+                                        <th>
+                                            撰稿人：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseCopywriterName, new { @class = "form-control", @placeholder = "撰稿人", @style = "" })
+                                        </td>
+                                        <th>
+                                            代理人：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseProcuratorName, new { @class = "form-control", @placeholder = "代理人", @style = "" })
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            案源人：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseOriginPeopleName, new { @class = "form-control", @placeholder = "案源人", @style = "" })
+                                        </td>
+                                        <th>
+                                            申请日：
+                                        </th>
+                                        <td colspan="2">
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseRequestDateFrom, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseRequestDateTo, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                        </td>
+                                        <td>
+                                            <label class="control-label">
+                                                @Html.CheckBoxFor(m => m.SearchCondition.SearchByMonthAndDay, new { style = "vertical-align:middle" })<span class="">按月日</span>
+                                            </label>
+                                        </td>
+                                    </tr>
+
+
+                                    <tr>
+
+                                        @if (Model.SearchCondition.PageId == PageId.PageId_1001008099)
+                                        {
+                                            <th>
+                                                费用类型：
+                                            </th>
+                                            <td>
+                                                @Html.HiddenFor(m => m.SearchCondition.CaseFeeTypeId)
+                                                @Html.HiddenFor(m => m.SearchCondition.CaseClassTypeId)
+                                                @Html.TextBoxFor(m => m.SearchCondition.CaseFeeTypeName, new { @class = "form-control", @placeholder = "费用类型", @style = "" })
+                                            </td>
+                                        }
+                                        else
+                                        {
+                                            <th>
+                                                费用类型：
+                                            </th>
+                                            <td>
+                                                @Html.HiddenFor(m => m.SearchCondition.CaseFeeTypeId)
+                                                @Html.TextBoxFor(m => m.SearchCondition.CaseFeeTypeName, new { @disabled = true, @class = "form-control", @placeholder = "费用类型", @style = "" })
+                                            </td>
+                                        }
+
+                                        <th>
+                                            通知日期：
+                                        </th>
+                                        <td colspan="2">
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseFeeInformDateFrom, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseFeeInformDateTo, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                        </td>
+
+
+                                        <td colspan="3">
+
+                                            @Html.DropDownListFor(m => m.SearchCondition.IsTransmitted, CommonService.Instance.GetTransmittedStatusList(), new { @class = "form-control", @style = "width:30%" })
+
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnCasePatentOfficeInvoiceFileSearch">
+                                                <span>过滤</span>
+                                            </a>
+                                            @*<a href="javascript:void(0);" class="btn btn-default " id="btnCaseSearchReset">
+                                                <span>重置</span>
+                                            </a>*@
+
+                                        </td>
+                                    </tr>
+
+                                </table>
+                                <div class='divcaseconditioncasephases'></div>
+                                <div class='divcaseconditioncasetypes'></div>
+                                <div class='divcaseconditioncasefeetypes'></div>
+                                <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                                    <div class="i_common_wrap">
+                                        <div class="i_common_list"></div>
+                                    </div>
+                                </div>
+                                <div style="display: none;" id="divUserList">
+                                    @Html.Partial("~/Areas/IPR/Views/IPRBase/UserList.cshtml")
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="ng-isolate-scope">
+                            <div class="ng-scope">
+                                <div class="gridSection">
+                                    <table id="tblCaseFeeList" class="table table-hover">
+                                        <colgroup>
+                                            <col style="width: 4%" />
+                                            <col style="width: 5%" />
+                                            <col style="width: 15%" />
+                                            <col style="width: 6%" />
+                                            <col style="width: 6%" />
+                                            <col style="width: 18%" />
+                                            <col style="width: 8%" />
+                                            <col style="width: 8%" />
+                                            <col style="width: 8%" />
+                                            <col style="width: 8%" />
+                                            <col style="width: 15%" />
+                                            <col style="width: 15%" />
+                                        </colgroup>
+                                        <thead>
+                                            <tr>
+                                                <th style="text-align: center">
+                                                    <input type="checkbox" id="chkCaseFeeIdAll" class="ng-pristine ng-valid"></span>
+                                                </th>
+
+                                                <th style="text-align: center">状态</th>
+                                                <th style="text-align: center">费用类型</th>
+                                                <th style="text-align: center">金额</th>
+                                                <th style="text-align: center">票据号</th>
+                                                <th style="text-align: center">文件名称</th>
+                                                <th style="text-align: center">通知日期</th>
+                                                <th style="text-align: center">案号</th>
+                                                <th style="text-align: center">申请号</th>
+                                                <th style="text-align: center">申请日</th>
+                                                <th style="text-align: center">客户</th>
+                                                <th style="text-align: center">发明名称</th>
+
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr style="display: none">
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                            </tr>
+                                        </tbody>
+                                        <tfoot class="ng-scope" style="display: none">
+                                            <tr>
+                                                <td colspan="12">
+                                                    <div class="pull-left"></div>
+                                                    <div class="ng-scope">
+                                                        <div class="pull-right page-box caseFeeList">
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                                <div class="simple-grid-none-data-wrap">
+                                    <div class="simple-grid-none-data text-center  ">
+                                        <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                            <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                            <div class="text-size-16 tip-text inline-block">
+                                                <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                                <span class="">。</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <div class="contextMenu" id="menu" style="display: none;">
+            <ul>
+                @{
+                    if (id == PageId.PageId_1001008001)
+                    {
+                        <li id="transmit" filetypeid="3300002">转申请费收据</li>
+                        <li id="transmit" filetypeid="3300004">转申请费收据代理费发票</li>
+                    }
+                    else if (id == PageId.PageId_1001008002)
+                    {
+                        <li id="transmit" filetypeid="3300001">转专利代理费发票</li>
+                    }
+                    else if (id == PageId.PageId_1001008003)
+                    {
+                        <li id="transmit" filetypeid="3300006">转实质审查费收据手续费发票</li>
+                    }
+                    else if (id == PageId.PageId_1001008004)
+                    {
+                        <li id="transmit" filetypeid="3300009">转变更费收据原件手续费发票</li>
+                    }
+                    else if (id == PageId.PageId_1001008005)
+                    {
+                        <li id="transmit" filetypeid="3300011">转授权费收据原件</li>
+                        <li id="transmit" filetypeid="3300005">转授权费收据原件手续费发票</li>
+                    }
+                    else if (id == PageId.PageId_1001008006)
+                    {
+                        <li id="transmit" filetypeid="3300038">转复审申请费收据原件手续费发票</li>
+                    }
+
+                    else if (id == PageId.PageId_1001008099)
+                    {
+                        <li id="transmit" filetypeid="3300099">转专利官费收据代理费发票</li>
+                    }
+                    
+
+                    <li id = "transmitTag" > 标记已转 </li >
+                }
+            </ul>
+        </div>
+    </div>
+
+</div>

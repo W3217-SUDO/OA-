@@ -1,0 +1,396 @@
+﻿@using Dchien.Legal.BizModel.FCM.Contract
+@using Dchien.Legal.Service.BAS.Type
+@model Dchien.Legal.Web.Areas.FCM.ViewModels.AR.ItemListModel
+
+<script src="@Url.Content("~/Scripts/FCM/Contract/FCM.Contract.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/FCM/Contract/FCM.Contract.AR.ItemList.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.core.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.excheck.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.exedit.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/zTree/zTreeStyle.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+
+<style type="text/css">
+    ul.ztree {
+        margin-top: 0px;
+        border-right: 0px solid #e1e6eb;
+        overflow-y: auto;
+        overflow-x: auto;
+    }
+
+    .ztree li {
+        line-height: 20px;
+    }
+
+        .ztree li a {
+            width: 150px;
+            height: 20px;
+            padding-top: 0px;
+        }
+
+            .ztree li a:hover {
+                text-decoration: none;
+                background-color: #E7E7E7;
+            }
+
+            .ztree li a span.button.switch {
+                visibility: hidden;
+            }
+
+    .ztree.showIcon li a span.button.switch {
+        visibility: hidden;
+    }
+
+    .ztree li a.curSelectedNode {
+        background-color: #D4D4D4;
+        border: 0;
+        height: 20px;
+    }
+
+    .ztree li span {
+        line-height: 20px;
+    }
+
+        .ztree li span.button {
+            margin-top: 2px;
+        }
+
+            .ztree li span.button.switch {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+
+            .ztree li span.button.add {
+                margin-left: 2px;
+                margin-right: -1px;
+                background-position: -144px 0;
+                vertical-align: top;
+                *vertical-align: middle;
+            }
+
+
+            /*.ztree li span.button {background-image:url("./left_menuForOutLook.png"); *background-image:url("./left_menuForOutLook.gif")}*/
+
+            .ztree li span.button.ico_docu {
+                background-position: -110px -16px;
+            }
+
+            .ztree li span.button.switch.level0 {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+
+            .ztree li span.button.switch.level1 {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+    /*.ztree li span.button.noline_open {background-position: 0 0;}
+    .ztree li span.button.noline_close {background-position: -18px 0;}
+    .ztree li span.button.noline_open.level0 {background-position: 0 -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}*/
+
+    .node_name {
+        margin-left: 10px;
+    }
+
+    div#rMenu {
+        position: absolute;
+        visibility: hidden;
+        top: 0;
+        background-color: #555;
+        text-align: left;
+        padding: 2px;
+    }
+
+        div#rMenu ul li {
+            margin: 1px 0;
+            padding: 0 5px;
+            cursor: pointer;
+            list-style: none outside none;
+            background-color: #DFDFDF;
+        }
+</style>
+
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body" style="overflow-x:hidden; overflow-y: hidden;">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>应收账款明细</h5>
+                            </div>
+                        </div>
+                        <div class="pull-left col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline " id="postForm" action="@Url.Content("~/FCM/AR/List")">
+                                @Html.HiddenFor(m => m.SearchCondition.PageId, new { name = "PageId" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.CasePhaseId , new { name = "CasePhaseId" })
+                                @Html.HiddenFor(m => m.SearchCondition.CasePhaseName, new { name = "CasePhaseName" })
+                                <table class="search_table" style="width: 500px">
+                                    <colgroup>
+                                        <col style="width: 60px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px;" />
+                                        <col style="width: 200px" />
+                                        <col />
+                                    </colgroup>
+                                    <tr>
+
+                                        <th>
+                                            合同主体：
+                                        </th>
+                                        <td>
+                                            @*@Html.TextBoxFor(m => m.SearchCondition.ContractName, new { @class = "form-control", @placeholder = "合同名称", @style = "width:97.2%" })*@
+
+                                            @Html.DropDownListFor(m => m.SearchCondition.GroupId, ContractTypeService.Instance.GetContractGroupList(true), new { maxlength = 60, @class = "form-control select", @style = "width:97.2%" })
+
+
+                                        </td>
+                                        <th>
+                                            合同编号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.ContractNo, new { @class = "form-control", @placeholder = "合同编号", @style = "" })
+                                        </td>
+                                        <th>
+                                            合同日期：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.ContractBeginDate, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.ContractEndDate, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            客户名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control", @placeholder = "客户名称", @style = "width:97.2%" })
+                                        </td>
+                                        <th>
+                                            案件编号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseNo, new { @class = "form-control", @placeholder = "案号", @style = "" })
+                                        </td>
+                                        <th>
+                                            案源人：
+                                        </th>
+                                        <td>
+                                            @Html.HiddenFor(m => m.SearchCondition.BusinessOwner, new { @class = "form-control", @style = "" })
+                                            @Html.TextBoxFor(m => m.SearchCondition.BusinessOwnerName, new { @class = "form-control", @style = "width:87%" })
+
+                                            <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                                                <div class="i_common_wrap">
+                                                    <div class="i_common_list"></div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>
+
+                                        </th>
+                                        <td>
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnARItemListSearch">
+                                                <span>查询</span>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </table>
+
+                                <div class='divcaseconditioncasefeetypes' style='overflow-y: scroll; '>
+                                    <div id="divCaseFeeTypeCheckBoxList" style="display:none" class='i_common_box'>
+                                        <div class='i_common_hd'>
+                                            从下列案件阶段中选择
+                                            <input type='hidden' id='hidCaseFeeTypeId'>
+                                            <input type='hidden' id='hidCaseFeeTypeName'>
+                                        </div>
+                                        <div class='i_common_bd'>
+                                            <ul id='caseFeeTypeTree' class='ztree' style="max-height:600px"></ul>
+                                            <div class="pull-right">
+                                                <input class='btn btn-primary' type='button' id='btnCaseFeeTypeSelected' value='确定' />
+                                                <input class='btn btn-default' type='button' id='btnCaseFeeTypeCancel' value='取消' />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </form>
+                        </div>
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="">
+                            <div class="gridSection">
+                                <table class="aps-table aps-widget aps-ani-transition" style="margin-bottom:0px;" width="100%">
+                                    <colgroup>
+                                        <col style="width: 3%">
+                                        <col style="width: 8%">
+                                        <col style="width: 20%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 10%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 17px">
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align: center"><input type="checkbox" onclick="javascript: contract.Contract.Selected(this);" id="chkContractAll" name="chkContractAll"></th>
+                                            <th style="text-align: center">合同号</th>
+                                            <th style="text-align: center">合同名称</th>
+                                            <th style="text-align: center">官费<br>支付金额</th>
+                                            <th style="text-align: center">官费<br>到账金额</th>
+                                            <th style="text-align: center">官费<br>未到金额</th>
+                                            <th style="text-align: center">官费<br>亏损金额</th>
+                                            <th style="text-align: center">代理费<br>总金额</th>
+                                            <th style="text-align: center">代理费<br>到账金额</th>
+                                            <th style="text-align: center">代理费<br>待收金额</th>
+                                            <th style="text-align: center">案号</th>
+                                            <th style="text-align: center">案件阶段</th>
+                                            <th style="text-align: center">案件类型</th>
+                                            <th style="text-align: center">费用类型</th>
+                                            <th style="text-align: center">费用金额</th>
+                                            <th style="text-align: center">已收</th>
+                                            <th style="text-align: center">应收</th>
+                                            <th></th>
+                                        </tr>
+
+                                    </thead>
+                                    <tbody>
+                                        <tr style='display:none'>
+                                            <td>
+                                                &nbsp;
+                                            </td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                                <div class="simple-grid-none-data-wrap">
+                                    <div class="simple-grid-none-data text-center  ">
+                                        <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                            <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                            <div class="text-size-16 tip-text inline-block">
+                                                <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                                <span class="">。</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="divList" style="border-top: 0;margin-top: -1px; overflow-x:hidden; overflow-y: scroll;">
+                                    <table id="tblContractList" class="aps-table aps-widget aps-ani-transition ">
+                                        <colgroup>
+                                            <col style="width: 3%">
+                                            <col style="width: 8%">
+                                            <col style="width: 20%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 10%">
+                                            <col style="width: 10%">
+                                            <col style="width: 10%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                        </colgroup>
+
+                                        <tbody>
+                                            <tr style='display:none'>
+                                                <td>
+                                                    &nbsp;
+                                                </td>
+                                                <td></td>
+                                                <td></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: right"></td>
+                                                <td style="text-align: right"></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                            </tr>
+                                        </tbody>
+                                        <tfoot class="" style="display: none">
+                                            <tr>
+                                                <td><input type="checkbox" onclick="javascript: contract.Contract.Selected(this);" id="chkContractAll" name="chkContractAll"></td>
+
+                                                <td colspan="16">
+                                                    <div class="pull-left">
+                                                        <input type="button" id="btnARItemListExportToExcel" class="btn btn-default" style="height:32px" value="导出Excel" />
+                                                    </div>
+                                                    <div class="">
+                                                        <div class="pull-right page-box contractlist">
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+
+                         </div>
+                    </div>
+
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+                    <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+

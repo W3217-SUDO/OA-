@@ -1,0 +1,5662 @@
+{
+  "changed_files": [
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "packages.config",
+      "archive_relative_path": "original/GD.CRM.WEB/packages.config.example",
+      "source_sha256": "14b7cdc6df8cb82e0f4bb693740d69acd97215e0f2430831c4275da2d1c251a3",
+      "archive_sha256": "0897ffdd30cc0bff6bac21d4240eeb26e868c852d35f388ba01e79aa376a8b1a",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 33,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Web.config.example",
+      "source_sha256": "6a11944481bec8a3660f39c3c6510ec3085716e0b8173c21c889c1f38c9a8da4",
+      "archive_sha256": "525f8ea1c5b899f795b9a59a8c3b7b4fd05bcd52038e1face33e0996194bb946",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 89,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Views/Web.config.example",
+      "source_sha256": "56db92afb54dd38ceeb6260b8fd87847881f1925b084c107d48287191f073f8e",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Views/Home/Index.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Views/Home/Index.cshtml",
+      "source_sha256": "5203f7df57f78fd001f769e0690e242a8c4645241ac175e22dce2e40527626a3",
+      "archive_sha256": "ef50134e38c1039471a94f34dc8febe132f19f2617d9ff2e49f5f98c8e8b8a7b",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 110,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 110,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 131,
+          "rules": [
+            "phone"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Views/Home/Login.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Views/Home/Login.cshtml",
+      "source_sha256": "3566148304fa53fc89c4ae7ae921338dda0919f24514e80e0c52beebe5d65772",
+      "archive_sha256": "4c1bd9e5a209c5ff85ab18c674689fd9db14beb8afce9a700c9c04850bd52255",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 95,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 95,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 133,
+          "rules": [
+            "phone"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Scripts/System/SystemManagement/User.js",
+      "archive_relative_path": "original/GD.CRM.WEB/Scripts/System/SystemManagement/User.js",
+      "source_sha256": "6bdb5984d6ec6fc0e963c93890e93e039a9bd1d11b2e03173dd4eedd77e6023f",
+      "archive_sha256": "64a5f7325f6239fa73cd68e063f588db19dd7d6ce2a773d92da1ae419fdd512e",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 11,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Scripts/HR/Staff/HR.Staff.js",
+      "archive_relative_path": "original/GD.CRM.WEB/Scripts/HR/Staff/HR.Staff.js",
+      "source_sha256": "b14feaf97d19d8005309ffc2c563db30538d0864f936d03a15d6db7762d26cc7",
+      "archive_sha256": "dcfe0a0668c98e93ab942fbdc126e9af7053b0b6aad6ec93755754459a347255",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 200,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Scripts/Home/Login.js",
+      "archive_relative_path": "original/GD.CRM.WEB/Scripts/Home/Login.js",
+      "source_sha256": "7e681ff1457b51278c934c31b58c5c56eca815617f898f791b77b707de55a7b6",
+      "archive_sha256": "ae97bf07fb638fc4452f2fc83c28c72d4dfcd125cdc99885a394b82a4899e3b2",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 24,
+          "rules": [
+            "embedded_connection_secret"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Scripts/FCM/Contract/api.test.js",
+      "archive_relative_path": "original/GD.CRM.WEB/Scripts/FCM/Contract/api.test.js",
+      "source_sha256": "c8dfa5891b01376ee17cc7488845cb3b79cccc418ba91bae22a3d3706d07e61c",
+      "archive_sha256": "df7d59e894373226fd51acddacfca11ff516e9d4b972cabe4b8f65049259827d",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 44,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 52,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 52,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 53,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 54,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 58,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 85,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 90,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 110,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 123,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Scripts/FCM/Contract/FCM.Contract.js",
+      "archive_relative_path": "original/GD.CRM.WEB/Scripts/FCM/Contract/FCM.Contract.js",
+      "source_sha256": "523618b3a04f1f138fd891de66bf068167b3fabdfbcc125aa1119c4cf0bc4bdb",
+      "archive_sha256": "109e1b3dc4444d06855a80c7c49b4cf679b634c5b205f67fafc6ac47562ff12b",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 835,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Scripts/FAM/Invoice/FAM.Invoice.js",
+      "archive_relative_path": "original/GD.CRM.WEB/Scripts/FAM/Invoice/FAM.Invoice.js",
+      "source_sha256": "4015ef1775f462ad1a7391001c32cd52f27022fba950fc22261bad72a35e56ef",
+      "archive_sha256": "eb16b887b38bb05232b9e96b2ae3d5b7db0dd2e00a70c037b760d6ac62227dc3",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 435,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 438,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 466,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 469,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 499,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 502,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 558,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 623,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Scripts/FAM/InternalFee/Payment/FAM.InternalFee.Payment.js",
+      "archive_relative_path": "original/GD.CRM.WEB/Scripts/FAM/InternalFee/Payment/FAM.InternalFee.Payment.js",
+      "source_sha256": "642f6029b743bd1f647f58a6867fda6c5b71fb75cede205f543cd675ef48d719",
+      "archive_sha256": "f3756b68128201c9eb1698178a0509c1d46b05e3f6430e0f445fe41b8c340a92",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 211,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 242,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Scripts/FAM/AP/FAM.AP.Payment.js",
+      "archive_relative_path": "original/GD.CRM.WEB/Scripts/FAM/AP/FAM.AP.Payment.js",
+      "source_sha256": "5dc94bb41b65c9f67c63a7a3910ba79a7121d7dc7d85bc02c6dff68d0a61a9ce",
+      "archive_sha256": "61e3ecf54eedb2e493cc7e08a1007ede33705cf8a0e40b4718703cc052005f41",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 250,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Scripts/CRM/Customer/CRM.Customer.js",
+      "archive_relative_path": "original/GD.CRM.WEB/Scripts/CRM/Customer/CRM.Customer.js",
+      "source_sha256": "41d2d19f4eca3d8c29a7b2754c8160ce74026e5ce8e1673cd8e0936c0023bec5",
+      "archive_sha256": "ab88ddb711c6ec9cf0eb448eca1043cecaf578fd9cf32e3441ac85967d202b91",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 431,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Scripts/CIT/Investigation/CIT.Investigation.js",
+      "archive_relative_path": "original/GD.CRM.WEB/Scripts/CIT/Investigation/CIT.Investigation.js",
+      "source_sha256": "08b363f957ad36db7984237682bf4c3ba4add02f34f7e7d7225b6ad4fec8441e",
+      "archive_sha256": "e2e94779bbc7bf433f96c6da52066b910f03a759e7be75853e9fcff4b73d6dbe",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 2101,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Scripts/AWS/OfficialDocument/AWS.OfficialDocument.js",
+      "archive_relative_path": "original/GD.CRM.WEB/Scripts/AWS/OfficialDocument/AWS.OfficialDocument.js",
+      "source_sha256": "0695028cf500812633653bed83c43c4cf3908cf9ef4f8d1606a2e9d2174ce349",
+      "archive_sha256": "3dd1bd5f8a131c4de9009c1040fdc146fbfb16e8d34007a39fa45345832b4c40",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 305,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 510,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Resource/css/console.css",
+      "archive_relative_path": "original/GD.CRM.WEB/Resource/css/console.css",
+      "source_sha256": "9e1832d376cfe749a0949df722cb5c130be6f0072cc3b5affc518fc7eb197a0f",
+      "archive_sha256": "9c153db8557a9093b269737789982ebdd94ef46a7ceb5e1d4c9b403fa362184b",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 1837,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1838,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1839,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1840,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1855,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1856,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1857,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1858,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1872,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1873,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1874,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1875,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 5654,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 5655,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 5656,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 5657,
+          "rules": [
+            "email"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Helpers/CaptchaImage.cs",
+      "archive_relative_path": "original/GD.CRM.WEB/Helpers/CaptchaImage.cs",
+      "source_sha256": "f116c973ce1f13d079976ad8fa594ba131b1434f2d04baf59eb3ce1f0a67ab5b",
+      "archive_sha256": "c5aa4d6f16de0472836e692941f5b5ef16d5d144c4d8bb64f6ec0c64844ac4de",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 201,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Controllers/AccountController.cs",
+      "archive_relative_path": "original/GD.CRM.WEB/Controllers/AccountController.cs",
+      "source_sha256": "619d1c234ff731fb3d23f89dbe1f4f426d405d4f2280555dcf37ae8ea138ac2a",
+      "archive_sha256": "0c6f339634b72ddf2576bfaa45e3e3321505580aaf3aba7ec86f693bfb05a21b",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 314,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Controllers/HomeController.cs",
+      "archive_relative_path": "original/GD.CRM.WEB/Controllers/HomeController.cs",
+      "source_sha256": "227fb91a10082f4034abeb0b12c76172587530eec2d8c331cf7804d1e8ee1f8b",
+      "archive_sha256": "da055986501a11ae42bb9998ebe43226c351baee76d07f37e3c84e51de8d045c",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 90,
+          "rules": [
+            "embedded_connection_secret"
+          ]
+        },
+        {
+          "source_line": 96,
+          "rules": [
+            "embedded_connection_secret"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Captcha/MvcCaptchaConfigSection.cs",
+      "archive_relative_path": "original/GD.CRM.WEB/Captcha/MvcCaptchaConfigSection.cs",
+      "source_sha256": "0497f8710e99e19c80c7bdd11eb74ded435bb706221592bc550868497dd0d8a8",
+      "archive_sha256": "96d4bc7901504403c4642e51a9cde0cd107ff4041002a0d1501d5d4bf1ddef1a",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 22,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 28,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Captcha/MvcCaptchaImage.cs",
+      "archive_relative_path": "original/GD.CRM.WEB/Captcha/MvcCaptchaImage.cs",
+      "source_sha256": "1eb0494ef0951c3e013fe3f786e90aa94140713faea62048b12fff6333360003",
+      "archive_sha256": "9797e50f0d9c54d85e21d9f07c628e47f5fab6f5dd8f56b2d66f17f483a80f1c",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 86,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Captcha/MvcCaptchaOptions.cs",
+      "archive_relative_path": "original/GD.CRM.WEB/Captcha/MvcCaptchaOptions.cs",
+      "source_sha256": "218a0552e5cec50dba3a3ab1a5c237ea5144de57aee359a4c9ed2bbbee6e0c08",
+      "archive_sha256": "5adecbee45b43ad35e6849d2235c5f131c9a41b134c0ee629b5759e401c5293f",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 31,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/WMS/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/WMS/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/TP/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/TP/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/TP/Views/VipTask/Create.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/TP/Views/VipTask/Create.cshtml",
+      "source_sha256": "2ba4a9ef078ad2ef5c3e821a856db9cd3764e39db668fa186333817dd1dbf30c",
+      "archive_sha256": "53d9e5587e46ffc8b761e4541bdd621c209477e152b4d15b31e2cf9f3143999d",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 119,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/TP/Views/Task/Create.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/TP/Views/Task/Create.cshtml",
+      "source_sha256": "2ba4a9ef078ad2ef5c3e821a856db9cd3764e39db668fa186333817dd1dbf30c",
+      "archive_sha256": "53d9e5587e46ffc8b761e4541bdd621c209477e152b4d15b31e2cf9f3143999d",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 119,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/System/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/System/Views/Web.config.example",
+      "source_sha256": "56db92afb54dd38ceeb6260b8fd87847881f1925b084c107d48287191f073f8e",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/RPT/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/RPT/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/RPT/Views/Report/LargeScreen.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/RPT/Views/Report/LargeScreen.cshtml",
+      "source_sha256": "49e47aef224efe606d20c94037849ada6ff5fddb843c0f76ba5c93921ef5b74e",
+      "archive_sha256": "64d55145b5510b5c3f7173a795035dbb796295a60b0da9ecc3b78ccd8ae1130e",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 35,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 39,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 43,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 47,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 73,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Shared/_Layout.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Shared/_Layout.cshtml",
+      "source_sha256": "4aacd216d9545d1af7b7466ab75e84b6ab34138db81091a6027fd6829a958cd8",
+      "archive_sha256": "aae951af070dceec173218fd00057f98775f2ef6926f7128c0738d5cc55931d3",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 160,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/CaseInfo.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/CaseInfo.cshtml",
+      "source_sha256": "f96f86fd8d688cc6bc488024d41cc1fe9252194900bd7056ee7a7c6e895897c5",
+      "archive_sha256": "c5f5b4a57c3d012a30bbc4aa5123c26a82e88ea6f08c52b67ca367aa65b0ddc4",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 639,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_Basic_Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_Basic_Edit.cshtml",
+      "source_sha256": "d79b77e8d03beb424802cb9cb6d8469ec4e959636cab1a6cc6e8e67206fd1525",
+      "archive_sha256": "9f4dacca2a4422e6ac3873168d1790513739c7997d973f355a63da2b2d823070",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 182,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 215,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 295,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_CourtLawyer_Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_CourtLawyer_Edit.cshtml",
+      "source_sha256": "4d805595fae025d36e1236ec28c74ae2d719d2387208358ea5de3d31df9c96ac",
+      "archive_sha256": "531a74c13f57cede0aab36befbb20734d27165de5579ea6c73f27ebd6c3a6ec8",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 64,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_Create.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_Create.cshtml",
+      "source_sha256": "bff0e87947b00f25c352c0eb9e56698cbe8efc54f6923dae07d09df85c90abc9",
+      "archive_sha256": "d5ad2dd55eb4df9187ccd3b3b043b89bf9e85ee24dedcd8038495268568d70ea",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 215,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 240,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/ConsultantCase/ConsultantCase_Basic_Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/ConsultantCase/ConsultantCase_Basic_Edit.cshtml",
+      "source_sha256": "cb998ca4d98dd324eab2535237ed639ecec012cfe40dddb680e490442bcbc915",
+      "archive_sha256": "d8a63760508e6d0d8ca847cc36f71ab03e97e380523cee47b9bc172e7530fda8",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 213,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 246,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 326,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/ConsultantCase/ConsultantCase_CourtLawyer_Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/ConsultantCase/ConsultantCase_CourtLawyer_Edit.cshtml",
+      "source_sha256": "4d805595fae025d36e1236ec28c74ae2d719d2387208358ea5de3d31df9c96ac",
+      "archive_sha256": "531a74c13f57cede0aab36befbb20734d27165de5579ea6c73f27ebd6c3a6ec8",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 64,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/ConsultantCase/ConsultantCase_Create.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/ConsultantCase/ConsultantCase_Create.cshtml",
+      "source_sha256": "86443ab4483ec98f143babbde68123d2a651e69ace5031538b980673245e1f51",
+      "archive_sha256": "25c3c6ff6186b54dfdf82937a60b94f8913c2e0642a1dfc955825afd4fb400fb",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 244,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 269,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Basic_Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Basic_Edit.cshtml",
+      "source_sha256": "d2b925af5bc18b3037f2fe3fa22a8542fae5b91bbf6da056cc70407cceca7640",
+      "archive_sha256": "f962558d458051c306e365530d19d98e14970c22cd204497597d8881b5cf3c31",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 186,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 229,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 268,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 353,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CaseLawyer_Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CaseLawyer_Edit.cshtml",
+      "source_sha256": "02cf092ab05de8d90624f8019646a5f6164ddc243628ed71dfb8f72480385fa6",
+      "archive_sha256": "858197a1609ccaff3af1b1933676fc59513f8fa0638a623b7b7f694566530b68",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 63,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 103,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 137,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CourtLawyer_Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CourtLawyer_Edit.cshtml",
+      "source_sha256": "4d805595fae025d36e1236ec28c74ae2d719d2387208358ea5de3d31df9c96ac",
+      "archive_sha256": "531a74c13f57cede0aab36befbb20734d27165de5579ea6c73f27ebd6c3a6ec8",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 64,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Create.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Create.cshtml",
+      "source_sha256": "c09a88e483bc5b2c9f4d604133ed399641c47eb480177b4caefc7d14a289a0d4",
+      "archive_sha256": "d6d2a5e7e1f4236c87b2da2e29592fe4e44ecaafefabfcc34ad6fcf645648900",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 217,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 224,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CustomerAddIn_Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CustomerAddIn_Edit.cshtml",
+      "source_sha256": "215b89c749fe24e0f200bd40100e5c6af7850a5e0957b4b6eb5f0c93261b8011",
+      "archive_sha256": "61aacc2fa952726149be10a0890b5257a2f86953aebae77dab0de98130caabcd",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 184,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 217,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 297,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_Basic_Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_Basic_Edit.cshtml",
+      "source_sha256": "9da2c466bd070c4dc4e4981bd6c497b7051aaf2b896ee1c3565d7f492d74d783",
+      "archive_sha256": "016b8f675d3ec3f92fb8667ea60aaef6e1df6b7aa073c4290c9343a9e1aa549f",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 185,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 218,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 298,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_CourtLawyer_Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_CourtLawyer_Edit.cshtml",
+      "source_sha256": "4d805595fae025d36e1236ec28c74ae2d719d2387208358ea5de3d31df9c96ac",
+      "archive_sha256": "531a74c13f57cede0aab36befbb20734d27165de5579ea6c73f27ebd6c3a6ec8",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 64,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_Create.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_Create.cshtml",
+      "source_sha256": "9b128fd549c2812a0dadf2e105fe676667d9c0d82119855fb5d1b93cc58ff1e8",
+      "archive_sha256": "beab0a6133539374f0dd45d551c70ce0f4c17a4181718cfb06a94db876e9f396",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 214,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 239,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_Basic_Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_Basic_Edit.cshtml",
+      "source_sha256": "631df44341cbfc4c9c0731589bc035a96ac535a0b7551a7e72ba30d5ff0cd4c9",
+      "archive_sha256": "0d3c3fd2106d75757b0fe53b930e1fe4f546bc0fc52ac3b918976659df33379c",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 182,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 215,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 295,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_CourtLawyer_Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_CourtLawyer_Edit.cshtml",
+      "source_sha256": "4d805595fae025d36e1236ec28c74ae2d719d2387208358ea5de3d31df9c96ac",
+      "archive_sha256": "531a74c13f57cede0aab36befbb20734d27165de5579ea6c73f27ebd6c3a6ec8",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 64,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_Create.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_Create.cshtml",
+      "source_sha256": "cc26087ea9a30f420c7bf22870df652eee891ff0dd915ab6c6f1b614fc481bb0",
+      "archive_sha256": "c25e55e84d6df17923ec21f4faf2fcd91388981e90cba0c02071e144002114be",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 214,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 239,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/CivilDispute/PartialView/ClueGenerateCase.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/CivilDispute/PartialView/ClueGenerateCase.cshtml",
+      "source_sha256": "c282169f43aebeba18fbb21442ddfba95d8777ddbc834f3620c4ebff08ad026f",
+      "archive_sha256": "08158b47a032dfdd2b4530de3b7297f872a981592f0d92fa5e28959630132837",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 312,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/CivilDispute/PartialView/ClueToCase.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/CivilDispute/PartialView/ClueToCase.cshtml",
+      "source_sha256": "063eb46cf4a54539a12c6abfe0193344aa0cbae2e22be906eeccfba5baa543da",
+      "archive_sha256": "d5ea4599d41900d29dbb137c200f1538bd918f06b3b738cb363499c0a0a99359",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 257,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 307,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Views/Case/CivilDispute/PartialView/Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/CivilDispute/PartialView/Edit.cshtml",
+      "source_sha256": "2141b51dbf09d436c02f2f3e6d644dcaaa06421c5323e003df2048fe66aa0057",
+      "archive_sha256": "bfe23db23af95255d398e1594cd8a963a64d3c86ffde13f84b6ad5a1962d88b4",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 150,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 183,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 242,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Legal/Controllers/CaseFileController.cs",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Legal/Controllers/CaseFileController.cs",
+      "source_sha256": "eecadf9801c3f289e29c65edb05061e3276b647b490edf7f429fec5fbef55cd7",
+      "archive_sha256": "51d0ced3675898fb0f4e5e1e2f07b3ba79393c545e28126a56785fbcc779e02a",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 739,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 816,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 910,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 987,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Lawsuit/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Lawsuit/Views/Web.config.example",
+      "source_sha256": "56db92afb54dd38ceeb6260b8fd87847881f1925b084c107d48287191f073f8e",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Lawsuit/Views/CaseBase/UserList.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Lawsuit/Views/CaseBase/UserList.cshtml",
+      "source_sha256": "6e7b0a43192be2d285de120cb59bc159663d40758761155c5e09b42b03afa6eb",
+      "archive_sha256": "00ca41778ba270dcdcc0cb9573297a67ad16f7caf17e17e1fe96c7e591a77f8d",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 23,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Lawsuit/Console/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Lawsuit/Console/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/IPR/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/IPR/Views/Web.config.example",
+      "source_sha256": "56db92afb54dd38ceeb6260b8fd87847881f1925b084c107d48287191f073f8e",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/IPR/Views/Case/CaseInfo.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/IPR/Views/Case/CaseInfo.cshtml",
+      "source_sha256": "37633000c66070f4942f7982520ed0a4384f046449d15356109416fb5fd8af69",
+      "archive_sha256": "61b689cbbec5f385ba8d49a92cb11ef9c911666cb0272fca899f4842fc626a59",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 815,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/IPR/Views/Case/Create.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/IPR/Views/Case/Create.cshtml",
+      "source_sha256": "72aa98c42f694728a18e18bf3b34eb77b5bd7e041e484500305ce5038a5bddc1",
+      "archive_sha256": "d921f686e87c42e8869b3f12f529b433473d8e06b44da4a65410379fa5569ac4",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 482,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/IPR/Views/Case/PartialView/CaseSearchResultList.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/IPR/Views/Case/PartialView/CaseSearchResultList.cshtml",
+      "source_sha256": "544d667636f80acbf7988c930391f1b738ff3f2aef0ff9c5f555647a38926857",
+      "archive_sha256": "8e05d4dfdc62442ea28492661930e3e2619e910f85753f5b2a70779143e23c37",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 75,
+          "rules": [
+            "email"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/IPR/Lawsuit/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/IPR/Lawsuit/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/IPR/Lawsuit/Views/CaseBase/UserList.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/IPR/Lawsuit/Views/CaseBase/UserList.cshtml",
+      "source_sha256": "6e7b0a43192be2d285de120cb59bc159663d40758761155c5e09b42b03afa6eb",
+      "archive_sha256": "00ca41778ba270dcdcc0cb9573297a67ad16f7caf17e17e1fe96c7e591a77f8d",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 23,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/IPR/Console/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/IPR/Console/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/HR/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/HR/Views/Web.config.example",
+      "source_sha256": "56db92afb54dd38ceeb6260b8fd87847881f1925b084c107d48287191f073f8e",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/HR/Views/Staff/Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/HR/Views/Staff/Edit.cshtml",
+      "source_sha256": "00e713cff7190a4bf2c341f3b33225c61f2336e5b801dd655ba2193120b4af82",
+      "archive_sha256": "7aaf1815e12bff14fc6f272eb8434d38d792e73150968dcf015cbb7371c576a9",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 42,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/FSC/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/FSC/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/FIO/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/FIO/Views/Web.config.example",
+      "source_sha256": "56db92afb54dd38ceeb6260b8fd87847881f1925b084c107d48287191f073f8e",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/FCM/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/FCM/Views/Web.config.example",
+      "source_sha256": "56db92afb54dd38ceeb6260b8fd87847881f1925b084c107d48287191f073f8e",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/FAS/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/FAS/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/FAS/Views/Invoice/Create.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/FAS/Views/Invoice/Create.cshtml",
+      "source_sha256": "1aa81d6839f4175ca088cce11ac698798dc521758610652e49597ec5d77d9e34",
+      "archive_sha256": "bd337a7dbe22adce2c1576e37c5d72ad0f2eec4c181e21ec0e1e0b325abd4667",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 257,
+          "rules": [
+            "email"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/FAM/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/FAM/Views/Web.config.example",
+      "source_sha256": "56db92afb54dd38ceeb6260b8fd87847881f1925b084c107d48287191f073f8e",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/FAM/Views/JAR/MenuList.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/FAM/Views/JAR/MenuList.cshtml",
+      "source_sha256": "829a60dd64a591707708b312c9e03df65d198a3bc9e450efb702a7032f468b49",
+      "archive_sha256": "4f6974afb63a996721ceb4e8322d21e8f88d9c00fbe8f4a59971bfaf228392b1",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 55,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 69,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/FAM/Views/InternalFee/Payment/MenuList.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/FAM/Views/InternalFee/Payment/MenuList.cshtml",
+      "source_sha256": "02bdddded4dc2e776a571b632b7656e7579057c7a04a48aeb4b08cf76f13e4eb",
+      "archive_sha256": "1f582553eb9d1986b4a1f813c93d4846bfe1486b2ab758d213c8e1bf8fcf3bb9",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 66,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 92,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/FAM/Views/AR.JS/MenuList.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/FAM/Views/AR.JS/MenuList.cshtml",
+      "source_sha256": "18d4ef7938bba4a8a4ac5793492af43b2af169bd90be7fe657e59c012df90c6c",
+      "archive_sha256": "dd7828d1ffbd4a6c8364b2c7c29a8a3e2daace366a3a2671215ecee22540c114",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 80,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 96,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/FAM/Views/AP/Payment/MenuList.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/FAM/Views/AP/Payment/MenuList.cshtml",
+      "source_sha256": "02bdddded4dc2e776a571b632b7656e7579057c7a04a48aeb4b08cf76f13e4eb",
+      "archive_sha256": "1f582553eb9d1986b4a1f813c93d4846bfe1486b2ab758d213c8e1bf8fcf3bb9",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 66,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 92,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/CRM/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/CRM/Views/Web.config.example",
+      "source_sha256": "56db92afb54dd38ceeb6260b8fd87847881f1925b084c107d48287191f073f8e",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/CRM/Views/Customer/CreateUpdate.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/CRM/Views/Customer/CreateUpdate.cshtml",
+      "source_sha256": "d47daca726153c4483cf0ceacc4f0886bc4eb088efbc65b1ecffa4fc4bd9b0a6",
+      "archive_sha256": "7beb3737adfdb5bfceb4198aa3800cf07da350a4b55f50133d83e9b513b024a0",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 362,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 404,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/CRM/Views/Customer/View.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/CRM/Views/Customer/View.cshtml",
+      "source_sha256": "7b8761f1add1fba3aced70b93169a886810d375c7463cd84eab64fdcb4e5f183",
+      "archive_sha256": "3e9be392eeb1e5b9f863331e61d345d721b1e8416a4810bd2ff716a12ca62ffe",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 355,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Contract/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Contract/Views/Web.config.example",
+      "source_sha256": "56db92afb54dd38ceeb6260b8fd87847881f1925b084c107d48287191f073f8e",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Console - 副本/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Console - 副本/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Console/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Console/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/CMS/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/CMS/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/CIT/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/CIT/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/CIT/Views/InvestigationTask/PartialView/Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/CIT/Views/InvestigationTask/PartialView/Edit.cshtml",
+      "source_sha256": "6ad20d3ecbfbe69088a4368f459892332d9874460d3153355b439951071757d3",
+      "archive_sha256": "7f3e4d631e30a9d1a86e936e21ff664be24cd9b655fadea22fbad542b35415ed",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 46,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/BAS/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/BAS/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/AWS/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/AWS/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Account/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Account/Views/Web.config.example",
+      "source_sha256": "56db92afb54dd38ceeb6260b8fd87847881f1925b084c107d48287191f073f8e",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-web",
+      "source_relative_path": "Areas/Account/Controllers/UserCenterController.cs",
+      "archive_relative_path": "original/GD.CRM.WEB/Areas/Account/Controllers/UserCenterController.cs",
+      "source_sha256": "e59481aee6a8a5f99e23287030cc7c19d7674df8c5286c1b31b276391bc2e0b2",
+      "archive_sha256": "1d0dc786d5ad8c16adc6ca6985bde9b63f29b53c38eb6b3f0af3c206db48b7e8",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 32,
+          "rules": [
+            "embedded_connection_secret"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "packages.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/packages.config.example",
+      "source_sha256": "31b6d0c5f58c1fe2deca03b66c28694635119e39530b57b783265c25536c27e3",
+      "archive_sha256": "0897ffdd30cc0bff6bac21d4240eeb26e868c852d35f388ba01e79aa376a8b1a",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 33,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Web.config.example",
+      "source_sha256": "542f7a21010f5d881dc46366367673ab7fd3ebb310150c9b30902de98ff0ce83",
+      "archive_sha256": "c0ec0d7259c5d6b38835fa96704c4a068e769f17cd90590623ce9c879e5b4927",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 79,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Web.Debug.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Web.Debug.config.example",
+      "source_sha256": "3531fbff9969ce1524e0afb54797c22426923d903c86298fb747d3e0d6b66c6e",
+      "archive_sha256": "329c0bdd2e2ebc07b6c731b3000b8c327be2878a4318cf2d8b8f895c960fec8c",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 0,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Web.Release.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Web.Release.config.example",
+      "source_sha256": "f42e21796145cefb25345f8caef995fe065d7cab8d1df44598586374f25aa004",
+      "archive_sha256": "982e13ff28b70ad1b174c664a2cb83efadca8879263d83bb57a7adceabc38eae",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 1,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Views/Web.config.example",
+      "source_sha256": "56db92afb54dd38ceeb6260b8fd87847881f1925b084c107d48287191f073f8e",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Scripts/System/SystemManagement/User.js",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Scripts/System/SystemManagement/User.js",
+      "source_sha256": "6bdb5984d6ec6fc0e963c93890e93e039a9bd1d11b2e03173dd4eedd77e6023f",
+      "archive_sha256": "64a5f7325f6239fa73cd68e063f588db19dd7d6ce2a773d92da1ae419fdd512e",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 11,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Scripts/HR/Staff/HR.Staff.js",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Scripts/HR/Staff/HR.Staff.js",
+      "source_sha256": "03d9949226a941395e877a8501a8b8865fe1ee6ec7b65a5beefb7bf06e5ad20e",
+      "archive_sha256": "dd4d422204286838e32d23e292a02f0656506a6683931f4419e7ce925e980359",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 182,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Scripts/Home/Login.js",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Scripts/Home/Login.js",
+      "source_sha256": "4f33dd2fe79494bd1930bc0bb762abf7c1a38d80cfd4ca2f8335728cea87c8e8",
+      "archive_sha256": "cf114d92a35b7f6d550ed27450a0ad461bbcbc08e7ce4bab832d28d6278192a0",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 24,
+          "rules": [
+            "embedded_connection_secret"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Scripts/FCM/Contract/api.test.js",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Scripts/FCM/Contract/api.test.js",
+      "source_sha256": "c8dfa5891b01376ee17cc7488845cb3b79cccc418ba91bae22a3d3706d07e61c",
+      "archive_sha256": "df7d59e894373226fd51acddacfca11ff516e9d4b972cabe4b8f65049259827d",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 44,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 52,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 52,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 53,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 54,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 58,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 85,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 90,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 110,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 123,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Scripts/FCM/Contract/FCM.Contract.js",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Scripts/FCM/Contract/FCM.Contract.js",
+      "source_sha256": "27164366336d1de2a7fb53bc28497631328785f2a07cebe713a3e81f8e838aa9",
+      "archive_sha256": "ef4bc8fe52ed41758f925e94c85461f900b495bae023366f16a551ecfd355957",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 739,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 1820,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Scripts/FAM/Invoice/FAM.Invoice.js",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Scripts/FAM/Invoice/FAM.Invoice.js",
+      "source_sha256": "ab4cbaa7af1cf106b8a8705272d69ee69e8595e8ff7e52f42f4e371f73bb2c77",
+      "archive_sha256": "864e7b13c4ca1dcf2569da96f6f496b724d0ea9bdaf55c2b111e1dfa1db9f837",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 428,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 459,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 490,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 545,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 610,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Scripts/FAM/InternalFee/Payment/FAM.InternalFee.Payment.js",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Scripts/FAM/InternalFee/Payment/FAM.InternalFee.Payment.js",
+      "source_sha256": "9bad8b6278a89c7e01cbbf0087298cf21434362cf8fffcb37a99e5992e70b387",
+      "archive_sha256": "19c6afa42c99b4dd5b4c94f9da5dde4f18f4d84e0df8c9c1e15444b406d1d44e",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 210,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 241,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Scripts/FAM/AP/FAM.AP.Payment.js",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Scripts/FAM/AP/FAM.AP.Payment.js",
+      "source_sha256": "96b824e8727fa168cc38ee1925e3e1c9f5bfbb53ae0ffe2c97dd889abb79e6d8",
+      "archive_sha256": "0255c8b96cee96d95dee737075c8cb28ea661c1da0a76c4e244db46ea2f18e2e",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 182,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Scripts/CIT/Investigation/CIT.Investigation.js",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Scripts/CIT/Investigation/CIT.Investigation.js",
+      "source_sha256": "cb7cf426ff69b7247c32b07358bc55081b5420013cfb280d9d6aec068f1dbc45",
+      "archive_sha256": "42e0cef25c8aabda881e54c064c226736b1157d95e19c64ef4cd86ef29f8062f",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 1952,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Scripts/AWS/OfficialDocument/AWS.OfficialDocument.js",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Scripts/AWS/OfficialDocument/AWS.OfficialDocument.js",
+      "source_sha256": "5e07ef2d3dde7b63ec13934d0884a522319cda2b167a121308fb94becf752fdb",
+      "archive_sha256": "56e865471ef136e6d0a636c31eb614dc34ae8ee01c0ff7c889df86b9d362aadc",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 545,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Resource/css/console.css",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Resource/css/console.css",
+      "source_sha256": "55745545dc969c277eb5e261850414cd46031e4215e77b67191d7ae662a6f553",
+      "archive_sha256": "97bd8e0bcf6c966082cc11c52febf6148b2e679d5b510d3a7d3f2871dd962f45",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 1829,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1830,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1831,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1832,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1847,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1848,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1849,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1850,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1864,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1865,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1866,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 1867,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 5646,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 5647,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 5648,
+          "rules": [
+            "email"
+          ]
+        },
+        {
+          "source_line": 5649,
+          "rules": [
+            "email"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Helpers/CaptchaImage.cs",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Helpers/CaptchaImage.cs",
+      "source_sha256": "f116c973ce1f13d079976ad8fa594ba131b1434f2d04baf59eb3ce1f0a67ab5b",
+      "archive_sha256": "c5aa4d6f16de0472836e692941f5b5ef16d5d144c4d8bb64f6ec0c64844ac4de",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 201,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Controllers/AccountController.cs",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Controllers/AccountController.cs",
+      "source_sha256": "7952dc4474016ecfe664c021316c12ef0cb265c2e38065962c1450866350fa02",
+      "archive_sha256": "393c3e9e01e649839d68b1e0b7e78d72f1523c0d44638d707ea2b70530a3c43e",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 314,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Controllers/HomeController.cs",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Controllers/HomeController.cs",
+      "source_sha256": "b2dd042697b871cc2c01e7094d879c8adf4fbc26ff3f064400e52c0f84ce7ee7",
+      "archive_sha256": "c88664bdef18694d03c9b7695a363c0accbfcf99c3d7116339f550572635f65d",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 90,
+          "rules": [
+            "embedded_connection_secret"
+          ]
+        },
+        {
+          "source_line": 96,
+          "rules": [
+            "embedded_connection_secret"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Captcha/MvcCaptchaConfigSection.cs",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Captcha/MvcCaptchaConfigSection.cs",
+      "source_sha256": "0497f8710e99e19c80c7bdd11eb74ded435bb706221592bc550868497dd0d8a8",
+      "archive_sha256": "96d4bc7901504403c4642e51a9cde0cd107ff4041002a0d1501d5d4bf1ddef1a",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 22,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 28,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Captcha/MvcCaptchaImage.cs",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Captcha/MvcCaptchaImage.cs",
+      "source_sha256": "1eb0494ef0951c3e013fe3f786e90aa94140713faea62048b12fff6333360003",
+      "archive_sha256": "9797e50f0d9c54d85e21d9f07c628e47f5fab6f5dd8f56b2d66f17f483a80f1c",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 86,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Captcha/MvcCaptchaOptions.cs",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Captcha/MvcCaptchaOptions.cs",
+      "source_sha256": "218a0552e5cec50dba3a3ab1a5c237ea5144de57aee359a4c9ed2bbbee6e0c08",
+      "archive_sha256": "5adecbee45b43ad35e6849d2235c5f131c9a41b134c0ee629b5759e401c5293f",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 31,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/WMS/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/WMS/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/VipAccount/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/VipAccount/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/TP/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/TP/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/TP/Views/VipTask/Create.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/TP/Views/VipTask/Create.cshtml",
+      "source_sha256": "2ba4a9ef078ad2ef5c3e821a856db9cd3764e39db668fa186333817dd1dbf30c",
+      "archive_sha256": "53d9e5587e46ffc8b761e4541bdd621c209477e152b4d15b31e2cf9f3143999d",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 119,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/TP/Views/Task/Create.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/TP/Views/Task/Create.cshtml",
+      "source_sha256": "2ba4a9ef078ad2ef5c3e821a856db9cd3764e39db668fa186333817dd1dbf30c",
+      "archive_sha256": "53d9e5587e46ffc8b761e4541bdd621c209477e152b4d15b31e2cf9f3143999d",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 119,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/System/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/System/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/RPT/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/RPT/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Legal/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Legal/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Legal/Views/Shared/_Layout.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Shared/_Layout.cshtml",
+      "source_sha256": "f324a4dbdd7ee5e54d2c55ccdf690580e9114b455272720ac66603c0fe342464",
+      "archive_sha256": "a7794b26217d90640a8b8fc486227e5ca4db281d38af45f2b01becef75ba3771",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 156,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Legal/Views/Case/CaseInfo.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/CaseInfo.cshtml",
+      "source_sha256": "f96f86fd8d688cc6bc488024d41cc1fe9252194900bd7056ee7a7c6e895897c5",
+      "archive_sha256": "c5f5b4a57c3d012a30bbc4aa5123c26a82e88ea6f08c52b67ca367aa65b0ddc4",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 639,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_Basic_Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_Basic_Edit.cshtml",
+      "source_sha256": "d79b77e8d03beb424802cb9cb6d8469ec4e959636cab1a6cc6e8e67206fd1525",
+      "archive_sha256": "9f4dacca2a4422e6ac3873168d1790513739c7997d973f355a63da2b2d823070",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 182,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 215,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 295,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_Create.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_Create.cshtml",
+      "source_sha256": "8403a0ec2183a4dd73680140d21dc623e5b91dd6b29749283c878e0e2ce39078",
+      "archive_sha256": "cbfffa33dd15928825f8a05dfa0af506997a365626185ef3e561cf4e26a1f548",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 213,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/ConsultantCase/ConsultantCase_Basic_Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/ConsultantCase/ConsultantCase_Basic_Edit.cshtml",
+      "source_sha256": "cb998ca4d98dd324eab2535237ed639ecec012cfe40dddb680e490442bcbc915",
+      "archive_sha256": "d8a63760508e6d0d8ca847cc36f71ab03e97e380523cee47b9bc172e7530fda8",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 213,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 246,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 326,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Basic_Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Basic_Edit.cshtml",
+      "source_sha256": "5f3a445a3285b990567e90c17f6b059df05d3f49260ce543ba1441f02d6f61eb",
+      "archive_sha256": "daef8f84f6557e8470fc622bda1cd6e017979df3263d3d2633994c97f6eaf6d5",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 185,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 225,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 264,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 349,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CourtLawyer_Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CourtLawyer_Edit.cshtml",
+      "source_sha256": "4d805595fae025d36e1236ec28c74ae2d719d2387208358ea5de3d31df9c96ac",
+      "archive_sha256": "531a74c13f57cede0aab36befbb20734d27165de5579ea6c73f27ebd6c3a6ec8",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 64,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Create.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Create.cshtml",
+      "source_sha256": "19d258cfa2e4673ab51f98d3defa8cc972e593266694869d4613d50909cba13b",
+      "archive_sha256": "203acde3491abc824b9e3ce06ac477ed48a779330def383b33276779cfba66fb",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 216,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CustomerAddIn_Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CustomerAddIn_Edit.cshtml",
+      "source_sha256": "215b89c749fe24e0f200bd40100e5c6af7850a5e0957b4b6eb5f0c93261b8011",
+      "archive_sha256": "61aacc2fa952726149be10a0890b5257a2f86953aebae77dab0de98130caabcd",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 184,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 217,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 297,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_Basic_Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_Basic_Edit.cshtml",
+      "source_sha256": "9da2c466bd070c4dc4e4981bd6c497b7051aaf2b896ee1c3565d7f492d74d783",
+      "archive_sha256": "016b8f675d3ec3f92fb8667ea60aaef6e1df6b7aa073c4290c9343a9e1aa549f",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 185,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 218,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 298,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_Create.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_Create.cshtml",
+      "source_sha256": "4f3fe59b683df88aa1db09c207277a03bc521c107141a40db6ac41226c405adf",
+      "archive_sha256": "53e525a24fc2de1d623ccaac4c56992e4d769835e370adcabd2948d7e199e2bb",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 213,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_Basic_Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_Basic_Edit.cshtml",
+      "source_sha256": "631df44341cbfc4c9c0731589bc035a96ac535a0b7551a7e72ba30d5ff0cd4c9",
+      "archive_sha256": "0d3c3fd2106d75757b0fe53b930e1fe4f546bc0fc52ac3b918976659df33379c",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 182,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 215,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 295,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_Create.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_Create.cshtml",
+      "source_sha256": "116b48272bb8519c91c944062a5e82b83c7c71fa99021d9861389b4d633860fa",
+      "archive_sha256": "d32d7d3005803cbdd7ad12ef973d30ee9852c4bac76f10ac864cdf07b1c3209b",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 213,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Legal/Views/Case/CivilDispute/PartialView/ClueGenerateCase.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/CivilDispute/PartialView/ClueGenerateCase.cshtml",
+      "source_sha256": "6130e4627680590b438e606d578f72a3f87ab7439bc6a2ede2ca096cf8dcfa7c",
+      "archive_sha256": "24d0530f7ac540fda29c59ad7de65b7c7cd43474e91e8171dcb7f238fb0165d0",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 311,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Legal/Views/Case/CivilDispute/PartialView/ClueToCase.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/CivilDispute/PartialView/ClueToCase.cshtml",
+      "source_sha256": "8782afaf95af3be9fc08da45cdd58c17c2f4164ea0ad8d9ce6edb7a5a470d1ef",
+      "archive_sha256": "3edadd3fac683b311ee36e07c142bb1e1cd809fbbcaf3000d5d6588639461014",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 258,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 308,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Legal/Views/Case/CivilDispute/PartialView/Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/CivilDispute/PartialView/Edit.cshtml",
+      "source_sha256": "2141b51dbf09d436c02f2f3e6d644dcaaa06421c5323e003df2048fe66aa0057",
+      "archive_sha256": "bfe23db23af95255d398e1594cd8a963a64d3c86ffde13f84b6ad5a1962d88b4",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 150,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 183,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 242,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Legal/Controllers/CaseFileController.cs",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Legal/Controllers/CaseFileController.cs",
+      "source_sha256": "67dcd4e8d9ac0061ee6c9993d62b4c87a3e682096a91bf0887d0955c608aa0c4",
+      "archive_sha256": "49101af2a7d74f8498edc758558d01b07e8ac1656179b8fd7527fdc391e248b1",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 731,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Lawsuit/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Lawsuit/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Lawsuit/Views/CaseBase/UserList.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Lawsuit/Views/CaseBase/UserList.cshtml",
+      "source_sha256": "6e7b0a43192be2d285de120cb59bc159663d40758761155c5e09b42b03afa6eb",
+      "archive_sha256": "00ca41778ba270dcdcc0cb9573297a67ad16f7caf17e17e1fe96c7e591a77f8d",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 23,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/IPR/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/IPR/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/IPR/Views/Case/CaseInfo.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/IPR/Views/Case/CaseInfo.cshtml",
+      "source_sha256": "37633000c66070f4942f7982520ed0a4384f046449d15356109416fb5fd8af69",
+      "archive_sha256": "61b689cbbec5f385ba8d49a92cb11ef9c911666cb0272fca899f4842fc626a59",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 815,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/IPR/Views/Case/Create.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/IPR/Views/Case/Create.cshtml",
+      "source_sha256": "72aa98c42f694728a18e18bf3b34eb77b5bd7e041e484500305ce5038a5bddc1",
+      "archive_sha256": "d921f686e87c42e8869b3f12f529b433473d8e06b44da4a65410379fa5569ac4",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 482,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/IPR/Views/Case/PartialView/CaseSearchResultList.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/IPR/Views/Case/PartialView/CaseSearchResultList.cshtml",
+      "source_sha256": "544d667636f80acbf7988c930391f1b738ff3f2aef0ff9c5f555647a38926857",
+      "archive_sha256": "8e05d4dfdc62442ea28492661930e3e2619e910f85753f5b2a70779143e23c37",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 75,
+          "rules": [
+            "email"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/IPR/Lawsuit/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/IPR/Lawsuit/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/IPR/Lawsuit/Views/CaseBase/UserList.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/IPR/Lawsuit/Views/CaseBase/UserList.cshtml",
+      "source_sha256": "6e7b0a43192be2d285de120cb59bc159663d40758761155c5e09b42b03afa6eb",
+      "archive_sha256": "00ca41778ba270dcdcc0cb9573297a67ad16f7caf17e17e1fe96c7e591a77f8d",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 23,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/HR/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/HR/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/HR/Views/Staff/Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/HR/Views/Staff/Edit.cshtml",
+      "source_sha256": "00e713cff7190a4bf2c341f3b33225c61f2336e5b801dd655ba2193120b4af82",
+      "archive_sha256": "7aaf1815e12bff14fc6f272eb8434d38d792e73150968dcf015cbb7371c576a9",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 42,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/FSC/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/FSC/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/FIO/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/FIO/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/FCM/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/FCM/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/FAM/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/FAM/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/FAM/Views/JAR/MenuList.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/FAM/Views/JAR/MenuList.cshtml",
+      "source_sha256": "829a60dd64a591707708b312c9e03df65d198a3bc9e450efb702a7032f468b49",
+      "archive_sha256": "4f6974afb63a996721ceb4e8322d21e8f88d9c00fbe8f4a59971bfaf228392b1",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 55,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 69,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/FAM/Views/InternalFee/Payment/MenuList.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/FAM/Views/InternalFee/Payment/MenuList.cshtml",
+      "source_sha256": "02bdddded4dc2e776a571b632b7656e7579057c7a04a48aeb4b08cf76f13e4eb",
+      "archive_sha256": "1f582553eb9d1986b4a1f813c93d4846bfe1486b2ab758d213c8e1bf8fcf3bb9",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 66,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 92,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/FAM/Views/AP/Payment/MenuList.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/FAM/Views/AP/Payment/MenuList.cshtml",
+      "source_sha256": "02bdddded4dc2e776a571b632b7656e7579057c7a04a48aeb4b08cf76f13e4eb",
+      "archive_sha256": "1f582553eb9d1986b4a1f813c93d4846bfe1486b2ab758d213c8e1bf8fcf3bb9",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 66,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 92,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/CRM/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/CRM/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/CRM/Views/Customer/CreateUpdate.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/CRM/Views/Customer/CreateUpdate.cshtml",
+      "source_sha256": "0d7a157436c54b4d46958aaec6ed4142d9bcd84e2ca1e3d3d5cecec6c43ab131",
+      "archive_sha256": "4fb6ade886be0ac034b319c7b3e2ed639668996f19efebdac80a69f5e44ffbe2",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 357,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/CRM/Views/Customer/View.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/CRM/Views/Customer/View.cshtml",
+      "source_sha256": "6b50b5f1f43bd4b6ca72142114baa06ca7de3105e2dfcf49675929eb92264cfc",
+      "archive_sha256": "156cbc4895482c5606a9dabd3f403614b85dab6f15c4db8036b4c7fcf666504e",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 355,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Console/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Console/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/CIT/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/CIT/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/CIT/Views/InvestigationTask/PartialView/Edit.cshtml",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/CIT/Views/InvestigationTask/PartialView/Edit.cshtml",
+      "source_sha256": "6ad20d3ecbfbe69088a4368f459892332d9874460d3153355b439951071757d3",
+      "archive_sha256": "7f3e4d631e30a9d1a86e936e21ff664be24cd9b655fadea22fbad542b35415ed",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 46,
+          "rules": [
+            "sensitive_literal"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/BAS/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/BAS/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/AWS/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/AWS/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Account/Views/Web.config",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Account/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "gd-vip",
+      "source_relative_path": "Areas/Account/Controllers/UserCenterController.cs",
+      "archive_relative_path": "original/GD.CRM.WEB.VIP/Areas/Account/Controllers/UserCenterController.cs",
+      "source_sha256": "1857e5e0f82a4df9e2d737a2b61db53a26d453d432c95fdb4937b2316d25ed8d",
+      "archive_sha256": "e5278c94a437f33a122b5c2b0e91274e93bee581cd64a924b9e090cf0b821a48",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 32,
+          "rules": [
+            "embedded_connection_secret"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "sh-source",
+      "source_relative_path": "SH.CRM.WEB/Web.config",
+      "archive_relative_path": "fragments/SH/source/SH.CRM.WEB/Web.config.example",
+      "source_sha256": "978bf8d53ba5f4f0b6668f437f84daccbd95e363ce58104f5619cce4ed84a0bf",
+      "archive_sha256": "2214988acc3bf39e319821487f63e825ebf2759c57c092172a4e9ccb9ded7b58",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 110,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "sh-source",
+      "source_relative_path": "SH.CRM.WEB/Account/Controllers/UserCenterController.cs",
+      "archive_relative_path": "fragments/SH/source/SH.CRM.WEB/Account/Controllers/UserCenterController.cs",
+      "source_sha256": "e59481aee6a8a5f99e23287030cc7c19d7674df8c5286c1b31b276391bc2e0b2",
+      "archive_sha256": "1d0dc786d5ad8c16adc6ca6985bde9b63f29b53c38eb6b3f0af3c206db48b7e8",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 32,
+          "rules": [
+            "embedded_connection_secret"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "sh-source-final",
+      "source_relative_path": "SH.CRM.WEB/Web.config",
+      "archive_relative_path": "fragments/SH/source-final/SH.CRM.WEB/Web.config.example",
+      "source_sha256": "978bf8d53ba5f4f0b6668f437f84daccbd95e363ce58104f5619cce4ed84a0bf",
+      "archive_sha256": "2214988acc3bf39e319821487f63e825ebf2759c57c092172a4e9ccb9ded7b58",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 110,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "sh-source-final",
+      "source_relative_path": "SH.CRM.WEB/Views/Web.config",
+      "archive_relative_path": "fragments/SH/source-final/SH.CRM.WEB/Views/Web.config.example",
+      "source_sha256": "56db92afb54dd38ceeb6260b8fd87847881f1925b084c107d48287191f073f8e",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "sh-source-final",
+      "source_relative_path": "SH.CRM.WEB/Views/Home/Index.cshtml",
+      "archive_relative_path": "fragments/SH/source-final/SH.CRM.WEB/Views/Home/Index.cshtml",
+      "source_sha256": "e8e05cd63e07b1d0fd6d7b7aab8212a3ff37cf91db5fcea43e9c2e12f023db74",
+      "archive_sha256": "3061e3cc01c7e2368550751bce8638fcc581dbf6a5dbe6f672ecdd16ec2162ef",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 107,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 107,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 128,
+          "rules": [
+            "phone"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "sh-source-final",
+      "source_relative_path": "SH.CRM.WEB/Views/Home/Login.cshtml",
+      "archive_relative_path": "fragments/SH/source-final/SH.CRM.WEB/Views/Home/Login.cshtml",
+      "source_sha256": "3566148304fa53fc89c4ae7ae921338dda0919f24514e80e0c52beebe5d65772",
+      "archive_sha256": "4c1bd9e5a209c5ff85ab18c674689fd9db14beb8afce9a700c9c04850bd52255",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 95,
+          "rules": [
+            "sensitive_literal"
+          ]
+        },
+        {
+          "source_line": 95,
+          "rules": [
+            "high_entropy_literal"
+          ]
+        },
+        {
+          "source_line": 133,
+          "rules": [
+            "phone"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "sh-source-v2",
+      "source_relative_path": "SH.CRM.WEB/Web.config",
+      "archive_relative_path": "fragments/SH/source-v2/SH.CRM.WEB/Web.config.example",
+      "source_sha256": "978bf8d53ba5f4f0b6668f437f84daccbd95e363ce58104f5619cce4ed84a0bf",
+      "archive_sha256": "2214988acc3bf39e319821487f63e825ebf2759c57c092172a4e9ccb9ded7b58",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 110,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "sh-source-v2",
+      "source_relative_path": "SH.CRM.WEB/Areas/Account/Views/Web.config",
+      "archive_relative_path": "fragments/SH/source-v2/SH.CRM.WEB/Areas/Account/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "sh-source-v2",
+      "source_relative_path": "SH.CRM.WEB/Areas/Account/Controllers/UserCenterController.cs",
+      "archive_relative_path": "fragments/SH/source-v2/SH.CRM.WEB/Areas/Account/Controllers/UserCenterController.cs",
+      "source_sha256": "e59481aee6a8a5f99e23287030cc7c19d7674df8c5286c1b31b276391bc2e0b2",
+      "archive_sha256": "1d0dc786d5ad8c16adc6ca6985bde9b63f29b53c38eb6b3f0af3c206db48b7e8",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 32,
+          "rules": [
+            "embedded_connection_secret"
+          ]
+        }
+      ]
+    },
+    {
+      "source_id": "sh-source-v3",
+      "source_relative_path": "SH.CRM.WEB/Web.config",
+      "archive_relative_path": "fragments/SH/source-v3/SH.CRM.WEB/Web.config.example",
+      "source_sha256": "978bf8d53ba5f4f0b6668f437f84daccbd95e363ce58104f5619cce4ed84a0bf",
+      "archive_sha256": "2214988acc3bf39e319821487f63e825ebf2759c57c092172a4e9ccb9ded7b58",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 110,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "sh-source-v3",
+      "source_relative_path": "SH.CRM.WEB/Areas/AWS/Views/Web.config",
+      "archive_relative_path": "fragments/SH/source-v3/SH.CRM.WEB/Areas/AWS/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "sh-source-v3",
+      "source_relative_path": "SH.CRM.WEB/Areas/Account/Views/Web.config",
+      "archive_relative_path": "fragments/SH/source-v3/SH.CRM.WEB/Areas/Account/Views/Web.config.example",
+      "source_sha256": "318ec3847c0452046b8792fcb667a2110aa17a6321bc80f96144d77dd78362c0",
+      "archive_sha256": "8665c28c2c8bdd0ab05ba07202796d97f45ce36d8d872d74148be38f0787a4f9",
+      "sanitization": {
+        "mode": "xml_structure_only_template",
+        "attributes_replaced": 29,
+        "text_nodes_replaced": 0,
+        "comments_removed": true
+      },
+      "redactions": []
+    },
+    {
+      "source_id": "sh-source-v3",
+      "source_relative_path": "SH.CRM.WEB/Areas/Account/Controllers/UserCenterController.cs",
+      "archive_relative_path": "fragments/SH/source-v3/SH.CRM.WEB/Areas/Account/Controllers/UserCenterController.cs",
+      "source_sha256": "e59481aee6a8a5f99e23287030cc7c19d7674df8c5286c1b31b276391bc2e0b2",
+      "archive_sha256": "1d0dc786d5ad8c16adc6ca6985bde9b63f29b53c38eb6b3f0af3c206db48b7e8",
+      "sanitization": {
+        "decompilation_marker_detected": false
+      },
+      "redactions": [
+        {
+          "source_line": 32,
+          "rules": [
+            "embedded_connection_secret"
+          ]
+        }
+      ]
+    }
+  ],
+  "excluded_business_file_names_or_values": "not_recorded",
+  "redacted_locations": [
+    {
+      "path": "original/GD.CRM.WEB/Views/Home/Index.cshtml",
+      "source_line": 110,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Views/Home/Index.cshtml",
+      "source_line": 110,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Views/Home/Index.cshtml",
+      "source_line": 131,
+      "rules": [
+        "phone"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Views/Home/Login.cshtml",
+      "source_line": 95,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Views/Home/Login.cshtml",
+      "source_line": 95,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Views/Home/Login.cshtml",
+      "source_line": 133,
+      "rules": [
+        "phone"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/System/SystemManagement/User.js",
+      "source_line": 11,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/HR/Staff/HR.Staff.js",
+      "source_line": 200,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/Home/Login.js",
+      "source_line": 24,
+      "rules": [
+        "embedded_connection_secret"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FCM/Contract/api.test.js",
+      "source_line": 44,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FCM/Contract/api.test.js",
+      "source_line": 52,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FCM/Contract/api.test.js",
+      "source_line": 52,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FCM/Contract/api.test.js",
+      "source_line": 53,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FCM/Contract/api.test.js",
+      "source_line": 54,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FCM/Contract/api.test.js",
+      "source_line": 58,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FCM/Contract/api.test.js",
+      "source_line": 85,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FCM/Contract/api.test.js",
+      "source_line": 90,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FCM/Contract/api.test.js",
+      "source_line": 110,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FCM/Contract/api.test.js",
+      "source_line": 123,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FCM/Contract/FCM.Contract.js",
+      "source_line": 835,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FAM/Invoice/FAM.Invoice.js",
+      "source_line": 435,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FAM/Invoice/FAM.Invoice.js",
+      "source_line": 438,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FAM/Invoice/FAM.Invoice.js",
+      "source_line": 466,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FAM/Invoice/FAM.Invoice.js",
+      "source_line": 469,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FAM/Invoice/FAM.Invoice.js",
+      "source_line": 499,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FAM/Invoice/FAM.Invoice.js",
+      "source_line": 502,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FAM/Invoice/FAM.Invoice.js",
+      "source_line": 558,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FAM/Invoice/FAM.Invoice.js",
+      "source_line": 623,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FAM/InternalFee/Payment/FAM.InternalFee.Payment.js",
+      "source_line": 211,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FAM/InternalFee/Payment/FAM.InternalFee.Payment.js",
+      "source_line": 242,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/FAM/AP/FAM.AP.Payment.js",
+      "source_line": 250,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/CRM/Customer/CRM.Customer.js",
+      "source_line": 431,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/CIT/Investigation/CIT.Investigation.js",
+      "source_line": 2101,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/AWS/OfficialDocument/AWS.OfficialDocument.js",
+      "source_line": 305,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Scripts/AWS/OfficialDocument/AWS.OfficialDocument.js",
+      "source_line": 510,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Resource/css/console.css",
+      "source_line": 1837,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Resource/css/console.css",
+      "source_line": 1838,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Resource/css/console.css",
+      "source_line": 1839,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Resource/css/console.css",
+      "source_line": 1840,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Resource/css/console.css",
+      "source_line": 1855,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Resource/css/console.css",
+      "source_line": 1856,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Resource/css/console.css",
+      "source_line": 1857,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Resource/css/console.css",
+      "source_line": 1858,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Resource/css/console.css",
+      "source_line": 1872,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Resource/css/console.css",
+      "source_line": 1873,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Resource/css/console.css",
+      "source_line": 1874,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Resource/css/console.css",
+      "source_line": 1875,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Resource/css/console.css",
+      "source_line": 5654,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Resource/css/console.css",
+      "source_line": 5655,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Resource/css/console.css",
+      "source_line": 5656,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Resource/css/console.css",
+      "source_line": 5657,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Helpers/CaptchaImage.cs",
+      "source_line": 201,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Controllers/AccountController.cs",
+      "source_line": 314,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Controllers/HomeController.cs",
+      "source_line": 90,
+      "rules": [
+        "embedded_connection_secret"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Controllers/HomeController.cs",
+      "source_line": 96,
+      "rules": [
+        "embedded_connection_secret"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Captcha/MvcCaptchaConfigSection.cs",
+      "source_line": 22,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Captcha/MvcCaptchaConfigSection.cs",
+      "source_line": 28,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Captcha/MvcCaptchaImage.cs",
+      "source_line": 86,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Captcha/MvcCaptchaOptions.cs",
+      "source_line": 31,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/TP/Views/VipTask/Create.cshtml",
+      "source_line": 119,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/TP/Views/Task/Create.cshtml",
+      "source_line": 119,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/RPT/Views/Report/LargeScreen.cshtml",
+      "source_line": 35,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/RPT/Views/Report/LargeScreen.cshtml",
+      "source_line": 39,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/RPT/Views/Report/LargeScreen.cshtml",
+      "source_line": 43,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/RPT/Views/Report/LargeScreen.cshtml",
+      "source_line": 47,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/RPT/Views/Report/LargeScreen.cshtml",
+      "source_line": 73,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Shared/_Layout.cshtml",
+      "source_line": 160,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/CaseInfo.cshtml",
+      "source_line": 639,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_Basic_Edit.cshtml",
+      "source_line": 182,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_Basic_Edit.cshtml",
+      "source_line": 215,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_Basic_Edit.cshtml",
+      "source_line": 295,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_CourtLawyer_Edit.cshtml",
+      "source_line": 64,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_Create.cshtml",
+      "source_line": 215,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_Create.cshtml",
+      "source_line": 240,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/ConsultantCase/ConsultantCase_Basic_Edit.cshtml",
+      "source_line": 213,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/ConsultantCase/ConsultantCase_Basic_Edit.cshtml",
+      "source_line": 246,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/ConsultantCase/ConsultantCase_Basic_Edit.cshtml",
+      "source_line": 326,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/ConsultantCase/ConsultantCase_CourtLawyer_Edit.cshtml",
+      "source_line": 64,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/ConsultantCase/ConsultantCase_Create.cshtml",
+      "source_line": 244,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/ConsultantCase/ConsultantCase_Create.cshtml",
+      "source_line": 269,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Basic_Edit.cshtml",
+      "source_line": 186,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Basic_Edit.cshtml",
+      "source_line": 229,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Basic_Edit.cshtml",
+      "source_line": 268,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Basic_Edit.cshtml",
+      "source_line": 353,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CaseLawyer_Edit.cshtml",
+      "source_line": 63,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CaseLawyer_Edit.cshtml",
+      "source_line": 103,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CaseLawyer_Edit.cshtml",
+      "source_line": 137,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CourtLawyer_Edit.cshtml",
+      "source_line": 64,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Create.cshtml",
+      "source_line": 217,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Create.cshtml",
+      "source_line": 224,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CustomerAddIn_Edit.cshtml",
+      "source_line": 184,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CustomerAddIn_Edit.cshtml",
+      "source_line": 217,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CustomerAddIn_Edit.cshtml",
+      "source_line": 297,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_Basic_Edit.cshtml",
+      "source_line": 185,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_Basic_Edit.cshtml",
+      "source_line": 218,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_Basic_Edit.cshtml",
+      "source_line": 298,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_CourtLawyer_Edit.cshtml",
+      "source_line": 64,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_Create.cshtml",
+      "source_line": 214,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_Create.cshtml",
+      "source_line": 239,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_Basic_Edit.cshtml",
+      "source_line": 182,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_Basic_Edit.cshtml",
+      "source_line": 215,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_Basic_Edit.cshtml",
+      "source_line": 295,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_CourtLawyer_Edit.cshtml",
+      "source_line": 64,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_Create.cshtml",
+      "source_line": 214,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_Create.cshtml",
+      "source_line": 239,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/CivilDispute/PartialView/ClueGenerateCase.cshtml",
+      "source_line": 312,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/CivilDispute/PartialView/ClueToCase.cshtml",
+      "source_line": 257,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/CivilDispute/PartialView/ClueToCase.cshtml",
+      "source_line": 307,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/CivilDispute/PartialView/Edit.cshtml",
+      "source_line": 150,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/CivilDispute/PartialView/Edit.cshtml",
+      "source_line": 183,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Views/Case/CivilDispute/PartialView/Edit.cshtml",
+      "source_line": 242,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Controllers/CaseFileController.cs",
+      "source_line": 739,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Controllers/CaseFileController.cs",
+      "source_line": 816,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Controllers/CaseFileController.cs",
+      "source_line": 910,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Legal/Controllers/CaseFileController.cs",
+      "source_line": 987,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Lawsuit/Views/CaseBase/UserList.cshtml",
+      "source_line": 23,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/IPR/Views/Case/CaseInfo.cshtml",
+      "source_line": 815,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/IPR/Views/Case/Create.cshtml",
+      "source_line": 482,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/IPR/Views/Case/PartialView/CaseSearchResultList.cshtml",
+      "source_line": 75,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/IPR/Lawsuit/Views/CaseBase/UserList.cshtml",
+      "source_line": 23,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/HR/Views/Staff/Edit.cshtml",
+      "source_line": 42,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/FAS/Views/Invoice/Create.cshtml",
+      "source_line": 257,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/FAM/Views/JAR/MenuList.cshtml",
+      "source_line": 55,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/FAM/Views/JAR/MenuList.cshtml",
+      "source_line": 69,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/FAM/Views/InternalFee/Payment/MenuList.cshtml",
+      "source_line": 66,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/FAM/Views/InternalFee/Payment/MenuList.cshtml",
+      "source_line": 92,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/FAM/Views/AR.JS/MenuList.cshtml",
+      "source_line": 80,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/FAM/Views/AR.JS/MenuList.cshtml",
+      "source_line": 96,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/FAM/Views/AP/Payment/MenuList.cshtml",
+      "source_line": 66,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/FAM/Views/AP/Payment/MenuList.cshtml",
+      "source_line": 92,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/CRM/Views/Customer/CreateUpdate.cshtml",
+      "source_line": 362,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/CRM/Views/Customer/CreateUpdate.cshtml",
+      "source_line": 404,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/CRM/Views/Customer/View.cshtml",
+      "source_line": 355,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/CIT/Views/InvestigationTask/PartialView/Edit.cshtml",
+      "source_line": 46,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB/Areas/Account/Controllers/UserCenterController.cs",
+      "source_line": 32,
+      "rules": [
+        "embedded_connection_secret"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/System/SystemManagement/User.js",
+      "source_line": 11,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/HR/Staff/HR.Staff.js",
+      "source_line": 182,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/Home/Login.js",
+      "source_line": 24,
+      "rules": [
+        "embedded_connection_secret"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/FCM/Contract/api.test.js",
+      "source_line": 44,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/FCM/Contract/api.test.js",
+      "source_line": 52,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/FCM/Contract/api.test.js",
+      "source_line": 52,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/FCM/Contract/api.test.js",
+      "source_line": 53,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/FCM/Contract/api.test.js",
+      "source_line": 54,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/FCM/Contract/api.test.js",
+      "source_line": 58,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/FCM/Contract/api.test.js",
+      "source_line": 85,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/FCM/Contract/api.test.js",
+      "source_line": 90,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/FCM/Contract/api.test.js",
+      "source_line": 110,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/FCM/Contract/api.test.js",
+      "source_line": 123,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/FCM/Contract/FCM.Contract.js",
+      "source_line": 739,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/FCM/Contract/FCM.Contract.js",
+      "source_line": 1820,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/FAM/Invoice/FAM.Invoice.js",
+      "source_line": 428,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/FAM/Invoice/FAM.Invoice.js",
+      "source_line": 459,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/FAM/Invoice/FAM.Invoice.js",
+      "source_line": 490,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/FAM/Invoice/FAM.Invoice.js",
+      "source_line": 545,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/FAM/Invoice/FAM.Invoice.js",
+      "source_line": 610,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/FAM/InternalFee/Payment/FAM.InternalFee.Payment.js",
+      "source_line": 210,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/FAM/InternalFee/Payment/FAM.InternalFee.Payment.js",
+      "source_line": 241,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/FAM/AP/FAM.AP.Payment.js",
+      "source_line": 182,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/CIT/Investigation/CIT.Investigation.js",
+      "source_line": 1952,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Scripts/AWS/OfficialDocument/AWS.OfficialDocument.js",
+      "source_line": 545,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Resource/css/console.css",
+      "source_line": 1829,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Resource/css/console.css",
+      "source_line": 1830,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Resource/css/console.css",
+      "source_line": 1831,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Resource/css/console.css",
+      "source_line": 1832,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Resource/css/console.css",
+      "source_line": 1847,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Resource/css/console.css",
+      "source_line": 1848,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Resource/css/console.css",
+      "source_line": 1849,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Resource/css/console.css",
+      "source_line": 1850,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Resource/css/console.css",
+      "source_line": 1864,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Resource/css/console.css",
+      "source_line": 1865,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Resource/css/console.css",
+      "source_line": 1866,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Resource/css/console.css",
+      "source_line": 1867,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Resource/css/console.css",
+      "source_line": 5646,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Resource/css/console.css",
+      "source_line": 5647,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Resource/css/console.css",
+      "source_line": 5648,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Resource/css/console.css",
+      "source_line": 5649,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Helpers/CaptchaImage.cs",
+      "source_line": 201,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Controllers/AccountController.cs",
+      "source_line": 314,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Controllers/HomeController.cs",
+      "source_line": 90,
+      "rules": [
+        "embedded_connection_secret"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Controllers/HomeController.cs",
+      "source_line": 96,
+      "rules": [
+        "embedded_connection_secret"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Captcha/MvcCaptchaConfigSection.cs",
+      "source_line": 22,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Captcha/MvcCaptchaConfigSection.cs",
+      "source_line": 28,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Captcha/MvcCaptchaImage.cs",
+      "source_line": 86,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Captcha/MvcCaptchaOptions.cs",
+      "source_line": 31,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/TP/Views/VipTask/Create.cshtml",
+      "source_line": 119,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/TP/Views/Task/Create.cshtml",
+      "source_line": 119,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Shared/_Layout.cshtml",
+      "source_line": 156,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/CaseInfo.cshtml",
+      "source_line": 639,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_Basic_Edit.cshtml",
+      "source_line": 182,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_Basic_Edit.cshtml",
+      "source_line": 215,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_Basic_Edit.cshtml",
+      "source_line": 295,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_Create.cshtml",
+      "source_line": 213,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/ConsultantCase/ConsultantCase_Basic_Edit.cshtml",
+      "source_line": 213,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/ConsultantCase/ConsultantCase_Basic_Edit.cshtml",
+      "source_line": 246,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/ConsultantCase/ConsultantCase_Basic_Edit.cshtml",
+      "source_line": 326,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Basic_Edit.cshtml",
+      "source_line": 185,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Basic_Edit.cshtml",
+      "source_line": 225,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Basic_Edit.cshtml",
+      "source_line": 264,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Basic_Edit.cshtml",
+      "source_line": 349,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CourtLawyer_Edit.cshtml",
+      "source_line": 64,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_Create.cshtml",
+      "source_line": 216,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CustomerAddIn_Edit.cshtml",
+      "source_line": 184,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CustomerAddIn_Edit.cshtml",
+      "source_line": 217,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_CustomerAddIn_Edit.cshtml",
+      "source_line": 297,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_Basic_Edit.cshtml",
+      "source_line": 185,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_Basic_Edit.cshtml",
+      "source_line": 218,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_Basic_Edit.cshtml",
+      "source_line": 298,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_Create.cshtml",
+      "source_line": 213,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_Basic_Edit.cshtml",
+      "source_line": 182,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_Basic_Edit.cshtml",
+      "source_line": 215,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_Basic_Edit.cshtml",
+      "source_line": 295,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_Create.cshtml",
+      "source_line": 213,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/CivilDispute/PartialView/ClueGenerateCase.cshtml",
+      "source_line": 311,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/CivilDispute/PartialView/ClueToCase.cshtml",
+      "source_line": 258,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/CivilDispute/PartialView/ClueToCase.cshtml",
+      "source_line": 308,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/CivilDispute/PartialView/Edit.cshtml",
+      "source_line": 150,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/CivilDispute/PartialView/Edit.cshtml",
+      "source_line": 183,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Views/Case/CivilDispute/PartialView/Edit.cshtml",
+      "source_line": 242,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Legal/Controllers/CaseFileController.cs",
+      "source_line": 731,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Lawsuit/Views/CaseBase/UserList.cshtml",
+      "source_line": 23,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/IPR/Views/Case/CaseInfo.cshtml",
+      "source_line": 815,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/IPR/Views/Case/Create.cshtml",
+      "source_line": 482,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/IPR/Views/Case/PartialView/CaseSearchResultList.cshtml",
+      "source_line": 75,
+      "rules": [
+        "email"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/IPR/Lawsuit/Views/CaseBase/UserList.cshtml",
+      "source_line": 23,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/HR/Views/Staff/Edit.cshtml",
+      "source_line": 42,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/FAM/Views/JAR/MenuList.cshtml",
+      "source_line": 55,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/FAM/Views/JAR/MenuList.cshtml",
+      "source_line": 69,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/FAM/Views/InternalFee/Payment/MenuList.cshtml",
+      "source_line": 66,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/FAM/Views/InternalFee/Payment/MenuList.cshtml",
+      "source_line": 92,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/FAM/Views/AP/Payment/MenuList.cshtml",
+      "source_line": 66,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/FAM/Views/AP/Payment/MenuList.cshtml",
+      "source_line": 92,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/CRM/Views/Customer/CreateUpdate.cshtml",
+      "source_line": 357,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/CRM/Views/Customer/View.cshtml",
+      "source_line": 355,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/CIT/Views/InvestigationTask/PartialView/Edit.cshtml",
+      "source_line": 46,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "original/GD.CRM.WEB.VIP/Areas/Account/Controllers/UserCenterController.cs",
+      "source_line": 32,
+      "rules": [
+        "embedded_connection_secret"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "fragments/SH/source/SH.CRM.WEB/Account/Controllers/UserCenterController.cs",
+      "source_line": 32,
+      "rules": [
+        "embedded_connection_secret"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "fragments/SH/source-final/SH.CRM.WEB/Views/Home/Index.cshtml",
+      "source_line": 107,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "fragments/SH/source-final/SH.CRM.WEB/Views/Home/Index.cshtml",
+      "source_line": 107,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "fragments/SH/source-final/SH.CRM.WEB/Views/Home/Index.cshtml",
+      "source_line": 128,
+      "rules": [
+        "phone"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "fragments/SH/source-final/SH.CRM.WEB/Views/Home/Login.cshtml",
+      "source_line": 95,
+      "rules": [
+        "sensitive_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "fragments/SH/source-final/SH.CRM.WEB/Views/Home/Login.cshtml",
+      "source_line": 95,
+      "rules": [
+        "high_entropy_literal"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "fragments/SH/source-final/SH.CRM.WEB/Views/Home/Login.cshtml",
+      "source_line": 133,
+      "rules": [
+        "phone"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "fragments/SH/source-v2/SH.CRM.WEB/Areas/Account/Controllers/UserCenterController.cs",
+      "source_line": 32,
+      "rules": [
+        "embedded_connection_secret"
+      ],
+      "status": "redacted_in_archive_copy"
+    },
+    {
+      "path": "fragments/SH/source-v3/SH.CRM.WEB/Areas/Account/Controllers/UserCenterController.cs",
+      "source_line": 32,
+      "rules": [
+        "embedded_connection_secret"
+      ],
+      "status": "redacted_in_archive_copy"
+    }
+  ],
+  "unresolved_locations": [],
+  "additional_exclusions": {
+    "bak_source_backup": 62,
+    "excluded_file_names_or_contents": "not_recorded"
+  }
+}

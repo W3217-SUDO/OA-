@@ -1,0 +1,319 @@
+﻿@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Entity.Legal.Case
+@using Dchien.Legal.Service.HR.Staff
+@using Dchien.Legal.Service.BAS.Court
+@using Dchien.Legal.Entity.BAS.Type
+@using Dchien.Legal.Web.Areas.Legal.ViewModels.Case
+@using Dchien.Legal.Service
+
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.Case.CaseModel
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/CIT/Investigation/CIT.Investigation.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<style>
+    p {
+        margin: 0 0 5px;
+    }
+
+    .popover {
+        max-width: 400px;
+    }
+
+    input.input_text, textarea, select, input.input_time {
+        border: 1px solid #ccc;
+    }
+
+
+    input.input_text, textarea, input.input_time {
+        padding: 2px 2px 2px 3px;
+    }
+
+    input.input_text, textarea, input.input_time {
+        background-color: #fff;
+    }
+
+    .case-form-control {
+        /*border-radius: 0px;*/
+        -webkit-transition: none;
+        transition: none;
+        font-size: 12px;
+        width: 100%;
+        height: 24px;
+    }
+
+
+
+    table td, th {
+        padding: 0px 0;
+        /* border-bottom: 1px dotted #D6D6D6; */
+        vertical-align: middle;
+    }
+
+    .input_table th {
+        font-weight: normal;
+        text-align: right;
+    }
+
+    .input_table td {
+        text-align: left;
+    }
+
+    .multi-select .value .element {
+        border: 0px solid #999;
+        margin: 0;
+        padding: 2px;
+    }
+
+    .multi-select .value {
+        border: 0px solid #999;
+    }
+
+    .bootstrap-tagsinput {
+        width: 100%;
+        border-radius: 0px;
+        padding: 2px 4px;
+    }
+
+        .bootstrap-tagsinput input {
+            padding: 0px;
+            width: 50px;
+        }
+
+    .chosen-container-multi .chosen-choices {
+        border: 1px solid #cccccc;
+        font-size: 12px;
+    }
+</style>
+
+<div class="viewFramework-product" style='background: #eaedf1;'>
+    <div class="viewFramework-product-body" name="dropbox" id="dropbox" style="overflow-y:auto">
+        <div>
+            <div class="ng-scope">
+                <div class="ng-scope">
+                    <div class="case-notice-margin" style='display:none'>
+                        <div class="console-global-notice">
+                            <div class="console-global-notice-list">
+                                <div class="alert alert-success console-global-notice-item">
+                                    <div class="clearfix console-global-notice-item-inner">
+                                        <div class="console-global-notice-content ng-binding">
+                                            控制台计划于2016年6月1日开始不再保障IE8浏览器下的可用性。建议您尽快升级浏览器，或者使用Chrome、Firefox。
+                                        </div>
+                                        <div class="console-global-notice-nomore">
+                                            <a href="javascript:;" class="btn btn-default btn-xs">不再显示</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="table-viewer-header" style="margin-top: 0px;height:28px;line-height:26px">
+                        <span class="table-viewer-topbar-title">
+                            案件信息
+                        </span>
+
+                       @if (Model.Case.Basic.CasePhaseId != (int)Dchien.Legal.Entity.BAS.Type.CasePhaseType.Phase_106012
+               && Model.Case.Basic.CasePhaseId != (int)Dchien.Legal.Entity.BAS.Type.CasePhaseType.Phase_301042
+               && Model.Case.Basic.CasePhaseId != (int)Dchien.Legal.Entity.BAS.Type.CasePhaseType.Phase_401042
+               && Model.Case.Basic.CasePhaseId != (int)Dchien.Legal.Entity.BAS.Type.CasePhaseType.Phase_501042)
+                        {
+                            <div class="pull-right table-viewer-topbar-content" style="margin-top: 0px;">
+                               
+                            </div>
+                        }
+
+                    </div>
+                    <div class="case-section-main">
+                        <!-- 左侧 -->
+                        <div class="case-section-left" style="padding-right: 15%;">
+
+                            @{
+                                if (Model.Case.Basic.CaseTypeId == (int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_110)
+                                {
+                                    Html.RenderPartial("~/Areas/Legal/Views/Case/PartialView/CivilDisputeCase/CivilDisputeCase_View.cshtml", Model);
+                                }
+                                else if (Model.Case.Basic.CaseTypeId == (int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_130)
+                                {
+                                    Html.RenderPartial("~/Areas/Legal/Views/Case/PartialView/AdministrativeCase/AdministrativeCase_View.cshtml", Model);
+                                }
+                                else if (Model.Case.Basic.CaseTypeId == (int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_150)
+                                {
+                                    Html.RenderPartial("~/Areas/Legal/Views/Case/PartialView/ArbitrationCase/ArbitrationCase_View.cshtml", Model);
+                                }
+                                else if (Model.Case.Basic.CaseTypeId == (int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_120)
+                                {
+                                    Html.RenderPartial("~/Areas/Legal/Views/Case/PartialView/CriminalCase/CriminalCase_View.cshtml", Model);
+                                }
+                                else if (Model.Case.Basic.CaseTypeId == (int)Dchien.Legal.Entity.BAS.Type.CaseType.CaseType_140)
+                                {
+                                    Html.RenderPartial("~/Areas/Legal/Views/Case/PartialView/ConsultantCase/ConsultantCase_View.cshtml", Model);
+                                }
+                            }
+
+                            <div class="case-section-wrap" style="padding:2px">
+                                <div class="case-section-product">
+                                    <!-- product section -->
+                                    <div class="product-container">
+                                        <div class="product-section">
+                                            <ul class="nav nav-tabs">
+                                                <li class="active" id="liCaseFileList"><a href="javascript:void(0);" id="btnCaseFileList">文档信息</a></li>
+                                                <li id="liARCaseFeeList"><a href="javascript:void(0);" id="btnARCaseFeeList">费用明细</a></li>
+
+                                                <li id="liCaseLogList"><a href="javascript:void(0);" id="btnCaseLogList">系统日志</a></li>
+                                                <li id="liCaseTaskList"><a href="javascript:void(0);" id="btnCaseTaskList">案件任务</a></li>
+  
+                                                <li id="liCaseClueList"><a href="javascript:void(0);" id="btnCaseClueList">线索信息</a></li>
+                                                <li class="pull-right" style="border:none">
+                                                    <div style="margin-top:3px">
+                                                        <div style="text-align: inherit;">
+                                                            <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </li>
+                                            </ul>
+                                            <div class="section-content clearfix">
+                                                <div class="product-col ng-scope" style="width: 100%">
+                                                    <div id="dv_List">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+
+                        </div>
+                        <div class="case-section-right" style='width: 15%; '>
+
+                            <div class="case-section-wrap" style="padding:2px">
+                                <div id='divCaseEvents' class="case-section-trends" style='overflow-y: auto;padding:8px; height:910px '>
+                                    <div>
+                                        @*<link rel="stylesheet" href="//g.alicdn.com/ali-mod/dchien-lego-console-product-update/0.0.9/index.css">*@
+                                        <link rel="stylesheet" href="@Url.Content("~/Resource/css/dchien-lego-console-update.css")" />
+                                        <div class="dchien-lego-console-product-update J_Module">
+                                            <div class="module-wrap J_tb_lazyload">
+                                                <div class="product-fun-update-hd">
+                                                    案件提醒
+                                                    
+                                                </div>
+
+                                                <div class="caseevents">
+
+                                                </div>
+                                                <div class="caseevent"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="case-section-wrap" style="padding:2px">
+
+                                <div id='divCaseLogs' class="case-section-trends" style='overflow-y: auto;padding:8px;height: 420px'>
+                                    <div>
+
+                                        <link rel="stylesheet" href="@Url.Content("~/Resource/css/dchien-lego-console-update.css")" />
+                                        <div class="dchien-lego-console-product-update J_Module">
+                                            <div class="module-wrap J_tb_lazyload">
+                                                <div class="product-fun-update-hd">
+                                                    案件日志&nbsp; &nbsp;&nbsp; 
+                                                </div>
+
+                                                <div class="caselogs">
+
+                                                </div>
+                                                <div class="caselog"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                            <div class="i_common_wrap">
+                                <div class="i_common_list"></div>
+                            </div>
+                        </div>
+                        <div class="i_common_select" id="divAssociateApplicantList" style="display: none;">
+                            <div class="i_common_wrap">
+                                <div class="i_common_list"></div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="sidebox" class="sidebox active" style="overflow-y: auto; width: 30%; min-width: 700px;display:none">
+            <div class="sidebox-content"></div>
+        </div>
+
+        <div id="webuploaderlist" class="webuploader-slide-panel-container">
+            <div class="slide-panels">
+                <div class="slide-panel active medium">
+                    <div class="slide-panel-content">
+                        <div class="panel-header">
+                            <h5>上传文件列表</h5>
+                            <a class="panel-close" onclick="javascript: $('#webuploaderlist').removeClass('show-panel');">
+                                <i class="next-icon next-icon-close next-small" style="font-size: 0px;">close</i>
+                            </a>
+                            <div class="head-custom"></div>
+                        </div>
+                        <div class="placeholder">...</div>
+                        <div class="panel-body">
+                            <div class="panel-body-content">
+                                <div class="page-overview-panel-apply">
+                                    <div class="form-group">
+                                        <div class="col-sm-12" style="padding:0px">
+                                            <div class="gridSection">
+                                                <table class="aps-table aps-widget aps-ani-transition " id="tblWebUploadList" width="100%">
+                                                    <colgroup>
+                                                        <col style="width: 50%">
+                                                        <col style="width: 10%">
+                                                        <col style="width: 15%">
+                                                        <col style="width: 15%">
+                                                    </colgroup>
+                                                    <thead>
+                                                        <tr>
+                                                            <th style="text-align: left; ">文件(夹)名</th>
+                                                            <th style="text-align: left; ">大小</th>
+                                                            <th style="text-align: left; ">上传目录</th>
+                                                            <th style="text-align: left; ">状态</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody style="position:relative;z-index: 99;"></tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="panel-footer">
+                        <div class="btn-con">
+                            <input type="button" class="btn  btn-normal" style="border-radius: 0;
+                                                                        padding: 0 16px;
+                                                                        height: 32px;
+                                                                        line-height: 30px;
+                                                                        font-size: 12px;
+                                                                        border-width: 1px;" onclick="javascript: $('#webuploaderlist').removeClass('show-panel');" value="关闭" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+    </div>
+
+</div>

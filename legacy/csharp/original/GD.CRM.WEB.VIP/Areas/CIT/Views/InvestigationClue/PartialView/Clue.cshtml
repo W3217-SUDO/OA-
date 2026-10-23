@@ -1,0 +1,452 @@
+﻿@using Dchien.Legal.Service.BAS.Type;
+@model Dchien.Legal.Web.Areas.CIT.ViewModels.InvestigationClue.InvestigationClueModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/citys/city.css")" />
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/CIT/Investigation/CIT.Investigation.Clue.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<div class="case-section-wrap">
+    <div class="case-section-product">
+        <!-- product section -->
+        <div class="product-container">
+            <div class="product-section">
+                <div class="section-content clearfix" style="padding: 0px; padding-left: 5px; padding-right: 5px; ">
+                    <div class="table-viewer-header clearfix" style="margin-top: 3px">
+                        <span class="table-viewer-topbar-title">
+                            线索信息
+                        </span>
+                        <div class="pull-right table-viewer-topbar-content" style="margin-top: 3px">
+                            <input class="btn btn-default" type="button" id="btnInvestigationClose" onclick="javascript: investigation.Investigations.Investigation.Close();" value="关闭">
+                        </div>
+                    </div>
+                    <div id="divBasic" class="gridSection">
+                        @Html.HiddenFor(m => m.InvestigationClue.Basic.ClueNo)
+                        @Html.HiddenFor(m => m.InvestigationClue.Basic.ClueGuid)
+                        <table class="view_table table" style="width:100%">
+                            <colgroup>
+                                <col style="width: 8%;" />
+                                <col style="width: 14%;" />
+                                <col style="width: 6%;" />
+                                <col style="width: 6%;" />
+                                <col style="width: 6%;" />
+                                <col style="width: 14%;" />
+
+                            </colgroup>
+                            <tbody>
+
+                                <tr>
+                                    <td>@Html.LabelFor(m => m.InvestigationClue.Basic.ClueNo) </td>
+                                    <td style="text-align:left">@Html.DisplayTextFor(m => m.InvestigationClue.Basic.ClueNo)</td>
+
+
+                                    <td>@Html.LabelFor(m => m.InvestigationClue.Basic.BusinessType) </td>
+                                    <td>
+                                        @Html.DisplayTextFor(m => m.InvestigationClue.Basic.BusinessTypeZh)
+                                    </td>
+                                    <td>@Html.LabelFor(m => m.InvestigationClue.Basic.InvestigationDate) </td>
+                                    <td>
+                                        @Html.DisplayFor(m => m.InvestigationClue.Basic.InvestigationDate)
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>@Html.LabelFor(m => m.InvestigationClue.Basic.StoreName) </td>
+                                    <td style="text-align:left" colspan="5">
+                                        @Html.DisplayTextFor(m => m.InvestigationClue.Basic.StoreName)
+                                    </td>
+
+                                </tr>
+
+
+                                @if (Model.InvestigationClue.Basic.BusinessType == "E_EC" || Model.InvestigationClue.Basic.BusinessType == "E_WL")
+                                {
+                                    <tr>
+                                        <td>@Html.LabelFor(m => m.InvestigationClue.Basic.StoreUrl) </td>
+                                        <td style="text-align:left" colspan="5">
+                                            @*@Html.DisplayTextFor(m => m.InvestigationClue.Basic.StoreUrl)*@
+                                            <a target="_blank" href="@Model.InvestigationClue.Basic.StoreUrl">@Html.DisplayTextFor(m => m.InvestigationClue.Basic.StoreUrl)</a>
+                                        </td>
+                                    </tr>
+                                }
+                                <tr>
+                                    <td>调查区域</td>
+                                    <td style="text-align:left">
+                                        @Model.InvestigationClue.Basic.ProvinceZh @Model.InvestigationClue.Basic.CityZh @Model.InvestigationClue.Basic.DistrictZh
+                                    </td>
+                                    <td>@Html.LabelFor(m => m.InvestigationClue.Basic.Address) </td>
+                                    <td style="text-align:left" colspan="3">@Html.DisplayTextFor(m => m.InvestigationClue.Basic.Address)</td>
+
+                                </tr>
+
+                                @if (Model.InvestigationClue.Basic.HasProduct)
+                                {
+                                    <tr>
+                                        <td>产品名称</td>
+                                        <td style="text-align:left" colspan="5">
+                                            @Html.DisplayTextFor(m => m.InvestigationClue.Product.ProductName)
+                                        </td>
+                                    </tr>
+
+                                    if (Model.InvestigationClue.Basic.BusinessType == "E_EC" || Model.InvestigationClue.Basic.BusinessType == "E_WL")
+                                    {
+
+                                        <tr>
+                                            <td>产品链接</td>
+                                            <td style="text-align:left" colspan="5">
+
+                                                <a target="_blank" href="@Model.InvestigationClue.Product.ProductUrl">@Html.DisplayTextFor(m => m.InvestigationClue.Product.ProductUrl)</a>
+                                            </td>
+                                        </tr>
+                                    }
+                                    <tr>
+                                        <td>规模</td>
+                                        <td style="text-align:left" colspan="5">
+                                            @Html.DisplayTextFor(m => m.InvestigationClue.Product.SaleNum)
+                                        </td>
+
+                                    </tr>
+
+                                    if (Model.InvestigationClue.Product.HasProducer)
+                                    {
+
+                                        if (Model.InvestigationClue.InvestigationClueProducerList != null && Model.InvestigationClue.InvestigationClueProducerList.Any())
+                                        {
+                                            foreach (var producer in Model.InvestigationClue.InvestigationClueProducerList)
+                                            {
+                                                <tr>
+                                                    <td style="text-align:left;background-color:#F5f6FA" colspan="6">
+                                                        生产商@(Model.InvestigationClue.InvestigationClueProducerList.IndexOf(producer) + 1)
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>生产商</td>
+                                                    <td style="text-align:left" colspan="5">
+                                                        @producer.ProducerName
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>主体区域</td>
+                                                    <td style="text-align:left">
+                                                        @producer.ProvinceZh @producer.CityZh @producer.DistrictZh
+                                                    </td>
+                                                    <td>工商地址</td>
+                                                    <td style="text-align:left" colspan="3">
+                                                        @producer.Address
+                                                    </td>
+                                                </tr>
+                                            }
+                                        }
+                                    }
+                                }
+
+                                @if (Model.InvestigationClue.InvestigationClueIndicteeList != null && Model.InvestigationClue.InvestigationClueIndicteeList.Any())
+                                {
+                                    foreach (var indictee in Model.InvestigationClue.InvestigationClueIndicteeList)
+                                    {
+                                        <tr>
+                                            <td style="text-align:left;background-color:#F5f6FA" colspan="6">
+                                                主体信息@(Model.InvestigationClue.InvestigationClueIndicteeList.IndexOf(indictee) + 1)
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td>经营性质</td>
+                                            <td style="text-align:left">
+                                                @indictee.BusinessNatureTypeZh
+                                            </td>
+
+                                            <td>确认方式</td>
+                                            <td style="text-align:left">
+                                                @indictee.BusinessNatureSubTypeZh
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+
+                                            <td>主体名称</td>
+                                            <td style="text-align:left" colspan="5">
+                                                @indictee.IndicteeName
+                                            </td>
+                                        </tr>
+
+                                        if (indictee.BusinessNatureType == "E")
+                                        {
+                                            <tr>
+                                                <td>主体标识</td>
+                                                <td style="text-align:left">
+                                                    @indictee.IndicteeLicenseNo
+                                                </td>
+                                                <td>法定代表人</td>
+                                                <td style="text-align:left" colspan="3">
+                                                    @indictee.LegalRepresentative
+                                                </td>
+                                            </tr>
+                                        }
+                                        else if (indictee.BusinessNatureType == "P")
+                                        {
+                                            <tr>
+                                                <td>身份证号</td>
+                                                <td style="text-align:left" colspan="5">
+                                                    @indictee.IndicteeLicenseNo
+                                                </td>
+
+                                            </tr>
+
+                                        }
+
+                                        else if (indictee.BusinessNatureType == "I")
+                                        {
+                                            <tr>
+                                                <td>主体标识</td>
+                                                <td style="text-align:left">
+                                                    @indictee.IndicteeLicenseNo
+                                                </td>
+                                                <td>经营者</td>
+                                                <td style="text-align:left" colspan="3">
+                                                    @indictee.LegalRepresentative
+                                                </td>
+                                            </tr>
+                                        }
+
+                                        <tr>
+                                            <td>主体区域</td>
+                                            <td style="text-align:left">
+                                                @indictee.ProvinceZh @indictee.CityZh @indictee.DistrictZh
+                                            </td>
+                                            <td>工商地址</td>
+                                            <td style="text-align:left" colspan="3">
+                                                @indictee.Address
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+
+                                <tr>
+                                    <td>调查员</td>
+                                    <td style="text-align:left">
+                                        @Html.DisplayTextFor(m => m.InvestigationTask.Basic.InvestigatorName)
+                                    </td>
+                                    <td>调查辅助</td>
+                                    <td style="text-align:left" colspan="3">
+                                        @Html.DisplayTextFor(m => m.InvestigationClue.Basic.InvestigatorNames)
+                                    </td>
+
+                                </tr>
+                                <tr>
+                                    <td>调查员备注</td>
+                                    <td style="text-align:left" colspan="5">
+                                        @Html.DisplayTextFor(m => m.InvestigationClue.Basic.Remark)
+                                    </td>
+
+                                </tr>
+                                <tr>
+                                    <td>审批状态</td>
+                                    <td style="text-align:left"  colspan="5">
+                                        @Html.DisplayTextFor(m => m.InvestigationClue.Basic.StatusName)
+                                    </td>
+
+                                </tr>
+                                <tr>
+                                    <td>管理人审核备注</td>
+                                    <td style="text-align:left" colspan="5">
+                                        @Html.DisplayTextFor(m => m.InvestigationClue.Basic.AuditRemark)
+                                    </td>
+                                </tr>
+
+                                <tr>
+                                    <td>客户审核备注</td>
+                                    <td style="text-align:left" colspan="5">
+                                        @Html.DisplayTextFor(m => m.InvestigationClue.Basic.CustomerAuditRemark  )
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="case-section-wrap" style="padding-top: 0;">
+    <div class="case-section-product">
+        <!-- product section -->
+        <div class="product-container">
+            <div class="product-section">
+
+                <div class="section-content clearfix" style="padding: 0px; padding-left: 5px; padding-right: 5px; ">
+                    <div class="table-viewer-header clearfix" style="margin-top: 0px">
+                        <span class="table-viewer-topbar-title">
+                            线索文件
+                        </span>
+                    </div>
+                    <div id="dv_ClueFileList">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (Model.InvestigationClue.Basic.Status == Dchien.Legal.Entity.Legal.Investigation.Clue.InvestigationClueStatus.N)
+{
+    <div class="case-section-wrap" style="padding-top: 0;">
+        <div class="case-section-product">
+            <!-- product section -->
+            <div class="product-container">
+                <div class="product-section">
+
+                    <div class="section-content clearfix" style="padding: 0px; padding-left: 5px; padding-right: 5px; ">
+                        <div class="table-viewer-header clearfix" style="margin-top: 0px">
+                            <span class="table-viewer-topbar-title">
+                                取证信息
+                            </span>
+                        </div>
+                        <div id="dv_ClueEvidenceList">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+
+@*<div class="case-section-wrap" style="padding-top: 0;">
+        <div class="case-section-product">
+            <!-- product section -->
+            <div class="product-container">
+                <div class="product-section">
+                    <div class="section-content clearfix" style="padding: 0px; padding-left: 5px; padding-right: 5px; ">
+                        <form id="form">
+                            <div class="ng-scope">
+                                @Html.HiddenFor(m => m.Investigation.Basic.InvestigationId)
+                                @Html.HiddenFor(m => m.Investigation.Basic.InvestigationNo)
+                                @Html.HiddenFor(m => m.Investigation.Basic.InvestigationGuid)
+
+                                @Html.HiddenFor(m => m.InvestigationTask.Basic.TaskNo)
+                                <div class="table-viewer-header clearfix" style="margin-top: 0px">
+                                    <span class="table-viewer-topbar-title">
+                                        基本信息
+                                    </span>
+
+                                </div>
+                                <div id="divBasic" class="gridSection">
+
+                                    <table class="view_table table" style="widtd:100%">
+                                        <colgroup>
+                                            <col style="widtd: 8%;" />
+                                            <col style="widtd: 12%;" />
+                                            <col style="widtd: 8%;" />
+                                            <col style="widtd: 12%;" />
+                                            <col style="widtd: 8%;" />
+                                            <col style="widtd: 12%;" />
+
+                                        </colgroup>
+                                        <tbody>
+
+                                            <tr>
+                                                <td>@Html.LabelFor(m => m.Investigation.Basic.InvestigationNo) </td>
+                                                <td style="text-align:left">@Html.DisplayTextFor(m => m.Investigation.Basic.InvestigationNo)</td>
+
+                                                <td>@Html.LabelFor(m => m.Investigation.Basic.BusinessOwnerName) </td>
+                                                <td style="text-align:left">@Html.DisplayTextFor(m => m.Investigation.Basic.BusinessOwnerName)</td>
+                                                <td>@Html.LabelFor(m => m.Investigation.Basic.CaseTypeId) </td>
+                                                <td style="text-align:left">
+                                                    @Html.DisplayTextFor(m => m.Investigation.Basic.CaseTypeName)
+                                                </td>
+                                            </tr>
+                                            <tr>
+
+                                                <td>@Html.LabelFor(m => m.Investigation.Basic.IndicterName) </td>
+                                                <td colspan="3" style="text-align:left">
+
+                                                    @Html.DisplayTextFor(m => m.Investigation.Basic.IndicterName)
+                                                </td>
+
+                                                <td>@Html.LabelFor(m => m.Investigation.Basic.AutdorizationBeginTime) </td>
+                                                <td>
+                                                    @Html.DisplayFor(m => m.Investigation.Basic.AutdorizationBeginTime)
+                                                </td>
+                                            </tr>
+
+                                            <tr>
+                                                <td>@Html.LabelFor(m => m.Investigation.Basic.Province) </td>
+                                                <td colspan="3" style="text-align:left">
+                                                    @Html.DisplayTextFor(m => m.Investigation.Basic.Province)
+                                                </td>
+
+                                                <td>@Html.LabelFor(m => m.Investigation.Basic.AutdorizationEndTime) </td>
+                                                <td>
+                                                    @Html.DisplayFor(m => m.Investigation.Basic.AutdorizationEndTime)
+                                                </td>
+                                            </tr>
+
+
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="case-section-wrap" style="padding-top: 0;">
+        <div class="case-section-product">
+            <!-- product section -->
+            <div class="product-container">
+                <div class="product-section">
+                    <div class="section-content clearfix" style="padding: 0px; padding-left: 5px; padding-right: 5px; ">
+                        <form id="form">
+                            <div class="ng-scope">
+
+                                <div class="table-viewer-header clearfix" style="margin-top: 0px">
+                                    <span class="table-viewer-topbar-title">
+                                        任务信息
+                                    </span>
+                                </div>
+                                <div id="divBasic" class="gridSection">
+                                    <table class="table" style="widtd:100%">
+                                        <colgroup>
+                                            <col style="widtd: 8%;" />
+                                            <col style="widtd: 12%;" />
+                                            <col style="widtd: 8%;" />
+                                            <col style="widtd: 12%;" />
+                                            <col style="widtd: 8%;" />
+                                            <col style="widtd: 12%;" />
+
+                                        </colgroup>
+                                        <tbody>
+
+                                            <tr>
+                                                <td>@Html.LabelFor(m => m.InvestigationTask.Basic.Province) </td>
+                                                <td style="text-align:left">@Html.DisplayTextFor(m => m.InvestigationTask.Basic.Province)</td>
+
+                                                <td>@Html.LabelFor(m => m.InvestigationTask.Basic.BeginTime) </td>
+                                                <td>
+                                                    @Html.DisplayTextFor(m => m.InvestigationTask.Basic.BeginTime)
+                                                </td>
+
+                                                <td>@Html.LabelFor(m => m.InvestigationTask.Basic.EndTime) </td>
+                                                <td>
+                                                    @Html.DisplayTextFor(m => m.InvestigationTask.Basic.EndTime)
+                                                </td>
+                                            </tr>
+
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>*@
+
+
+

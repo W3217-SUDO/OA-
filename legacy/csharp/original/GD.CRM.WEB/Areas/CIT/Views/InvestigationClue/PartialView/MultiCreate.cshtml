@@ -1,0 +1,179 @@
+﻿<div class="slide-panels">
+    <div class="slide-panel active medium">
+        <div class="slide-panel-content">
+            <div class="panel-header">
+                <h5>新增费用</h5>
+                <a class="panel-close" onclick="javascript: $('.slide-panel-container').empty(); $('.slide-panel-container').removeClass('show-panel');">
+                    <i class="next-icon next-icon-close next-small" style="font-size: 0px;">close</i>
+                </a>
+                <div class="head-custom"></div>
+            </div>
+            <div class="placeholder">...</div>
+            <div class="panel-body">
+                <div class="panel-body-content">
+                    <div class="page-overview-panel-apply">
+                        <div ui-view="myTicket">
+                            <div class="ticket-detail ">
+
+                                @if (ViewBag.FeeTypeId != (int)Dchien.Legal.Entity.BAS.Type.CaseFeeTypeId.NonOffice)
+                                {
+                                    <div>
+                                        <div class="">
+                                            <div class="console-step row step-bar" style="margin-bottom: 8px">
+                                                <div class="step col-md-6  step-first step-active">
+                                                    <span class="">新增费用</span>
+                                                </div>
+                                                <div class="step col-md-6  step-end ">
+                                                    <span class="">申请付款</span>
+                                                </div>
+
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="">
+                                        <div class="">
+                                            <div class="">
+                                                <style type="text/css" class="">
+                                                    .tableWrapper .table {
+                                                        margin-bottom: 0px;
+                                                    }
+
+                                                    .table-hover tbody tr.trWarapper:hover td {
+                                                        background-color: #FCF8E2;
+                                                    }
+                                                </style>
+                                                <div class="">
+                                                    <div class="alert alert-info clearfix" style="padding: 8px 12px 0px;line-height: 18px;margin-bottom: 6px;border-radius: 0px">
+                                                        <div class="pull-left">
+                                                            <span>温馨提示</span> ：
+                                                        </div>
+                                                        <div class="pull-left">
+                                                            <p>1. <span>同一付款单位可以申请付款，否则请按实际业务进行操作.</span> </p>
+                                                            <p>2. <span>申请付款按照每个合同号生成一个申请单.</span> </p>
+                                                            <p>3. <span>点击表格头部(费用类型,金额,备注)会把第一行数据同步到各行.</span> </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <div class="col-sm-12" style="padding:0px">
+                                            <div class="gridSection">
+                                                <table class="aps-table aps-widget aps-ani-transition " id="tblCaseFeeObjects" width="100%">
+                                                    <colgroup>
+                                                        <col style="width: 11%">
+                                                        <col style="width: 10%">
+                                                        <col style="width: 8%">
+                                                        <col style="width: 6%">
+                                                        <col style="width: 18%">
+                                                        <col style="width: 10%">
+                                                        <col style="width: 6%">
+                                                    </colgroup>
+                                                    <thead>
+                                                        <tr>
+                                                            <th>案号</th>
+                                                            <th>合同号</th>
+                                                            <th>费用类型</th>
+                                                            <th><span><a href="javascript:void(0);" onclick="javascript: investigation.InvestigationClue.CaseFees.CaseFee.Objects.ObjectItem.SyncPaymentAmount();">金额</a></span></th>
+                                                            <th>备注</th>
+                                                            <th><span><a href="javascript:void(0);" onclick="javascript: investigation.InvestigationClue.CaseFees.CaseFee.Objects.ObjectItem.SyncPaymentDeadline();">截止日期</a></span></th>
+                                                            <th>操作</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody></tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="">
+                                        <div class="">
+                                            <div class="">
+                                                <style type="text/css" class="">
+                                                    .tableWrapper .table {
+                                                        margin-bottom: 0px;
+                                                    }
+
+                                                    .table-hover tbody tr.trWarapper:hover td {
+                                                        background-color: #FCF8E2;
+                                                    }
+                                                </style>
+                                                <div class="">
+                                                    <div class="alert alert-info clearfix" style="padding: 8px 12px 0px;line-height: 18px;margin-bottom: 6px;border-radius: 0px">
+                                                        <div class="pull-left">
+                                                            <span>温馨提示</span> ：
+                                                        </div>
+                                                        <div class="pull-left">
+                                                            <p>1. <span>点击表格头部(费用类型,金额,备注)会把第一行数据同步到各行.</span> </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <div class="col-sm-12" style="padding:0px">
+                                            <div class="gridSection">
+                                                <table class="aps-table aps-widget aps-ani-transition " id="tblCaseFeeObjects" width="100%">
+                                                    <colgroup>
+                                                        <col style="width: 10%">
+                                                        <col style="width: 10%">
+                                                        <col style="width: 8%">
+                                                        <col style="width: 6%">
+                                                        <col style="width: 18%">
+                                                        <col style="width: 10%">
+                                                        @*<col style="width: 6%">*@
+                                                    </colgroup>
+                                                    <thead>
+                                                        <tr>
+                                                            <th>案号</th>
+                                                            <th>合同号</th>
+                                                            <th>费用类型</th>
+                                                            <th>金额</th>
+                                                            <th><span><a href="javascript:void(0);" onclick="javascript: investigation.InvestigationClue.CaseFees.CaseFee.Objects.ObjectItem.SyncPaymentRemark();">备注</a></span></th>
+                                                            <th>操作</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody></tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+
+                               
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="panel-footer">
+            <div class="btn-con">
+
+                @if (ViewBag.FeeTypeId != (int)Dchien.Legal.Entity.BAS.Type.CaseFeeTypeId.NonOffice)
+                {
+                    <input type="button" class="btn   btn-primary" style="border-radius: 0;padding: 0 16px; height: 32px;line-height: 30px; font-size: 12px; border-width: 1px;" onclick="javascript: investigation.InvestigationClue.CaseFees.CaseFee.MultiCreateUpdate(investigation.InvestigationClue.CaseFees.Payment.Open);" value="下一步" />
+                }
+                else
+                {
+                    <input type="button" class="btn   btn-primary" style="border-radius: 0;padding: 0 16px; height: 32px;line-height: 30px; font-size: 12px; border-width: 1px;" onclick="javascript: investigation.InvestigationClue.CaseFees.CaseFee.MultiCreateUpdate();" value="确定" />
+                }
+
+                <input type="button" class="btn  btn-normal" style="border-radius: 0;
+                                                                        padding: 0 16px;
+                                                                        height: 32px;
+                                                                        line-height: 30px;
+                                                                        font-size: 12px;
+                                                                        border-width: 1px;" onclick="javascript: $('.slide-panel-container').empty(); $('.slide-panel-container').removeClass('show-panel');" value="取消" />
+            </div>
+        </div>
+    </div>
+</div>
+

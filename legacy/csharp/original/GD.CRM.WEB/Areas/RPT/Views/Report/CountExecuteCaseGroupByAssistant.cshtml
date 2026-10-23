@@ -1,0 +1,299 @@
+﻿@using Dchien.Legal.Service.CRM.Customer
+@using Dchien.Legal.Service.HR.Staff
+
+@model Dchien.Legal.Web.Areas.RPT.ViewModels.Report.CountExecuteListModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/index.css")" />
+ 
+<script src="@Url.Content("~/Scripts/Common/charts/Chart.min.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/RPT/Execute/RPT.Execute.Report.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/RPT/Execute/RTP.Execute.Report.CountStaff.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<style>
+    .chosen-container-single .chosen-single {
+        border: 1px solid #cccccc;
+        font-size: 12px;
+        border-radius: 0px;
+    }
+
+    .chosen-container-multi .chosen-choices {
+        border: 1px solid #cccccc;
+        font-size: 12px;
+    }
+
+    .chosen-drop, chosen-results, .chosen-results li {
+        overflow: visible !important;
+    }
+
+    .chosen-container-multi .chosen-choices li.search-field input[type=text] {
+        margin: 1px 0;
+        padding: 0;
+        height: 21px;
+        outline: 0;
+        border: 0 !important;
+        background: 0 0 !important;
+        -webkit-box-shadow: none;
+        box-shadow: none;
+        color: #999;
+        font-size: 100%;
+        font-family: sans-serif;
+        line-height: normal;
+        border-radius: 0;
+        width: 25px;
+    }
+</style>
+
+<div class="viewFramework-product">
+    <div class="viewFramework-product-body">
+        <div ng-transclude="">
+            <div class="console-container ng-scope">
+                <div class="row ng-scope">
+
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>执行进度案件统计</h5>
+                            </div>
+                        </div>
+                        <form class="form-inline ng-valid " id="postForm">
+                            <div class="pull-left   col-sm-12" style="margin-top: 1px;margin-bottom:4px">
+                                @Html.HiddenFor(m => m.SearchCondition.PageId)
+                                @Html.HiddenFor(m => m.SearchCondition.PageName, new { name = "PageName" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.TotalCount, new { name = "TotalCount" })
+                             </div>
+                        </form>
+                    </div>
+
+                    <div class="col-sm-12">
+
+                        <div class="case-section-wrap" style="padding:2px">
+                            <div class="case-section-product">
+                                <!-- product section -->
+                                <div class="product-container">
+                                    <div class="product-section">
+                                        @*<ul class="nav nav-tabs">
+                                            <li class="active" ><a href="javascript:void(0);" id="liGroupName">执行进度案件统计表</a></li>
+                                            <li class="pull-right" style="border:none">
+                                                <div style="margin-top:3px">
+                                                    <div style="text-align: inherit;">
+                                                        <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </li>
+                                        </ul>*@
+                                        <div class="section-content clearfix">
+                                            <div class="product-col ng-scope" style="width: 100%">
+                                                <div id="dv_List">
+
+                                                    <div class="ng-scope">
+                                                        <div class="gridSection" id="executegridSection1">
+                                                            <div class="col-sm-6">
+                                                                <div style="float: left; width: 100%;">
+                                                                    <div style="height: 100%;  width: 100%; background-color: #fff;">
+                                                                        <div class="panel panel-default">
+                                                                            <div class="panel-heading">
+                                                                                <a href="javascript:void(0);">
+                                                                                    <i class="fa fa-bar-chart fa-lg" style="padding-right: 5px;"></i>一审待执行案件数量
+                                                                                </a>
+                                                                                <div style="float: right !important;">单位： 个/案</div>
+                                                                            </div>
+                                                                            <div id="execute10_container" class="panel-body">
+                                                                                <canvas id="execute10" style="height: 280px; width: 100%;"></canvas>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="col-sm-6">
+                                                                <div style="float: left; width: 100%;">
+                                                                    <div style="height: 100%;  width: 100%; background-color: #fff;">
+                                                                        <div class="panel panel-default">
+                                                                            <div class="panel-heading">
+                                                                                <a href="javascript:void(0);">
+                                                                                    <i class="fa fa-bar-chart fa-lg" style="padding-right: 5px;"></i>二审待执行案件数量
+                                                                                </a>
+                                                                                <div style="float: right !important;">单位： 个/案</div>
+                                                                            </div>
+                                                                            <div id="execute20_container" class="panel-body">
+                                                                                <canvas id="execute20" style="height: 280px; width: 100%;"></canvas>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="col-sm-6">
+                                                                <div style="float: left; width: 100%;">
+                                                                    <div style="height: 100%;  width: 100%; background-color: #fff;">
+                                                                        <div class="panel panel-default">
+                                                                            <div class="panel-heading">
+                                                                                <a href="javascript:void(0);">
+                                                                                    <i class="fa fa-bar-chart fa-lg" style="padding-right: 5px;"></i>准备材料案件数量
+                                                                                </a>
+                                                                                <div style="float: right !important;">单位： 个/案</div>
+                                                                            </div>
+                                                                            <div id="execute30_container"  class="panel-body">
+                                                                                <canvas id="execute30" style="height: 280px; width: 100%;"></canvas>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="col-sm-6">
+                                                                <div style="float: left; width: 100%;">
+                                                                    <div style="height: 100%;  width: 100%; background-color: #fff;">
+                                                                        <div class="panel panel-default">
+                                                                            <div class="panel-heading">
+                                                                                <a href="javascript:void(0);">
+                                                                                    <i class="fa fa-bar-chart fa-lg" style="padding-right: 5px;"></i>提交法院案件数量
+                                                                                </a>
+                                                                                <div style="float: right !important;">单位： 个/案</div>
+                                                                            </div>
+                                                                            <div id="execute40_container" class="panel-body">
+                                                                                <canvas id="execute40" style="height: 280px; width: 100%;"></canvas>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div class="gridSection" id="executegridSection2">
+                                                            <div class="col-sm-6">
+                                                                <div style="float: left; width: 100%;">
+                                                                    <div style="height: 100%;  width: 100%; background-color: #fff;">
+                                                                        <div class="panel panel-default">
+                                                                            <div class="panel-heading">
+                                                                                <a href="javascript:void(0);">
+                                                                                    <i class="fa fa-bar-chart fa-lg" style="padding-right: 5px;"></i>执行受理案件数量
+                                                                                </a>
+                                                                                <div style="float: right !important;">单位： 个/案</div>
+                                                                            </div>
+                                                                            <div id="execute50_container" class="panel-body">
+                                                                                <canvas id="execute50" style="height: 280px; width: 100%;"></canvas>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="col-sm-6">
+                                                                <div style="float: left; width: 100%;">
+                                                                    <div style="height: 100%;  width: 100%; background-color: #fff;">
+                                                                        <div class="panel panel-default">
+                                                                            <div class="panel-heading">
+                                                                                <a href="javascript:void(0);">
+                                                                                    <i class="fa fa-bar-chart fa-lg" style="padding-right: 5px;"></i>执行中止案件数量
+                                                                                </a>
+                                                                                <div style="float: right !important;">单位： 个/案</div>
+                                                                            </div>
+                                                                            <div id="execute60_container" class="panel-body">
+                                                                                <canvas id="execute60" style="height: 280px; width: 100%;"></canvas>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="col-sm-6">
+                                                                <div style="float: left; width: 100%;">
+                                                                    <div style="height: 100%;  width: 100%; background-color: #fff;">
+                                                                        <div class="panel panel-default">
+                                                                            <div class="panel-heading">
+                                                                                <a href="javascript:void(0);">
+                                                                                    <i class="fa fa-bar-chart fa-lg" style="padding-right: 5px;"></i>执行结案案件数量
+                                                                                </a>
+                                                                                <div style="float: right !important;">单位： 个/案</div>
+                                                                            </div>
+                                                                            <div id="execute70_container" class="panel-body">
+                                                                                <canvas id="execute70" style="height: 280px; width: 100%;"></canvas>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="col-sm-6">
+                                                                <div style="float: left; width: 100%;">
+                                                                    <div style="height: 100%;  width: 100%; background-color: #fff;">
+                                                                        <div class="panel panel-default">
+                                                                            <div class="panel-heading">
+                                                                                <a href="javascript:void(0);">
+                                                                                    <i class="fa fa-bar-chart fa-lg" style="padding-right: 5px;"></i>执行终本案件数量
+                                                                                </a>
+                                                                                <div style="float: right !important;">单位： 个/案</div>
+                                                                            </div>
+                                                                            <div id="execute80_container" class="panel-body">
+                                                                                <canvas id="execute80" style="height: 280px; width: 100%;"></canvas>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div class="gridSection" id="executegridSection3">
+                                                            <div class="col-sm-6">
+                                                                <div style="float: left; width: 100%;">
+                                                                    <div style="height: 100%;  width: 100%; background-color: #fff;">
+                                                                        <div class="panel panel-default">
+                                                                            <div class="panel-heading">
+                                                                                <a href="javascript:void(0);">
+                                                                                    <i class="fa fa-bar-chart fa-lg" style="padding-right: 5px;"></i>执行终结案件数量
+                                                                                </a>
+                                                                                <div style="float: right !important;">单位： 个/案</div>
+                                                                            </div>
+                                                                            <div id="execute90_container" class="panel-body">
+                                                                                <canvas id="execute90" style="height: 280px; width: 100%;"></canvas>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="col-sm-6">
+                                                                <div style="float: left; width: 100%;">
+                                                                    <div style="height: 100%;  width: 100%; background-color: #fff;">
+                                                                        <div class="panel panel-default">
+                                                                            <div class="panel-heading">
+                                                                                <a href="javascript:void(0);">
+                                                                                    <i class="fa fa-bar-chart fa-lg" style="padding-right: 5px;"></i>执行中止案件数量
+                                                                                </a>
+                                                                                <div style="float: right !important;">单位： 个/案</div>
+                                                                            </div>
+                                                                            <div id="execute100_container" class="panel-body">
+                                                                                <canvas id="execute100" style="height: 280px; width: 100%;"></canvas>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div> 
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+
+

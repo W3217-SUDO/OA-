@@ -1,0 +1,16 @@
+﻿@using System.Web.Mvc
+@using System.Web.Mvc.Html
+@model SunHold.Legal.Web.Areas.Lawsuit.ViewModels.Case.CaseModel
+
+<ul class="nav nav-tabs">
+    <li class="active" id="liCaseFileList"><a href="javascript:void(0);" id="btnCaseFileList">文档信息</a></li>
+    <li id="liCaseFeeList"><a href="javascript:void(0);" id="btnCaseFeeList">费用信息</a></li>
+    <li id="liCaseFinancingList"><a href="javascript:void(0);" id="btnCaseFinancingList">资助明细</a></li>
+
+    <li class="pull-right" style="border:none">
+        <div class="margin-top">
+            <a href="javascript:void(0)" id="btnCaseFileUploading" class="btn btn-link">新增文档</a>
+            <a href="javascript:void(0)" id="toExcel" class="btn btn-link">导出列表</a>
+        </div>
+    </li>
+</ul>

@@ -1,0 +1,80 @@
+﻿@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var id = string.Empty;
+    if (ViewContext.RouteData.Values.ContainsKey("id"))
+    {
+        id = ViewContext.RouteData.Values["id"].ToString().ToLower();
+    }
+    var actived = "active";
+
+    var list = new List<string>();
+    
+    list.Add("1");
+    list.Add("2");
+    list.Add("3");
+    list.Add("4");
+
+}
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/messageCenter.console.css")" />
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding">我发起的合同</div>
+        <div class="ng-isolate-scope"></div>
+        <div class="product-nav-list">
+            <ul class="top-level">
+                
+                @{ actived = action == "DraftList".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class=" ng-isolate-scope">
+                        <a href=@Url.Content("~/CMS/Contract/DraftList") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">待提交合同</div>
+                            <div class="nav-extend">
+                                <span class="ng-isolate-scope">
+                                    <span class="deadline-leftdays-normal ng-scope ng-binding"></span>
+                                </span>
+                            </div>
+                        </a>
+                    </div>
+                </li>
+
+                @{ actived = id == "2".ToLower() ? "class=active" : ""; }
+                <li @actived>
+                    <div class=" ng-isolate-scope">
+                        <a href=@Url.Content("~/CMS/Contract/ContractList/2") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">待审批合同</div>
+                            <div class="nav-extend">
+                                <span class="ng-isolate-scope">
+                                    <span class="deadline-leftdays-normal ng-scope ng-binding"></span>
+                                </span>
+                            </div>
+                        </a>
+                    </div>
+                </li>
+                @{ actived = id == "4".ToLower() ? "class=active" : ""; }
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/CMS/Contract/ContractList/4") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">已驳回合同</div>
+                        </a>
+                    </div>
+                </li>
+                @{ actived = id == "3".ToLower() ? "class=active" : ""; }
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content("~/CMS/Contract/ContractList/3") class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">已审批合同</div>
+                        </a>
+                    </div>
+                </li>
+
+
+            </ul>
+        </div>
+    </div>
+ 
+</div>

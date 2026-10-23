@@ -1,0 +1,30 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.FAM.Invoice;
+ @{
+      var invoiceTypeServices = InvoiceServiceTypeService.Instance.GetAllInvoiceServiceTypes();
+ }
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+
+<div class="i_common_box" style='width:300px'>
+    <div class="i_common_hd">
+        请选择
+        <input type="hidden" id="hidServiceTypeId">
+        <input type="hidden" id="hidServiceTypName">
+    </div>
+    <div class="i_common_bd">
+        <ul class="i_common_ul layoutfix">
+            @if (invoiceTypeServices != null && invoiceTypeServices.Count > 0)
+            {
+                foreach (var s in invoiceTypeServices)
+                {
+                    <li style='width:80px'><a href="javascript:void(0)" serviceTypeId="@s.ServiceTypeId" name="@s.ServiceTypeName">@s.ServiceTypeName</a></li>
+                }
+            }
+        </ul>
+    </div>
+</div>
+
+
+

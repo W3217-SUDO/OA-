@@ -1,0 +1,114 @@
+﻿@model Dchien.Legal.Web.Areas.System.ViewModels.SystemManagement.RoleListModel
+
+@{
+    object htmlAttribute = null;
+}
+
+<script src="@Url.Content("~/Scripts/System/SystemManagement/Role.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<div class="viewFramework-product viewFramework-product-col-1">
+    <div class="viewFramework-product-navbar ng-scope">
+        <!-- product nav -->
+        @{
+            Html.RenderPartial("List");
+        }
+    </div><!-- /product nav -->
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="viewFramework-product-body">
+        <a tabindex="0" href="javascript:void(0)" id="viewFramework-product-anchor" style="position: absolute;top: -10000px;left: -10000px">let's go</a>
+        <div ng-transclude="">
+
+            <div class="console-container ng-scope">
+                <div class="row ng-scope">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>角色列表</h5>
+                            </div>
+                            <div class="pull-right">
+                                <a href="javascript:void(0);" class="btn btn-primary ng-isolate-scope" id="btnRoleCreate">
+                                    <span>新增角色</span>
+                                </a>
+                            </div>
+                            <div class="role"></div>
+                            <div class="permissions"></div>
+                        </div>
+                        <div class="pull-left margin-top-1 col-sm-12">
+                            <form id="postForm" action="@Url.Content("~/System/SystemManagement/RoleList")">
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                            </form>
+                        </div>
+
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="ng-scope">
+
+                            <div class="gridSection">
+                                <table id="tblRoleList" class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>序号</th>
+                                            <th style="text-align: left">角色名称</th>
+                                            <th>角色权限</th>
+                                            <th>操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr style="display: none">
+                                            <td>
+                                                &nbsp;
+                                            </td>
+                                            <td style="text-align: left"></td>
+                                            <td></td>
+                                            <td></td>
+
+                                        </tr>
+                                    </tbody>
+                                    <tfoot class="ng-scope" style="display: none">
+                                        <tr>
+                                            <td colspan="4">
+                                                <div class="pull-left"></div>
+                                                <div class="ng-scope">
+                                                    <div class="pull-right page-box Rolelist">
+
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+
+                            <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left ng-binding" ng-bind-html="vm.msg">没有查询到符合条件的记录，可以去</span>
+                                            <a href="javascript:void(0);" class="ng-binding">新增角色</a>
+                                            <span class="ng-binding">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+</div>

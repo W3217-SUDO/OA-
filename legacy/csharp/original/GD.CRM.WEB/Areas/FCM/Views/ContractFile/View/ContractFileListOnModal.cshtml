@@ -1,0 +1,93 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity
+@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.FCM.ViewModels.ContractFile.ContractFileListModel
+
+
+<div class="modal fade" id="contractFileListModal">
+    <div class="modal-dialog" style="width:45%">
+        <div class="modal-content" ng-transclude="">
+            <div class="ng-scope">
+     @using (Html.BeginForm("ContractFileListOnModal", "ContractFile", FormMethod.Post, new { id = "contactFileListForm", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+     {
+                    <div class="modal-header">
+                        <button type="button" class="close" id="btnContractFileListClose">×</button>
+                        <h5 class="modal-title ">合同文件列表</h5>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <div class="col-sm-12">
+                                <div class="gridSection">
+                                    <table class='table table-hover' id="tblContractFileList" width="100%">
+                                        <colgroup>
+                                            <col style="width: 5%">
+                                            <col style="width: 15%">
+                                            <col style="width: 45%">
+                                            <col style="width: 15%">
+                                            <col style="width: 10%">
+                                        </colgroup>
+                                        <thead>
+                                            <tr>
+                                                <th style="text-align: center">
+                                                    序号
+                                                </th>
+                                                <th style="text-align: center">
+                                                    上传人
+                                                </th>
+                                                <th style="text-align: center">
+                                                    文件名称
+                                                </th>
+                                                <th style="text-align: center">
+                                                    文档日期
+                                                </th>
+                                                <th style="text-align: center">
+                                                    查看
+                                                </th>
+
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @if (Model.ContractFiles != null && Model.ContractFiles.Any())
+                                            {
+                                                foreach (var item in Model.ContractFiles)
+                                                {
+                                                    <tr>
+                                                        <td>
+                                                            @(Model.ContractFiles.IndexOf(item) + 1)
+                                                        </td>
+                                                        <td>
+                                                            @item.UploadUserName
+                                                        </td>
+                                                        <td>
+                                                            @item.FileName
+                                                        </td>
+                                                        <td>
+                                                            @(item.UploadTime.ToString("yyyy-MM-dd"))
+                                                        </td>
+                                                        <td>
+                                                            <a style='color: #039' href='javascript:void(0);' onclick="javascript:contract.Contract.Files.File.View('@item.FileGuid','@item.ContractGuid','@item.FileName');"><span>查看</span></a>
+                                                            <a style='color: #039' href='javascript:void(0);' onclick="javascript:contract.Contract.Files.File.Download('@item.FileGuid');"><span>下载</span></a>
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            }
+                                        </tbody>
+
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <input class="btn btn-default " type="button" id="btnContractFileListCancel" value="关闭" />
+                    </div>
+
+     }
+            </div>
+        </div>
+    </div>
+</div>
+
+ 
+

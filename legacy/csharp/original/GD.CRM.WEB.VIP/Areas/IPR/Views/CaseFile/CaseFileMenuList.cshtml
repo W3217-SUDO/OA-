@@ -1,0 +1,127 @@
+﻿@using Dchien.Legal.Entity.System
+
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var caseTypeId = string.Empty;
+    var invoiceTypeId = string.Empty;
+
+    if (!string.IsNullOrEmpty(this.Request["caseTypeId"]))
+    {
+        caseTypeId = this.Request["caseTypeId"].ToLower();
+    }
+    if (!string.IsNullOrEmpty(this.Request["invoiceTypeId"]))
+    {
+        invoiceTypeId = this.Request["invoiceTypeId"].ToLower();
+    }
+    var actived = "active";
+}
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding">文件导入</div>
+        <div class="ng-isolate-scope"></div>
+
+        <div class="product-nav-list">
+            <ul class="top-level">
+
+
+                @{ actived = action == "CaseFileCustomImport".ToLower() ? "class=active" : "";}
+
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CaseFile/CaseFileCustomImport", PageId.PageId_1001005002)) class="ng-scope" >
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">案件自定义文件导入</div>
+                            </a>
+                    </div>
+                </li>
+                
+                @{ actived = action == "ReceiptCustomizedFile".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/InvoiceFile/ReceiptCustomizedFile", PageId.PageId_1001005003)) class="ng-scope" >
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">收据自定义文件导入</div>
+                            </a>
+                    </div>
+                </li>
+                
+                @{ actived = action == "InvoiceCustomizedFile".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/InvoiceFile/InvoiceCustomizedFile", PageId.PageId_1001005004)) class="ng-scope">
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">发票文件导入(案件)</div>
+                            </a>
+                    </div>
+                </li>
+
+                @{ actived = action == "ContractInvoiceCustomizedFile".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                       
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/InvoiceFile/ContractInvoiceCustomizedFile", PageId.PageId_1001005004)) class="ng-scope">
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">发票文件导入(合同)</div>
+                            </a>
+                    </div>
+                </li>
+
+                @{ actived = (caseTypeId == "1".ToLower() && invoiceTypeId == "1".ToLower()) ? "class=active" : ""; }
+
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CaseFee/CaseFeeList?caseTypeId=1&invoiceTypeId=1", PageId.PageId_1001005005)) class="ng-scope">
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding">专利发票上传</div>
+                            </a>
+                    </div>
+                </li>
+                
+                @{ actived = (caseTypeId == "1".ToLower() && invoiceTypeId == "2".ToLower()) ? "class=active" : ""; }
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content(string.Format("~/{0}/IPR/CaseFee/CaseFeeList?caseTypeId=1&invoiceTypeId=2", PageId.PageId_1001005005)) class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">专利收据上传</div>
+                        </a>
+                    </div>
+                </li>
+
+                
+                @{ actived = (caseTypeId == "2".ToLower() && invoiceTypeId == "1".ToLower()) ? "class=active" : ""; }
+                <li @actived>
+                    <div class="ng-isolate-scope">
+                        <a href=@Url.Content(string.Format("~/{0}/IPR/CaseFee/CaseFeeList?caseTypeId=2&invoiceTypeId=1", PageId.PageId_1001005005)) class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">商标著作权发票上传</div>
+                        </a>
+                    </div>
+                </li>
+
+                @*@{ actived = action == "ReceiptOcrFile".ToLower() ? "class=active" : "";}
+                <li @actived>
+                    <div class="ng-isolate-scope">
+
+                        <a href=@Url.Content(string.Format("~/{0}/IPR/InvoiceFile/ReceiptOcrFile", PageId.PageId_1001005005)) class="ng-scope">
+                            <div class="nav-icon"></div>
+                            <div class="nav-title ng-binding">专利收据AI导入</div>
+                        </a>
+                    </div>
+                </li>*@
+
+            </ul>
+        </div>
+
+    </div>
+    <div class="product-nav-scene product-nav-sub-scene">
+        <div class="product-nav-title">xxx</div>
+        <div class="product-nav-list">
+            <ul></ul>
+        </div>
+    </div>
+</div>

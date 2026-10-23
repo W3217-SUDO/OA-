@@ -1,0 +1,555 @@
+﻿@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service.Legal.Investigation.Clue;
+@using Dchien.Legal.Service.BAS;
+
+@model Dchien.Legal.Web.Areas.CIT.ViewModels.InvestigationClue.InvestigationClueListModel
+
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/zTree/zTreeStyle.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.core.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.excheck.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.exedit.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<script type="text/javascript" src="@Url.Content("~/Scripts/CIT/Investigation/CIT.Investigation.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/CIT/Investigation/CIT.Investigation.Clue.List.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+
+<style type="text/css">
+    ul.ztree {
+        margin-top: 0px;
+        border-right: 0px solid #e1e6eb;
+        overflow-y: auto;
+        overflow-x: auto;
+    }
+
+    /*.ztree * {font-size: 10pt;font-family:"Microsoft Yahei",Verdana,Simsun,"Segoe UI Web Light","Segoe UI Light","Segoe UI Web Regular","Segoe UI","Segoe UI Symbol","Helvetica Neue",Arial}*/
+    .ztree li {
+        line-height: 20px;
+    }
+
+        .ztree li a {
+            width: 200px;
+            height: 20px;
+            padding-top: 0px;
+        }
+
+            .ztree li a:hover {
+                text-decoration: none;
+                background-color: #E7E7E7;
+            }
+
+            .ztree li a span.button.switch {
+                visibility: hidden;
+            }
+
+    .ztree.showIcon li a span.button.switch {
+        visibility: hidden;
+    }
+
+    .ztree li a.curSelectedNode {
+        background-color: #D4D4D4;
+        border: 0;
+        height: 20px;
+    }
+
+    .ztree li span {
+        line-height: 20px;
+    }
+
+        .ztree li span.button {
+            margin-top: 2px;
+        }
+
+            .ztree li span.button.switch {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+
+            .ztree li span.button.add {
+                margin-left: 2px;
+                margin-right: -1px;
+                background-position: -144px 0;
+                vertical-align: top;
+                *vertical-align: middle;
+            }
+
+
+            .ztree li span.button.ico_docu {
+                background-position: -110px -16px;
+            }
+
+            .ztree li span.button.switch.level0 {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+
+            .ztree li span.button.switch.level1 {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+    /*.ztree li span.button.noline_open {background-position: 0 0;}
+    .ztree li span.button.noline_close {background-position: -18px 0;}
+    .ztree li span.button.noline_open.level0 {background-position: 0 -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}*/
+
+    .node_name {
+        margin-left: 10px;
+    }
+
+    div#rMenu {
+        position: absolute;
+        visibility: hidden;
+        top: 0;
+        background-color: #555;
+        text-align: left;
+        padding: 2px;
+    }
+
+        div#rMenu ul li {
+            margin: 1px 0;
+            padding: 0 5px;
+            cursor: pointer;
+            list-style: none outside none;
+            background-color: #DFDFDF;
+        }
+</style>
+
+<div class="viewFramework-product">
+    <div class="viewFramework-product-body">
+        <div ng-transclude="">
+            <div class="console-container ng-scope">
+                <div class="row ng-scope">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>调查线索列表</h5>
+                            </div>
+                        </div>
+
+                        <div class="pull-left margin-top-1 col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm">
+                                @Html.HiddenFor(m => m.SearchCondition.PageId)
+                                @Html.HiddenFor(m => m.SearchCondition.PageName, new { name = "PageName" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.TotalCount, new { name = "TotalCount" })
+                                
+                                <table class="search_table" style="width: 600px">
+                                    <colgroup>
+                                        <col style="width: 60px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 80px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 80px;" />
+                                        <col style="width: 220px" />
+
+                                        <col>
+                                    </colgroup>
+                                    <tr>
+                                        <th style="text-align: left">
+                                            线索编号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.InvestigationClueNo, new { @class = "form-control", @style = "width:95%" })
+                                        </td>
+
+                                        @*<th style="text-align: left">
+                    案源人：
+                </th>
+                <td>
+                    @Html.TextBoxFor(m => m.SearchCondition.BusinessOwnerName, new { @class = "form-control", @style = "width:95%" })
+                </td>*@
+
+                                        <th style="text-align: left">
+                                            侵权方式：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.BusinessType, DictionaryTypeService.Instance.GetInvestigationBusinessTypeList(true), new { @class = "form-control select", style = "width:95%" })
+                                        </td>
+
+                                        <th style="text-align: left">
+                                            权利人：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.IndicterName, new { @class = "form-control", @style = "width:97.3%" })
+                                        </td>
+                                    </tr>
+
+                                    <tr>
+                                        <th style="text-align: left">
+                                            案件状态：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.GenerateStatus, InvestigationClueService.Instance.GetCaseGenerateStatusList(true), new { maxlength = 60, @class = "form-control select", style = " width:95%" })
+                                        </td>
+                                        <th style="text-align: left">
+                                            店铺名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.StoreName, new { @class = "form-control", @style = "width:95%" })
+                                        </td>
+
+
+                                        <th style="text-align: left">
+                                            店铺地址：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.Address, new { @class = "form-control", @style = "width:97.3%" })
+                                        </td>
+                                    </tr>
+
+                                    <tr>
+                                        <th style="text-align: left">
+                                            调查员：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.InvestigatorName, new { @class = "form-control", @style = "width:95%" })
+                                        </td>
+
+                                        <th style="text-align: left">
+                                            调查区域：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.District, new { @class = "form-control", @style = "width:95%" })
+                                        </td>
+                                        <th style="text-align: left">
+                                            调查日期：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.BeginTime, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.EndTime, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                        </td>
+
+                                    </tr>
+
+                                    <tr>
+                                        <th style="text-align: left">
+                                            取证日期：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.EvidenceDate, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:95%" })
+                                        </td>
+                                        <th style="text-align: left">
+                                            公证书号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.NotarialNo, new { @class = "form-control", @style = "width:95%" })
+                                        </td>
+                                        <th style="text-align: left">
+                                            仓库位置：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.DepositAddress, new { @class = "form-control", @style = "width:97.3%" })
+                                        </td>
+                                        @*<th style="text-align: right">
+                    公证机构：
+                </th>
+                <td>
+                    @Html.TextBoxFor(m => m.SearchCondition.NotaryOrganization, new { @class = "form-control", @style = "width:97.5%" })
+                </td>*@
+
+                                    </tr>
+
+                                    <tr>
+                                        <td style="text-align: left"></td>
+                                        @*<td style="text-align: right">
+                    @Html.CheckBoxFor(m => m.SearchCondition.HasNotToCase, new { @class = " form-control", @style = "vertical-align:middle;" }) <span class="">未生成案件</span>
+                </td>*@
+
+                                        <td style="text-align: left">
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnInvestigationClueSearch">
+                                                <span>查询</span>
+                                            </a>
+                                        </td>
+                                    </tr>
+
+                                </table>
+
+                            </form>
+                        </div>
+
+                    </div>
+                   
+
+                    <div class="col-sm-12">
+                        <div class="ng-scope">
+                            <div class="gridSection" id="investigationgridSection">
+                                <table  class="aps-table aps-widget aps-ani-transition" id="tblClueList">
+                                    <colgroup>
+                                        <col style="width: 3%">
+                                        <col style="width: 8%">
+                                        <col style="width: 9%">
+                                        <col style="width: 8%">
+                                        <col style="width: 12%">
+                                        <col style="width: 12%">
+                                        <col style="width: 8%">
+                                        <col style="width: 13%">
+                                        <col style="width: 8%">
+                                        <col style="width: 13%">
+                                        <col style="width: 10%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 16%">
+                                        <col style="width: 5%">
+                                        <col style="width: 5%">
+
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <td><input type="checkbox" id="chkClueAll" name="chkClueAll"></td>
+                                            <th style="text-align: left">
+                                                线索编号
+                                            </th>
+                                            <th style="text-align: left">
+                                                案件编号
+                                            </th>
+                                            <th style="text-align: left">
+                                                调查员
+                                            </th>
+                                            <th style="text-align: left">
+                                                调查时间
+                                                <span>
+                                                    <span class="aps-state-hidden"></span>
+                                                    <span data-field="T.lawfulDay" class="aps-widget aps-ani-transition aps-sort  aps-state-visible">
+                                                        <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                                                        <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                                                           style="top:9px">
+                                                        </i>
+                                                    </span>
+                                                </span>
+                                            </th>
+                                            <th style="text-align: left">
+                                                取证时间
+                                            </th>
+                                            <th style="text-align: left">
+                                                侵权方式
+                                            </th>
+                                            <th style="text-align: left">
+                                                店铺名称
+                                            </th>
+                                            <th style="text-align: left">
+                                                店铺Id
+                                            </th>
+                                            <th style="text-align: left">
+                                                调查地址
+                                            </th>
+
+                                            <th style="text-align: left">
+                                                权利人
+                                            </th>
+                                            <th style="text-align: left">
+                                                权利类型
+                                            </th>
+                                            <th style="text-align: left">
+                                                案源人
+                                            </th>
+                                            <th style="text-align: left">
+                                                客户管理人
+                                            </th>
+                                            <th style="text-align: left">
+                                                公证书号
+                                            </th>
+                                            <th style="text-align: left">
+                                                仓库
+                                            </th>
+
+                                            <th style="text-align: left">
+                                                费用金额
+                                            </th>
+                                        </tr>
+
+                                    </thead>
+                                    <tbody>
+                                        <tr style="display: none">
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left;"></td>
+                                            <td style="text-align: left;white-space:nowrap;"></td>
+                                            <td style="text-align: left;white-space:nowrap;"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left;white-space:nowrap;"></td>
+                                            <td style="text-align: left;white-space:nowrap;"></td>
+                                            <td style="text-align: left;white-space:nowrap;"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                        </tr>
+
+                                        <tr style="display: none">
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left;"></td>
+                                            <td style="text-align: left;white-space:nowrap;"></td>
+                                            <td style="text-align: left;white-space:nowrap;"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left;white-space:nowrap;"></td>
+                                            <td style="text-align: left;white-space:nowrap;"></td>
+                                            <td style="text-align: left;white-space:nowrap;"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                        </tr>
+                                    </tbody>
+                                    <tfoot class="ng-scope" style="display:none">
+                                        <tr>
+                                            <td><input type="checkbox" id="chkClueAll" name="chkClueAll"></td>
+                                            <td colspan="14">
+                                                <div class="pull-left" style="position:absolute;z-index: 1000;">
+                                                    <input type="button" id="btnInvestigationClueRefresh" class="btn btn-default" style="height:32px" value="刷新" />
+
+                                                  
+
+                                                    @if (Model.SearchCondition.PageId == PageId.PageId_1401003000 || Model.SearchCondition.PageId == PageId.PageId_1401003004)
+                                                    {
+
+                                                        <input type="button" id="btnInvestigationClueFileCreate" class="btn btn-default" style="height:32px" value="新增文件" />
+                                                        @*<input type="button" id="btnInvestigationClueToAudit" class="btn btn-default" style="height:32px" value="提交审批" />*@
+                                                        <input type="button" id="btnInvestigationClueDelete" class="btn btn-default" style="height:32px" value="批量删除" />
+                                                    }
+
+                                                    @if (Model.SearchCondition.PageId == PageId.PageId_1401004001  )
+                                                    {
+                                                        <input type="button" id="btnInvestigationClueAudit" class="btn btn-default" style="height:32px" value="审批" />
+                                                    }
+
+                                                    @if (Model.SearchCondition.PageId == PageId.PageId_1401004005)
+                                                    {
+                                                        <input type="button" id="btnInvestigationClueCustomerAudit" class="btn btn-default" style="height:32px" value="审批" />
+                                                    }
+
+                                                    @if (Model.SearchCondition.PageId == PageId.PageId_1401003002 || Model.SearchCondition.PageId == PageId.PageId_1401003003)
+                                                    {
+                                                        <div class="inline-block dropdown" style="margin-left: 4px">
+                                                            <div class="dropdown ng-scope">
+                                                                <button class="btn btn-default dropdown-toggle" style="height:32px" data-toggle="dropdown">
+                                                                    取证
+                                                                    <span class="caret"></span>
+                                                                </button>
+                                                                <ul class="dropdown-menu" style="position:absolute;z-index: 99999;text-align: left;">
+
+                                                                    <li>
+                                                                        <a href="javascript:;" id="btnInvestigationClueTaskEvidence" onclick="javascript:void(0);">
+                                                                            <span style="font-size:12px">单个取证</span>
+                                                                        </a>
+                                                                    </li>
+
+                                                                    <li>
+                                                                        <a href="javascript:;" id="btnInvestigationClueTaskEvidenceMultiCreate" onclick="javascript:void(0);">
+                                                                            <span style="font-size:12px">批量取证</span>
+                                                                        </a>
+                                                                    </li>
+
+                                                                </ul>
+                                                            </div>
+                                                        </div>
+
+                                                        @*<input type="button" id="btnInvestigationClueTaskEvidence" class="btn btn-default" style="height:32px" value="单个取证" />
+                            <input type="button" id="btnInvestigationClueTaskEvidenceMultiCreate" class="btn btn-default" style="height:32px" value="批量取证" />
+                            @*<input type="button" id="btnInvestigationClueDelete" class="btn btn-default" style="height:32px" value="批量删除" />*@
+
+                                                    if (Model.SearchCondition.PageId == PageId.PageId_1401003003)
+                                                    {
+                                                        <input type="button" id="btnInvestigationClueGenerateCase" class="btn btn-default" style="height:32px" value="生成案件" />
+                                                        }
+                                                    }
+
+                                                    <div class="inline-block dropdown" style="margin-left: 4px">
+                                                        <div class="dropdown ng-scope">
+                                                            <button class="btn btn-default dropdown-toggle" style="height:32px" data-toggle="dropdown">
+                                                                导出线索
+                                                                <span class="caret"></span>
+                                                            </button>
+                                                            <ul class="dropdown-menu" style="position:absolute;z-index: 99999;text-align: left;">
+                                                                <li>
+                                                                    <a href="javascript:;" id="btnInvestigationClueExportSelected" onclick="javascript:void(0);">
+                                                                        <span style="font-size:12px">导出选中</span>
+                                                                    </a>
+                                                                </li>
+                                                                <li>
+                                                                    <a href="javascript:;" id="btnInvestigationClueExportAll" onclick="javascript:void(0);">
+                                                                        <span style="font-size:12px">导出全部</span>
+                                                                    </a>
+                                                                </li>
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="inline-block dropdown" style="margin-left: 4px">
+                                                        <div class="dropdown ng-scope">
+                                                            <button class="btn btn-default dropdown-toggle" style="height:32px" data-toggle="dropdown">
+                                                                导出交接清单
+                                                                <span class="caret"></span>
+                                                            </button>
+                                                            <ul class="dropdown-menu" style="position:absolute;z-index: 99999;text-align: left;">
+                                                                <li>
+                                                                    <a href="javascript:;" id="btnInvestigationClueExportSelectedForManifest" onclick="javascript:void(0);">
+                                                                        <span style="font-size:12px">导出选中</span>
+                                                                    </a>
+                                                                </li>
+                                                                <li>
+                                                                    <a href="javascript:;" id="btnInvestigationClueExportAllForManifest" onclick="javascript:void(0);">
+                                                                        <span style="font-size:12px">导出全部</span>
+                                                                    </a>
+                                                                </li>
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+
+                                                    @*<input type="button" id="btnInvestigationClueIn"  onclick="javascript:void(0);" class="btn btn-default" style="height:32px" value="导入公正书号&仓库" />*@
+
+                                                </div>
+                                                <div class="ng-scope">
+                                                    <div class="pull-right page-box investigationclue">
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+
+                                </table>
+                            </div>
+                            <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left ng-binding">没有查询到符合条件的记录</span>
+                                            <span class="ng-binding">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="sidebox" class="sidebox active" style="overflow-y:auto;width: 30%; right:650px; min-width: 650px;display:none">
+            <div class="sidebox-content"></div>
+        </div>
+
+        <div id="sidebox_audit" class="sidebox active" style="overflow-y:auto;width: 30%; min-width: 650px;display:none">
+            <div class="sidebox-content_audit" ></div>
+        </div>
+    </div>
+</div>

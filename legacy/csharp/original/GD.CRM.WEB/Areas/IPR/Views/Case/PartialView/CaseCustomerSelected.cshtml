@@ -1,0 +1,117 @@
+﻿@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.CaseCustomerSelectedModel
+
+<script type="text/javascript">
+
+</script>
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+
+<div class="modal fade" id="caseCustomerModal" >
+    <div class="modal-dialog" style="width:65%">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" id="btnCustomerClose">×</button>
+                <h5 class="modal-title">选择客户</h5>
+            </div>
+            <div class="modal-body" style='padding:10px'>
+                <form id="caseCustomerListForm" class="form-inline ng-valid" >
+                    @Html.HiddenFor(m => m.CaseId, new { name = "CaseId" })
+                    @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                    @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+
+                    <div class="simple-form-field">
+                        <div class="form-group ">
+                            <label class="control-label">
+                                <span contenteditable="" class="text-danger "></span>
+                                <span class="">客户名称：</span>
+                            </label>
+                            <div class="form-control-wrap">
+                                @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control" ,@placeholder="客户名称，多个用逗号隔开.",style="width: 300px" })
+                            </div>
+                        </div>
+                    </div>
+                    <div class="simple-form-field  ">
+                        <div class="form-group  ">
+                            <label class="  control-label">
+                                <span class="">
+                                </span>
+                            </label>
+                            <div class="form-control-wrap text-right">
+                                @*<a href="javascript:void(0);" class="btn btn-primary " id="btnCustomerSearch">
+                                    <span>查询</span>
+                                </a>*@
+                                
+                                <input class="btn btn-primary " type="button" id="btnCustomerSearch" value="查询" />
+                            </div>
+                            <div class="form-control-wrap text-right">
+                                <a href="@Url.Content("~/CRM/Customer/Index?createNew=true&customerSourceTypeId=1")" target="_blank" class="btn btn-primary " id="btnCustomerCreate">
+                                    <span>新增客户</span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                </form>
+                <div class="gridSection">
+                    <table id="tblCustomerList" class="table table-hover" >
+                        <thead>
+                            <tr>
+                                <th width="10">
+                                    <input type="checkbox" id="chkCustomerAll" class="ng-pristine ng-valid">
+                                </th>
+                                <th>
+                                    客户编号
+                                </th>
+                                <th>
+                                    客户名称
+                                </th>
+                                <th>
+                                    注册地址
+                                </th>
+
+                                <th>
+                                    机构代码
+                                </th>
+                                <th>
+                                    用户代码
+                                </th>
+
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr style="display: none">
+                                <td>
+                                    &nbsp;
+                                </td>
+                                <td></td>
+                                <td style="text-align: left"></td>
+                                <td style="text-align: left"></td>
+                                <td></td>
+                                <td></td>
+
+                            </tr>
+                        </tbody>
+                        <tfoot class="ng-scope" style="display: none">
+                            <tr>
+                                <td colspan="6">
+                                    <div class="pull-left"></div>
+                                    <div class="ng-scope">
+                                        <div class="pull-right page-box">
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+            </div>
+            <div class="modal-footer">
+                <input type="button" class="btn btn-primary ng-binding" id="btnCustomerConfirm" value="确定" />
+                <input type="button" class="btn btn-default ng-binding" id="btnCustomerCancle" value="取消"/>
+            </div>
+        </div>
+    </div>
+</div>
+

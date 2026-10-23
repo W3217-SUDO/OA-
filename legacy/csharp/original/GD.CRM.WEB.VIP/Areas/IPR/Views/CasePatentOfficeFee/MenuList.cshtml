@@ -1,0 +1,154 @@
+﻿@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service.IPR.Case
+@using Dchien.Legal.Service
+@using Dchien.Legal.Entity.IPR.Case
+@using Dchien.Legal.Service.FAM.AR.CaseFee
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var id = string.Empty;
+    if (ViewContext.RouteData.Values.ContainsKey("id"))
+    {
+        id = ViewContext.RouteData.Values["id"].ToString().ToLower();
+    }
+    var actived = "active";
+
+    var menus = MenuService.Instance.GetMenusByCurrentUser();
+}
+<div class="product-nav-stage ng-scope product-nav-stage-main" >
+    <div class="product-nav-scene product-nav-main-scene" >
+        <div class="product-nav-title ng-binding" >专利通知缴费</div>
+        <div class="ng-isolate-scope"></div>
+        <div class="product-nav-list">
+            <ul class="top-level">
+
+                @*@if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001010004) != null)
+                {
+                    actived = id == PageId.PageId_1001010004 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                                <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFee/List", PageId.PageId_1001010004)) class="ng-scope" >
+                                    <div class="nav-icon"></div>
+                                    @{
+                                        var serach = new CaseFeeFileSearchCondition();
+                                        serach.UserId = LoginHelper.GetUserName();
+                                        serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+
+                                        serach.FeeTypeIds.Add((int)CaseFeeType.FeeType11002);
+                                        serach.FeeTypeIds.Add((int)CaseFeeType.FeeType21002);
+                                        serach.FeeTypeIds.Add((int)CaseFeeType.FeeType31002);
+
+                                        serach.PageId = PageId.PageId_1001010004;
+                                        serach.IsCashed = false;
+
+                                        var totalCount = CaseFeeFileSearchService.Instance.GetCaseFeeFileListTotalCount(serach);
+                                    }
+                                    <div class="nav-title ng-binding" >通知缴纳申请费(@totalCount)</div>
+                                </a>
+                        </div>
+                    </li>
+                }*@
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001010001) != null)
+                {
+                    actived = id == PageId.PageId_1001010001 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFee/List", PageId.PageId_1001010001)) class="ng-scope" >
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFeeFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType11008);
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType21008);
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType31008);
+
+                                    serach.PageId = PageId.PageId_1001010001;
+                                    serach.IsCashed = false;
+
+                                    var totalCount = CaseFeeFileSearchService.Instance.GetCaseFeeFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" >缴纳实质审查费(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001010002) != null)
+                {
+                    actived = id == PageId.PageId_1001010002 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFee/List", PageId.PageId_1001010002)) class="ng-scope" >
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFeeFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType11010);
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType21010);
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType31010);
+                                    serach.PageId = PageId.PageId_1001010002;
+                                    serach.IsCashed = false;
+
+                                    var totalCount = CaseFeeFileSearchService.Instance.GetCaseFeeFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" >缴纳变更费(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                  }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001010003) != null)
+                {
+                    actived = id == PageId.PageId_1001010003 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFee/List", PageId.PageId_1001010003)) class="ng-scope" >
+                                <div class="nav-icon"></div>
+                                @{
+                                    var serach = new CaseFeeFileSearchCondition();
+                                    serach.UserId = LoginHelper.GetUserName();
+                                    serach.AccessLevel = (Dchien.Legal.Entity.Account.AccessLevel)LoginHelper.GetAccesslevel();
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType11020);
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType21020);
+                                    serach.FeeTypeIds.Add((int)CaseFeeType.FeeType31020);
+
+                                    serach.PageId = PageId.PageId_1001010003;
+                                    serach.IsCashed = false;
+
+
+                                    var totalCount = CaseFeeFileSearchService.Instance.GetCaseFeeFileListTotalCount(serach);
+                                }
+                                <div class="nav-title ng-binding" >缴纳年费(@totalCount)</div>
+                            </a>
+                        </div>
+                    </li>
+                }
+
+                @if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1001010099) != null)
+                {
+                    actived = id == PageId.PageId_1001010099 ? "class=active" : "";
+
+                    <li @actived>
+                        <div class="ng-isolate-scope">
+                            <a href=@Url.Content(string.Format("~/{0}/IPR/CasePatentOfficeFee/List", PageId.PageId_1001010099)) class="ng-scope" >
+                                <div class="nav-icon"></div>
+                                <div class="nav-title ng-binding" >缴纳其他官费</div>
+                            </a>
+                        </div>
+                    </li>
+                                    }
+
+
+
+            </ul>
+        </div>
+    </div>
+ 
+</div>

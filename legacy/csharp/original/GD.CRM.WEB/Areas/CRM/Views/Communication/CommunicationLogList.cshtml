@@ -1,0 +1,51 @@
+﻿@using Dchien.Legal.BizModel.CRM.Communication
+@model Dchien.Legal.Web.Areas.CRM.ViewModels.Communication.CommunicationModel
+
+<style>
+    .dchien-lego-console-product-update .module-wrap .product-fun-update-list dt {
+        margin: 0px 0 16px;
+        color: #999;
+    }
+     .dchien-lego-console-product-update .module-wrap .month-list li.first {
+         height: auto;
+     }
+    .dchien-lego-console-product-update .module-wrap .month-list li .date {
+        margin-right: 12px;
+        color: #06C;
+    }
+</style>
+<form id="postForm" action="">
+    
+    @if (Model.CommunicationLogs != null && Model.CommunicationLogs.Count > 0)
+    {
+        var lst = Model.CommunicationLogs.GroupBy(x => new DateTime(x.CommunicationTime.Value.Year, x.CommunicationTime.Value.Month, 1))
+            .ToList();
+
+        foreach (var x in lst)
+        {
+            <dl class="product-fun-update-list" style="margin-top: 0px; margin-bottom: 0px;">
+
+                <dt> @x.Key.ToString("yyyy-MM")</dt>
+                <dd>
+                    <ul class="month-list">
+                        @foreach (var item in x.ToList<BizCommunication>())
+                        {
+                            <li class="first border">
+                                <i class="li-icon"></i>
+                                <span class="date">@(item.CommunicationTime.HasValue ? item.CommunicationTime.Value.ToString("yyyy-MM-dd HH:mm:ss") : "")</span>
+                                <a target="_blank" href="javascript:void(0);">@item.Content</a>
+                            </li>
+                        }
+
+                    </ul>
+                </dd>
+            </dl>
+        }
+    }
+    else
+    {
+        <span>无历史记录</span>
+    }
+
+</form>
+

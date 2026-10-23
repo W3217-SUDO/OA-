@@ -1,0 +1,136 @@
+﻿@using Dchien.Legal.Service.FAM.InternalFee;
+
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.AP.Payment.PaymentAuditModel
+
+<div class="slide-panels">
+    <div class="slide-panel active medium">
+        <div class="slide-panel-content">
+            <div class="panel-header">
+                <h5>付款审批</h5>
+                <a class="panel-close" onclick="javascript: $('.slide-panel-container').empty(); $('.slide-panel-container').removeClass('show-panel');">
+                    <i class="next-icon next-icon-close next-small" style="font-size: 0px;">close</i>
+                </a>
+                <div class="head-custom"></div>
+            </div>
+            <div class="placeholder">...</div>
+            <div class="panel-body">
+                <div class="panel-body-content">
+                    <div class="page-overview-panel-apply">
+                        <div ui-view="myTicket">
+                            <div class="ticket-detail ">
+
+                                    <div class="table-content" style="padding:15px">
+                                    <form class="form-horizontal form-horizontal ">
+                               
+                                        <div class="simple-form-field  ">
+                                            <div class="form-group ">
+
+                                                <div class="col-sm-10">
+                                                    <textarea id="Audit_AuditContent" type="text" class="form-control"
+                                                              rows="3" placeholder="审批意见"
+                                                              name="Audit_AuditContent" required="required"></textarea>
+ 
+                                                </div>
+                                                @Html.HiddenFor(m => m.PaymentIds)
+                                            </div>
+                                        </div>
+                                        <div class="simple-form-field  ">
+                                            <div class="form-group simple-form-submit " style="margin-bottom:0px">
+                                                <div class="col-sm-4">
+                                                    <input class="btn btn-primary" type="button" id="btnPaymentApplicationMultiApproved" value="同意" />
+                                                    <input class="btn btn-default" type="button" id="btnPaymentApplicationMultiRejected" value="拒绝" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </form>
+                                </div>
+ 
+                                <div class="form-group">
+                                    <div class="col-sm-12" style="padding:0px">
+                                        <div class="gridSection">
+                                            <table class="aps-table aps-widget aps-ani-transition " id="tblInternalFeeObjects" width="100%">
+                                                <colgroup>
+                                                    <col style="width: 15%">
+                                                    <col style="width: 22%">
+                                                    <col style="width: 8%">
+                                                    <col style="width: 12%">
+                                                    <col style="width: 20%">                                                    
+                                                </colgroup>
+                                                <thead>
+                                                    <tr>
+                                                        <th>案号</th>
+                                                        <th>原告</th>
+                                                        @*<th>收款<br>单位</th>*@
+                                                        <th>金额</th>
+                                                        <th>费用<br>类型</th>
+                                                        <th>付款<br>备注</th>                                                        
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+
+                                                    @if (Model.Payments != null && Model.Payments.Any())
+                                                    {
+                                                        foreach (var payment in Model.Payments)
+                                                        {
+                                                            if (payment.PaymentObjects != null && payment.PaymentObjects.Any())
+                                                            {
+                                                                foreach (var item in payment.PaymentObjects.OrderBy(x => x.CaseNo))
+                                                                {
+                                                                    var caseFee = Dchien.Legal.Service.FAM.AR.CaseFee.CaseFeeService.Instance.GetCaseFeeByCaseFeeId(item.CaseFeeId.Value);
+                                                                    var c = Dchien.Legal.Service.Legal.Case.CaseService.Instance.GetCaseBasic(item.CaseNo);
+
+                                                                    <tr>
+                                                                        <td style="text-align: center">
+                                                                            <span>@caseFee.CaseNo</span>
+                                                                        </td>
+                                                                        <td style="text-align: left">
+                                                                            <span>@c.Basic.AppellantNames</span>
+                                                                        </td>
+                            
+                                                                        <td style="text-align: left">
+                                                                            <span>@caseFee.PaidAmount</span>
+                                                                        </td>
+                                                                        <td style="text-align: left;">
+                                                                            <span>@caseFee.CaseFeeTypeName</span>
+                                                                        </td>
+                                                                        <td style="text-align: left">
+                                                                            <span>@caseFee.Remark</span>
+                                                                        </td>      
+                                                                        
+                                                                        @*<td style="text-align: center">
+                                                                            <span>@payment.PaymentType.OrganizationName </span>
+                                                                        </td>*@                       
+                                                                        @*<td style="text-align: center">
+                                                                            <span>@(caseFee.PaidDate.HasValue ? caseFee.PaidDate.Value.ToString("yyyy-MM-dd") : string.Empty)</span>
+                                                                        </td>*@          
+                                                       
+                                                                    </tr>
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="panel-footer">
+            <div class="btn-con">
+                <input type="button" class="btn  btn-normal" style="border-radius: 0;
+                                                                        padding: 0 16px;
+                                                                        height: 32px;
+                                                                        line-height: 30px;
+                                                                        font-size: 12px;
+                                                                        border-width: 1px;" onclick="javascript: $('.slide-panel-container').empty(); $('.slide-panel-container').removeClass('show-panel');" value="取消" />
+            </div>
+        </div>
+    </div>
+</div>
+

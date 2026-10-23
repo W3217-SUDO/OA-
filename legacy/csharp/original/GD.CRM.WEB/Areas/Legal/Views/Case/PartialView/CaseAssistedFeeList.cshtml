@@ -1,0 +1,113 @@
+﻿@using SunHold.Legal.Common
+@model SunHold.Legal.Web.Areas.Lawsuit.ViewModels.Case.CaseAssistedFeeListModel
+
+<form id="postForm" action="">
+    <div id="casegridSection" class="gridSection">
+        <div class="context">
+            <table class="table table-hover" id="tblCaseAssistedFee">
+                <thead>
+                    <tr>
+                        <th>
+                            序号
+                        </th>
+                        <th>
+                            案件编号
+                        </th>
+                        <th>
+                            资助类别
+                        </th>
+                        <th>
+                            提交日期
+                        </th>
+                        <th>
+                            提交人
+                        </th>
+                        <th>
+                            办理日期
+                        </th>
+                        <th>
+                            办理人
+                        </th>
+
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- ngRepeat: item in store --><!-- ngIf: !loadingState -->
+                    @if (Model.CaseAssistedFees != null)
+                    {
+                        foreach (var item in Model.CaseAssistedFees)
+                        {
+                            <tr>
+                                <td class="assistedFeeId">
+                                    @Html.HiddenFor(m => item.AssistedFeeId)
+                                    @(Model.CaseAssistedFees.IndexOf(item) + 1)
+                                </td>
+                                <td>
+                                    <span>@item.CaseNo</span>
+                                </td>
+                                <td>
+                                    <span>@item.AssistedFeeTypeName</span>
+                                </td>
+                                <td>
+                                    <span>@(item.RequestDate.HasValue ? item.RequestDate.Value.ToString("yyyy-MM-dd") : "")</span>
+                                </td>
+                                <td>
+                                    <span>@item.RequestUser</span>
+                                </td>
+                                <td>
+                                    <span>@(item.ResponseDate.HasValue ? item.ResponseDate.Value.ToString("yyyy-MM-dd") : "")</span>
+                                </td>
+                                <td>
+                                    <span>@item.ResponseUser</span>
+                                </td>
+                                @*<td>
+                                        <span><a href="javascript:void(0)" onclick="javascript:caseAssistedFee.Transact(@item.AssistedFeeId);" class="btn btn-link">办理</a></span>
+                                        <span><a href="javascript:void(0)" onclick="javascript:caseAssistedFee.Delete(@item.AssistedFeeId);" class="btn btn-link">删除</a></span>
+                                    </td>*@
+                            </tr>
+                        }
+                    }
+
+                </tbody>
+
+                <tfoot class="ng-scope" style="display: none">
+                    <tr>
+                        <td colspan="12">
+                            <div class="pull-left"></div>
+                            <div class="ng-scope">
+                                <div class="pull-right page-box caseAssistedFee">
+
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+
+        </div>
+        <div class="simple-grid-none-data-wrap" style="height:230px">
+            <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                    <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                    <div class="text-size-16 tip-text inline-block">
+                        <span class="margin-left ng-binding"></span>没有查询到资助费用，可以去
+                        <a href="javascript:void(0);" class=" ng-binding" id="btnCaseAssistedFeeCreate">新建资助费用</a>
+                        <span class="ng-binding"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="contextMenu" id="feeMenu" style="display: none;">
+        <ul>
+            <li id="create">新建资助费用</li>
+            <li id="transact">到账确认</li>
+            <li id="delete">删除</li>
+            <li id="refresh">刷新</li>
+        </ul>
+    </div>
+    @Html.HiddenFor(m => Model.TotalCount, new { name = "TotalCount" })
+    @Html.HiddenFor(m => Model.PageNo, new { name = "PageNo" })
+    @Html.HiddenFor(m => Model.PageSize, new { name = "PageSize" })
+</form>
+

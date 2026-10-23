@@ -1,0 +1,46 @@
+﻿@using Dchien.Legal.Service.BAS
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/CIT/Investigation/CIT.Investigation.Clue.Investigator.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<div class="modal fade" id="investigationClueInvestigatorModal">
+    <div class="modal-dialog" style="width:600px">
+        <div class="modal-content">
+            <div class="ng-scope">
+                @using (Html.BeginForm("Investigator", "InvestigationClueInvestigator", FormMethod.Post, new { id = "investigationClueInvestigator", enctype = "multipart/form-data", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+                    <div class="modal-header">
+                        <button type="button" class="close" onclick="javascript: $('#investigationClueInvestigatorModal').modal('hide');">×</button>
+                        <h5 class="modal-title ng-binding">调查辅助员</h5>
+                    </div>
+                    <div class="modal-body">
+                        <div class="">
+                            <div class="form-horizontal margin-top-3 ">
+ 
+                                <div class="form-group">
+                                    <label class="col-sm-3 control-label">
+                                        <span class="text-danger">*</span>
+                                        <span>调查辅助员：</span>
+                                    </label>
+                                    <div class="col-sm-8">
+                                        <div class="bootstrap-tagsinput" style="height:28px">
+                                            <input type="text" placeholder="调查辅助员" class="form-control inline-block" style="height:100%;width: 100px;margin-left: 6px;" id="InvestigationClue_Investigator_Input" autocomplete="off" size="1">
+                                            <div class="i_common_select" id="div_investigatorlist" style="display: none;">
+                                                <div class="i_common_wrap">
+                                                    <div class="i_common_list"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <input class="btn btn-primary ng-binding" type="button" id="btnInvestigationClueInvestigatorCreateUpdate" value="确定" />
+                        <input class="btn btn-default ng-binding" type="button" onclick="javascript: $('#investigationClueInvestigatorModal').modal('hide');" value="取消" />
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>

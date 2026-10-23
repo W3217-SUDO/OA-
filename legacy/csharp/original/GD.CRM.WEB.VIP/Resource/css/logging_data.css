@@ -1,0 +1,820 @@
+﻿@charset "utf-8";
+/*
+Copyright (c) 2010, Ctrip Inc. All rights reserved. UIG
+*/
+html, body, div, dl, dt, dd, ul, ol, li, h1, h2, h3, h4, h5, h6, pre, code, form, fieldset, legend, input, textarea, p, blockquote, th, td, em, button { margin:0; padding:0; }
+body {font-size:12px; line-height:1.5; font-family:Arial,Simsun, sans-serif; color:#333; background:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/body_bg.png) center top no-repeat;}
+img, fieldset { border:0; margin:0; padding:0; }
+select{vertical-align:middle;white-space:nowrap}
+input, textarea { font-size:12px; vertical-align:middle}
+table { border-collapse:collapse; }
+td{word-break: break-all; word-wrap:break-word;} 
+a { color:#0053aa; text-decoration:none; }
+a:hover { text-decoration:underline; }
+h1, h2, h3, h4, h5 ,h6 { font-family:Simsun, sans-serif; }
+ul, li { list-style: none; }
+dfn { font-style: normal; font-family: Arial; }
+.layoutfix { display: inline-block; }
+.layoutfix { display: block; overflow: hidden; }
+.float_left { float: left; }
+.float_right { float: right; }
+.basefix { *zoom: 1; }
+.basefix:after { clear: both; content: '.';display: block; height: 0; overflow:hidden; }
+.clear{clear:both}
+.tc{text-align:center}
+.tr{text-align:right}
+.tl{text-align:left}
+.none_border{border:0 none}
+.red{color:red}
+.blue{color:#0053aa}
+.grey{color:#999}
+.judge{font-family:Simsun, sans-serif;}
+.clear{clear:both;overflow:hidden;height:0}
+.fn{font-weight:normal}
+.f14{font-size:14px;}
+.f16{font-size:16px;}
+.f12{font-size:12px;}
+.mb5{margin-bottom:5px;}
+.mb10{margin-bottom:10px;}
+.mb15{margin-bottom:15px;}
+.mb20{margin-bottom:20px}
+.mt5{margin-top:5px;}
+.mt10{margin-top:10px;}
+.mt15{margin-top:15px;}
+.mt20{margin-top:20px}
+
+/*== 公共 ==*/
+.base_head, .base_wrap, .base_footer{margin:0 auto;width:950px;}
+.base_head{height:87px;background:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/head_bg.jpg);position:relative;z-index:2}
+.base_nav {padding:24px 0 0 220px;zoom:1}
+.base_nav li{float:left;margin-left:0px;position:relative;padding:2px 0px 2px 18px;font-size:14px;font-weight:bold;color:#fff;border:1px solid transparent;_border:none;z-index:2;width:100px;display:inline}
+.base_nav li a{color:#fff;white-space:nowrap;}
+.base_nav li.cur, .base_nav li:hover{background:#fff;border-radius:5px;text-decoration:none;border-color:#dae8ef;_border:1px solid #dae8ef}
+.base_nav li:hover a,.base_nav li.cur a{color:#0053aa;text-decoration:none}
+.base_nav li .icon_down{position:absolute;background-position:0 -30px;margin:6px 0 0 10px;*margin-top:4px;}
+.base_nav .cur .icon_down, .base_nav li:hover .icon_down{background-position:0 0}
+.base_nav .sub_nav{position:absolute;background:#fff;left:-1px;top:22px;padding:3px 0;border:1px solid #dae8ef;border-top:none;border-radius:0 0 5px 5px;z-index:10;width:100%;_padding:2px 20px 2px 20px;}
+.base_nav .sub_nav .sub_nav{position:static;border:0;border-radius:0;padding:0 0 0 5px;width:auto;margin:0;font-family:Simsun}
+.base_nav .sub_nav .sub_nav a{border-radius:0;display:inline-block;padding-left:10px}
+.base_nav .sub_nav .sub_nav a span{display:inline-block;margin-left:-12px}
+.base_nav .sub_nav a{display:block;padding:2px 2px 0 5px;_padding:2px 0 0 0;color:#0053aa;font-size:12px;font-weight:normal;background:none;border:none;border-radius:0;white-space:normal}
+.base_nav .sub_nav a:hover{text-decoration:underline}
+.base_footer{ font-family:arial; text-align:center; padding:30px 0 10px;}
+.base_footer .contact{background:#eee;padding:10px;margin-bottom:15px;}
+.base_wrap:after{clear: both; content: '.';display: block; height: 0; overflow:hidden;}
+.text_nav{text-align:right;line-height:21px;padding-top:2px}
+.text_nav a{margin-left:10px;color:#333;padding:0 10px;border:1px solid transparent;display:inline-block;_border-color:tomato;_filter:chroma(color=tomato);}
+.text_nav a:hover{background:#fff;border:1px solid #bac6d0;text-decoration:none}
+.mod{margin-bottom:10px}
+.crumbs{padding:10px 0}
+.product_b{width:500px;height:280px}
+.product_m{width:186px;height:105px}
+.product_s{width:73px;height:43px}
+.ticks{display:inline-block;padding:2px 2px;vertical-align:middle;background:#60abe3;margin-right:4px;color:#fff}
+.ticks:hover{background:#0053aa;color:#fff;text-decoration:none;}
+
+/*== icon ==*/
+.icon_up, .icon_down, .icon_del, .icon_right{display:inline-block;vertical-align:middle;background:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/un_icon.png) 0 0 no-repeat;width:16px;height:10px;cursor:pointer;overflow:hidden}
+.icon_down{background-position:0 -10px;}
+.icon_del{background-position:0 -20px;}
+.icon_right{background-position:0 -40px;height:16px;}
+.triangle_r {display:inline-block;width:0;height:0;overflow:hidden;line-height:0;font-size:0;vertical-align:middle;border-left:5px solid #d8d8d8;border-right:0 none;border-top:5px dashed transparent;border-bottom:5px dashed transparent;}
+/*************钻级*****************/
+.va_diamond01, .va_diamond02, .va_diamond03, .va_diamond04, .va_diamond05, .va_diamond06, .va_diamond07{ background-image:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/bg_rate.png); background-repeat:no-repeat; overflow:hidden; width:77px;display:inline-block;vertical-align: middle;height:9px; }
+.va_diamond01 img, .va_diamond02 img, .va_diamond03 img, .va_diamond04 img, .va_diamond05 img, .va_diamond06 img, .va_diamond07 img{background:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/bg_rate.png) 0 -15px no-repeat;height:9px;vertical-align: top}
+.va_diamond01{background:none;}
+.va_diamond01 img{ width:0px;}
+.va_diamond02 img{ width:22px;}
+.va_diamond03 img{ width:33px;}
+.va_diamond04 img{ width:44px;}
+.va_diamond05 img{ width:55px;}
+.va_diamond06 img{ width:66px;}
+.va_diamond07 img{ width:77px;}
+
+/*== 按钮 ==*/
+.btn{display:inline-block;text-align:center;background:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/un_btn.png) 0 -108px no-repeat;width:100px;height:27px;line-height:27px;border:0 none;vertical-align:middle;cursor:pointer;color:#333;font-weight:bold}
+.btn:hover{text-decoration:none;}
+.btn_m{background-position:-100px -108px;width:60px}
+.btn_s{background-position:-160px -108px;width:54px;height:21px;line-height:21px;}
+.btn_sl{background-position:-214px -108px;width:80px;height:23px;line-height:23px;}
+.btn_azure{background-position:0 0;}
+.btn_azure:hover{background-position:0 -27px;}
+.btn_azure_l{background-position:-100px 0;width:140px}
+.btn_azure_l:hover{background-position:-100px -27px}
+.btn_azure_s{background-position:-240px 0;width:54px;}
+.btn_azure_s:hover{background-position:-240px -27px}
+.btn_azure_ss{background-position:0 -189px;width:54px;height:21px;line-height:21px;}
+.btn_azure_ss:hover{background-position:0 -210px}
+.btn_blue{background-position:0 -54px;color:#fff}
+.btn_blue:hover{background-position:0 -81px;}
+.btn_blue_l{background-position:-100px -54px;width:140px;color:#fff}
+.btn_blue_l:hover{background-position:-100px -81px;}
+.btn_blue_s{background-position:-240px -54px;width:54px;color:#fff}
+.btn_blue_s:hover{background-position:-240px -81px;}
+.btn_grey{background-position:0 -108px}
+.btn_grey_m{background-position:-100px -108px;width:60px}
+.btn_grey_s{background-position:-160px -108px;width:54px;height:20px;line-height:20px;}
+.btn_search{background-position:0 -135px;width:60px;color:#fff}
+.btn_search:hover{background-position:0 -162px;}
+.btn_search_l{background-position:-60px -135px;color:#fff}
+.btn_search_l:hover{background-position:-60px -162px;}
+
+/*== 警告弹窗 ==*/
+.c_alert1, .c_alert2, .c_alert3, .c_alert4 { zoom:1; overflow:hidden;} 
+.ico_alert { display:block; width:32px; height:32px; margin:0 0 -32px -40px; background-image:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/un_base_btn.png) ; background-repeat:no-repeat; } 
+.c_alert1 { padding:10px; line-height:16px; overflow:hidden; } 
+.c_alert2,.c_alert3,.c_alert4 {min-height:32px; padding:8px 8px 8px 50px;} 
+.c_alert2 .ico_alert { background-position:-60px -300px; } 
+.c_alert3 .ico_alert { background-position:-60px -332px; } 
+.c_alert4 .ico_alert { background-position:-92px -300px; } 
+p.single{ line-height:32px; } 
+.base_alert4 .ico_alert { background-position: -92px -300px;} 
+.ticketip{position:absolute}
+.tip_check{background:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/bg_tipcheck.gif) left center no-repeat;height:23px;padding-left:7px;display:inline-block;}
+.tip_check span{background:#fff5d1;border:1px solid #ffb533;line-height:21px;padding:0 5px;border-left:none}
+
+/*== 模块 ==*/
+.info_box, .news_box, .col_box{border:1px solid #ACCCEF;}
+.info_box{border-top:0;}
+.news_box{background:#F0FAFF}
+.news_content{padding:10px;}
+.info_title{ font-size:14px; padding-left:10px; background:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/bg_nav.png) 0 -30px repeat-x; border:#ACCCEF solid 1px; border-width:1px 0;height:30px;line-height:30px;}
+.title_tips{margin-left:40px;font-size:12px;font-weight:normal;}
+.title_tips .o_label{padding:0;margin-right:20px;color:#333}
+.title_tips .o_label:hover{border:none}
+.title_tips .o_label_cur{background:none}
+.info_content{padding:15px;}
+.info_cp, .info_nt{border:1px solid #fdd362;}
+.info_cp{border-top:none}
+.info_nt{padding:3px 0;border-width:2px;background:#fffcf5;}
+.info_cp .info_title{background-position:0 1px;height:31px;line-height:31px;border-color:#FDD362}
+.info_old{border:1px solid #d7d7d7;border-top:none;}
+.info_old .info_title{background-position:0 -60px;border:1px solid #d7d7d7;border-width:1px 0}
+.sales_channel .alter{float:right;margin-right:10px}
+.btn_col .btn{margin-right:10px;}
+.btn_area{text-align:center;}
+.btn_area .btn{margin:0 10px;}
+.btn_area .tab_btn .btn{margin:0}
+.btn_area .tab_btn{text-align:right;margin-top:-30px}
+.add_col{margin:10px 0}
+.add_col .btn{margin-right:10px;}
+.journey_nav{margin:10px 0}
+.journey_nav a{display:inline-block;padding:5px 20px;margin-right:10px;border-radius:4px}
+.journey_nav a:hover, .journey_nav a.cur{background:#0053aa;color:#fff;text-decoration:none}
+.journey_nav a.cur{font-weight:bold}
+.hr{margin:10px 0;border-bottom:1px dotted #d6d6d6;height:0;overflow:hidden;}
+
+/*== step ==*/
+.step1,.step2,.step3{background:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/bg_vbooking_step.png) 0 -22px no-repeat;height:22px;line-height:23px;overflow:hidden;margin-bottom:15px;}
+.step2{background-position:0 -44px;}
+.step3{background-position:0 -66px;}
+.step1 span,.step2 span,.step3 span{display:inline-block;width:190px;text-align:center;color:#999;}
+.step1 .current,.step2 .current,.step3 .current{color:#333;}
+
+/*== tab ==*/
+.tab_box{position:relative; height:31px; border-bottom:#9FC1EF solid 2px;	}
+.tab_box ul{position:absolute;} 
+.tab_box a,.tab_box a:hover{text-decoration:none;}
+.tab_box a{padding-left:15px; font-size:14px; color:#0053AA;height:31px; background-position:0 -122px;cursor:pointer}
+.tab_box a span{ padding-right:15px;background-position:right -122px;}
+.tab_box li{ float:left; margin-right:5px; }
+.tab_box li a, .tab_box li span{display:inline-block; background-image:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/bg_rain.png);line-height:31px;}
+.tab_box .cur a{font-weight:bold;}
+.tab_box .cur a, .tab_box a:hover{height:31px; background-position:0 -155px;}
+.tab_box .cur span, .tab_box a:hover span{ background-position:right -155px;}
+.tab_box .tab_btn{position:absolute;right:0}
+.tab_box_y{border-bottom:none}
+.tab_box_y a{background-position:0 -220px;color:#333;padding-left:30px}
+.tab_box_y a span{background-position:right -220px;padding-right:30px}
+.tab_box_y .cur a, .tab_box_y a:hover{background-position:0 -187px}
+.tab_box_y .cur span, .tab_box_y a:hover span{background-position:right -187px;}
+
+.tab_box_s, .tab_box_ys{ position:relative; height:27px; border-bottom:#9FC1EF solid 1px;	}
+.tab_box_s ul, .tab_box_ys ul{ position:absolute;} 
+.tab_box_s ul a,.tab_box_s ul a:hover, .tab_box_ys ul a,.tab_box_ys ul a:hover{ text-decoration:none; color:#000;}
+.tab_box_s a, .tab_box_ys a{padding-left:30px;}
+.tab_box_s a span, .tab_box_ys a span{ padding-right:30px;}
+.tab_box_s li, .tab_box_ys li{ float:left; margin-right:5px; }
+.tab_box_s li a, .tab_box_s li span, .tab_box_ys li a, .tab_box_ys li span{display:inline-block; background-image:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/bg_rain.png);line-height:28px;}
+.tab_box_s li a{height:27px; background-position:0 -93px;}
+.tab_box_s li span{ background-position:right -93px;}
+.tab_box_s .cur a{height:28px; background-position:0 -64px;}
+.tab_box_s .cur span{ background-position:right -64px;}
+.tab_box_ys{border-bottom:none}
+.tab_box_ys li a{height:27px; background-position:0 -220px;}
+.tab_box_ys li span{ background-position:right -220px;}
+.tab_box_ys .cur a, .tab_box_ys a:hover{height:27px; background-position:0 -187px}
+.tab_box_ys .cur span, .tab_box_ys a:hover span{background-position:right -187px;}
+
+.date_box_content{padding:10px;border:#9FC1EF solid 1px;border-width:0 1px 1px 1px;position:relative;zoom:1}
+.date_conleft{ float:left; width:380px;}
+.date_conleft .tuna_calendar{z-index:99;}
+.date_conright{ float:right; width:200px; position:relative;}
+.date_conright .select_content{ border:#666 solid 1px; overflow-y:scroll; width:135px; height:212px; box-shadow:3px 4px 5px #CCCCCC;}
+.date_conright .btn{ position:absolute; top:18px; right:0; }
+
+/*== 表单 ==*/
+input.input_text, textarea, select, input.input_time { border: 1px solid #ccc;}
+input.input_text, textarea, input.input_time{ padding:2px 0 2px 3px; }
+input.input_text, input.input_time { background-color:#fff; }
+.input_file{padding:3px;*width:300px;}
+select{ padding:1px;}
+.select{display:inline-block; padding:0 20px 0 10px; height:20px; line-height:20px; margin-left:5px;background:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/icon_pkg.png) #7bb3de 96% -830px no-repeat; color:#fff;  cursor:pointer;vertical-align:middle}
+.select:hover { background-position:96% -910px; text-decoration:none;}
+.o_label {display:inline-block;border-bottom:1px solid transparent; _border-bottom:0; cursor:pointer; font-size:12px; margin-right:10px;*margin-right:5px;white-space:nowrap;padding:2px 5px;*vertical-align:middle;}  
+.o_label:hover{border-bottom:1px dashed #ccc;_border-bottom:0;}
+.o_label input{display:inline-block; margin-right:5px;*margin-right:2px; padding:0; cursor:pointer;}
+.o_label_cur{background:#d0e5f8}
+.disabled{color:#999}
+
+/*== 表格 ==*/
+.info_table01, .info_table_s, .info_table03, .info_table02{table-layout:fixed;}
+.info_table01 td,.info_table01 th, .info_table02 td,.info_table02 th{ padding:5px 0; border-bottom:1px dotted #D6D6D6;vertical-align:middle;}
+.info_table01 td{ padding-left:15px;}
+.info_table01 th, .info_table_s th, .info_table02 th{ text-align:right; font-weight:normal;}
+.info_table01 th .base_txtdiv{color:#333}
+.none_border td, .none_border th{ border:0 none;}
+.info_table01 .required, .info_table_s .required{ position:absolute; margin:3px 0 0 -11px; color:red;}
+.vbk_info td, .vbk_info th, .vbk_info{background:#f4fcff}
+.info_table03 .title_day{background-color:#F0FAFF;vertical-align:middle;font-size:14px;}
+.info_table_s td, .info_table_s th{padding:3px 0;}
+.info_linelist_table, .info_thnormal, .title_table ,.info_aging_table{border:1px solid #bcd8f4}
+.info_linelist_table, .info_aging_table{font-family:Simsun, sans-serif;}
+.info_linelist_table tr:hover td, .info_thnormal tr:hover td{ background-color:#F7FCFF;}
+.info_linelist_table th, .info_linelist_table td, .info_thnormal th,.info_thnormal td, .title_table th,.info_aging_table td, .info_aging_table th{ border:1px solid #bcd8f4; text-align:center; padding:5px;background:#fff}
+.info_aging_table td,.info_aging_table th{border-color:#FDD362;text-align:left;}
+.info_aging_table th{background:#FFFCF5}
+.info_linelist_table th, .info_thnormal th, .title_table th{ background-color:#F0FAFF;}
+.info_linelist_table caption{background:#BCD8F4;text-align:left;font-size:12px;font-weight:normal;padding:5px;}
+.info_thnormal th{font-weight:normal;}
+.title_table{position:relative;z-index:1}
+.table_content{margin-top:-1px;overflow-x:hidden;overflow-y:auto;_width:100%;*position:relative}
+.price_table th{background-color:#e7e7e7;font-weight:bold}
+.price_table th,.price_table td{border:1px solid #fff;text-align:left;padding:5px;}
+.price_table td{background-color:#F5F5F5;}
+.price_table .other_info td, .price_table .other_info th{background:#e7e7e7}
+.other_info td, .other_info th{background:#F9F9F9}
+.scenic{float:left;}
+.scenic_content{width:440px;overflow:hidden;*width:390px;}
+.scenic_content span{display:inline-block;white-space:nowrap;margin-left:10px}
+.risk label, .risk select, .risk textarea, .risk span{vertical-align:top;}
+.risk span{display:inline-block;margin-right:20px;}
+.man_choose span{margin-right:10px;}
+.sort_col{text-align:center;border:1px solid #BCD8F4;background:#ffffcb;padding:5px;}
+table tr td.sort{background:#ffffcb;}
+.hidden{display:none}
+.tfix, .fix{table-layout:fixed}
+.l_table td, .l_table th{text-align:left;table-layout: fixed;}
+/*== 分页 ==*/
+.c_page {float:right;height:26px;padding:10px 0;color:#666;font: 12px/2 Arial;}  
+.c_page_list,.c_up,.c_down,.c_pagevalue,.c_up_nocurrent,.c_down_nocurrent{ float:left; }  
+.c_up,.c_down,.c_page_list a,.c_up_nocurrent,.c_down_nocurrent,.c_page_submit,.c_page_submit:hover,.c_page_list .current,.c_page_list .current:hover{background-image:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/un_page.png);}
+.c_up,.c_down,.c_up_nocurrent,.c_down_nocurrent{ width:25px; height:0; overflow:hidden;padding:23px 0 0; border:0; background-position:0 -50px; }
+.c_up{margin-right:10px;border: solid 1px #999;background-position: -105px 0; }
+.c_up:hover { background-position:-105px -25px; }
+.c_down{width:70px;margin-left:1px;border: solid 1px #999;background-position:-41px 0; }
+.c_down:hover{background-position:-41px -25px;}
+.c_page_list{ margin-right:10px;}
+.c_page_list a,.c_page_list .c_page_ellipsis{ float:left; }
+.c_page_list a,.c_page_submit{height:23px;margin:0 1px;padding:0 8px;border:solid 1px #999;background-position:0 0;font-weight:bold;color:#666;text-decoration:none;  overflow:hidden;}
+.c_page_list a:hover,.c_page_submit:hover{background-position:0 -25px;}
+.c_page_list .c_page_ellipsis{margin:0 3px; }
+.c_page_list .current,.c_page_list .current:hover{background-position:0 -74px; cursor:default; border-color:#67aee0; }
+.c_up_nocurrent,.c_up_nocurrent:hover{margin-right:10px;border: solid 1px #ccc;background-position: -106px -50px;color:#666;cursor:default;	 }
+.c_down_nocurrent,.c_down_nocurrent:hover{width:70px;border: solid 1px #ccc;background-position: -41px -50px;cursor:default;}
+.c_pagevalue{ margin-left:20px;}
+.c_pagevalue .c_page_num{width:25px; height:14px; padding:3px; border:1px solid #ccc; margin:0 4px;}
+.c_page_submit{width: 40px;margin-left:10px;font-weight:normal;cursor: pointer; line-height:22px; *padding:0 8px 0 6px;}
+.info_inall .left{ float:left; padding-top:10px}
+.info_inall .right{ float:right;}
+
+.c_page_mini{text-align:center;font-size:14px;padding:10px 0;}
+.c_page_mini a{display:inline-block;margin:0 3px;padding:0 4px; text-decoration:underline;}
+.c_page_mini a:hover{background:#0053aa;color:#fff;text-decoration:none;}
+.c_page_mini .c_page_mini_current{cursor:default;color:#666;text-decoration:none;}
+
+/* calendar */ 
+.tuna_calendar { width:362px; font-size:12px; font-family:tahoma, Arial, Helvetica, simsun, sans-serif; position:absolute; background-color:#fff; border:solid 1px #999; -moz-box-shadow:3px 4px 5px #ccc; -webkit-box-shadow:3px 4px 5px #ccc; box-shadow:3px 4px 5px #ccc; margin:0; padding:5px 6px 4px ; overflow:hidden; }
+.tuna_calendar dt, .tuna_calendar dd { margin:0; padding:0 } 
+.tuna_calendar dl, .tuna_calendar dt, .tuna_calendar dd { margin:0; padding:0; } 
+.tuna_calendar .select_day, .tuna_calendar dd a:hover, .tuna_calendar .calendar_title01 a, .tuna_calendar .calendar_title02 a, .tuna_calendar .today { background:#FFF url(http://pic.ctrip.com/common/un_bg_calender110117.png) no-repeat } 
+.tuna_calendar a { color:#005ead; font-weight:bold; text-decoration:none!important }
+.tuna_calendar dl { float:left; width:175px; padding:6px 0 0 } 
+.tuna_calendar #calendar_month2 { position:absolute; top:28px; left:186px; z-index:2; padding-bottom:5px; padding-left:6px; border-left:2px solid #999 } 
+.tuna_calendar dt { float:left; width:25px; height:22px; background:#ececec; font-weight:normal; color:#666; font-size:12px; line-height:20px; text-align:center; cursor:default }
+.tuna_calendar .day0, .tuna_calendar .day6 { color:#f90; font-weight:bold } 
+.tuna_calendar .day6 { width:24px } 
+.tuna_calendar dd { clear:both; padding-top:1px; display:inline-block } 
+.tuna_calendar dd a { font-size:11px; text-align:center; height:24px; width:22px; line-height:24px; float:left; outline-width:0; background-color:#fff; padding:0 2px 1px 1px }
+.tuna_calendar dd a:hover { background-color:#fff; background-position:-26px -48px } 
+.tuna_calendar .today { font-weight:bold; background-position:0 -74px; } 
+.tuna_calendar .today:hover { } 
+.tuna_calendar .select_day, .tuna_calendar .select_day:hover { color:#fff; background-color:#629be0; background-position:0 -48px } 
+.tuna_calendar .blank_day, .tuna_calendar .over_day { color:#dbdbdb; font-weight:normal; cursor:default } 
+.tuna_calendar .blank_day:hover, .tuna_calendar .over_day:hover { background-color:#fff; background-image:none } 
+.tuna_calendar div { float:left; width:181px; color:#fff; font-weight:bold; height:23px; background:#004fb8 } 
+.tuna_calendar div a { cursor:pointer; width:40px; line-height:20px } 
+.tuna_calendar .calendar_title01 span, .tuna_calendar .calendar_title02 span { float:left; width:143px; text-align:center; line-height:23px } 
+.tuna_calendar .calendar_title01 span { padding-right:14px } 
+.tuna_calendar .calendar_title02 span { padding-left:14px } 
+.tuna_calendar .calendar_title01 a, .tuna_calendar .calendar_title02 a { background-color:#2d7fdd; float:left; width:23px; height:23px; overflow:hidden; text-indent:-10em } 
+.tuna_calendar .calendar_title01 a { float:left } 
+.tuna_calendar .calendar_title02 a { background-position:right 0; float:right } 
+.tuna_calendar .calendar_title01 a:hover { background-color:#4895ec; background-position:0 -24px } 
+.tuna_calendar .calendar_title02 a:hover { background-color:#4895ec; background-position:right -24px } 
+.tuna_calendar b, .tuna_calendar i { background-color:#fff; display:block; width:372px; height:1px; border-right:1px solid #c3c3c3; border-left:1px solid #c3c3c3; overflow:hidden; position:absolute; left:0; z-index:1 } 
+.tuna_calendar i { border-top:1px solid #999; top:-2px } 
+.tuna_calendar b { border-bottom:1px solid #999; bottom:-2px; _bottom:-3px } 
+/* calendar end */ 
+
+
+/*== 侧边栏 ==*/
+.sidebar{ float:left; width:190px;border-top:1px solid #9ec2ed;margin-top:10px;}
+.sidebar li{height:30px; line-height:30px;border:1px solid #9ec2ed; border-width:0 1px 1px 1px;}
+.sidebar li a{display:block;width:188px;font-size:14px; text-align:center;}
+.sidebar li a:hover,.sidebar .cur a{ display:block; background-image:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/bg_rain.png); background-repeat:no-repeat; font-size:14px;}
+.sidebar li a:hover{ background-position: 0 -30px; text-decoration:none;}
+.sidebar .cur a{background-position: 0 0; font-weight:bold;}
+.sidebar .cur a:hover{ background-position: 0 0;}
+
+/*== 右侧主内容 ==*/
+.main{float:right;width:740px;margin-top:10px;}
+.main .col{border:1px solid #BCD8F4;padding:10px;}
+.main_subnav{margin-bottom:10px;}
+.main_subnav a{display:inline-block;padding:5px 20px;margin-right:10px;border-radius:4px;vertical-align:middle;}
+.main_subnav a:hover, .main_subnav a.cur{background:#0053aa;color:#fff;text-decoration:none}
+.main_subnav a.cur{font-weight:bold}
+.main_subnav .btn{margin-left:5px;}
+.main_subnav .rmb{float:right;margin-top:2px;}
+/*== 大日历 ==*/
+.mask_calendar{width:740px;background:#fff}
+.mask_calendar .icon_del{float:right;margin:4px 4px 0 0;}
+.reserve_box{position:relative; margin-top:10px; height:26px; padding:6px 5px 0 10px; background:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/bg_reserve_top.png) no-repeat; }
+.reserve_datebox{ position:absolute;left:180px; top:6px;}
+.reserve_datebox li{ float:left; margin:0 15px; font-size:14px;}
+.reserve_datebox li a{}
+.reserve_datebox li a:hover{ text-decoration:none;}
+.reserve_datebox li .back,.reserve_datebox li .go{ float:left;width:16px; height:20px; background-image:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/un_icon.png); background-repeat:no-repeat;}
+.reserve_datebox li .back{ background-position:0 -60px; margin-right:10px; }
+.reserve_datebox li .go{ background-position:0 -80px;}
+.reserve_datebox li .year{color:#3366CC; font-weight:bold;}
+.reserve_datebox .current{font-weight:bold;}
+.reserve_record{ float:left; width:103px;}
+.reserve_record dl{ border-left:#BCD8F4 solid 1px; border-right:#BCD8F4 solid 1px;}
+.reserve_record dt{height:22px; line-height:22px;border-bottom:#BCD8F4 solid 1px;background-color:#F0FAFF;}
+.reserve_record .month{ background-color:#DCEEFF;  text-align:center; border-bottom:#BCD8F4 solid 1px; height:45px; line-height:45px;}
+.reserve_record .month span{font-size:30px; font-weight:bold;} 
+.reserve_record dd{ height:22px; line-height:22px; border-bottom:1px solid #BCD8F4; background-color:#F0FAFF; text-align:right; padding:0 2px;}
+.reserve_table{ float:left; width:637px;margin-left:-1px;}
+.reserve_table th{background-color:#DCEEFF; text-align:center; border:1px solid #BCD8F4;height:21px; line-height:21px; font-weight:normal;}
+.reserve_table td{border:1px solid #BCD8F4;}
+.reserve_table td p{ height:22px; line-height:22px; overflow:hidden; *zoom:1; border-bottom:1px solid #BCD8F4; padding:0 2px;}
+.reserve_table td .day{background:#F0FAFF;color:#999}
+.reserve_table td .none_border{border:none}
+.reserve_table td.cur, .reserve_table td.cur:hover{background:#ffffcc}
+.reserve_table td:hover{background:#F0FAFF}
+.pas, .refuse, .audit, .less, .used, .surplus{font-weight:bold}
+.less, .used, .surplus{text-decoration:underline;}
+.less:hover, .used:hover, .surplus:hover{text-decoration:none;}
+.less{color:red}
+.used{color:#0053aa}
+.surplus{color:#000}
+.pas{color:#339933}
+.refuse{color:#cc66cc}
+.audit{color:#ff9933}
+.del{text-decoration:line-through}
+.reserve_table td  .l{float:left;display:inline-block;text-align:right;width:42px}
+.reserve_table td  .r{float:right}
+.reserve_state{ color:#666; text-align:right; padding:5px 0;}
+.reserve_state span{ margin-left:20px;}
+.reserve_pop{width:500px;padding:5px;background:#ffffcc;border:1px solid #eee;}
+.reserve_pop p{margin-bottom:5px;}
+.reserve_pop .icon_del{float:right;margin-top:4px}
+.reserve_pop strong{margin-right:10px;}
+.schedule_date .reserve_record dd{height:30px;line-height:30px}
+.schedule_date .reserve_table .day,.schedule_date .reserve_record dt{padding:2px;height:21px;line-height:21px}
+.schedule_date .reserve_record .month{padding:0;height:48px;line-height:48px}
+.schedule_date .reserve_table td .goday, .schedule_date .reserve_table td .closeday{color:#333}
+.schedule_date .reserve_table td .day a{float:right;}
+.schedule_date .reserve_table td .none_border{height:30px;line-height:30px;color:#009900;text-align:center}
+.schedule_date .reserve_table td .closeday,.schedule_date .reserve_table td .closedate{background:#eee}
+.schedule_date .reserve_table td .closedate{color:#999}
+
+/*== 产品描述 ==*/
+.place{display:inline-block;width:420px;vertical-align:middle}
+.place a{margin-bottom:1px;}
+.lt td,.lt th{text-align:left}
+
+/*== 行程段线路规则 ==*/
+.rulelist{margin-bottom:10px;}
+.rulelist li{padding:10px 0;border-bottom:1px dotted #d6d6d6}
+.rulelist p strong{margin-right:10px}
+.rulelist .info_table_s{margin-top:5px}
+
+/*== 营销标签 ==*/
+.marketinglist{overflow:hidden;zoom:1}
+.marketinglist li {float:left;margin:1px 0;width:136px;height:27px;overflow:hidden}
+.marketinglist li label{width:126px;padding:4px 5px}
+.seasonlist li{width:272px;position:relative}
+.seasonlist li a{line-height:13px;display:inline-block;vertical-align:middle}
+
+/*== 结构化行程描述 ==*/
+.info_pic{padding:15px 15px 15px 120px;margin-bottom:10px;}
+.info_pic .title{float:left;margin-left:-70px;}
+.info_pic .btn{margin-right:10px;}
+.product_list li{margin:0 10px 10px 0;position:relative; float:left;overflow:hidden;background-color:#EDF9FF;padding:5px;width:90px;height:50px;overflow:hidden;}
+.product_list li img{width:90px;height:50px;}
+
+/*== 多媒体 ==*/
+.pic_col{height:330px;overflow:hidden;overflow-y:auto;border:1px solid #BCD8F4;position: relative;}
+.pic_col h4{padding-left:10px;line-height:2.5em;font-size:12px;background:#F0FAFF;}
+.pic_col h4 .o_label{_margin-top:8px;}
+.pic_col .o_label{margin-right:20px;padding:0;white-space:normal;}
+.pic_col ul{zoom:1;overflow: hidden;}
+.pic_col ul li{margin:30px 0 0 30px;float:left;display:inline;width:116px;height:104px;overflow: hidden;position: relative;}
+.pic_col ul li .o_label{margin:0px;}
+.pic_col ul li img{margin-bottom:3px;display:block;width:116px;height:65px;}
+
+/*== 产品推荐 ==*/
+.hot_city{padding:10px;}
+.hot_city .all_city{margin:5px 0 10px;padding:5px;border:1px solid #d6d6d6;background:#fff;}
+.hot_city .all_city .o_label{margin-right:0px;width:60px;}
+.hot_city .all_city .info_table02 th,.hot_city .all_city .info_table02 td{padding:3px 0;}
+.hot_city .all_city .info_table02 th{width:30px;text-align: center;font-weight:bold;}
+.departures{border:1px solid #999;border-width:0 1px 1px;background:#fff;width:273px;padding:6px 10px;}
+.departures h4{height:24px;line-height:24px;font-size:12px;color:#ffffff;padding-left:10px;border-color:#2c7ecf;border-style:solid;border-width:1px 1px 0 1px;background-color:#67a1e2;margin:-6px -11px 0;}
+.departures h5 { clear:both; font-size:12px; line-height:22px; color:#999999; font-weight: normal; }
+.departures h5.dotline {clear:both;margin-top:4px;border-top:1px dotted #999;padding-top:4px;}
+.departures a{display: inline-block; *display: inline; zoom: 1;
+height:20px;width:36px;margin:0;padding:0 0 0 2px;border:solid 1px #fff;line-height: 20px;color:#333}
+.departures a.widthfix {width:54px;}
+.departures a:hover {background-color:#e8f4ff;text-decoration:none;border-color:#acccef;}
+
+/*== 打包资源 ==*/
+.packing_way{text-align:right;margin:-35px 0 10px}
+.packing_way span{margin-right:10px}
+
+/* address */  
+.role_box { background-color: #fff; font-size: 12px; width: 315px; }  
+.role_box a { text-decoration: none; }  
+.role_hd { height: 24px; border-color: #2C7ECF; border-style: solid; border-width: 1px 1px 0; background-color: #67A1E2; color: #fff; line-height: 24px; padding-left: 10px; }  
+.role_bd, .role_chooselist { border-color: #999999; border-style: solid; border-width: 0 1px 1px; overflow: hidden; padding:10px; }  
+.role_ol { margin:0; padding:0 0 20px; border-bottom: 1px solid #5DA9E2; }  
+.role_ol li { color: #005DAA; cursor: pointer; float: left; height: 20px; line-height: 20px; list-style-type: none; text-align: center; }  
+.role_ol li span { padding:0 8px; }  
+.role_ol li .hot_selected { display:block; padding:0 5px; background-color: #FFFFFF; border-color: #5DA9E2; border-style: solid; border-width: 1px 1px 0; color: #000000; font-weight: bold; }  
+.role_ul { zoom:1; margin:0; padding: 4px 0 0; }  
+.role_ul li { float: left; height: 24px; overflow: hidden; width: 72px; }  
+.role_ul li a{ display: block; height: 22px;  border: 1px solid #FFFFFF; color: #333; line-height: 22px; padding-left: 5px; }  
+.role_ul li a:hover { background-color: #E8F4FF; border: 1px solid #ACCCEF; text-decoration: none; } 
+.role_ul .l_address{min-width:72px;width:auto; white-space: nowrap;overflow:visible;}
+.role_ul .l_address a{padding:0 5px;}
+.role_chooselist{padding:5px 10px;}
+.role_chooselist .role_ul{border-bottom:1px dotted #ccc;padding-bottom:5px;}
+.role_chooselist .role_ul li a{color:#333}
+.role_chooselist .noborder{border:0 none}
+.resource_list .role_ul{padding-left:72px;}
+.resource_list .role_ul .li_title{margin-left:-72px;line-height:24px;_display:inline}
+.role_select { width:222px;font-family: Arial, Simsun; font-size: 12px; }  
+.role_wrap { width: 220px; margin: 0; padding: 0 0 4px; border: 1px solid #969696; background:#fff; text-align: left; }  
+.role_select .role_list { margin: 0; padding: 0; }  
+.role_select .role_list span { float: right; font: 10px/22px verdana; margin: 0; overflow: hidden; padding: 0; text-align: right; white-space: nowrap; width: 110px; }  
+.role_select .role_list a { border-bottom: 1px solid #FFFFFF; border-top: 1px solid #FFFFFF; color: #0055AA; cursor: pointer; display: block; height: 22px; line-height: 22px; overflow: hidden; padding: 1px 9px 0; text-align: left; text-decoration: none; }  
+.role_select .role_list a:hover { background: none repeat scroll 0 0 #E8F4FF; border-bottom: 1px solid #7F9DB9; border-top: 1px solid #7F9DB9; }  
+.role_select .role_list  a em{color:#999;font-style:normal}
+.role_select .address_selected { background: none repeat scroll 0 0 #FFE6A6; color: #FFFFFF; height: 22px; }  
+.role_select .role_pagebreak { display: none; line-height: 25px; margin: 0; padding: 0; text-align: center; }  
+.role_select .role_pagebreak a { color: #0055AA; display: inline-block; font-family: Arial, Simsun, sans-serif; font-size: 14px; margin: 0; padding: 0 4px; text-align: center; text-decoration: underline; width: 15px; }  
+.role_select #role_arrowl, .role_select #role_arrowr { color: #0055AA; }  
+.role_select a.address_current { color: #000; text-decoration: none; } 
+.resource_list .h_list{padding-left:130px;}
+.resource_list .h_list .li_title{float:left;width:130px;margin-left:-130px;}
+.resource_list .h_list li{float:left;width:150px;}
+.from_box{width:360px;overflow:hidden;zoom:1;border:1px solid #BCD8F4;background:#F0FAFF;padding:5px 10px}
+.from_box li{width:60px;float:left;height:24px;line-height:24px;color:#0053AA}
+
+.role_select_w { width:350px;font-family: Arial, Simsun; font-size: 12px; }  
+.role_wrap_w { width: 350px; margin: 0; padding: 0 0 4px; border: 1px solid #969696; background:#fff; text-align: left; } 
+.role_select_w .role_list_w { margin: 0; padding: 0; }  
+.role_select_w .role_list_w span { float: right; font: 10px/22px verdana; margin: 0; overflow: hidden; padding: 0; text-align: right; white-space: nowrap; width: 110px; }  
+.role_select_w .role_list_w a { border-bottom: 1px solid #FFFFFF; border-top: 1px solid #FFFFFF; color: #0055AA; cursor: pointer; display: block; height: 22px; line-height: 22px; overflow: hidden; padding: 1px 9px 0; text-align: left; text-decoration: none; }  
+.role_select_w .role_list_w a:hover { background: none repeat scroll 0 0 #E8F4FF; border-bottom: 1px solid #7F9DB9; border-top: 1px solid #7F9DB9; }  
+.role_select_w .role_list_w  a em{color:#999;font-style:normal}
+.role_select_w .address_selected_w { background: none repeat scroll 0 0 #FFE6A6; color: #FFFFFF; height: 22px; }  
+.role_select_w .role_pagebreak { display: none; line-height: 25px; margin: 0; padding: 0; text-align: center; }  
+.role_select_w .role_pagebreak a { color: #0055AA; display: inline-block; font-family: Arial, Simsun, sans-serif; font-size: 14px; margin: 0; padding: 0 4px; text-align: center; text-decoration: underline; width: 15px; }  
+.role_select_w #role_arrowl, .role_select #role_arrowr { color: #0055AA; }  
+.role_select_w a.address_current { color: #000; text-decoration: none; } 
+
+/*== pop ==*/
+.c_mask {border:#afcef1 solid 1px; width:650px;background:#fff;}  
+.c_mask h3 {background-color:#EDF9FF; font-size:14px; padding:5px 0 2px 15px; border-bottom:#afcef1 solid 1px;}  
+.c_mask h3 .delete {color:#5C66CC; width:22px; height:22px; cursor:pointer; text-align:center;float:right;margin-right:5px} 
+.c_mask h3 .delete:hover{background:#fff; text-decoration:none}
+.c_mask h4{margin-bottom:5px;font-size:12px;}
+.c_mask .c_mask_bd { padding:15px; }
+.city_more{margin-bottom:10px;padding-bottom:10px;border-bottom:1px dotted #ccc}
+.city_more dt{margin-bottom:2px;}
+.city_more dt strong{display:inline-block;width:100px;}
+.city_more dd .o_label{width:66px;margin:0;}
+.area_left, .area_right{margin-bottom:10px;float:left;width:190px;}
+.area_right{float:right;}
+.area_left .select_content, .area_right .select_content{margin-top:5px;padding:2px 5px;border:1px solid #afcef1;height:150px;overflow-y:scroll}
+.sight_add{float:right;}
+.sight_area{background:#EDF9FF;padding:10px 10px 0;border:1px solid #afcef1;zoom:1;height:200px;overflow-y: auto}
+.sight_deletable{border-bottom:1px dotted #ccc;}
+.sight_disdel{padding-top:10px;}
+.sight_area .select, .sight_deletable .select{margin-bottom:10px;}
+.sight_disdel .select{background-image:none;padding:0 15px;}
+.visa_l, .visa_r{float:left;width:380px;}
+.visa_r{float:right;}
+.visa_l table td, .visa_l table th, .visa_r table td, .visa_r table th{text-align:left;}
+.visa_l .table_content, .visa_r .table_content{max-height:292px;*max-height:312px;_height:312px;}
+.relevance, .modification{max-height:440px;_height:440px;overflow-y:auto;overflow-x:hidden;*position:relative;_width:770px;}
+.modification{_width:620px;}
+.c_loading { font:bold 14px simsun; } 
+.c_loading img { padding:15px; vertical-align: middle; } 
+
+/*== edit by liuhuan ==*/
+.info_table_s .handlingtitle{ text-indent:12px;font-weight:bold;vertical-align:top;padding-top:6px;}
+.handlingline{ #height:21px;}
+.handlingline p{ margin:5px 12px; border-bottom:dotted 1px #999;}
+.handlingresource th,.handlingresource td{ text-align:left;}
+.handlingresource .handlingcheck{ text-align:center;}
+.handlingincre{ width:100%;}
+.handlingincre .c_mask{ width:468px;}
+.handlingbtn{ float:right; margin-right:16px; _display:inline;}
+.handlingincre .c_mask .c_mask_bd{ padding:10px;}
+.handlingincre .c_mask h3{ padding-left:12px; font-size:12px;}
+.uploadingimg{table-layout:fixed}
+.uploadingimg td{ height:81px;}
+.nothumbnail{ font-weight:bold; color:red;}
+.authorization{ height:70px; overflow:hidden;}
+.authorization span{display:table-cell; font-size:35px;#font-size:60px; height:70px;vertical-align:middle; }
+.authorization span a{display:inline-block; font-size:12px;}
+.unusualinfo td,.uploadingimg .unusualinfo:hover td{ background-color:#eee;}
+.schedule p{ margin-bottom:10px;}
+.schedulenum{display:inline-block; width:200px;height: 10px;border: 1px solid #ABCCEF; margin-right:15px;}
+.schedulenum span{display:block;height:10px;background-color:rgb(112,155,201);}
+.cancelbtn{ margin-top:10px; margin-left:85px;}
+.savebtn{ display:block; margin:0 auto;}
+.handlingresource .tc{ text-align:center; display:block; margin-top:5px;}
+.authorization textarea{width:150px}
+.jobnumber{ margin-top:5px;}
+.versions{ margin:10px 0;}
+.versions a{ margin-right:8px;background-position:0 -108px;}
+.versions a:hover,.versions .btn_blue{background-position:0 -54px; color:#fff;}
+.tripbox, .timeallocation{ width:918px; margin:10px auto 0;}
+.tripbox{margin:10px auto}
+.copy_tr{text-align:right;margin-right:15px;margin-bottom:5px}
+.tripbox caption{background:none;text-align:right}
+.tripbox th{ font-weight:normal;background-color:#eee;}
+.copy_describe{margin-left:20px;display:inline-block;width:490px;vertical-align:middle}
+.choose_table{margin-top:10px}
+.choose_table .tripbox_td{*border-top:1px solid #bcd8f4;}
+.choose_table .tripbox{width:800px;table-layout:fixed;margin:-1px 0 0 0}
+.choose_table .choose_box{width:20px;border:1px solid #bcd8f4;border-right:0;padding:5px;text-align:center;vertical-align:top}
+.choose_table .traveltitle strong{font-size:12px}
+.traveltime{ margin:10px 0 0 15px;}
+.traveltime a{ margin-left:10px; font-weight:normal;}
+.handlingresource .traveltitle,.tripbox .traveltitle:hover{background-color:#F0FAFF;}
+.traveldele{ float:right; margin-left:15px;}
+.traveltitle strong{ font-size:14px;}
+.traveltitle b{ margin:0 15px;}
+.traveltitle .btn{ font-weight:normal;vertical-align:2px;#vertical-align:2px;}
+.traveltitle strong input,.traveltitle b input{ vertical-align:1px;#vertical-align:-2px;}
+.traveltitle strong input{ margin:0 5px;}
+.traveltime .btn_blue_l{ font-weight:bold;}
+.addtrip{ padding:15px; width:620px;}
+.travelsepor{ height:1px; border-bottom:dashed 1px #999; margin:10px 0; overflow:hidden;}
+.represent, .scenicspots{ margin-left:35px; margin-bottom:20px;}
+.scenicspots a,.operates a{ margin-left:7px; vertical-align:middle;_vertical-align:-2px;}
+.represent textarea{vertical-align:top}
+.operates .o_label{ margin-right:0;_vertical-align:top;}
+.operates .o_label input{ #vertical-align:2px;}
+.diningtitle{ vertical-align:top;}
+.dininginfo{ margin-left:17px; margin-bottom:5px;}
+.diningdes{ width:478px; height:108px; margin-left:15px;}
+.diningtitle p{ margin-top:10px; margin-right:8px; }
+.addtravelbtn{ margin-top:25px; text-align:center;}
+.dininginfo .o_label{ _vertical-align:top;}
+.addtriptime{width:35px;vertical-align:1px;vertical-align:2px\9;#vertical-align:-2px;_vertical-align:0;}
+.scenicspotsdes{ width:498px; height:298px;}
+.findscenicspots{ padding:20px; width:505px;}
+.destinationcity{margin-bottom:20px;}
+.destinationcity input{vertical-align:1px;vertical-align:2px\9;#vertical-align:-2px;_vertical-align:0; margin-left:15px; margin-right:7px;}
+.destinationcity a{ margin-left:25px;}
+.findtitle th,.timeallocation th{ font-weight:normal;}
+.traveltimebtn{ margin:15px 0 15px 15px;}
+.moniseporator{ color:red; margin:0 3px; vertical-align:-3px;}
+.mon_stati{ _height:22px; _display:inline-block; _vertical-align:-8px;}
+.mon_label{_vertical-align:top; }
+.montable{ table-layout:fixed;}
+.montable th,.montable td{ text-align:left;}
+.montable .tc{ text-align:center;}
+.mon_prodetail{ width:950px;}
+.mon_infotitle{ border-width:1px;}
+.mon_infotitle span{ font-size:12px; margin-left:15px; font-weight:normal;}
+.mon_infotitle .delete {color:#5C66CC; width:22px; height:22px; cursor:pointer; text-align:center;float:right;margin-right:5px; margin-top:5px; line-height:22px;} 
+.mon_infotitle .delete:hover{background:#fff; text-decoration:none}
+.mon_btn a{ font-weight:normal; margin-top:2px; }
+.mon_unfolded,.mon_merger,.mon_risk{ background:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/monitor_bg.png) 0 -24px no-repeat; width:16px; height:16px; display:inline-block;}
+.montable .mon_bg{ background-color:#f2f2f2;}
+.montable .full{background:#ffecb9;}
+.montable tr:hover .mon_bg{ background-color:#f2f2f2;}
+.montable tr:hover .full{ background-color:#ffecb9;}
+.mon_merger{ background-position:0 -42px;}
+.mon_risk{ background-position:100% 0;vertical-align:-3px;#vertical-align:0;}
+.mon_mask{ padding:15px 9px 20px;}
+.mon_contrast{ margin-left:40px;}
+.mon_flightbtn a{ margin:0 5px;}
+.green{ color:green;}
+.mon_total td{ font-weight:bold;}
+.orange{ color:orange;}
+.mon_flightrisk td,.mon_flightrisk th{ background-color:#fff; border:none; border-bottom:1px dotted #D6D6D6; text-align:right; font-weight:normal; padding:8px 0;}
+.mon_flightrisk td{ text-align:left;}
+.mon_risktab{ padding:0 12px; margin-top:20px;}
+.mon_risktabtn{ margin-bottom:10px;}
+.mon_risktabtn a{ margin-right:5px;}
+.mon_operate a{ margin:0 5px;}
+.mon_operatab{ margin:15px auto 0; width:850px; }
+.mon_operatabinfo{width:850px; margin:0 auto 20px;}
+.mon_operatabinfo table{table-layout:fixed;}
+.mon_bold{ font-weight:bold; margin-top:15px; margin-bottom:6px;}
+.mon_addinfo{ border:rgb(227,227,227) solid 1px; background-color:rgb(242,242,242); padding:12px 0;}
+.mon_addbtn{ margin:15px 0;}
+.mon_addbtn a{ margin-right:6px;}
+.mon_rednormal{ color:red; font-weight:normal;}
+.mon_tips{ color:red; margin-top:15px;}
+.mon_savebtn{display:block; margin:0 auto;}
+.mon_parameter{ width:850px; margin:0 auto;border:rgb(227,227,227) solid 1px; padding:12px 0;}
+.mon_flightrisk .mon_noborder th,.mon_flightrisk .mon_noborder td{ border-bottom:none; }
+.mon_margin{ margin:15px auto;}
+.mon_suggestion{ width:610px; margin:0 auto;}
+.mon_sugtable{ width:610px; margin-top:10px; background-color:#F2F2F2;}
+.mon_sugtable th,.mon_sugtable td{ background-color:#F2F2F2;}
+.mon_sepo{ height:1px; overflow:hidden;border-bottom:1px dotted #D6D6D6; margin-top:20px;}
+.mon_nobg{ background-color:none; border:none;width:610px; margin-top:10px;}
+.mon_hotetips{background-color:rgb(242,242,242); height:27px; line-height:27px; text-align:right; padding-right:10px;}
+.mon_hotetips span{ margin-left:25px;}
+.mon_unfoldtd{ width:531px;margin-left:-1px; margin-top:-1px; }
+.mon_unfoldtd td{border-right:none;border-bottom:none;}
+.mon_time{ color:#999;}
+.mask_overflow{zoom:1;overflow:auto;max-height:300px;_height:300px}
+
+/*== 首页 == */
+.index{background:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/index_bg.png) left top repeat;}
+.index .base_footer{padding:40px 0 30px;color:#999}
+.index .base_footer .contact{background:none}
+.index .base_wrap{padding-top:87px;margin-top:-87px;background:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/body_bg.png) center top no-repeat;width:100%;}
+.index .index_wrap{padding:60px 0 20px 0;width:800px;margin:0 auto;background:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/index_nav_bg2.png) left bottom no-repeat;}
+.index_nav{padding:21px 0 20px 120px;overflow:hidden;zoom:1;font-size:14px;background:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/index_nav_bg.png) left top no-repeat;}
+.index_nav1{padding-top:36px;background-image:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/index_nav_bg3.png)}
+.index_nav dt{float:left;margin:-3px 0 0 -120px;padding:2px 20px;background:#f26a08;color:#fff;border-radius:10px;display:inline}
+.index_nav dd{float:left;margin-right:30px;white-space:nowrap;}
+.index_nav dd i{margin-right:10px;}
+.index_nav dd a{color:#f26a08}
+.index_nav .index_sub_nav{margin:0;padding:0}
+.index_nav .index_sub_nav dl{margin-bottom:10px;padding-left:106px;border-left:2px solid #e3e3e3;overflow:hidden;width:572px;}
+.index_nav .index_sub_nav dd{zoom:1}
+.index_nav .index_sub_nav dt{background:none;margin:0 0 0 -106px;padding:0 0 0 10px;color:#999}
+
+/*== 产品特征标签 ==*/
+.product_area .o_label{width:110px;text-overflow:ellipsis;overflow:hidden;margin-right:10px}
+/*== 新增律所资源填写模板 ==*/
+.resource_area .o_label{width:80px;text-overflow:ellipsis;overflow:hidden;margin-right:10px}
+.entry_item{width:470px;margin-left:30px;table-layout: fixed;}
+.entry_item td{padding:2px 5px;text-align: left;}
+.entry_item .o_label{width:90px;text-overflow:ellipsis;overflow:hidden;}
+
+/*== 新版首页后台 ==*/
+.info_table01 .hot_city{border:1px solid #BCD8F4;background: #F0FAFF;padding:3px 5px 0;margin-top:5px;width:750px;}
+.info_table01 .hot_city .o_label{width:70px;margin-bottom: 3px}
+
+/*== 资源信息页 ==*/
+.insure{display:inline-block;margin-left:10px;width:250px;vertical-align:middle}
+
+/*== 促销活动设置规则 ==*/
+.info_bborder_table1{border:1px solid #ACCCEF;border:none;table-layout: fixed}
+.info_bborder_table1 th, .info_bborder_table1 td{padding:5px;text-align:left;border:1px solid #d6d6d6;}
+.info_bborder_table1 th{background:#eee;}
+
+.info_bborder_table{border:2px solid #ACCCEF;border-top:none;table-layout: fixed}
+.info_bborder_table caption{border:2px solid #acccff;border-bottom:none;padding:5px;background:#F0FAFF;}
+.info_bborder_table th, .info_bborder_table td{padding:5px;text-align:left;border:1px solid #d6d6d6;}
+.info_bborder_table th{background:#eee;}
+.saleslist{zoom:1;overflow: hidden;padding-bottom:10px;}
+.saleslist li{border-top: 1px dotted #d6d6d6;padding:10px 15px;margin-top:-1px;}
+.saleslist h3{font-size: 14px;margin-bottom:5px;}
+.saleslist .info_bborder_table{margin-bottom:10px;}
+.e_gold .o_label{width:100px;}
+.sales_select .select{margin:3px 5px 0 0;}
+.related_table td{padding-left:15px;}
+.journey_nav .trash{float:right;margin:0;}
+.w_checkbox label{width:90px;}
+.mask_area{padding:10px 0 20px 60px;}
+.mask_area label{width:120px;}
+
+/*== seo edit by army 20130228 ==*/
+.ali_center{ text-align:center}
+
+/*== 选项卡重置 ==*/
+.seo_tab_box,.seo_tab_box li a, .seo_tab_box li span{ height:46px;}
+.seo_tab_box li a, .seo_tab_box li span{ background:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/spirite_icon.png) no-repeat; line-height:18px;}
+.seo_tab_box li a{ background-position:0 0; font-size:12px; text-align:center; padding-left:5px;}
+.seo_tab_box li span{ background-position:100% 0; width:80px; padding-top:6px; height:40px; padding-right:5px;}
+.seo_tab_box .cur a, .seo_tab_box a:hover{ background-position:0 -47px; height:46px;}
+.seo_tab_box .cur span, .seo_tab_box a:hover span{ background-position:100% -47px;}
+.seo_tab_box .sin_line span{ padding-top:14px; height:32px;}
+
+/*== 广告设置 ==*/
+.seo_col_box{ padding:30px 40px}
+.seo_col_box h2{ font-size:12px; font-weight:800; margin-bottom:10px}
+.seo_col_box .dest_lis p,.seo_col_box .dest_lis select{ float:left; display:inline; }
+.seo_col_box .dest_lis{ margin-left:40px; overflow:hidden}
+.seo_col_box .dest_lis p{width:56px; margin:70px 10px 0;}
+.seo_col_box .dest_lis p .btn_s{ margin-bottom:10px; font-weight:100;}
+.seo_col_box .m_t{ margin-top:10px}
+.seo_col_box .input_text{ margin-right:10px; *zoom:1}
+.seo_col_box .dest_lis select{ width:180px; height:200px}
+.seo_col_box .gap{ font-style:normal; margin:0 40px 0 5px;}
+.seo_col_box .gap.sty2{ margin-right:10px;}
+.seo_col_box .gap.sty3{ display:block; clear:both}
+.seo_col_box .info_table01{ margin-bottom:10px}
+.seo_col_box .info_table01.sty2{ margin-bottom:30px}
+.seo_col_box .info_linelist_table.sty1 td{ text-align:left}
+.seo_col_box .info_linelist_table.sty1 th{ text-align:right; font-weight:100;}
+.seo_col_box .date_box_content{ border:0 none; padding:10px 0}
+
+	/*== 广告修改 ==*/
+	.seo_col_box.sty2 .date_box_content p{ margin-bottom:10px}
+	.seo_col_box.sty2 .gap{ margin:0 10px}
+	.seo_col_box.sty2 .status a{ margin:0 5px}
+	.seo_col_box.sty2 .info_linelist_table .o_label{ margin:0; padding:0}
+	.seo_col_box.sty2 .info_linelist_table input{ margin:0;}
+	.seo_col_box.sty2 .btn_area{ text-align:right}
+	.seo_col_box.sty2 .btn_area .btn{ margin:0 0 0 10px}
+	
+/*== 弹窗 ==*/
+.pop_box.sty1{ width:200px; text-align:center; background:#fff; border:#FDD362 1px solid; padding:10px;background-color:#FFFCF5;}
+.pop_box.sty1 .btn_area{ text-align:center; margin:10px 0 0}
+
+/*== 分单 ==*/
+.short_nav{padding:24px 0 0 320px;zoom:1}
+.short_nav li{float:left;margin-left:40px;display:inline-block;}
+.short_nav li a{color:#fff;padding:3px 15px;font-size: 14px;font-weight: bold;display:inline-block;border-radius: 5px;white-space:nowrap;}
+.short_nav li a:hover{text-decoration:none;background:#fff;color:#0053aa;text-decoration:none;}
+.fendan_main{overflow: hidden;zoom:1;margin-top:-10px;}
+.fendandate{text-align: center}
+.fendandate *{display: inline-block;margin:0 15px;}
+
+/*== edit by liangwq 产品制作流程通知 20130424 ==*/
+.c_mask_bd .info_table_s .select {margin: 0 5px 5px 0;}
+.base_wrap .product_tit {margin-bottom:5px;}
+.base_wrap .product_tit a {float:right; font:12px normal;}
+.base_wrap .product_tit span {font:12px normal;}
+.info_product_table {text-align:left; background-color:#edf8fe;}
+.info_product_table {border:1px solid #bcd8f4}
+.info_product_table {font-family:Simsun, sans-serif;}
+.info_product_table th {text-align:right; font-weight:normal;}
+.info_product_table th, .info_product_table td { border-bottom:1px dotted #ccc; padding:10px 5px;}
+.accessory_box {padding:0 5px; background-color:#fff; border:1px solid #ccc; overflow:hidden; }
+.accessory_box a {display:inline-block; position:relative; padding-left:20px; margin-right:10px;line-height:24px; text-decoration:underline;}
+.accessory_box a i {position:absolute; top:4px; left:0; background:url(http://picint.sh.ctriptravel.com/resource/vacation/Package-Product-InputV3/package.product.inputv3_image/package_logging_data/icon_filetype.gif) no-repeat; height:16px; width:16px;}
+.accessory_box a.doc i {background-position:0 0;}
+.accessory_box a.img i {background-position:0 -48px;}
+.accessory_box a.xls i {background-position:0 -16px;}
+.accessory_box a.txt i {background-position:0 -32px;}
+.mar20 {margin:20px;}
+
+/*liuh*20140325*/
+.imagefinder{ padding: 0 12px;}
+.imagefinder .info_title{ margin: 0 -12px 10px;}
+.imageslist{padding: 15px;}
+.imageslist p{ margin: 5px 0; font-size: 14px;}
+.imageslist ul{ height: 94px;overflow: hidden;}
+.imageslist li{ float: left;border: solid 1px #999;padding: 1px; width: 80px; height: 80px;margin: 10px 30px 0 0;*display: inline;}
+.imageslist li a{ display: block;position: relative; width: 80px; height: 80px;}
+.imageslist li a img{ width: 80px; height: 80px;}
+.imageslist li a b{visibility: hidden; position: absolute;right:0;top:0;z-index: 1;cursor: pointer;  width:20px; height: 20px;font:bold 14px/22px Simsun,sans-serif;text-align: center; background: rgba(0,0,0,0.7);background-color: #000;color: #fff; }
+.imageslist li a span{visibility: hidden; position: absolute; top:0;left: 0; width: 100%;height: 100%;filter:progid:DXImageTransform.Microsoft.gradient(enabled='true',startColorstr='#99000000', endColorstr='#99000000'); }
+:root .imageslist li a span{filter:none;background: rgba(0,0,0,0.6)}
+.imageslist li a:hover{ text-decoration: none; zoom:1;}
+.imageslist li a:hover span{visibility: visible;}
+.imageslist li a:hover b{visibility: visible;text-decoration: none;}
+.imageslist .images_add{border:dashed 2px #999; width: 78px; height: 78px;  text-align: center; line-height: 78px; overflow: hidden;}
+.imageslist .images_add a{font-size: 34px; color: #999; font-weight: bold;}
+.imageslist .images_add:hover{border-color: #666;}
+.imageslist .images_add a:hover{ text-decoration: none;}
+
+/**20140626退订规则**/
+
+.rule_talbe{width: 100%;table-layout: fixed;}
+.rule_talbe th,.rule_talbe td{padding: 10px 5px;}
+.rule_talbe th{text-align: right;font-weight: normal;}
+.rule_talbe .select{margin: 10px 5px 0 0;}
+.rule_limite{padding: 0 20px 20px;}
+.rule_limitext{margin: 10px 0; font-size: 14px;}
+.rule_limitext a{font-size: 12px;}
+.rule_limitetable .tl{text-align: left;}
+.rule_limitetable input{margin: 0 5px;}

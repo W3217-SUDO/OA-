@@ -1,0 +1,41 @@
+<?xml version='1.0' encoding='utf-8'?>
+<configuration>
+  <configSections>
+    <sectionGroup name="system.web.webPages.razor" type="REDACTED_ARCHIVE_ONLY">
+      <section name="host" type="REDACTED_ARCHIVE_ONLY" requirePermission="REDACTED_ARCHIVE_ONLY" />
+      <section name="pages" type="REDACTED_ARCHIVE_ONLY" requirePermission="REDACTED_ARCHIVE_ONLY" />
+    </sectionGroup>
+  </configSections>
+  <system.web.webPages.razor>
+    <host factoryType="REDACTED_ARCHIVE_ONLY" />
+    <pages pageBaseType="REDACTED_ARCHIVE_ONLY">
+      <namespaces>
+        <add namespace="REDACTED_ARCHIVE_ONLY" />
+        <add namespace="REDACTED_ARCHIVE_ONLY" />
+        <add namespace="REDACTED_ARCHIVE_ONLY" />
+        <add namespace="REDACTED_ARCHIVE_ONLY" />
+        <add namespace="REDACTED_ARCHIVE_ONLY" />
+      </namespaces>
+    </pages>
+  </system.web.webPages.razor>
+  <appSettings>
+    <add key="REDACTED_ARCHIVE_ONLY" value="REDACTED_ARCHIVE_ONLY" />
+  </appSettings>
+  <system.web>
+    <httpHandlers>
+      <add path="REDACTED_ARCHIVE_ONLY" verb="REDACTED_ARCHIVE_ONLY" type="REDACTED_ARCHIVE_ONLY" />
+    </httpHandlers>
+    <pages validateRequest="REDACTED_ARCHIVE_ONLY" pageParserFilterType="REDACTED_ARCHIVE_ONLY" pageBaseType="REDACTED_ARCHIVE_ONLY" userControlBaseType="REDACTED_ARCHIVE_ONLY">
+      <controls>
+        <add assembly="REDACTED_ARCHIVE_ONLY" namespace="REDACTED_ARCHIVE_ONLY" tagPrefix="REDACTED_ARCHIVE_ONLY" />
+      </controls>
+    </pages>
+  </system.web>
+  <system.webServer>
+    <validation validateIntegratedModeConfiguration="REDACTED_ARCHIVE_ONLY" />
+    <handlers>
+      <remove name="BlockViewHandler" />
+      <add name="BlockViewHandler" path="REDACTED_ARCHIVE_ONLY" verb="REDACTED_ARCHIVE_ONLY" preCondition="REDACTED_ARCHIVE_ONLY" type="REDACTED_ARCHIVE_ONLY" />
+    </handlers>
+  </system.webServer>
+</configuration>

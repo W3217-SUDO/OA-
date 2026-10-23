@@ -1,0 +1,313 @@
+﻿@using Dchien.Legal.Entity.System
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var typeId = string.Empty;
+    if (ViewContext.HttpContext.Request.Params["typeId"] != null)
+    {
+        typeId = ViewContext.HttpContext.Request.Params["typeId"].ToString().ToLower();
+    }
+
+    var actived = "active";
+}
+<link type="text/css" rel="stylesheet" href="https://g.alicdn.com/aliyun/ticketsystem/1.6.17//styles/ticketSystem/detail.css" />
+<link type="text/css" rel="stylesheet" href="https://g.alicdn.com/aliyun/ticketsystem/1.6.17//styles/ticketSystem/tip.css" />
+<link type="text/css" rel="stylesheet" href="https://g.alicdn.com/aliyun/ticketsystem/1.6.17//styles/ticketSystem/common.css" />
+ 
+ 
+<div class="viewFramework-product viewFramework-product-col-1">
+    <div class="viewFramework-product-navbar ng-scope">
+        <!-- product nav -->
+        @{
+            Html.RenderPartial("List");
+        }
+    </div><!-- /product nav -->
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+    <div class="viewFramework-product-body">
+        <a tabindex="0" href="javascript:void(0)" id="viewFramework-product-anchor" role="landmark" style="position: absolute;top: -10000px;left: -10000px">let's go</a><div aliyun-console-test=""></div><!-- product body --><div ng-transclude="">
+            <div ui-view="" class="console-container ng-scope" ng-animate="{enter:'fade-enter'}">
+                <div data-spm="" class="ng-scope">
+                    <div class="row ng-scope" data-ng-if="!currentInstanceInvalid">
+
+                        <div class="col-sm-12">
+                            <div ui-view="myTicket">
+                                <div class="ticket-detail ng-scope" data-spm="105" bindonce="">
+
+                                    <div class="console-title console-title-border clearfix">
+
+                                        <h5 class="pull-left" bo-bind="'ticket.detail.lb.detail' | translate">任务详情</h5>
+                                        <a ui-sref="myTicket.list" class="btn btn-xs btn-toinstlist pull-left" href="#/ticket/list/">
+                                            <span class="icon-toinstlist"></span>
+
+                                            <span bo-bind="'ticket.common.back' | translate" aliyun-console-spm="" spm-id="301" extra-params="anchorPoint=d1"
+                                                  data-spm-click="gostr=/aliyun;locaid=d301;;anchorPoint=d1">返回列表</span>
+                                        </a>
+                                    </div>
+                                    <div class="margin-top-3"></div>
+                                    <div ticket-count-tip=""></div>
+                                    <div step-bar="" style="margin-top:12px" class="ng-isolate-scope">
+                                        <div class="console-step row step-bar">
+                                            <div class="step col-md-3 ng-scope step-first step-pass">
+                                                <span class="ng-binding">已受理</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope step-pass">
+                                                <span class="ng-binding">已处理</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope step-active">
+                                                <span class="ng-binding">已确认</span>
+                                                <span style="position:relative" class="ng-scope">
+                                                    <span class="glyphicon glyphicon-time"></span>
+                                                    <div style="position:absolute; left: -10px; top:24px">
+                                                        <span class="kld-bbl kld-bbl-no-icon kld-bbl-arrow-top">
+                                                            <span class="kld-box" style="padding: 0 7px">
+                                                                <span class="kld-bbl-message text-size-12 ng-binding">实际处理时长：33分钟 <span directive-parser=""></span></span>
+                                                            </span>
+                                                            <span class="kld-arrow"><span class="kld-arr1"></span>rr an<span class="kld-arr2"></span></span>
+                                                        </span>
+                                                    </div>
+                                                </span>
+
+                                            </div>
+                                            <div class="step col-md-3 ng-scope step-end">
+                                                <span class="ng-binding">待您评价</span>
+
+                                            </div>
+
+                                        </div>
+                                    </div>
+                                    <div class="info-panel" style="margin-top:12px">
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-6 ng-binding">
+                                                <span class="text-explode">
+                                                    <!-- 问题标题： -->
+                                                    <span bo-bind="'ticket.detail.lb.title' | translate">问题标题</span>
+                                                    <span bo-bind="'semicolon' | translate">:</span>
+                                                </span> 服务器重启后,一直处于注销状态
+                                            </div><!-- ngIf: vm.ticketDetail.isShowUrgencyLevel() -->
+                                        </div>
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-2">
+                                                <span class="text-explode">
+                                                    <!-- 任务编号： -->
+                                                    <span bo-bind="'ticket.detail.lb.id' | translate">任务编号</span>
+                                                    <span bo-bind="'semicolon' | translate">:</span>
+                                                </span> <span class="ng-binding">1Z98ES6</span>
+                                            </div><!-- ngIf: vm.haveSub=='true' --><div class="col-sm-3">
+                                                <span class="text-explode">
+                                                    <!-- 提交时间： --><span bo-bind="'ticket.detail.lb.createTime' | translate">提交时间</span> <span bo-bind="'semicolon' | translate">:</span>
+                                                </span> 2018-04-23 13:22:26
+                                            </div><div class="col-sm-2">
+                                                <span class="text-explode">
+                                                    <!-- 状态： --><span bo-bind="'ticket.detail.lb.status' | translate">状态</span>
+                                                    <span bo-bind="'semicolon' | translate">:</span>
+                                                </span> <span status-colorfy="" status-code="confirmed" status-text="待您评价" class="ng-isolate-scope">
+                                                    <span class="text-success">待您评价</span>
+                                                </span>
+                                            </div><div class="col-sm-5">
+                                                <span class="pull-right">
+                                                    <!-- ngIf: vm.ticketDetail.getCanAuthorization() --> <!-- ngIf: vm.ticketDetail.getCanDelete() -->
+                                                    <a class="operation-link ng-scope" ng-if="vm.ticketDetail.getCanDelete()" href="javascript:;" ticket-delete-action="" ticket-id="1Z98ES6"
+                                                       extra-params="anchorPoint=d2" bo-bind="'ticket.operation.lb.deleteTicket' | translate" aliyun-console-spm="" spm-id="302" data-spm-click="gostr=/aliyun;locaid=d302;;anchorPoint=d2">删除任务</a>
+                                                    <!-- end ngIf: vm.ticketDetail.getCanDelete() --> <!-- ngIf: vm.ticketDetail.getCanClose() --> <!-- ngIf: vm.ticketDetail.getCanComplain() --> <!-- ngIf: vm.ticketDetail.isComplained() -->
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div><!-- ngIf: vm.isRenter --><!-- ngIf: vm.showPortalTitle --><!--/服务商提示add2017.3.29-->
+                                    <div class="table-viewer-header clearfix">
+                                        <span class="table-viewer-topbar-title">
+                                            <!-- 沟通记录： --><span bo-bind="'ticket.detail.lb.contractRecord' | translate">沟通记录</span>
+                                        </span>
+                                    </div>
+                                    <div class="table-content">
+                                            <!-- ngInclude: vm.chatRecordPartial -->
+                                            <div ng-include="vm.chatRecordPartial" class="ng-scope">
+                                                <div class="clearfix ng-scope" bindonce="">
+                                                    <!-- ngRepeat: message in vm.chatRecord --><div class="col-sm-12 clearfix message-item ng-scope" ng-repeat="message in vm.chatRecord">
+                                                        <!-- ngIf: message.answserType == 'drcloud' --><!-- ngIf: message.answserType != 'drcloud' -->
+                                                        <div class="clearfix ng-scope" ng-if="message.answserType != 'drcloud'">
+                                                            <div class="user-icon">
+                                                                <!-- ngIf: message.admin --> <!-- ngIf: !message.admin -->
+                                                                <img ng-if="!message.admin" class="ng-scope" width="40" height="40" ng-src="https://g.alicdn.com/aliyun/usercenter/1.3.12/images/workorder/avatar.png"
+                                                                     src="https://g.alicdn.com/aliyun/usercenter/1.3.12/images/workorder/avatar.png"><!-- end ngIf: !message.admin -->
+                                                            </div>
+                                                            <div class="item-content col-sm-7 text-muted" ng-class="{'text-muted': !message.admin}">
+                                                                <!-- ngIf: !message.secChat -->
+                                                                <div ng-if="!message.secChat" ng-class="{'text-bold': message.admin}" class="ng-scope ng-binding" data-spm-anchor-id="5176.2020520129.105.i4.41b546aenHg1Of">
+                                                                    <!-- ngIf: message.admin --> <!-- ngIf: !message.admin --><span ng-if="!message.admin" class="text-size-14 ng-scope">
+                                                                        <span class="ng-binding">******</span> <span bo-bind="'semicolon' | translate">:</span>
+                                                                    </span><!-- end ngIf: !message.admin --> <!-- ngIf: message.noteType=='complaint' --> <!-- ngIf: message.noteType=='score' --> 服务器IP ： 101.37.30.12
+                                                                    实例ID ： i-bp1472vz1trxq82tlui5
+                                                                    远程登录端口 ：
+                                                                    是否开启实例内部防火墙 ： 无
+                                                                    其他操作情况说明 ：
+                                                                    问题描述 ： 服务器重启后,一直处于注销状态 <!-- ngIf: message.hasSecChat --> <!-- ngIf: message.attachList && message.attachList.length > 0 -->
+                                                                </div><!-- end ngIf: !message.secChat --><!-- ngIf: message.needAuthorization --><!-- ngIf: message.secChat && !message.hasSecChat --><div class="item-time text-explode ng-binding" data-spm-anchor-id="5176.2020520129.105.i5.41b546aenHg1Of">2018-04-23 13:22:27</div>
+                                                            </div>
+                                                        </div><!-- end ngIf: message.answserType != 'drcloud' -->
+                                                    </div><!-- end ngRepeat: message in vm.chatRecord -->
+                                                    <div class="col-sm-12 clearfix message-item ng-scope" ng-repeat="message in vm.chatRecord" data-spm-anchor-id="5176.2020520129.105.i3.41b546aenHg1Of">
+                                                        <!-- ngIf: message.answserType == 'drcloud' -->
+                                                        <div class="clearfix ng-scope" ng-if="message.answserType == 'drcloud'">
+                                                            <div class="user-icon drcloud-icon" ng-class="{'loading': message.inLoading===1}">
+                                                                <div style="width: 30px;margin-left: 6px;line-height: 16px;margin-top: 5px" bo-bind="'ticket.drcloud.name' | translate">智能顾问</div>
+                                                            </div>
+                                                            <div class="item-content col-sm-7 drcloud-content">
+                                                                <!-- ngIf: message.inLoading!==1 -->
+                                                                <i class="drcloud-close-btn ng-scope" ng-if="message.inLoading!==1" ng-click="closeDrcloud()">×</i><!-- end ngIf: message.inLoading!==1 -->
+                                                                <div class="wrap-triangle"></div><!-- ngIf: message.inLoading===1 --><!-- ngIf: message.inLoading===2 --><!-- ngIf: message.inLoading===0 -->
+                                                                <div ng-if="message.inLoading===0" class="ng-scope">
+                                                                    <!-- ngIf: message.titleType==1 -->
+                                                                    <div class="drcloud-title ng-scope" ng-if="message.titleType==1" bo-bind="'ticket.drcloud.title' | translate">您好，您的任务已进入工程师处理队列。等待期间，智能顾问根据您线上产品情况推荐如下解决方案，请参考：</div><!-- end ngIf: message.titleType==1 --><!-- ngIf: message.titleType==2||message.titleType==4 --><!-- ngIf: message.titleType!=4 --><div class="drcloud-answser-list-wrap ng-scope" ng-if="message.titleType!=4">
+                                                                        <!-- <div class="drcloud-answser-list-tip">
+                                                                          <span class="inner-triangle"></span>
+                                                                          <span class="text" bo-bind="'ticket.drcloud.resolveTitle' | translate">解决方案</span>
+                                                                        </div> -->
+                                                                        <ul class="drcloud-answser-list">
+                                                                            <!-- ngRepeat: answser in message.answserList -->
+                                                                            <li class="drcloud-answser-list-item clearfix ng-scope" ng-repeat="answser in message.answserList">
+                                                                                <span class="list-style-icon">•</span>
+                                                                                <div class="list-item-content"><a target="_target" href="https://help.aliyun.com/knowledge_detail/41049.html" bo-bind="answser.question|decodeHtml">Windows 实例系统重启后显示系统恢复选项</a></div>
+                                                                            </li><!-- end ngRepeat: answser in message.answserList -->
+                                                                        </ul>
+                                                                    </div><!-- end ngIf: message.titleType!=4 --><!-- ngIf: vm.ticketDetail.getCanClose() -->
+                                                                </div><!-- end ngIf: message.inLoading===0 -->
+                                                            </div>
+                                                        </div><!-- end ngIf: message.answserType == 'drcloud' --><!-- ngIf: message.answserType != 'drcloud' -->
+                                                    </div><!-- end ngRepeat: message in vm.chatRecord --><div class="col-sm-12 clearfix message-item ng-scope" ng-repeat="message in vm.chatRecord"><!-- ngIf: message.answserType == 'drcloud' --><!-- ngIf: message.answserType != 'drcloud' --><div class="clearfix ng-scope" ng-if="message.answserType != 'drcloud'"><div class="user-icon"><!-- ngIf: message.admin --><img ng-if="message.admin" class="ng-scope" width="40" height="40" ng-src="https://img.alicdn.com/tfs/TB10E_yd9_I8KJjy0FoXXaFnVXa-200-200.png" src="https://img.alicdn.com/tfs/TB10E_yd9_I8KJjy0FoXXaFnVXa-200-200.png"><!-- end ngIf: message.admin --> <!-- ngIf: !message.admin --></div><div class="item-content col-sm-7" ng-class="{'text-muted': !message.admin}"><!-- ngIf: !message.secChat --><div ng-if="!message.secChat" ng-class="{'text-bold': message.admin}" class="ng-scope ng-binding text-bold"><!-- ngIf: message.admin --><span ng-if="message.admin" class="text-size-14 ng-scope"><!-- ngIf: message.renter --><!--<span ng-if="!message.renter" bo-bind="'ticket.detail.lb.engineer' | translate">售后工程师</span>--> <!-- ngIf: !message.renter --><span ng-if="!message.renter" class="ng-scope ng-binding">工程师 62708 号</span><!-- end ngIf: !message.renter --> <span bo-bind="'semicolon' | translate">:</span></span><!-- end ngIf: message.admin --> <!-- ngIf: !message.admin --> <!-- ngIf: message.noteType=='complaint' --> <!-- ngIf: message.noteType=='score' --> 您好，我们已经收到您提交的问题，正在为您查看，请稍等 <!-- ngIf: message.hasSecChat --> <!-- ngIf: message.attachList && message.attachList.length > 0 --></div><!-- end ngIf: !message.secChat --><!-- ngIf: message.needAuthorization --><!-- ngIf: message.secChat && !message.hasSecChat --><div class="item-time text-explode ng-binding">2018-04-23 13:26:55</div></div></div><!-- end ngIf: message.answserType != 'drcloud' --></div><!-- end ngRepeat: message in vm.chatRecord --><div class="col-sm-12 clearfix message-item ng-scope" ng-repeat="message in vm.chatRecord"><!-- ngIf: message.answserType == 'drcloud' --><!-- ngIf: message.answserType != 'drcloud' --><div class="clearfix ng-scope" ng-if="message.answserType != 'drcloud'"><div class="user-icon"><!-- ngIf: message.admin --><img ng-if="message.admin" class="ng-scope" width="40" height="40" ng-src="https://img.alicdn.com/tfs/TB10E_yd9_I8KJjy0FoXXaFnVXa-200-200.png" src="https://img.alicdn.com/tfs/TB10E_yd9_I8KJjy0FoXXaFnVXa-200-200.png"><!-- end ngIf: message.admin --> <!-- ngIf: !message.admin --></div><div class="item-content col-sm-7" ng-class="{'text-muted': !message.admin}"><!-- ngIf: !message.secChat --><div ng-if="!message.secChat" ng-class="{'text-bold': message.admin}" class="ng-scope ng-binding text-bold"><!-- ngIf: message.admin --><span ng-if="message.admin" class="text-size-14 ng-scope"><!-- ngIf: message.renter --><!--<span ng-if="!message.renter" bo-bind="'ticket.detail.lb.engineer' | translate">售后工程师</span>--> <!-- ngIf: !message.renter --><span ng-if="!message.renter" class="ng-scope ng-binding">工程师 62708 号</span><!-- end ngIf: !message.renter --> <span bo-bind="'semicolon' | translate">:</span></span><!-- end ngIf: message.admin --> <!-- ngIf: !message.admin --> <!-- ngIf: message.noteType=='complaint' --> <!-- ngIf: message.noteType=='score' --> 您好，麻烦您反馈下截图，我这边看下，谢谢。 <!-- ngIf: message.hasSecChat --> <!-- ngIf: message.attachList && message.attachList.length > 0 --></div><!-- end ngIf: !message.secChat --><!-- ngIf: message.needAuthorization --><!-- ngIf: message.secChat && !message.hasSecChat --><div class="item-time text-explode ng-binding">2018-04-23 13:43:24</div></div></div><!-- end ngIf: message.answserType != 'drcloud' --></div><!-- end ngRepeat: message in vm.chatRecord --><div class="col-sm-12 clearfix message-item ng-scope" ng-repeat="message in vm.chatRecord"><!-- ngIf: message.answserType == 'drcloud' --><!-- ngIf: message.answserType != 'drcloud' --><div class="clearfix ng-scope" ng-if="message.answserType != 'drcloud'"><div class="user-icon"><!-- ngIf: message.admin --> <!-- ngIf: !message.admin --><img ng-if="!message.admin" class="ng-scope" width="40" height="40" ng-src="https://g.alicdn.com/aliyun/usercenter/1.3.12/images/workorder/avatar.png" src="https://g.alicdn.com/aliyun/usercenter/1.3.12/images/workorder/avatar.png"><!-- end ngIf: !message.admin --></div><div class="item-content col-sm-7 text-muted" ng-class="{'text-muted': !message.admin}"><!-- ngIf: !message.secChat --><div ng-if="!message.secChat" ng-class="{'text-bold': message.admin}" class="ng-scope ng-binding"><!-- ngIf: message.admin --> <!-- ngIf: !message.admin --><span ng-if="!message.admin" class="text-size-14 ng-scope"><span class="ng-binding">******</span> <span bo-bind="'semicolon' | translate">:</span></span><!-- end ngIf: !message.admin --> <!-- ngIf: message.noteType=='complaint' --> <!-- ngIf: message.noteType=='score' --> 现在好了,谢谢 <!-- ngIf: message.hasSecChat --> <!-- ngIf: message.attachList && message.attachList.length > 0 --></div><!-- end ngIf: !message.secChat --><!-- ngIf: message.needAuthorization --><!-- ngIf: message.secChat && !message.hasSecChat --><div class="item-time text-explode ng-binding">2018-04-23 13:48:00</div></div></div><!-- end ngIf: message.answserType != 'drcloud' --></div><!-- end ngRepeat: message in vm.chatRecord --><div class="col-sm-12 clearfix message-item ng-scope" ng-repeat="message in vm.chatRecord">
+                                                        <!-- ngIf: message.answserType == 'drcloud' --><!-- ngIf: message.answserType != 'drcloud' --><div class="clearfix ng-scope" ng-if="message.answserType != 'drcloud'">
+                                                            <div class="user-icon"><!-- ngIf: message.admin --><img ng-if="message.admin" class="ng-scope" width="40" height="40" ng-src="https://img.alicdn.com/tfs/TB10E_yd9_I8KJjy0FoXXaFnVXa-200-200.png" src="https://img.alicdn.com/tfs/TB10E_yd9_I8KJjy0FoXXaFnVXa-200-200.png"><!-- end ngIf: message.admin --> <!-- ngIf: !message.admin --></div><div class="item-content col-sm-7" ng-class="{'text-muted': !message.admin}">
+                                                                <!-- ngIf: !message.secChat --><div ng-if="!message.secChat" ng-class="{'text-bold': message.admin}" class="ng-scope ng-binding text-bold">
+                                                                    <!-- ngIf: message.admin --><span ng-if="message.admin" class="text-size-14 ng-scope"><!-- ngIf: message.renter --><!--<span ng-if="!message.renter" bo-bind="'ticket.detail.lb.engineer' | translate">售后工程师</span>--> <!-- ngIf: !message.renter --><span ng-if="!message.renter" class="ng-scope ng-binding">工程师 62708 号</span><!-- end ngIf: !message.renter --> <span bo-bind="'semicolon' | translate">:</span></span><!-- end ngIf: message.admin --> <!-- ngIf: !message.admin --> <!-- ngIf: message.noteType=='complaint' --> <!-- ngIf: message.noteType=='score' --> 您好，不客气。这边暂时将您的任务置为待确认状态。
+                                                                    还请您在任务下方对我们的服务进行评价。&nbsp;
+                                                                    如果您的问题仍未解决，可以开启任务或新建任务与我们反馈；&nbsp;
+                                                                    祝您工作生活愉快。 <!-- ngIf: message.hasSecChat --> <!-- ngIf: message.attachList && message.attachList.length > 0 -->
+                                                                </div><!-- end ngIf: !message.secChat --><!-- ngIf: message.needAuthorization --><!-- ngIf: message.secChat && !message.hasSecChat --><div class="item-time text-explode ng-binding">2018-04-23 14:00:52</div>
+                                                            </div>
+                                                        </div><!-- end ngIf: message.answserType != 'drcloud' -->
+                                                    </div><!-- end ngRepeat: message in vm.chatRecord -->
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                    <!-- reopen表单 Start --><!-- ngIf: vm.ticketDetail.getCanConfirm() --><!-- reopen表单 End --><!-- 评分表单 Start --><!-- ngIf: vm.ticketDetail.getCanScore() -->
+                                    <div ng-if="vm.ticketDetail.getCanScore()" style="margin-bottom: 20px" class="ng-scope">
+                                        <div id="scoreAndor" class="table-viewer-header clearfix">
+                                            <span class="table-viewer-topbar-title">
+                                                <!-- 待评价： -->
+                                                <span bo-bind="'ticket.detail.step.lb.waitScore' | translate">待您评价</span> <span bo-bind="'semicolon' | translate">:</span>
+                                            </span>
+                                        </div>
+                                        <div class="table-content">
+                                            <span class="text-muted">
+                                                <!-- 整体评价： --><span class="text-danger">*</span>
+                                                <span style="color:#666" bo-bind="'ticket.detail.lb.yourOverallScore' | translate">整体评价</span> <span bo-bind="'semicolon' | translate">:</span>
+                                            </span>
+                                            <span class="ks-simplestar" style="margin-left:17px">
+                                                <img ng-mousedown="onDown(1)" src="//img.alicdn.com/tfs/TB1.aW.QXXXXXbgXFXXXXXXXXXX-30-30.png">
+                                                <img ng-mousedown="onDown(2)" src="//img.alicdn.com/tfs/TB1.aW.QXXXXXbgXFXXXXXXXXXX-30-30.png"> <img ng-mousedown="onDown(3)" src="//img.alicdn.com/tfs/TB1.aW.QXXXXXbgXFXXXXXXXXXX-30-30.png">
+                                                <img ng-mousedown="onDown(4)" src="//img.alicdn.com/tfs/TB1.aW.QXXXXXbgXFXXXXXXXXXX-30-30.png"> <img ng-mousedown="onDown(5)" src="//img.alicdn.com/tfs/TB1.aW.QXXXXXbgXFXXXXXXXXXX-30-30.png">
+                                            </span>
+                                            <form simple-form-custom-attrs="" class="form-horizontal ng-valid ng-valid-required ng-dirty" id="" role="form" novalidate="" simple-form="" name="scoreForm"
+                                                  result="vm.scoreFormData" options="vm.scoreFormOptions" form-scope="vm.scoreFormScope" fields="vm.scoreFormFields" on-submit="vm.onScoreFormSubmit">
+
+
+                                                <div class="simple-form-field ng-scope ng-isolate-scope" ng-class="{'hide': field.type == 'hidden'}" formly-field="" ng-repeat="field in fields" on-submit-handle="onSubmit"
+                                                     options="field" form-scope="formOnParentScope" form-result="result" form-id="options.uniqueFormId" ng-if="!field.hide" ng-hide="field.display === false" index="$index">
+                                                    <div bindonce="" class="ng-scope">
+                                                        <div class="form-group" ng-class="{'has-error': options.formField.$invalid}">
+                                                            <label for="button0" class="score-label control-label"><span class="text-danger ng-binding">*</span></label>
+                                                            <div class="col-sm-8" labels-validator="" style="margin-left:75px">
+                                                                <!-- ngRepeat: (key, option) in options.options -->
+                                                                <!--<p>formScope.$invalid {{formScope.$invalid}} {{result}}
+                                                                    </p>-->
+                                                                <!-- ngIf: options.description && result.showLabelWarning -->
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div><!-- end ngIf: !field.hide --><!-- end ngRepeat: field in fields --><!-- ngIf: !field.hide -->
+                                                <div class="simple-form-field ng-scope ng-isolate-scope" ng-class="{'hide': field.type == 'hidden'}" formly-field="" ng-repeat="field in fields" on-submit-handle="onSubmit"
+                                                     options="field" form-scope="formOnParentScope" form-result="result" form-id="options.uniqueFormId" ng-if="!field.hide" ng-hide="field.display === false" index="$index">
+                                                    <div class="form-group ng-scope" ng-class="{'has-error': options.formField.$invalid}" style="padding:6px">
+                                                        <label for="custom1" style="padding:6px;text-align: left" class="col-sm-1 control-label">
+                                                            <span class="text-danger ng-binding"></span>
+                                                            <span ng-bind-html="options.label || 'radio'" class="ng-binding">问题是否解决:</span>
+                                                        </label>
+                                                        <div class="col-sm-9">
+
+                                                            <div class="radio radio-inline ng-scope" ng-repeat="(key, option) in options.options"
+                                                                 data-spm-anchor-id="5176.2020520129.105.i0.41b546aenHg1Of">
+                                                                <label>
+                                                                    <input id="custom1." type="radio" formly-custom-validation="options.validators" ng-value="option.value"
+                                                                           ng-required="options.required" ng-model="result[options.key]" name="solved" class="ng-valid ng-valid-required ng-dirty" value="2">
+                                                                    <span class="ng-binding" data-spm-anchor-id="5176.2020520129.105.i1.41b546aenHg1Of">已解决</span>
+                                                                </label>
+                                                            </div><!-- end ngRepeat: (key, option) in options.options -->
+                                                            <div class="radio radio-inline ng-scope" ng-repeat="(key, option) in options.options">
+                                                                <label>
+                                                                    <input id="custom1." type="radio" formly-custom-validation="options.validators" ng-value="option.value" ng-required="options.required"
+                                                                           ng-model="result[options.key]" name="solved" class="ng-valid ng-valid-required ng-dirty" value="1" data-spm-anchor-id="5176.2020520129.105.i2.41b546aenHg1Of">
+                                                                    <span class="ng-binding">未解决</span>
+                                                                </label>
+                                                            </div><!-- end ngRepeat: (key, option) in options.options --><!-- ngIf: options.description -->
+                                                        </div>
+                                                    </div>
+                                                </div><!-- end ngIf: !field.hide --><!-- end ngRepeat: field in fields --><!-- ngIf: !field.hide -->
+                                                <div class="simple-form-field ng-scope ng-isolate-scope" ng-class="{'hide': field.type == 'hidden'}" formly-field="" ng-repeat="field in fields"
+                                                     on-submit-handle="onSubmit" options="field" form-scope="formOnParentScope" form-result="result" form-id="options.uniqueFormId" ng-if="!field.hide"
+                                                     ng-hide="field.display === false" index="$index">
+                                                    <div class="form-group ng-scope" ng-class="{'has-error': formScope[options.key].$dirty &amp;&amp; formScope[options.key].$invalid}">
+                                                        <label for="textarea2" class="col-sm-1 score-text-left control-label">
+                                                            <span ng-show="!!options.label" class="text-danger ng-binding"></span>
+                                                            <span ng-bind-html="options.label" class="ng-binding">我要反馈:</span>
+                                                        </label>
+                                                        <div class="col-sm-8">
+                                                            <textarea type="text" class="form-control ng-isolate-scope ng-pristine ng-valid-min-length ng-valid ng-valid-required" id="textarea2" formly-custom-validation="options.validators"
+                                                                      rows="3" placeholder="" ng-required="options.required" ng-disabled="options.disabled" ng-model="result[options.key || index]"
+                                                                      simple-form-custom-validator="" validator-field-key="content" validator-form-scope="formScope" validator-form-data="result" validators="validators" name="content"></textarea><!-- ngIf: options.description && result.showTextAreaWarning --><!-- ngRepeat: valid in options.validators -->
+                                                            <div class="help-block ng-scope ng-binding ng-hide" ng-repeat="valid in options.validators"
+                                                                 ng-show="valid.errorMessage &amp;&amp; formScope[options.key].$dirty &amp;&amp; formScope[options.key].$error[ valid.name
+                                                                  || (valid.validator.indexOf('ng') == 0 ? (valid.validator.substring(2,3).toLowerCase() + valid.validator.split('=')[0].slice(3))
+                                                                 : valid.validator.split('=')[0])   ] ">
+                                                                请您详细描述本次服务哪些地方您不满意
+                                                            </div><!-- end ngRepeat: valid in options.validators -->
+                                                        </div>
+                                                    </div>
+                                                </div><!-- end ngIf: !field.hide --><!-- end ngRepeat: field in fields --><!-- ngIf: !field.hide -->
+                                                <div class="simple-form-field ng-scope ng-isolate-scope" ng-class="{'hide': field.type == 'hidden'}" formly-field="" ng-repeat="field in fields" on-submit-handle="onSubmit"
+                                                     options="field" form-scope="formOnParentScope" form-result="result" form-id="options.uniqueFormId" ng-if="!field.hide" ng-hide="field.display === false" index="$index">
+                                                    <div class="form-group simple-form-submit ng-scope">
+                                                        <label for="submit3" class="score-label control-label"><span ng-bind-html="options.label" class="ng-binding"></span></label>
+                                                        <div class="col-sm-4">
+                                                            <!--<p>result {{result}}</p>-->
+                                                            <button aliyun-console-spm="1" type="submit" ng-disabled="!result.valid"
+                                                                                                   ng-click="onSubmit(result)" class="btn btn-primary" data-spm-click="gostr=/aliyun;locaid=d1;;" disabled="disabled">
+                                                                提交
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div><!-- end ngIf: !field.hide --><!-- end ngRepeat: field in fields --><div ng-transclude=""></div>
+                                            </form>
+                                        </div>
+                                    </div><!-- end ngIf: vm.ticketDetail.getCanScore() --><!-- 评分表单 End --><!-- 反馈表单 Start --><!-- ngIf: vm.ticketDetail.getCanReply() --><!-- 反馈表单 End -->
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+
+

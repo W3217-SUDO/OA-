@@ -1,0 +1,38 @@
+﻿@using Dchien.Legal.BizModel.IPR.Case
+@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.CaseEventListModel
+
+<script>
+    
+    $(function () { $("[data-toggle='tooltip']").tooltip(); });
+
+</script>
+ 
+@if (Model.CaseEvents != null && Model.CaseEvents.Count > 0)
+{
+    var lst = Model.CaseEvents.FindAll(x=>x.EventTime.HasValue).OrderBy(x => x.EventTime).GroupBy(x => new DateTime(x.EventTime.Value.Year, x.EventTime.Value.Month, 1))
+        .ToList();
+
+    foreach (var x in lst)
+    {
+         <dl class="product-fun-update-list" style="margin-top: 0px; margin-bottom: 0px;overflow-x:hidden;max-height:max-content ">
+             <dt style="margin-top:3px;margin-bottom: 3px">@x.Key.ToString("yyyy-MM")</dt>
+            <dd>
+                <ul class="month-list">
+                    @foreach (var item in x.ToList<BizCaseEvent>())
+{
+    <li class="first border " style="margin-top: 15px;">
+        <i class="li-icon"></i>
+        <span style='float: left; top: 0px; ' class="date">@(item.EventTime.HasValue ? item.EventTime.Value.ToString("yyyy-MM-dd") : "")</span>
+        <a style='width: 300px; float: left; overflow: hidden; top: 0px;  text-overflow: ellipsis; white-space: nowrap; ' title="@item.EventContent"
+           data-toggle="tooltip" data-container='body' data-placement="bottom"
+           onclick="javascript:caseInfo.CaseEvent.Open(@item.EventId,@item.EventTypeId,'@item.Operator','@item.EventTime.Value.ToString("yyyy-MM-dd")','@item.Deadline.Value.ToString("yyyy-MM-dd")','@item.EventContent');" href="javascript:void(0);">@item.EventContent</a>
+
+    </li>
+}
+                </ul>
+            </dd>
+        </dl>
+    }
+} 
+

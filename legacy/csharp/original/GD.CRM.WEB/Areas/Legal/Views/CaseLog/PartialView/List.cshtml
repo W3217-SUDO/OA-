@@ -1,0 +1,126 @@
+﻿@using Dchien.Legal.BizModel.Legal.Case
+@using Dchien.Legal.Entity.Legal.Case
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.Case.CaseLogListModel
+<script type="text/javascript">
+    $(function() {
+         $("[data-toggle='tooltip']").tooltip();
+    });
+</script>
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/dchien-lego-console-update.css")" />
+
+<div class="slide-panels">
+    <div class="slide-panel active medium">
+        <div class="slide-panel-content">
+            <div class="panel-header">
+                <h5>查看日志</h5>
+                <a class="panel-close" onclick="javascript: $('.slide-panel-container').empty(); $('.slide-panel-container').removeClass('show-panel');">
+                    <i class="next-icon next-icon-close next-small" style="font-size: 0px;">close</i>
+                </a>
+                <div class="head-custom"></div>
+            </div>
+            <div class="placeholder">...</div>
+            <div class="panel-body">
+                <div class="panel-body-content">
+                    <div class="page-overview-panel-apply">
+                        <div ui-view="myTicket">
+                            <div class="ticket-detail ">
+                                @*<div class="">
+                                    <div class="">
+                                        <div class="">
+                                            <style type="text/css" class="">
+                                                .tableWrapper .table {
+                                                    margin-bottom: 0px;
+                                                }
+
+                                                .table-hover tbody tr.trWarapper:hover td {
+                                                    background-color: #FCF8E2;
+                                                }
+                                            </style>
+                                            <div class="">
+                                                <div class="alert alert-info clearfix" style="padding: 8px 12px 0px;line-height: 18px;margin-bottom: 6px;border-radius: 0px">
+                                                    <div class="pull-left">
+                                                        <span>温馨提示</span> ：
+                                                    </div>
+                                                    <div class="pull-left">
+                                                        <p>1. <span>点击表格头部(费用类型,金额,备注)会把第一行数据同步到各行.</span> </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>*@
+                                <div class="form-group">
+                                    <div class="col-sm-12" style="padding:0px">
+
+                                        <div id='divCaseLogs' class="case-section-trends" style='overflow-y: auto;padding:8px;'>
+                                            <div>
+                                                <link rel="stylesheet" href="@Url.Content("~/Resource/css/dchien-lego-console-update.css")" />
+                                                <div class="dchien-lego-console-product-update J_Module">
+                                                    <div class="module-wrap J_tb_lazyload">
+                                                        @*<div class="product-fun-update-hd">
+                                                            案件日志&nbsp; &nbsp;&nbsp;<span><a href="javascript:void(0)" style="color: #039" id="btnCaseLogCreate">新增日志</a></span>
+                                                        </div>*@
+                                                        <div class="caselogs">
+                                                            @if (Model.CaseLogs != null && Model.CaseLogs.Count > 0)
+                                                            {
+                                                                var lst = Model.CaseLogs.FindAll(x => x.LogType == (int)CaseLogType.Business).GroupBy(x => new DateTime(x.OperatorDate.Value.Year, x.OperatorDate.Value.Month, 1)).OrderByDescending(x => x.Key)
+                                                                    .ToList();
+                                                                foreach (var x in lst)
+                                                                {
+                                                                    <dl class="product-fun-update-list" style="margin-top: 0px; margin-bottom: 0px;overflow-x:hidden;max-height:max-content">
+                                                                        <dt style="margin-top:3px;margin-bottom: 3px">@x.Key.ToString("yyyy-MM")</dt>
+                                                                        <dd>
+                                                                            <ul class="month-list">
+                                                                                @foreach (var item in x.ToList<BizCaseLog>().OrderByDescending(d => d.OperatorDate))
+                                                                                {
+                                                                                    <li class="first border" style="margin-top: 20px;">
+                                                                                        <i class="li-icon"></i>
+                                                                                        <span style='float: left; top: 0px;' class="date">@(item.OperatorDate.HasValue ? item.OperatorDate.Value.ToString("yyyy-MM-dd") : "")</span>
+                                                                                        @if (Dchien.Legal.Service.HR.Staff.StaffService.Instance.GetStaff(item.Operator) != null)
+                                                                                        {
+                                                                                            <a style='width: 600px;float: left; overflow: hidden; top: 0px; text-overflow: ellipsis; white-space: nowrap; ' title="@item.Content"
+                                                                                               data-toggle="tooltip" data-container='body' data-placement="bottom" onclick="javascript:c.Cases.Case.CaseLogs.CaseLog.View(@item.LogId); " href="javascript:void(0);">
+                                                                                                @Dchien.Legal.Service.HR.Staff.StaffService.Instance.GetStaff(item.Operator).StaffBasic.StaffChName : @item.Content;
+                                                                                            </a>
+                                                                                        }
+                                                                                        else
+                                                                                        {
+                                                                                            <a style='width: 600px;float: left; overflow: hidden; top: 0px; text-overflow: ellipsis; white-space: nowrap; ' title="@item.Content"
+                                                                                               data-toggle="tooltip" data-container='body' data-placement="bottom" onclick="javascript:c.Cases.Case.CaseLogs.CaseLog.View(@item.LogId); " href="javascript:void(0);">
+                                                                                                @item.Operator: @item.Content;
+                                                                                            </a>
+                                                                                        }
+                                                                                    </li>
+                                                                                }
+                                                                            </ul>
+                                                                        </dd>
+                                                                    </dl>
+                                                                }
+                                                            }
+                                                        </div>
+                                                        <div class="caselog"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="panel-footer">
+            <div class="btn-con">
+                <input type="button" class="btn  btn-normal" style="border-radius: 0;
+                                                                        padding: 0 16px;
+                                                                        height: 32px;
+                                                                        line-height: 30px;
+                                                                        font-size: 12px;
+                                                                        border-width: 1px;" onclick="javascript: $('.slide-panel-container').empty(); $('.slide-panel-container').removeClass('show-panel');" value="关闭" />
+            </div>
+        </div>
+    </div>
+</div>
+

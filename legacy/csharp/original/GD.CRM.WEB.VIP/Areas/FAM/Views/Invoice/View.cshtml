@@ -1,0 +1,352 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.IPR.Case
+@using Dchien.Legal.Web.Areas.FAS.ViewModels.AR.Invoice
+
+@model Dchien.Legal.Web.Areas.FAS.ViewModels.AR.Invoice.ViewModel
+
+<script src="@Url.Content("~/Scripts/FAS/AR/Invoice/FAS.AR.Invoice.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<style>
+    input.input_text, textarea, select, input.input_time {
+        border: 1px solid #ccc;
+    }
+
+    .invoice-form-control {
+        /*border-radius: 0px;*/
+        -webkit-transition: none;
+        transition: none;
+        font-size: 12px;
+        width: 100%;
+        height: 24px;
+    }
+
+    input.input_text, textarea, input.input_time {
+        padding: 2px 2px 2px 3px;
+    }
+
+    input.input_text, textarea, input.input_time {
+        background-color: #fff;
+    }
+
+    table td, th {
+        padding: 0px 0;
+        /* border-bottom: 1px dotted #D6D6D6; */
+        vertical-align: middle;
+    }
+
+    .input_table th {
+        font-weight: normal;
+        text-align: right;
+    }
+
+    .input_table td {
+        text-align: left;
+    }
+</style>
+<div class="modal fade" id="invoiceViewModal">
+    <div class="modal-dialog" style="width:60%">
+        <div class="modal-content" ng-transclude="">
+            <div class="ng-scope">
+                @using (Html.BeginForm("View", "Invoice", FormMethod.Post, new { id = "invoiceForm", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+
+                    @Html.HiddenFor(m => m.Invoice.InvoiceBasic.InvoiceId)
+                    @Html.HiddenFor(m => m.AuditId)
+
+
+                    <link rel="stylesheet" href="@Url.Content("~/Resource/css/customer.createupdate.console.css")" />
+
+                    <div class="modal-header">
+                        <button type="button" class="close" id="btnInvoiceViewClose">×</button>
+                        <h5 class="modal-title ">发票申请单</h5>
+                    </div>
+                    <div class="modal-body">
+                        <div>
+                            <div>
+                                <div style="background: #eaedf1;">
+                                    <div class="ng-scope">
+                                        <div class="customer-section-main clearfix">
+                                            <!-- 左侧 -->
+                                            <div class="customer-section-left" style="padding-right: 50%;">
+                                                <div class="customer-section-wrap">
+                                                    <div class="customer-section-product">
+                                                        <!-- product section -->
+                                                        <div class="product-container">
+                                                            <div class="product-section">
+                                                                <div class="section-content clearfix">
+                                                                    <div class="ng-scope">
+                                                                        <div class="gridSection">
+                                                                            <table id="tblCustomer" class="input_table" width="100%">
+                                                                                <colgroup>
+                                                                                    <col style="width: 30%;" />
+                                                                                    <col style="width: 70%" />
+                                                                                </colgroup>
+                                                                                <tr>
+                                                                                    <th>客户名称 </th>
+                                                                                    <td>
+                                                                                        @Html.TextBoxFor(m => m.Invoice.InvoiceBasic.CustomerName, new { @class = "invoice-form-control" })
+                                                                                    </td>
+                                                                                </tr>
+                                                                                <tr>
+                                                                                    <th>客户纳税人识别码	 </th>
+                                                                                    <td>
+                                                                                        @Html.TextBoxFor(m => m.Invoice.InvoiceBasic.CustomerCompanyCode, new { @class = "invoice-form-control" })
+                                                                                    </td>
+                                                                                </tr>
+                                                                                <tr>
+                                                                                    <th>客户地址</th>
+                                                                                    <td>
+                                                                                        @Html.TextBoxFor(m => m.Invoice.InvoiceBasic.CustomerBusinessAddress, new { @class = "invoice-form-control" })
+                                                                                    </td>
+                                                                                </tr>
+                                                                                <tr>
+                                                                                    <th>客户电话 </th>
+                                                                                    <td>
+                                                                                        @Html.TextBoxFor(m => m.Invoice.InvoiceBasic.CustomerPhone, new { @class = "invoice-form-control" })
+                                                                                    </td>
+                                                                                </tr>
+                                                                                <tr>
+                                                                                    <th>客户开户银行 </th>
+                                                                                    <td>
+                                                                                        @Html.TextBoxFor(m => m.Invoice.InvoiceBasic.CustomerBankName, new { @class = "invoice-form-control" })
+                                                                                    </td>
+                                                                                </tr>
+                                                                                <tr>
+                                                                                    <th>客户开户账号 </th>
+                                                                                    <td>
+                                                                                        @Html.TextBoxFor(m => m.Invoice.InvoiceBasic.CustomerBankAccount, new { @class = "invoice-form-control" })
+                                                                                    </td>
+                                                                                </tr>
+                                                                            </table>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="customer-section-right ng-scope" style='width: 50%; '>
+                                                <div class="customer-section-wrap">
+                                                    <div class="customer-section-product">
+                                                        <!-- product section -->
+                                                        <div class="product-container">
+                                                            <div class="product-section">
+                                                                <div class="section-content clearfix">
+                                                                    <div class="ng-scope">
+                                                                        <div class="gridSection">
+                                                                            <table id="tblCustomer" class="input_table" width="100%">
+                                                                                <colgroup>
+                                                                                    <col style="width: 25%;" />
+                                                                                    <col style="width: 35%" />
+                                                                                    <col style="width: 15%;" />
+                                                                                    <col style="width: 25%" />
+
+                                                                                </colgroup>
+
+                                                                                <tr>
+                                                                                    <th>票据编号</th>
+                                                                                    <td>
+                                                                                        @Html.TextBoxFor(m => m.Invoice.InvoiceBasic.InvoiceNo, new { @class = "invoice-form-control"})
+                                                                                    </td>
+                                                                                    <th>票据日期</th>
+                                                                                    <td>
+                                                                                        @Html.TextBoxFor(m => m.Invoice.InvoiceBasic.InvoiceDate, "{0:yyyy-MM-dd}", new { @class = "input_time invoice-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                                                                    </td>
+                                                                                </tr>
+                                                                                <tr>
+                                                                                    <th>票据交接方式 </th>
+                                                                                    <td colspan="3">
+                                                                                        @Html.DropDownListFor(m => m.Invoice.InvoiceBasic.DeliveryMode, PublicMethod.DeliveryModeList(), new { @class = "invoice-form-control" })
+                                                                                    </td>
+                                                                                </tr>
+                                                                                <tr>
+                                                                                    <th>收件人	 </th>
+                                                                                    <td colspan="3">
+                                                                                        @Html.TextBoxFor(m => m.Invoice.InvoiceBasic.DeliveryRecipients, new { @class = "invoice-form-control" })
+                                                                                    </td>
+                                                                                </tr>
+                                                                                <tr>
+                                                                                    <th>收件地址</th>
+                                                                                    <td colspan="3">
+                                                                                        @Html.TextBoxFor(m => m.Invoice.InvoiceBasic.DeliveryAddress, new { @class = "invoice-form-control" })
+                                                                                    </td>
+                                                                                </tr>
+                                                                                <tr>
+                                                                                    <th>收件电话 </th>
+                                                                                    <td colspan="3">
+                                                                                        @Html.TextBoxFor(m => m.Invoice.InvoiceBasic.DeliveryPhone, new { @class = "invoice-form-control" })
+                                                                                    </td>
+                                                                                </tr>
+                                                                                <tr>
+                                                                                    <th>备注 </th>
+                                                                                    <td colspan="3">
+                                                                                        @Html.TextBoxFor(m => m.Invoice.InvoiceBasic.Remark, new { @class = "invoice-form-control" })
+                                                                                    </td>
+                                                                                </tr>
+
+                                                                            </table>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <div class="col-sm-12">
+                                        <div class="gridSection">
+                                            <table id="tblInvoiceList" class="table table-hover" style='width:100%;margin-bottom: 0px'>
+                                                <colgroup>
+                                                    <col style="width: 10%">
+                                                    <col style="width: 6%">
+                                                    <col style="width: 6%">
+                                                    <col style="width: 6%">
+                                                    <col style="width: 6%">
+                                                    <col style="width: 6%">
+                                                    <col style="width: 6%">
+                                                    <col style="width: 6%">
+                                                </colgroup>
+                                                <thead>
+                                                    <tr>
+                                                        <th>服务名称</th>
+                                                        <th>类型</th>
+                                                        <th>单位</th>
+                                                        <th>数量</th>
+                                                        <th>单价</th>
+                                                        <th>金额</th>
+                                                        <th>税率</th>
+                                                        <th>税额</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @if (Model.Invoice != null && Model.Invoice.CaseFeeList != null && Model.Invoice.CaseFeeList.Count > 0)
+                                                    {
+                                                        var caseTypes = CaseTypeService.Instance.GetAllCaseTypes();
+                                                        foreach (var item in Model.Invoice.CaseFeeList.GroupBy(f => f.CaseTypeId).ToList())
+                                                        {
+                                                            <tr>
+                                                                <td></td>
+                                                                <td>
+                                                                    @(caseTypes.FirstOrDefault(t => t.CaseTypeId == item.Key) == null ? string.Format("案件类型{0}未知", item.Key) : caseTypes.FirstOrDefault(t => t.CaseTypeId == item.Key).CaseTypeName)
+                                                                </td>
+                                                                <td>
+                                                                    项
+                                                                </td>
+                                                                <td>
+                                                                    @item.Count()
+                                                                </td>
+                                                                <td></td>
+                                                                <td>
+                                                                    @(Model.Invoice.CaseFeeList.FindAll(f => f.CaseTypeId == item.Key).Sum(f => f.InvoiceAmount))
+                                                                </td>
+                                                                <td></td>
+                                                                <td></td>
+                                                            </tr>
+                                                        }
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <div class="col-sm-12">
+                                        <div class="gridSection">
+                                            <table id="tblInvoiceCaseFeeList" class="table table-hover" style='width:100%'>
+                                                <colgroup>
+                                                    <col style="width: 10%">
+                                                    <col style="width: 10%">
+                                                    <col style="width: 10%">
+                                                    <col style="width: 10%">
+                                                    <col style="width: 10%">
+                                                    <col style="width: 10%">
+                                                    <col style="width: 10%">
+                                                    <col style="width: 10%">
+                                                    <col style="width: 10%">
+                                                    <col style="width: 10%">
+
+                                                </colgroup>
+                                                <thead>
+                                                    <tr>
+                                                        <th>案件编号</th>
+                                                        <th>申请号</th>
+                                                        <th>费用类型</th>
+                                                        <th>通知日期</th>
+                                                        <th>金额</th>
+                                                        <th>已开金额</th>
+                                                        <th>开票金额</th>
+                                                        <th>高开金额</th>
+                                                        <th>到账金额</th>
+                                                        <th>到账日期</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @if (Model.Invoice != null && Model.Invoice.CaseFeeList != null && Model.Invoice.CaseFeeList.Count > 0)
+                                                    {
+                                                        foreach (var item in Model.Invoice.CaseFeeList)
+                                                        {
+
+                                                            <tr>
+                                                                <td>
+                                                                    @item.CaseNo
+                                                                </td>
+                                                                <td>
+                                                                    @item.CaseRequestNo
+                                                                </td>
+                                                                <td>
+                                                                    @item.CaseFeeTypeName
+                                                                </td>
+                                                                <td>
+                                                                    @(item.InformDate.HasValue ? item.InformDate.Value.ToString("yyyy-MM-dd") : string.Empty)
+                                                                </td>
+                                                                <td>
+                                                                    @item.Amount
+                                                                </td>
+                                                                <td>
+                                                                    @item.InvoicedAmount
+                                                                </td>
+                                                                <td>
+                                                                    @item.InvoiceAmount
+                                                                </td>
+                                                                <td>
+                                                                    @if (item.InvoicedAmount > item.Amount)
+                                                                    {
+                                                                        <span style='color:red' id="item_FalseAmount">@(item.InvoicedAmount - item.Amount)</span>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <span id="item_FalseAmount">0</span>
+                                                                    }
+                                                                </td>
+                                                                <td>
+                                                                    @item.CashedAmount
+                                                                </td>
+                                                                <td>
+                                                                    @(item.CashedDate.HasValue ? item.CashedDate.Value.ToString("yyyy-MM-dd") : string.Empty)
+                                                                </td>
+                                                            </tr>
+                                                        }
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            
+                            <input class="btn btn-default " type="button" id="btnInvoiceViewCancel" value="取消" />
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>

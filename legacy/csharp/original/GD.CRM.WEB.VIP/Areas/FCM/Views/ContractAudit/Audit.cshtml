@@ -1,0 +1,284 @@
+﻿@using Dchien.Legal.Service.FCM.Contract
+@using Dchien.Legal.Web.Areas.FCM.ViewModels.Contract
+@model Dchien.Legal.Web.Areas.FCM.ViewModels.ContractAudit.AuditModel
+
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/font-awesome.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/citys/city.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/bootstrap-tagsinput.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<link type="text/css" rel="stylesheet" href=@Url.Content("~/Resource/css/ticketSystem/add.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"]) />
+
+<link type="text/css" rel="stylesheet" href="https://g.alicdn.com/aliyun/ticketsystem/1.6.17//styles/ticketSystem/detail.css" />
+<link type="text/css" rel="stylesheet" href="https://g.alicdn.com/aliyun/ticketsystem/1.6.17//styles/ticketSystem/tip.css" />
+<link type="text/css" rel="stylesheet" href="https://g.alicdn.com/aliyun/ticketsystem/1.6.17//styles/ticketSystem/common.css" />
+
+<script src="@Url.Content("~/Scripts/Common/jquery.form.js")" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Common/citys/jquery.citys.json.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Common/citys/jquery.citys.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Common/bootstrap-tagsinput.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/FCM/Contract/FCM.Contract.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/FCM/Contract/FCM.Contract.Auditor.Audit.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<div class="viewFramework-product">
+    <div class="viewFramework-product-body">
+        <div class="console-container ">
+            <div class="row ">
+                <div class="col-sm-12">
+                    <div class="console-title console-title-border clearfix">
+                        <div class="pull-left">
+                            <h5>合同审批</h5>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-sm-12">
+
+                    <div style="margin-top:24px">
+                        <div class="create-ticket-step clearfix ">
+                            <div class="create-ticket-step-item " style="width:25%">
+                                <div class="item-wrap">
+                                    <span class="icon-step">1</span>
+                                    <span class="dingding-text">合同基本信息</span>
+                                </div>
+                            </div>
+                            <div class="create-ticket-step-item " style="width:25%">
+                                <div class="item-wrap">
+                                    <span class="icon-step">2</span>
+                                    <span class="dingding-text">提交审核</span>
+                                </div>
+                            </div>
+                            <div class="create-ticket-step-item active" style="width:25%">
+                                <div class="item-wrap">
+                                    <span class="icon-step">3</span>
+                                    <span class="dingding-text">合同审批</span>
+                                </div>
+                            </div>
+                            <div class="create-ticket-step-item" style="width:25%">
+                                <div class="item-wrap">
+                                    <span class="icon-step">4</span>
+                                    <span class="dingding-text">合同用印</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="table-viewer-header clearfix">
+                            <span class="table-viewer-topbar-title">
+                                <span>审批意见</span>
+                            </span>
+                        </div>
+
+                        <div class="table-content">
+                            <form class="chat-form form-horizontal form-horizontal ng-invalid ng-invalid-required">
+                                <div class="simple-form-field ng-scope ng-isolate-scope hide">
+                                    <input type="hidden" class="ng-scope">
+                                </div>
+                                <div class="simple-form-field ng-scope ng-isolate-scope">
+                                    <div class="form-group ng-scope">
+                                        <div class="col-sm-8">
+                                            @Html.TextAreaFor(m => m.ContractAudit.AuditContent, new { @required = "true", maxlength = 1000, rows = 3,  @class="form-control",
+                                                      @placeholder="审批意见",@style = "width:100%" })
+                                        </div>
+                                    </div>
+                                </div><div class="simple-form-field ng-scope ng-isolate-scope">
+                                    <div secret-content-check=""
+                                         data="result.content"
+                                         class="ng-scope ng-isolate-scope"></div>
+                                </div>
+                                <div class="simple-form-field ng-scope ng-isolate-scope">
+
+                                    <div class="form-group simple-form-submit ng-scope" style="margin-bottom:0px">
+                                        <label for="submit5" class="col-sm-12 control-label"><span class="ng-binding"></span></label>
+                                        <div class="col-sm-4">
+                                            <input class="btn btn-primary ng-binding" type="button" id="btnContractAuditApproved" value="同意" />
+                                            <input class="btn btn-primary ng-binding" type="button" id="btnContractAuditRejected" value="拒绝" />
+
+
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+
+                        <div ui-view="myTicket">
+                            <div class="ticket-detail ng-scope">
+
+                                @Html.HiddenFor(m => m.Contract.ContractBasicInfo.CustomerId)
+                                @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractId)
+                                @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractGuid)
+                                @Html.HiddenFor(m => m.ContractAudit.AuditId)
+                                @Html.HiddenFor(m => m.ContractId)
+
+                                <div class="table-viewer-header clearfix" style="margin-top: 12px">
+                                    <span class="table-viewer-topbar-title">
+                                        合同信息
+                                    </span>
+                                    <div class="pull-right table-viewer-topbar-content"></div>
+
+                                </div>
+
+                                <div class="info-panel">
+
+                                    <div class="row" style="margin-top:4px">
+
+                                        <div class="col-sm-3 ">
+                                            <span class="text-explode">
+                                                <span> @Html.LabelFor(m => m.Contract.ContractBasicInfo.CustomerName)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.HiddenFor(m => m.Contract.ContractBasicInfo.CustomerId)
+                                                @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractId)
+                                                @if (Model.Contract != null && Model.Contract.ContractBasicInfo.CustomerId.HasValue)
+                                                {
+                                                    @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.CustomerName)
+                                                }
+                                                else
+                                                {
+                                                    @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.CustomerName)
+                                                }
+                                            </span>
+                                        </div>
+
+                                        <div class="col-sm-2">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Contract.ContractBasicInfo.CustomerNo)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.CustomerNo)
+                                            </span>
+                                        </div>
+
+                                        <div class="col-sm-2 ">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Contract.ContractBasicInfo.AuditDate)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.AuditDate)
+                                            </span>
+                                        </div>
+
+                                        <div class="col-sm-2 ">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Contract.ContractBasicInfo.ContractTypeName)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.ContractTypeName)
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div class="row" style="margin-top:4px">
+                                        <div class="col-sm-3 ">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Contract.ContractBasicInfo.ContractName)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @if (Model.Contract != null && Model.Contract.ContractBasicInfo.CustomerId.HasValue)
+                                                {
+                                                    @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.ContractName)
+                                                }
+                                                else
+                                                {
+                                                    @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.ContractName)
+                                                }
+                                            </span>
+                                        </div>
+
+                                        <div class="col-sm-2 ">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Contract.ContractBasicInfo.ContractNo)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.ContractNo)
+                                            </span>
+                                        </div>
+                                        <div class="col-sm-2 ">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Contract.ContractBasicInfo.BusinessOwnerName)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.BusinessOwnerName)
+                                            </span>
+                                        </div>
+
+                                        <div class="col-sm-2 ">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Contract.ContractBasicInfo.ChargingTypeName)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.ChargingTypeName)
+                                            </span>
+                                        </div>
+
+                                    </div>
+
+                                    <div class="row" style="margin-top:4px">
+                                        <div class="col-sm-10 ">
+                                            <span class="text-explode">
+                                                <span>@Html.LabelFor(m => m.Contract.ContractBasicInfo.Remark )</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                
+                                                    @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.Remark)
+                                                
+                                            </span>
+                                        </div>
+ 
+
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="case-section-wrap" style="padding-top: 12px;">
+                            <div class="case-section-product">
+                                <!-- product section -->
+                                <div class="product-container">
+                                    <div class="product-section">
+                                        <ul class="nav nav-tabs">
+                                            <li id="liContractFileList" class='active'><a href="javascript:void(0);" id="btnContractFileList">合同附件</a></li>
+                                            <li class="pull-right" style="border:none">
+                                                <div style="margin-top:3px">
+                                                    <div style="text-align: inherit;">
+                                                        <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </li>
+                                        </ul>
+                                        <div class="section-content clearfix">
+                                            <div class="product-col ng-scope" style="width: 100%">
+                                                <div id="dv_List">
+
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+
+
+
+

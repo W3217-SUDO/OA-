@@ -1,0 +1,281 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity
+@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Entity.Lawsuit.Case
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.Lawsuit.Case
+@using Dchien.Legal.Web.Areas.Lawsuit.ViewModels.Case
+@using Dchien.Legal.Service.HR.Staff
+
+@model Dchien.Legal.Web.Areas.Lawsuit.ViewModels.Case.CaseModel
+
+@{
+    object htmlAttribute = null;
+    var staffs = StaffService.Instance.GetStaffList();
+}
+<script type="text/javascript" src="@Url.Content("~/Scripts/Lawsuit/Case/Case.Create.CaseInfo.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<script type="text/javascript">
+
+    var canCreateCase = '@CommonService.Instance.CheckPermission((int)Permission.CreateCase)';
+    var canUpdateCase = '@CommonService.Instance.CheckPermission((int)Permission.UpdateCase)';
+    var equalCaseOfficer = '@LoginHelper.GetUserName().Equals(Model.Case.CaseBasicInfo.CaseOfficer)';
+
+    $(document).ready(function () {
+        caseInfo.ViewOnly();
+    });
+
+</script>
+
+<style>
+    input.input_text, textarea, select, input.input_time {
+        border: 1px solid #ccc;
+    }
+
+    /*select {
+        color: rgb(84, 84, 84);
+        background-color: rgb(235, 235, 228);
+    }*/
+
+    input.input_text, textarea, input.input_time {
+        padding: 2px 2px 2px 3px;
+    }
+
+    input.input_text, textarea, input.input_time {
+        background-color: #fff;
+    }
+
+    .case-form-control {
+        /*border-radius: 0px;*/
+        border: 1px solid #ccc;
+        -webkit-transition: none;
+        transition: none;
+        font-size: 12px;
+        width: 100%;
+        height: 24px;
+        background-color: #fff;
+        padding: 2px 2px 2px 3px;
+    }
+
+    .case-section-product .product-container .product-section .section-content .content-table td {
+        padding-left: 1px;
+    }
+
+    table td, th {
+        padding: 0px 0;
+        /* border-bottom: 1px dotted #D6D6D6; */
+        vertical-align: middle;
+    }
+
+    .input_table th {
+        font-weight: normal;
+        text-align: right;
+    }
+
+    .input_table td {
+        text-align: left;
+    }
+
+    .case-section-wrap {
+        padding: 4px;
+    }
+
+    .case-section-main {
+        margin: 0 6px;
+        padding: 8px 0;
+        position: relative;
+    }
+</style>
+
+
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/case.createupdate.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/messageCenter.console.css")" />
+
+<div>
+    <div class="ng-scope">
+        <div class="ng-scope">
+            <div class="case-notice-margin" style='display:none'>
+                <div class="console-global-notice">
+                    <div class="console-global-notice-list">
+                        <div class="alert alert-success console-global-notice-item">
+                            <div class="clearfix console-global-notice-item-inner">
+                                <div class="console-global-notice-content ng-binding">
+                                    控制台计划于2016年6月1日开始不再保障IE8浏览器下的可用性。建议您尽快升级浏览器，或者使用Chrome、Firefox。
+                                </div>
+                                <div class="console-global-notice-nomore">
+                                    <a href="javascript:;" class="btn btn-default btn-xs">不再显示</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="case-section-main clearfix">
+
+                <div class="case-section-left" style="padding-right: 15%;">
+                    <div class="case-section-wrap">
+                        <div class="case-section-product">
+                            <!-- product section -->
+                            <div class="product-container">
+                                <div class="product-section">
+                                    <ul class="nav nav-tabs">
+ 
+                                        <li class="@(Model.Case.CurrentCaseLevel == CaseLevel.Investigation ? "active":string.Empty)" id="liCaseLevel1" style='@(Model.Case.HasCaseInvestigation ? "" : "display:none")'><a href="javascript:void(0);" id="btnCaseLevel1">调查取证</a></li>
+                                        <li class="@(Model.Case.CurrentCaseLevel == CaseLevel.FirstInstance ? "active":"")" id="liCaseLevel2" style='@(Model.Case.HasCaseFirstInstance ? "" : "display:none")'><a href="javascript:void(0);" id="btnCaseLevel2">一审</a></li>
+                                        <li class="@(Model.Case.CurrentCaseLevel == CaseLevel.SecondInstance ? "active":"")" id="liCaseLevel4" style='@(Model.Case.HasCaseSecondInstance ? "" : "display:none")'><a href="javascript:void(0);" id="btnCaseLevel4">二审</a></li>
+                                        <li class="@(Model.Case.CurrentCaseLevel == CaseLevel.LastInstance ? "active":"")" id="liCaseLevel8" style='@(Model.Case.HasCaseLastInstance ? "" : "display:none")'><a href="javascript:void(0);" id="btnCaseLevel8">再审</a></li>
+                                        <li class="@(Model.Case.CurrentCaseLevel == CaseLevel.Execution ? "active":"")" id="liCaseLevel16" style='@(Model.Case.HasCaseExecution ? "" : "display:none")'><a href="javascript:void(0);" id="btnCaseLevel16">执行</a></li>
+                                        
+                                        @if (Model.Case.HasCaseFirstInstance
+                                             && Model.Case.HasCaseSecondInstance
+                                             && Model.Case.HasCaseLastInstance
+                                             && Model.Case.HasCaseExecution)
+                                        {
+                                        }
+                                        else
+                                        {
+                                            <li id="liCaseLevelMore"><a href="javascript:void(0);" id="btnCaseLevelMore"><span class="icon-add"></span></a></li>
+                                        }
+
+                                        <li class="pull-right" style=" border:none">
+                                            <div style="margin-top:20px">
+                                                <div style="text-align: inherit;">
+                                                    <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+                                                        
+                                                        @*<div><span>@Html.CheckBoxFor(m => m.Case.CaseBasicInfo.HasTheThird) 第三人</span></div>*@
+
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </li>
+                                    </ul>
+                                    <div class="section-content clearfix" style='padding:6px'>
+                                        <div class="product-col ng-scope" style="width: 100%">
+                                          
+                                            <div id="casebasicInfo">
+                                                @{
+                                                    Html.RenderPartial("~/Areas/Lawsuit/Views/Case/PartialView/CaseInvestigation.cshtml", @Model);
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <div class="case-section-wrap">
+                        <div class="case-section-product">
+                            <!-- product section -->
+                            <div class="product-container">
+                                <div class="product-section">
+                                    <ul class="nav nav-tabs">
+                                        <li class="active" id="liCaseFileList"><a href="javascript:void(0);" id="btnCaseFileList">文档信息</a></li>
+                                        <li id="liCaseFeeList"><a href="javascript:void(0);" id="btnCaseFeeList">费用信息</a></li>
+                                        <li id="liCaseLogList"><a href="javascript:void(0);" id="btnCaseLogList">日志信息</a></li>
+
+                                        <li class="pull-right" style=" border:none">
+                                            <div style="margin-top:3px">
+                                                <div style="text-align: inherit;">
+                                                    <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+                                                        @if (CommonService.Instance.CheckPermission((int)Permission.CreateCase))
+                                                        {
+                                                            //如有创建权限则显示 该按钮
+                                                            <input class="btn btn-primary ng-binding" type="button" id="btnCaseCreateNew" value="新建" />
+                                                        }
+
+                                                        @if (LoginHelper.IsAdmin() || (CommonService.Instance.CheckPermission((int)Permission.UpdateCase) && LoginHelper.GetUserName().Equals(Model.Case.CaseBasicInfo.CaseOfficer)))
+                                                        {
+                                                            <input class="btn btn-primary ng-binding" type="button" id="btnCaseRenewal" value="更新" />
+                                                            <input class="btn btn-primary ng-binding" type="button" id="btnCaseCreateUpdate" value="保存" />
+                                                        }
+
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </li>
+                                    </ul>
+
+                                    <div class="section-content clearfix">
+                                        <div class="product-col ng-scope" style="width: 100%">
+                                            <div id="dv_List">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+                <div class="case-section-right" style='width: 15%; '>
+                    <!-- banner区域 -->
+                    <div class="case-section-wrap">
+                        <div class="case-section-trends" id='divCaseEvents' style='padding:8px;height: 873px'>
+                            <div>
+                                @*<link rel="stylesheet" href="//g.alicdn.com/ali-mod/dchien-lego-console-product-update/0.0.9/index.css">*@
+                                <link rel="stylesheet" href="@Url.Content("~/Resource/css/dchien-lego-console-update.css")" />
+
+                                <div class="dchien-lego-console-product-update J_Module">
+                                    <div class="module-wrap J_tb_lazyload">
+                                        <div class="product-fun-update-hd">
+                                            案件提醒&nbsp; &nbsp;&nbsp;<span><a href="javascript:void(0)" id="btnCaseEventCreate">新增提醒</a></span>
+                                        </div>
+                                        <div class="caseevents">
+                                            @{
+                                                var caseEventModel = new CaseEventListModel();
+                                                caseEventModel.CaseId = Model.CaseId;
+                                                caseEventModel.CaseEvents = Model.Case.CaseEvents;
+                                                Html.RenderPartial("~/Areas/Lawsuit/Views/CaseEvent/CaseEventList.cshtml", caseEventModel);
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                <div class="i_common_wrap">
+                    <div class="i_common_list"></div>
+                </div>
+            </div>
+
+            <div style="display: none;" id="divUserList">
+                @Html.Partial("~/Areas/Lawsuit/Views/CaseBase/UserList.cshtml")
+            </div>
+            <div style="display: none;" id="div_Case_CaseBasicInfo_Deadline">
+            </div>
+            <div style="display: none;" id="divUserListForDepartment1">
+                <div class="i_common_box">
+                    <div class="i_common_hd">
+                        从下列用户中选择
+                        <input type="hidden" id="hidUserId">
+                        <input type="hidden" id="hidUserName">
+                    </div>
+                    <div class="i_common_bd">
+                        <ul class="i_common_ul layoutfix">
+                            @if (staffs != null && staffs.Count > 0)
+                            {
+                                foreach (var staff in staffs.FindAll(x => x.StaffBasic.DepartmentId == 5))
+                                {
+                                    <li style='width:100px'><a href="javascript:void(0)" name="@staff.StaffBasic.StaffName">@staff.StaffBasic.StaffChName</a></li>
+                                }
+                                <li id="btnClear" style='width:100px'><a href="javascript:void(0)" name="">清空</a></li>
+                            }
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class='divCaseDetermineTheway'></div>
+            <div class='divCaseHolderOfRelationship'></div>
+            <div class='divCaseTheThirdRelationship'></div>
+        </div>
+    </div>
+</div>

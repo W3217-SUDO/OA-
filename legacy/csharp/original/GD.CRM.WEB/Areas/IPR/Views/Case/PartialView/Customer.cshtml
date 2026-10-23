@@ -1,0 +1,267 @@
+﻿@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.CRM.ViewModels.Customer.EditModel
+
+@{
+    object htmlAttribute = null;
+}
+
+
+@{
+    var title = "查看客户";
+}
+
+ <div class="modal fade" id="customerModal" tabindex="-1" >
+    <div class="modal-dialog" style="width:850px">
+        <div class="modal-content" ng-transclude="">
+            <div class="ng-scope">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" data-ng-click="close(false)" aria-hidden="true" id="btnClose">×</button>
+                    <h5 class="modal-title ng-binding">@title</h5>
+                </div>
+
+                <div class="modal-body">
+                    <form class="form-horizontal ng-invalid ng-invalid-required" id="customerForm">
+                        <link rel="stylesheet" href="@Url.Content("~/Resource/css/customer.createupdate.console.css")" />
+                        @Html.HiddenFor(m => m.Customer.CustomerId)
+                        @Html.HiddenFor(m => m.Customer.DefaultContacts.ContactsId)
+                        <div style="background: #eaedf1;">
+
+                            <div class="ng-scope">
+
+                                <div class="customer-section-main clearfix">
+                                    <!-- 左侧 -->
+                                    <div class="customer-section-left">
+                                        <div class="customer-section-wrap">
+                                            <div class="customer-section-product">
+                                                <!-- product section -->
+                                                <div class="product-container">
+                                                    <div class="product-section">
+                                                        <!--</div>--><!--</div>-->
+                                                        <div class="section-head customer-cursor-pointer">
+                                                            <a class="ng-binding">
+                                                                <span class="list-title-em">基本信息</span>
+                                                            </a>
+                                                        </div>
+                                                        <div class="section-content clearfix">
+                                                            <div class="ng-scope">
+                                                                <div class="gridSection">
+                                                                    <table id="tblCustomer" class="content-table">
+                                                                        <colgroup>
+                                                                            <col style="width: 22%;" />
+                                                                            <col style="width: 30%" />
+                                                                            <col style="width: 20%" />
+                                                                            <col style="width: 30%" />
+                                                                        </colgroup>
+                                                                        <tr>
+                                                                            <th>@Html.LabelFor(m => m.Customer.CustomerNo) </th>
+                                                                            <td>
+                                                                                @Html.TextBoxFor(m => m.Customer.CustomerNo, new { @readonly = true })
+                                                                            </td>
+
+                                                                            <th>@Html.LabelFor(m => m.Customer.CustomerName) </th>
+                                                                            <td>@Html.TextBoxFor(m => m.Customer.CustomerName, new { @required = "true" })</td>
+                                                                        </tr>
+                                                                        <tr>
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Customer.Zip)<label style="color: Red">*</label>
+                                                                            </th>
+                                                                            <td>@Html.TextBoxFor(m => m.Customer.Zip, new { @required = "true" })</td>
+
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Customer.Telphone)
+                                                                            </th>
+                                                                            <td>@Html.TextBoxFor(m => m.Customer.Telphone, htmlAttribute)</td>
+                                                                        </tr>
+                                                                        <tr>
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Customer.Fax)
+                                                                            </th>
+                                                                            <td>@Html.TextBoxFor(m => m.Customer.Fax, htmlAttribute)</td>
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Customer.Email)
+                                                                            </th>
+                                                                            <td>@Html.TextBoxFor(m => m.Customer.Email, htmlAttribute)</td>
+                                                                        </tr>
+                                                                        <tr>
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Customer.CustomerCode)
+                                                                            </th>
+                                                                            <td>@Html.TextBoxFor(m => m.Customer.CustomerCode, htmlAttribute)</td>
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Customer.CompanyCode)<label style="color: Red">*</label>
+                                                                            </th>
+                                                                            <td>@Html.TextBoxFor(m => m.Customer.CompanyCode, new { @required = "true" })</td>
+                                                                        </tr>
+                                                                        <tr>
+                                                                            <th>@Html.LabelFor(m => m.Customer.RegisteredAddress)<label style="color: Red">*</label></th>
+                                                                            <td colspan="3">@Html.TextBoxFor(m => m.Customer.RegisteredAddress, new { @required = "true",maxlength = 250, style = "width:99%" })</td>
+                                                                        </tr>
+                                                                        <tr>
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Customer.BusinessAddress)
+                                                                            </th>
+                                                                            <td colspan="3">@Html.TextBoxFor(m => m.Customer.BusinessAddress, new { maxlength = 250, style = "width:99%" })</td>
+                                                                        </tr>
+                                                                        <tr>
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Customer.DetailAddress)
+                                                                            </th>
+                                                                            <td colspan="3">@Html.TextBoxFor(m => m.Customer.DetailAddress, new { maxlength = 250, style = "width:99%" })</td>
+                                                                        </tr>
+                                                                        <tr>
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Customer.DefaultContacts.ContactAddress)<label style="color: Red">*</label>
+                                                                            </th>
+                                                                            <td colspan="3">@Html.TextBoxFor(m => m.Customer.DefaultContacts.ContactAddress, new { @required = "true",maxlength = 250, style = "width:99%" })</td>
+                                                                        </tr>
+                                                                        <tr>
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Customer.DefaultContacts.Contacts)<label style="color: Red">*</label>
+                                                                            </th>
+                                                                            <td>@Html.TextBoxFor(m => m.Customer.DefaultContacts.Contacts, new { @required = "true" })</td>
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Customer.DefaultContacts.ContactZip)
+                                                                            </th>
+                                                                            <td>@Html.TextBoxFor(m => m.Customer.DefaultContacts.ContactZip, htmlAttribute)</td>
+                                                                        </tr>
+                                                                        <tr>
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Customer.DefaultContacts.ContactTelphone)<label style="color: Red">*</label>
+                                                                            </th>
+                                                                            <td>@Html.TextBoxFor(m => m.Customer.DefaultContacts.ContactTelphone,new { @required = "true" })</td>
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Customer.DefaultContacts.ContactFax)
+                                                                            </th>
+                                                                            <td>@Html.TextBoxFor(m => m.Customer.DefaultContacts.ContactFax, htmlAttribute)</td>
+                                                                        </tr>
+                                                                        <tr>
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Customer.DefaultContacts.ContactEmail)<label style="color: Red">*</label>
+                                                                            </th>
+                                                                            <td>@Html.TextBoxFor(m => m.Customer.DefaultContacts.ContactEmail, new { @required = "true" })</td>
+
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Customer.Country)<label style="color: Red">*</label>
+                                                                            </th>
+                                                                            <td>@Html.TextBoxFor(m => m.Customer.Country, new { @required = "true" })</td>
+                                                                        </tr>
+                                                                        <tr>
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Customer.Province)<label style="color: Red">*</label>
+                                                                            </th>
+                                                                            <td>@Html.TextBoxFor(m => m.Customer.Province, new { @required = "true" })</td>
+
+                                                                            <th>
+                                                                                @Html.LabelFor(m => m.Customer.City)<label style="color: Red">*</label>
+                                                                            </th>
+                                                                            <td>@Html.TextBoxFor(m => m.Customer.City,  new { @required = "true"})</td>
+                                                                        </tr>
+                                                                    </table>
+                                                                </div>
+                                                            </div>
+
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- 右侧 -->
+                                <div class="customer-section-right ng-scope">
+                                    <!-- banner区域 -->
+                                    <div class="customer-section-wrap">
+                                        <div class="customer-section-product">
+                                            <!-- product section -->
+                                            <div class="product-container">
+                                                <div class="product-section">
+                                                    <!--</div>--><!--</div>-->
+                                                    <div class="section-head customer-cursor-pointer">
+                                                        <a class="ng-binding">
+                                                            <span class="list-title-em">@Html.LabelFor(m => m.Customer.LicenseFileName)</span>
+                                                        </a>
+ 
+                                                    </div>
+                                                    <div class="section-content clearfix">
+                                                        <div class="ng-scope">
+                                                            <div class="gridSection">
+                                                                <table class="content-table">
+                                                                    <tr>
+                                                                        <td align="center" style=" padding-left: 5px; padding-right: 5px">
+                                                                            @*<input type="image" id="imgLicense" src="~/Customer/License?coutomerNo=111" disabled style="width: 90%; height: 210px; " />*@
+                                                                            
+                                                                            <a id="aimgLicense" href="@Url.Content(Model.Customer.LicenseFullPath)" target="_blank">
+                                                                                <img id="imgLicense" width="90%" height="210px" src="@Url.Content(Model.Customer.LicenseFullPath)">
+                                                                            </a>
+
+                                                                            @*<input type="image" id="imgLicense" src="@Url.Content(Model.Customer.LicenseFullPath)" disabled style="width: 90%; height: 210px; " />*@
+                                                                        </td>
+                                                                    </tr>
+                                                                </table>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="customer-section-wrap">
+                                        <div class="customer-section-product">
+                                            <!-- product section -->
+                                            <div class="product-container">
+                                                <div class="product-section">
+                                                    <div class="section-content clearfix">
+                                                        <div class="ng-scope">
+                                                            <div class="gridSection">
+                                                                <table class="content-table">
+                                                                    <colgroup>
+                                                                        <col style="width: 40%;" />
+                                                                        <col style="width: 60%" />
+
+                                                                    </colgroup>
+                                                                    <tr>
+                                                                        <th>@Html.LabelFor(m => m.Customer.CustomerTypeId) </th>
+                                                                        <td>@Html.DropDownListFor(m => m.Customer.CustomerTypeId, PublicMethod.CustomerTypeList(), htmlAttribute)</td>
+                                                                    </tr>
+                                                                    <tr>
+                                                                        <th>
+                                                                            @Html.LabelFor(m => m.Customer.CustomerLevelId)
+                                                                        </th>
+                                                                        <td>@Html.DropDownListFor(m => m.Customer.CustomerLevelId, PublicMethod.CustomerLevelList(), htmlAttribute)</td>
+                                                                    </tr>
+                                                                    <tr>
+                                                                        <th>
+                                                                            @Html.LabelFor(m => m.Customer.CreateUser)
+                                                                        </th>
+                                                                        <td>@Html.TextBoxFor(m => m.Customer.CreateUser, new { @disabled = true })</td>
+                                                                    </tr>
+                                                                    
+                                                                    <tr>
+                                                                        <th>
+                                                                            @Html.LabelFor(m => m.Customer.IsFeeReducing)
+                                                                        </th>
+                                                                        <td  >@Html.CheckBoxFor(m => m.Customer.IsFeeReducing, new { @style="width:20px" })</td>
+                                                                    </tr>
+
+                                                                </table>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default ng-binding" id="btnCustomerCancle">关闭</button>
+            </div>
+
+        </div>
+    </div>
+</div><!-- /.modal -->
+</div>

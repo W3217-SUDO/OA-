@@ -1,0 +1,298 @@
+﻿@using Dchien.Legal.Service.BAS.Type
+
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.Case.CaseModel
+ 
+    <div class="col-sm-12">
+        <div style="margin-top:24px">
+        <div class="create-ticket-step clearfix">
+            <div class="create-ticket-step-item active">
+                <div class="item-wrap">
+                    <span class="icon-step">1</span>
+                    <span class="dingding-text">基本信息</span>
+                </div>
+            </div>
+            <div class="create-ticket-step-item">
+                <div class="item-wrap">
+                    <span class="icon-step">2</span>
+                    <span class="dingding-text">当事人信息</span>
+                </div>
+            </div>
+            <div class="create-ticket-step-item">
+                <div class="item-wrap">
+                    <span class="icon-step">3</span>
+                    <span class="dingding-text">法院信息</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-viewer-header clearfix" style="margin-top: 10px;height:40px;line-height:40px">
+            <span class="table-viewer-topbar-title">
+                基本信息
+            </span>
+            <div class="pull-right table-viewer-topbar-content"></div>
+            @Html.HiddenFor(m => m.Case.Basic.CaseTypeId)
+
+        </div>
+
+        <div class="console-box-border ">
+            <div class="form-horizontal margin-top-3 " id="divBasic" novalidate="">
+                <div class="form-group">
+                    <label class="col-sm-3 control-label">
+                        <span class="text-danger">*</span>
+                        <span>客户：</span>
+                    </label>
+                    <div class="col-sm-5">
+                        <div class="bootstrap-tagsinput">
+
+                            @Html.HiddenFor(m => m.Case.Basic.CustomerNo)
+
+                            @if (!string.IsNullOrEmpty(Model.Case.Basic.CustomerNo))
+                            {
+                                @Html.TextBoxFor(m => m.Case.Basic.CustomerName,
+                                        new
+                                        {
+                                            @class = "form-control inline-block ",
+                                            placeholder = "客户名称",
+                                            style = "height:22px;width:90%",
+                                            @value = "",
+                                            cityvalue = "",
+                                            autocomplete = "off",
+                                            @readonly = true
+                                        })
+                            }
+                            else
+                            {
+                                @Html.TextBoxFor(m => m.Case.Basic.CustomerName,
+                                new
+                                {
+                                    @class = "form-control inline-block ",
+                                    placeholder = "客户名称",
+                                    style = "height:22px;width:90%",
+                                    @value = "",
+                                    cityvalue = "",
+                                    autocomplete = "off",
+                                })
+                            }
+
+                            <div style="display:none;float:right;margin-top:4px;background-color:white; important" class="label">
+                                <a style="color:green;" title="新增客户" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                    <span class="btn_customer_add fa fa-user-plus"></span>
+                                </a>
+                            </div>
+       
+                        </div>
+                        <div class="i_common_select" id="div_customer" style="display: none;">
+                            <div class="i_common_wrap">
+                                <div class="i_common_list"></div>
+                            </div>
+                        </div>
+                    </div>
+              
+                </div>
+
+                <div class="form-group">
+                    <label class="col-sm-3 control-label">
+                        <span class="text-danger">*</span>
+                        <span>客户诉讼地位：</span>
+                    </label>
+                    <div class="col-sm-5">
+                        @Html.DropDownListFor(m => m.Case.Basic.CustomerTypeId, CaseCustomerTypeService.Instance.GetCaseCustomerTypeList(Model.Case.Basic.CaseTypeId.Value), new { maxlength = 60, @class = "form-control select", style = "height:29px; " })
+                    </div>
+                </div>
+
+                <div class="form-group" id="divContract" >
+                    <label class="col-sm-3 control-label">
+                        <span class="text-danger">*</span>
+                        <span>合同号：</span>
+                    </label>
+                    <div class="col-sm-5">
+
+                        @{
+                            if (Model.Contract != null)
+                            {
+                                <select class="form-control select" disabled id="Case_Basic_ContractNo" maxlength="60" name="Case.Basic.ContractNo" style="height:29px; ">
+                                    <option value="@Model.Contract.ContractBasicInfo.ContractNo">@Model.Contract.ContractBasicInfo.ContractName</option>
+                                </select>
+                            }
+                            else
+                            {    <select class="form-control select" id="Case_Basic_ContractNo" maxlength="60" name="Case.Basic.ContractNo" style="height:29px; ">
+                                    <option value="">请选择合同</option>
+                                </select>
+                            }
+                        }
+                       
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="col-sm-3 control-label">
+                        <span class="text-danger">*</span>
+                        <span>案由：</span>
+                    </label>
+                    <div class="col-sm-5">
+
+                        <div class="bootstrap-tagsinput">
+                            <input type="text" placeholder="案由" class="form-control inline-block" style="height:22px;width: 200px;margin-left: 6px;" id="Case_Basic_CauseName_Input" autocomplete="off" size="1">
+                        </div>
+
+                        @*@Html.TextBoxFor(m => m.Case.Basic.CauseName,
+                                new
+                                {
+                                    @class = "form-control inline-block ",
+                                    placeholder = "案由",
+                                    style = "height:29px;width:100%",
+                                    @value = "",
+                                    cityvalue = "",
+                                    autocomplete = "off"
+                                })*@
+
+                        <div class="i_common_select" id="div_cause" style="display: none;">
+                            <div class="i_common_wrap">
+                                <div class="i_common_list"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="col-sm-3 control-label">
+                        <span class="text-danger">*</span>
+                        <span>权利类型：</span>
+                    </label>
+                    <div class="col-sm-5">
+                        @Html.DropDownListFor(m => m.Case.Basic.CaseRightTypeId, CaseRightTypeService.Instance.GetCaseRightTypeList(), new { maxlength = 60, @class = "form-control select", style = "height:29px; " })
+
+                        <div class="i_common_select" id="div_cause" style="display: none;">
+                            <div class="i_common_wrap">
+                                <div class="i_common_list"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="col-sm-3 control-label">
+                        <span class="text-danger">*</span>
+                        <span>案件名称：</span>
+                    </label>
+                    <div class="col-sm-5">
+                        @Html.TextBoxFor(m => m.Case.Basic.CaseName,
+                                new
+                                {
+                                    @class = "form-control inline-block ",
+                                    placeholder = "案件名称",
+                                    style = "height:29px;width:100%",
+                                    @value = "",
+                                    cityvalue = "",
+                                    autocomplete = "off"
+                                })
+
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="col-sm-3 control-label">
+                        <span class="text-danger">*</span>
+                        <span>案件阶段：</span>
+                    </label>
+                    <div class="col-sm-5">
+                        @Html.DropDownListFor(m => m.Case.Basic.CasePhaseId, CasePhaseService.Instance.GetCasePhaseList(Model.Case.Basic.CaseTypeId.Value), new { maxlength = 60, disabled=true,@class = "form-control select", style = "height:29px; " })
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="col-sm-3 control-label">
+                        <span class="text-danger">*</span>
+                        <span>经办律师：</span>
+                    </label>
+                    <div class="col-sm-5">
+                        @*<div class="bootstrap-tagsinput">
+                            <input type="text" placeholder="经办律师" class="form-control inline-block" style="height:22px;width: 200px;margin-left: 6px;" id="Case_Basic_CaseLawyer_Input" autocomplete="off" size="1">
+                        </div>*@
+
+                        <div class="bootstrap-tagsinput">
+                            <span class="tag label label-info">
+                                <a name="lawyername" style="color:white; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"  
+                                   username="REDACTED_ARCHIVE_ONLY" userchname="陶国南" title="" data-toggle="tooltip" data-container="body" href="javascript:void(0);" data-original-title="陶国南" >陶国南</a>
+                            </span> 
+                        </div>
+
+                        <div class="i_common_select" id="div_lawyerlist" style="display: none;">
+                            <div class="i_common_wrap">
+                                <div class="i_common_list"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="col-sm-3 control-label">
+                        <span class="text-danger"></span>
+                        <span>律师助理：</span>
+                    </label>
+                    <div class="col-sm-5">
+                        <div class="bootstrap-tagsinput">
+                            <input type="text" placeholder="律师助理" class="form-control inline-block" style="height:22px;width: 200px;margin-left: 6px;" id="Case_Basic_CaseAssistant_Input" autocomplete="off" size="1">
+                        </div>
+                        <div class="i_common_select" id="div_assistantlist" style="display: none;">
+                            <div class="i_common_wrap">
+                                <div class="i_common_list"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="col-sm-3 control-label">
+                        <span class="text-danger"></span>
+                        <span>调查员：</span>
+                    </label>
+                    <div class="col-sm-5">
+                        <div class="bootstrap-tagsinput">
+                            <input type="text" placeholder="调查员" class="form-control inline-block" style="height:22px;width: 100px;margin-left: 6px;" id="Case_Basic_Investigator_Input" autocomplete="off" size="1">
+                        </div>
+                        <div class="i_common_select" id="div_investigatorlist" style="display: none;">
+                            <div class="i_common_wrap">
+                                <div class="i_common_list"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="col-sm-3 control-label">
+                        <span class="text-danger"></span>
+                        <span>调查线索：</span>
+                    </label>
+                    <div class="col-sm-5">
+                        @if (Model.ClueList != null && Model.ClueList.Any())
+                        {
+                            <select data-placeholder="调查线索" multiple id="Case_Basic_InvestigationClueNo" class="Case_Basic_InvestigationClueNo" style="height:22px;width: 100%;">
+                                @{
+                                    foreach (var clue in Model.ClueList)
+                                    {
+                                        <option value="@clue.Basic.ClueNo">@(clue.Basic.ClueNo + "_" + clue.Basic.Indictee)</option>
+                                    }
+                                }
+                            </select>
+                        }
+                        else
+                        {
+                            <select data-placeholder="调查线索" multiple id="Case_Basic_InvestigationClueNo" class="Case_Basic_InvestigationClueNo" style="height:22px;width: 100%;">
+                                <option value=""></option>
+                            </select>
+                        }
+
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <div class="col-sm-5 col-sm-offset-3">
+                        <input type="button" id="btnCaseCreate" class="btn btn-primary ng-binding" style="height: 32px; line-height: 14px;   padding: 8px 16px;" value="下一步" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>
+ 

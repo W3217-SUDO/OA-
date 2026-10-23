@@ -1,0 +1,239 @@
+﻿@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.AR.ReceivedPayment.ListModel
+
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+
+<script src="@Url.Content("~/Scripts/FAM/AR/FAM.AR.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/FAM/AR/FAM.AR.Payment.List.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<div class="viewFramework-product viewFramework-product-col-1">
+    <div class="viewFramework-product-navbar ng-scope">
+        <!-- product nav -->
+        @{
+            Html.RenderPartial("~/Areas/FAM/Views/AR/MenuList.cshtml");
+        }
+    </div><!-- /product nav -->
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+    <div class="viewFramework-product-body">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                         
+                                    <h5>回款查询</h5>
+     
+                            </div>
+
+                        </div>
+
+                        <div class="pull-left margin-top-1 col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm" >
+                                @*@if (Model.SearchCondition.PageId.ToString() == Dchien.Legal.Entity.System.PageId.PageId_5001002002)
+                                {
+                                    Model.SearchCondition.re = LoginHelper.GetUserName();
+                                    @Html.HiddenFor(m => m.SearchCondition.BusinessOwner)
+                                }*@
+                                 @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                <table class="search_table" style="width: 100%">
+                                    <colgroup>
+                                        <col style="width: 80px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col>
+                                    </colgroup>
+                                    <tr>
+                                        <th>
+                                            银行单号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.InvoiceNo, new { @class = "form-control", @style = "" })
+                                        </td>
+                                        <th>
+                                            客户名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control", @style = "" })
+                                        </td>
+                                        <th>
+                                            回款日期：
+                                        </th>
+                                        <td colspan="3">
+                                            @Html.TextBoxFor(m => m.SearchCondition.CashedDateStart, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.CashedDateEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            回款单位：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.Payer, new { @class = "form-control", @style = "" })
+                                        </td>
+                                        <th>
+                                            回款方式：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.PaymentMode, new { @class = "form-control", @style = "" })
+                                        </td>
+
+                                        <th>
+                                            合同编号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.ContractNo, new { @class = "form-control", @style = "" })
+                                        </td>
+
+
+         
+                                        <td style="text-align:right">
+                                            @if (Model.SearchCondition.PageId.ToString() == Dchien.Legal.Entity.System.PageId.PageId_5001002002)
+                                            {
+                                                <a href="javascript:void(0);" class="btn btn-primary " id="btnPaymentListSearch">
+                                                    <span>查询</span>
+                                                </a>
+                                            }
+                                            else if (Model.SearchCondition.PageId.ToString() == Dchien.Legal.Entity.System.PageId.PageId_5001002003)
+                                            {
+                                                <a href="javascript:void(0);" class="btn btn-primary " id="btnPaymentPublicListSearch">
+                                                    <span>查询</span>
+                                                </a>
+                                            }
+
+                                            else if (Model.SearchCondition.PageId.ToString() == Dchien.Legal.Entity.System.PageId.PageId_5001002004)
+                                            {
+                                                <a href="javascript:void(0);" class="btn btn-primary " id="btnPaymentApplyListSearch">
+                                                    <span>查询</span>
+                                                </a>
+                                            }
+
+
+                                        </td>
+                                    </tr>
+                                </table>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="">
+                            <div class="gridSection">
+                                <table id="tblPaymentList" class="table table-hover" width="100%">
+                                    <colgroup>
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 12%">
+                                        <col style="width: 12%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+                                        <col style="width: 8%">
+
+                                        <col style="width: 8%">
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align: center">操作</th>
+                                            <th style="text-align: center">回款流水号</th>
+                                            <th style="text-align: center">合同编号</th>
+                                            <th style="text-align: center">客户名称</th>
+                                            <th style="text-align: center">回款单位</th>
+                                            <th style="text-align: center">登记人</th>
+                                            <th style="text-align: center">回款日期</th>
+                                            <th style="text-align: center">回款金额</th>
+                                            <th style="text-align: center">已分配金额</th>
+                                            <th style="text-align: center">未分配金额</th>
+                                            <th style="text-align: center">回款方式</th>
+                                            <th style="text-align: center">银行单据号</th>
+
+                                         </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr style="display: none">
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+
+                                        </tr>
+                                    </tbody>
+                                    <tfoot class="" style="display: none">
+                                        <tr>
+                                            <td colspan="13">
+                                                <div class="pull-left"></div>
+                                                <div class="">
+                                                    <div class="pull-right page-box paymentList">
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                            <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center  ">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                            <span class="">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+
+                    <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+                    <div style="display: none;" id="divUserList">
+                        @Html.Partial("~/Areas/IPR/Views/IPRBase/UserList.cshtml")
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+
+    </div>
+</div>
+

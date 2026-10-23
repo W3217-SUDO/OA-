@@ -1,0 +1,42 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Web;
+using System.Web.Mvc;
+
+using Dchien.Legal.BizModel;
+
+
+namespace Dchien.Legal.Web.Areas.IPR.ViewModels.Case
+{
+    public class CaseAssistedFeeModel 
+	{
+        /// <summary>
+        /// 
+        /// </summary>
+        public long? CaseId { get; set; }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public string CaseNo { get; set; }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public int? CaseAssistedFeeTypeId { get; set; }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public DateTime? ResponseDate { get; set; }
+
+        public int CaseAssistedFeeId { get; set; }
+
+	}
+}
+
+
+
+
+

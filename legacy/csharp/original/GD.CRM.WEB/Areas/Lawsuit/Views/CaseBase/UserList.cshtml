@@ -1,0 +1,33 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+
+ @{
+ 
+    var staffs = Dchien.Legal.Service.HR.Staff.StaffService.Instance.GetStaffList();
+ }
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+
+<div class="i_common_box" style='width:300px'>
+    <div class="i_common_hd">
+        从下列用户中选择
+        <input type="hidden" id="hidUserId">
+        <input type="hidden" id="hidUserName">
+    </div>
+    <div class="i_common_bd">
+        <ul class="i_common_ul layoutfix">
+            @if (staffs != null && staffs.Count > 0)
+            {
+                foreach (var staff in staffs)
+                {
+                    <li style='width: 80px'><div><input type='checkbox' userid="@staff.StaffBasic.StaffName" username="REDACTED_ARCHIVE_ONLY" /><lable>@staff.StaffBasic.StaffChName</lable></div></li>
+                }
+
+                <li id="btnClear" style='width: 80px'><a href="javascript:void(0)" name="">清空</a></li>
+            }
+        </ul>
+    </div>
+</div>
+
+
+

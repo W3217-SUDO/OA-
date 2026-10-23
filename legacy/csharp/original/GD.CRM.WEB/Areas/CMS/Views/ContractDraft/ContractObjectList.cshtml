@@ -1,0 +1,61 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity
+@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.CMS.ViewModels.Contract.ContractObjectListModel
+
+
+<form id="postForm" action="">
+    <div class="gridSection">
+        <div id='divContextList' style="overflow-y: auto; margin-top: -1px; overflow-x: hidden; overflow-y: auto; ">
+            <table class='table table-hover' id="tblContractObjectList" width="100%">
+                <colgroup>
+                    <col style="width: 4%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 10%">
+                    <col style="width: 6%">
+                    <col style="width: 10%">
+                    <col style="width: 5%">
+                    <col style="width: 10%">
+                    <col style="width: 5%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>序号</th>
+                        <th>案件选取</th>
+                        <th>案号</th>
+                        <th>法院案号</th>
+                        <th>官费类型</th>
+                        <th>官费金额</th>
+                        <th>代理费类型</th>
+                        <th>代理费</th>
+                        <th>佣金</th>
+                        <th>说明</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="display: none">
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div style="display: none;" id="div_AR_CaseFee">
+    </div>
+</form>
+

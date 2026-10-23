@@ -1,0 +1,423 @@
+﻿@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service
+
+@model Dchien.Legal.Web.Areas.TP.ViewModels.Task.TaskModel
+
+<script src="@Url.Content("~/Scripts/TP/Task/Legal.Task.Message.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/TP/Task/Legal.Task.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+
+<style>
+    .bootstrap-tagsinput {
+        width: 100%;
+        border-radius: 0px;
+        padding: 2px 4px;
+    }
+
+        .bootstrap-tagsinput input {
+            padding: 0px;
+            width: 50px;
+        }
+
+    .chosen-container-multi .chosen-choices {
+        border: 1px solid #cccccc;
+        font-size: 12px;
+    }
+</style>
+
+
+<div class="slide-panels">
+    <div class="slide-panel active " style="width:580px">
+        <div class="slide-panel-content" style="width:580px">
+            <div class="panel-header">
+                <h5>案件任务</h5>
+                <a class="panel-close" onclick="javascript: task.Tasks.Task.Close();">
+                    <i class="next-icon next-icon-close next-small" style="font-size: 0px;">close</i>
+                </a>
+                <div class="head-custom"></div>
+            </div>
+            <div class="placeholder">...</div>
+            <div class="panel-body">
+                <div class="panel-body-content">
+                    <div class="page-overview-panel-apply">
+                        <div ui-view="myTicket">
+                            <div class="ticket-detail ">
+                                <div  class="">
+                                    <div class="console-step row step-bar">
+                                        @if (Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Pending)
+                                        {
+                                            <div class="step col-md-3 ng-scope step-first step-active">
+                                                <span class="ng-binding">任务已分派</span>
+                                            </div>
+
+                                                <div class="step col-md-3 ng-scope  ">
+                                                    <span class="ng-binding">任务处理中</span>
+                                                </div>
+
+                                                <div class="step col-md-3 ng-scope ">
+                                                    <span class="ng-binding">任务完成</span>
+                                                </div>
+                                                <div class="step col-md-3 ng-scope step-end">
+                                                    <span class="ng-binding">待确认处理结果</span>
+                                                </div>
+
+                                        }
+                                        else if (Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Processing)
+                                        {
+                                            <div class="step col-md-3 ng-scope step-first step-pass ">
+                                                <span class="ng-binding">任务已分派</span>
+                                            </div>
+                                                <div class="step col-md-3 ng-scope  step-active">
+                                                    <span class="ng-binding">任务处理中</span>
+                                                </div>
+                                                <div class="step col-md-3 ng-scope">
+                                                    <span class="ng-binding">任务完成</span>
+                                                </div>
+                                                <div class="step col-md-3 ng-scope step-end">
+                                                    <span class="ng-binding">待确认处理结果</span>
+                                                </div>
+                                        }
+                                        else if (Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Finished)
+                                        {
+                                            <div class="step col-md-3 ng-scope step-first step-pass ">
+                                                <span class="ng-binding">任务已分派</span>
+                                            </div>
+                                                <div class="step col-md-3 ng-scope  step-pass">
+                                                    <span class="ng-binding">任务处理中</span>
+                                                </div>
+                                                <div class="step col-md-3 ng-scope  step-pass">
+                                                    <span class="ng-binding">任务完成</span>
+                                                </div>
+                                                <div class="step col-md-3 ng-scope  step-active step-end">
+                                                    <span class="ng-binding">待确认处理结果</span>
+                                                </div>
+                                        }
+
+                                        else if (Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Rejected)
+                                        {
+                                            <div class="step col-md-3 ng-scope step-first step-pass ">
+                                                <span class="ng-binding">任务已分派</span>
+                                            </div>
+                                                <div class="step col-md-3 ng-scope step-pass">
+                                                    <span class="ng-binding">任务处理中</span>
+                                                </div>
+                                                <div class="step col-md-3 ng-scope   step-pass ">
+                                                    <span class="ng-binding">任务已拒绝</span>
+                                                </div>
+                                                <div class="step col-md-3 ng-scope  step-active step-end">
+                                                    <span class="ng-binding">待确认处理结果</span>
+                                                </div>
+                                        }
+                                        else if (Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Stoped)
+                                        {
+                                            <div class="step col-md-3 ng-scope step-first step-pass ">
+                                                <span class="ng-binding">任务已分派</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope step-pass">
+                                                <span class="ng-binding">任务处理中</span>
+                                            </div>
+                                                <div class="step col-md-3 ng-scope   step-pass ">
+                                                    <span class="ng-binding">任务已停止</span>
+                                                </div>
+                                                <div class="step col-md-3 ng-scope  step-active step-end">
+                                                    <span class="ng-binding">待确认处理结果</span>
+                                                </div>
+                                        }
+
+                                        else if (Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Checked)
+                                        {
+                                            <div class="step col-md-3 ng-scope step-first step-pass ">
+                                                <span class="ng-binding">任务已分派</span>
+                                            </div>
+                                                <div class="step col-md-3 ng-scope step-pass">
+                                                    <span class="ng-binding">任务处理中</span>
+                                                </div>
+                                                <div class="step col-md-3 ng-scope step-pass">
+                                                    <span class="ng-binding">任务完成</span>
+                                                </div>
+                                                <div class="step col-md-3 ng-scope  step-active step-end">
+                                                    <span class="ng-binding">任务已验收</span>
+                                                </div>
+                                        }
+
+                                        @*<div class="step col-md-3 ng-scope step-end">
+                    <span class="ng-binding">待评价</span>
+                </div>*@
+                                    </div>
+                                </div>
+                                <div class="info-panel" style="margin-top:12px">
+                                    <div class="row" style="margin-top:4px">
+                                        <div class="col-sm-10 ">
+                                            <span class="text-explode">
+                                                <span>任务标题</span>
+                                                <span>:</span>
+                                            </span>  @Html.DisplayTextFor(m => m.Task.TaskTitle)
+                                        </div>
+                                        @*<div class="col-sm-6">
+                                            <span class="pull-right">
+
+                                                @if (Model.Task.IsActived && Model.Task.Initiator.Equals(LoginHelper.GetUserName())
+                                                && (Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Pending
+                                                || Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Processing
+                                                || Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Finished
+                                                ))
+                                                {
+                                                    if (Model.Task.IsActived && Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Finished)
+                                                    {
+                                                        <a class="operation-link " href="javascript:void(0);" onclick="javascript: task.Task.ReOpen();">重新打开</a>
+                                                        <a class="operation-link " href="javascript:void(0);" onclick="javascript: task.Task.Checked();">确认已完成</a>
+                                                    }
+                                                    <a class="operation-link " href="javascript:void(0);" onclick="javascript: task.Task.Delete();">删除任务</a>
+                                                }
+
+                                                else if (Model.Task.IsActived && Model.Task.Initiator.Equals(LoginHelper.GetUserName())
+                                                  && (Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Rejected))
+
+                                                {
+                                                    <a class="operation-link " href="javascript:void(0);" onclick="javascript: task.Task.ReOpen();">重新打开</a>
+                                                    <a class="operation-link " href="javascript:void(0);" onclick="javascript: task.Task.Delete();">删除任务</a>
+                                                }
+
+                                                else if (Model.Task.IsActived && Model.Task.Officer.Equals(LoginHelper.GetUserName())
+                                                    && (Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Pending))
+                                                {
+                                                    <a class="operation-link " href="javascript:void(0);" onclick="javascript: task.Task.Process();">处理任务</a>
+                                                    <a class="operation-link " href="javascript:void(0);" onclick="javascript: task.Task.Finished();">任务完成</a>
+                                                    <a class="operation-link " href="javascript:void(0);" onclick="javascript: task.Task.Rejected();">拒绝任务</a>
+                                                }
+
+                                                else if (Model.Task.IsActived && Model.Task.Officer.Equals(LoginHelper.GetUserName())
+                                                  && (Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Processing))
+                                                {
+                                                    <a class="operation-link " href="javascript:void(0);" onclick="javascript: task.Task.Finished();">任务完成</a>
+                                                    <a class="operation-link " href="javascript:void(0);" onclick="javascript: task.Task.Rejected();">拒绝任务</a>
+                                                }
+
+                                                @if (CommonService.Instance.CheckPermission((int)Dchien.Legal.Entity.Account.Permission.Task_FinishedChecking))
+                                                {
+                                                    <a class="operation-link " href="javascript:void(0);" onclick="javascript: task.Task.Checked();">后台确认已完成</a>
+                                                }
+
+                                             </span>
+                                        </div>*@
+                                    </div>
+                                    <div class="row" style="margin-top:4px">
+                                        <div class="col-sm-4">
+                                            <span class="text-explode">
+                                                <span>任务编号 @Html.HiddenFor(m => m.Task.TaskId)</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span class=""> @Html.DisplayTextFor(m => m.Task.TaskNo)</span>
+                                        </div>
+
+                                        <div class="col-sm-4 ">
+                                            <span class="text-explode">
+                                                <span>当前负责人</span>
+                                                <span>:</span>
+                                            </span> @Html.DisplayTextFor(m => m.Task.OfficerName)
+                                        </div>
+
+                                        <div class="col-sm-4 ">
+                                            <span class="text-explode">
+                                                <span>发布人</span>
+                                                <span>:</span>
+                                            </span> @Html.DisplayTextFor(m => m.Task.InitiatorName)
+                                        </div>
+                                    </div>
+
+                                    <div class="row" style="margin-top:4px">
+                                        <div class="col-sm-4">
+                                            <span class="text-explode">
+                                                <span>关联案号</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span class="">
+                                                <a href="javascript:void(0);" onclick="javascript: $.case.View('@Model.Task.CaseNo');">@Html.DisplayTextFor(m => m.Task.CaseNo)</a>
+                                            </span>
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <span class="text-explode">
+                                                <span>截止日期</span>
+                                                <span>:</span>
+                                            </span> @Html.DisplayFor(m => m.Task.TaskEndTime)
+                                        </div>
+                            
+                                        <div class="col-sm-4">
+                                            <span class="text-explode">
+                                                <span>状态</span>
+                                                <span>:</span>
+                                            </span>
+                                            <span>
+                                                <span class="">@Html.DisplayTextFor(m => m.Task.TaskStatusName)</span>
+                                            </span>
+                                        </div>
+                                       
+                                    </div>
+
+                                    <div class="row" style="margin-top:4px">
+                                        <div class="col-sm-10">
+                                            <span class="text-explode">
+                                                <span>当前协作人  </span>
+                                                <span>:</span>
+                                            </span>
+                                            <span class=""> @Html.DisplayTextFor(m => m.Task.AssociateNames)</span>
+                                        </div>
+
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="table-viewer-header clearfix">
+                            <span class="table-viewer-topbar-title">
+                                <span>沟通记录</span>
+                            </span>
+                        </div>
+                        <div class="table-content">
+                            <div class="">
+                                <div class="clearfix ">
+                                    <div id="taskMessags"></div>
+                                </div>
+                            </div>
+                        </div>
+                        @if ((Model.Task.IsActived) 
+                            && (Model.Task.Initiator == LoginHelper.GetUserName() || Model.Task.Officer == LoginHelper.GetUserName() || Model.Task.AssociateNames.Contains(LoginHelper.GetUserChName()))
+                            && (Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Pending
+                    || Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Processing
+                    || Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Stoped
+                    || Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Rejected
+                    || Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Finished))
+                        {
+                            <div class="">
+                                <div class="table-viewer-header clearfix">
+                                    <span class="table-viewer-topbar-title">
+                                        <span>我要反馈</span>
+                                    </span>
+                                </div>
+                                <div class="table-content">
+                                    <div class="chat-form form-horizontal form-horizontal ng-invalid ng-invalid-required">
+                                        <div class="simple-form-field   hide">
+                                            <input type="hidden" class="">
+                                        </div>
+                                        <div class="simple-form-field  ">
+                                            <div class="form-group ">
+                                                <label for="textarea1" class="col-sm-12 control-label">
+                                                    <span class="text-danger "></span> <span class="">留言</span>
+                                                </label>
+                                                <div class="col-sm-10">
+                                                    <textarea id="message_content" type="text" class="form-control ng-pristine ng-invalid ng-invalid-required ng-valid-maxlength"
+                                                              rows="5" placeholder="此处限定5000字符"
+                                                              name="message.content" required="required"></textarea>
+                                                </div>
+                                            </div>
+                                        </div><div class="simple-form-field ">
+                                            <div secret-content-check=""
+                                                 data="result.content"
+                                                 class=""></div>
+                                        </div>
+         
+
+                                        <div class="simple-form-field  ">
+                                            <input class="btn btn-default btn-xs " id="btnTaskFileUpload" style="width:80px;overflow: hidden;" value="上传附件">
+                                            @using (Html.BeginForm("TaskFileUpload", "TaskFile", FormMethod.Post, new { id = "uploadForm", enctype = "multipart/form-data", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                                            {
+                                                @Html.HiddenFor(m => m.Task.TaskId)
+                                                @Html.HiddenFor(m => m.Task.TaskGuid)
+                                                @Html.HiddenFor(m => m.Task.NodeGuid)
+                                                @Html.HiddenFor(m => m.Task.MessageGuid)
+                                                <input type="file" multiple="multiple" id="flTaskFile" name="flTaskFile" accept=".jpg, .jpeg, .bmp, .png, .gif,.txt, .rar, .zip, .doc, .docx, .ini, .conf, .eml, .xlsx, .xls, .pdf" tabindex="-1" style="width: 1px; height: 1px; opacity: 0; position: absolute; padding: 0px; margin: 0px; overflow: hidden;">
+                                            }
+
+                                            <p id="custom5_description" class="help-block">
+                                                <span class="">
+                                                </span>
+                                            </p><div class="text-muted">
+                                                附件支持的格式有:'jpg', 'bmp', 'png','gif','txt','rar','zip','doc','docx','ini','conf','eml','pdf', 'xlsx', 'xls'
+                                            </div>
+
+                                            <p></p>
+                                            <div id="attachments"> </div>
+                                            <div class="help-block" style="display:none">上传失败</div>
+                                        </div>
+                                        <div class="simple-form-field  ">
+
+                                            <div class="form-group simple-form-submit ">
+                                                <label for="submit5" class="col-sm-12 control-label"><span class=""></span></label>
+                                                <div class="col-sm-4">
+                                                    <a href="javascript:void(0);" class="btn btn-primary " id="btnMessageCreate">
+                                                        <span>提交</span>
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            @Html.HiddenFor(m => m.Task.TaskId)
+                            @Html.HiddenFor(m => m.Task.TaskGuid)
+                            @Html.HiddenFor(m => m.Task.NodeGuid)
+                            @Html.HiddenFor(m => m.Task.MessageGuid)
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="panel-footer">
+                <div class="btn-con">
+
+                    @if ((Model.Task.IsActived)
+    && (Model.Task.Initiator == LoginHelper.GetUserName() || Model.Task.Officer == LoginHelper.GetUserName() || Model.Task.AssociateNames.Contains(LoginHelper.GetUserChName())))
+                    {
+           
+
+                        if (Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Finished
+                                || Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Rejected
+                                || Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Stoped
+                                )
+                        {
+                            if (Model.Task.Initiator == LoginHelper.GetUserName())
+                            {
+                                <input type="button" onclick="javascript: task.Tasks.Task.TaskNode.ReOpen(this);" class="btn   btn-primary" style="border-radius: 0;padding: 0 16px;height: 32px; line-height: 30px;font-size: 12px;border-width: 1px;" value="重启任务" />
+                                <input type="button" onclick="javascript: task.Tasks.Task.TaskNode.Checked(this);" class="btn   btn-primary" style="border-radius: 0;padding: 0 16px;height: 32px; line-height: 30px;font-size: 12px;border-width: 1px;" value="确认完成" />
+                            }
+                        }
+
+                        if (Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Processing || Model.Task.TaskStatus == Dchien.Legal.Entity.TP.Task.TaskStatus.Pending)
+                        {
+                            if (Model.Task.Initiator == LoginHelper.GetUserName())
+                            {
+                                <input type="button" onclick="javascript: task.Tasks.Task.TaskNode.Rollback(this);" class="btn  btn-primary" style="border-radius: 0; padding: 0 16px;  height: 32px; line-height: 30px; font-size: 12px;  border-width: 1px;" value="撤回任务" />
+                            }
+
+                            if (Model.Task.Officer == LoginHelper.GetUserName() && Model.TaskNode.NodeStatus == (int)Dchien.Legal.Entity.TP.Task.NodeStatus.Pending)
+                            {
+                            <input type="button" onclick="javascript: task.Tasks.Task.TaskNode.Process(this);" class="btn  btn-primary" style="border-radius: 0; padding: 0 16px;  height: 32px; line-height: 30px; font-size: 12px;  border-width: 1px;" value="接受任务" />
+                            }
+                            if (Model.Task.NodeGuid == Model.Task.FirstNodeGuid && Model.Task.Initiator != LoginHelper.GetUserName() 
+                                && Model.Task.Officer == LoginHelper.GetUserName() 
+                                && Model.Task.TaskTypeId ==  Dchien.Legal.Entity.TP.Task.TaskType.TaskType_1001)
+                            {
+                                <input type="button" onclick="javascript: task.Tasks.Task.TaskNode.Rejected(this);" class="btn  btn-primary" style="border-radius: 0; padding: 0 16px;  height: 32px; line-height: 30px; font-size: 12px;  border-width: 1px;" value="拒绝任务" />
+                            }
+
+                            if (Model.Task.Officer == LoginHelper.GetUserName())
+                            {
+                                if (Model.Task.TaskTypeId != Dchien.Legal.Entity.TP.Task.TaskType.TaskType_101011)
+                                {
+                                    <input type="button" onclick="javascript: task.Tasks.Task.TaskNode.Finished(this);" class="btn  btn-primary" style="border-radius: 0;  padding: 0 16px;  height: 32px;line-height: 30px;  font-size: 12px;border-width: 1px;" value="完成任务" />
+                                    @*<input type="button" onclick="javascript: task.Tasks.Task.TaskNode.Stoped(this);" class="btn  btn-primary" style="border-radius: 0; padding: 0 16px; height: 32px;line-height: 30px; font-size: 12px; border-width: 1px;" value="停止任务" />*@
+                                }
+                                    <input type="button" onclick="javascript: task.Tasks.Task.TaskNode.Open(this);" class="btn   btn-primary" style="border-radius: 0;padding: 0 16px;height: 32px; line-height: 30px; font-size: 12px;border-width: 1px;" value="转交任务" />
+                            }
+                        }
+                    }
+
+                    <input type="button" class="btn btn-normal" style="border-radius: 0; padding: 0 16px;height: 32px;line-height: 30px;font-size: 12px; border-width: 1px;" onclick="javascript: task.Tasks.Task.Close();" value="关闭" />
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+

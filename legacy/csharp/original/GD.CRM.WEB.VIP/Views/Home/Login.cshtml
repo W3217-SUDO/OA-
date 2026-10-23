@@ -1,0 +1,69 @@
+﻿@using Dchien.Legal.Web.Captcha
+@{
+    Layout = null;
+}
+<html ang="zh">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <link rel="shortcut icon" href="@Url.Content("~/icon.ico")" type="image/x-icon" />
+    <title>上海申浩律师事务所客户服务端-用户登陆</title>
+    <link href="@Url.Content("~/Resource/css/vip/bootstrap.min.css?v=3.4.0")" rel="stylesheet">
+    <link href="@Url.Content("~/Resource/css/vip//font-awesome.css?v=4.3.0")" rel="stylesheet">
+    <link href="@Url.Content("~/Resource/css/vip/animate.css")" rel="stylesheet">
+    <link href="@Url.Content("~/Resource/css/vip/custom.css")" rel="stylesheet">
+    <link href="@Url.Content("~/Resource/css/vip/style.css?v=3.2.0")" rel="stylesheet">
+    <link href="@Url.Content("~/Resource/css/vip/login.css")" rel="stylesheet">
+
+    <script src="@Url.Content("~/Scripts/Common/jquery.js")" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/Common/jquery.ipr.fn.extend.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/Home/Login.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+    <!--[if lt IE 8]>
+        <script src="@Url.Content("~/Scripts/Common/browser-not-supported.js")"></script>
+    <![endif]-->
+    <!--[if lt IE 8]>
+        <script src="@Url.Content("~/Scripts/Common/browser-not-supported-ie8.js")"></script>
+    <![endif]-->
+
+    <script type="text/javascript">
+        var AP_ROOT = '@Url.Content("~/")';
+    </script>
+
+</head>
+
+<body class="bt_login_bgcolor signin">
+    <div class="middle-box text-center loginscreen  animated fadeInDown">
+        <div class="bt_login_boxs">
+            <div class="title clearfix">
+                <span>上海申浩律师事务所客户服务端</span>
+            </div>
+            <form class="m-t my-form" role="form" action="" method="post">
+                <div class="width_80">
+                    <p id="J-error"></p>
+                    <div class="form-group bt_login_inputs">
+                        <i class="user"></i>
+                        <input id="fm-login-id" type="text" name="username" class="form-control" placeholder="请输入用户名">
+                    </div>
+                    <div class="form-group bt_login_inputs">
+                        <i class="lock"></i>
+                        <input id="fm-login-password" type="password" name="password" class="form-control" placeholder="请输入密码">
+                    </div>
+                    <div class="form-group bt_login_inputs code-input clearfix">
+                        <i class="code"></i>
+                        <input id="fm-login-authCode" type="text" name="imgcode" class="form-control" placeholder="请输入验证码" maxlength="4">
+                        <span>@Html.Captcha()</span>
+                        <label onclick="javascript:_reloadCaptchaImage();">换一换</label>
+                    </div>
+                    @*<label class="i-checks"><input type="checkbox" id="remb_me">&nbsp;记住用户名</label>*@
+                    <div class="clear"></div>
+                    <a class="btn btn-primary block full-width bt_login_bnt" href="javascript:void(0)" id="loginBtn"><span class="mini-button-text">登录</span></a>
+
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

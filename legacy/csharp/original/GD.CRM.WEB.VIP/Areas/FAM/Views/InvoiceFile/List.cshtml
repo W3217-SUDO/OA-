@@ -1,0 +1,89 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+ 
+@using Dchien.Legal.Entity.Account;
+
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.Invoice.File.ListModel
+
+<script src="@Url.Content("~/Scripts/FAM/Invoice/FAM.Invoice.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+ 
+<div class="modal fade" id="invoiceFileListModal">
+    <div class="modal-dialog" style="width:55%">
+        <div class="modal-content" ng-transclude="">
+            <div class="ng-scope">
+                @using (Html.BeginForm("List", "InvoiceFile", FormMethod.Post, new { id = "invoiceForm", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+
+                    @Html.HiddenFor(m => m.CaseFeeGuid)
+
+                    <div class="modal-header">
+                        <button type="button" class="close" id="btnInvoiceFileListClose">×</button>
+                        <h5 class="modal-title ">发票文件列表</h5>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <div class="col-sm-12">
+                                <div class="gridSection">
+                                    <table id="tblInvoiceCaseFeeList" class="table table-hover" style='width:100%'>
+                                        <colgroup>
+                                            <col style="width: 20%">
+                                            <col style="width: 40%">
+                                            <col style="width: 10%">
+                                            <col style="width: 10%">
+                                            <col style="width: 10%">
+                                        </colgroup>
+                                        <thead>
+                                            <tr>
+                                                <th>票据编号</th>
+                                                <th>文件名</th>
+                                                <th>票据日期</th>
+                                                <th>金额</th>
+                                                <th>操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @if (Model.CaseFee != null && Model.CaseFee.InvoiceFileList != null && Model.CaseFee.InvoiceFileList.Any())
+                                            {
+                                                foreach (var item in Model.CaseFee.InvoiceFileList)
+                                                {
+                                                    <tr>
+                                                        <td>
+                                                            @item.InvoiceNo
+                                                        </td>
+                                                        <td>
+                                                            @item.InvoiceFileName
+                                                        </td>
+                                                        <td>
+                                                            @(item.InvoiceDate.HasValue ? item.InvoiceDate.Value.ToString("yyyy-MM-dd") : string.Empty)
+                                                        </td>
+                                                        <td>
+                                                            @item.InvoiceAmount
+                                                        </td>
+                                                        <td>
+                                                            <a style='color: #039' href='javascript:void(0);' onclick="javascript:invoice.File.ViewFile('@item.InvoiceFileId','@Model.CaseFee.CaseNo','@item.InvoiceFileName');"><span>查看</span></a>
+                                                            <a style='color: #039' href='javascript:void(0);' onclick="javascript: invoice.File.DownloadFile('@item.InvoiceFileId');"><span>下载</span></a>
+
+                                                            @if (CommonService.Instance.CheckPermission((int)Permission.DeleteCaseFeeFile))
+                                                            {
+                                                                <a style='color: #039' href='javascript:void(0);' onclick="javascript: invoice.File.Delete(@item.InvoiceFileId);"><span>删除</span></a>
+                                                            }
+
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <input class="btn btn-default " type="button" id="btnInvoiceFileListCancel" value="关闭" />
+                    </div>
+
+                }
+            </div>
+        </div>
+    </div>
+</div>

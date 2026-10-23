@@ -1,0 +1,115 @@
+﻿@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.IPR.ViewModels.Case.CaseSearchConditionModel
+
+@{
+    object htmlAttribute = null;
+}
+
+<div>
+    <div class="casesearch-section-main clearfix">
+        <!-- 左侧 -->
+        <div>
+            <div class="casesearch-section-wrap">
+                <div class="casesearch-section-product">
+                    <!-- product section -->
+                    <div class="product-container">
+                        <div class="product-section">
+                            <!--</div>--><!--</div>-->
+                            <div class="section-head casesearch-cursor-pointer">
+                                <a>
+                                    @Html.CheckBoxFor(m => m.Search.HasCaseFeeFileSearchCondition, new { style = "vertical-align: middle; " })<span class="list-title-em" style="vertical-align: middle; ">文档数据</span>
+                                </a>
+                                <span style="padding-left: 50px">
+                                    @Html.CheckBoxFor(m => m.Search.IsUnionCaseFeeFileSearchCondition, new { style = "vertical-align: middle; " })@Html.LabelFor(m => m.Search.IsUnionCaseFeeFileSearchCondition)
+                                    @Html.CheckBoxFor(m => m.Search.IsNotUnionCaseFeeFileSearchCondition, new { style = "vertical-align: middle; " })@Html.LabelFor(m => m.Search.IsNotUnionCaseFeeFileSearchCondition)
+                                </span>
+                            </div>
+
+                            <div class="section-content clearfix" style='margin: 0 16px;'>
+
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+                                        <label class="control-label" style="float:left;width:15%">
+                                            @Html.CheckBoxFor(m => m.Search.CaseFeeFileSearchCondition.HasUploadingUser, new { @class = "has" })
+                                            @Html.LabelFor(m => m.Search.CaseFeeFileSearchCondition.UploadingUser)
+                                        </label>
+                                        <div style="float:left;width:52%">
+                                            @Html.HiddenFor(m => m.Search.CaseFeeFileSearchCondition.UploadingUser)
+                                            @Html.TextBoxFor(m => m.Search.CaseFeeFileSearchCondition.UploadingUserName)
+                                        </div>
+                                        <label style="float: left; width: 10%" class=" control-label">
+                                            @Html.CheckBoxFor(m => m.Search.CaseFeeFileSearchCondition.NotInUploadingUser, new { @class = "notin" })
+                                            @Html.LabelFor(m => m.Search.CaseFeeFileSearchCondition.NotInUploadingUser)
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+                                        <label class="control-label" style="float:left;width:15%">
+                                            @Html.CheckBoxFor(m => m.Search.CaseFeeFileSearchCondition.HasUploadingTime, new { @class = "has" })
+                                            @Html.LabelFor(m => m.Search.CaseFeeFileSearchCondition.UploadingTimeFrom)
+                                        </label>
+                                        <div style="float:left;width:52%">
+                                            @Html.TextBoxFor(m => m.Search.CaseFeeFileSearchCondition.UploadingTimeFrom, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                            <span>-</span>
+                                            @Html.TextBoxFor(m => m.Search.CaseFeeFileSearchCondition.UploadingTimeTo, "{0:yyyy-MM-dd}", new { @class = "input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                        </div>
+                                        <label style="float: left; width: 10%" class=" control-label">
+                                            @Html.CheckBoxFor(m => m.Search.CaseFeeFileSearchCondition.NotInUploadingTime, new { @class = "notin" })
+                                            @Html.LabelFor(m => m.Search.CaseFeeFileSearchCondition.NotInUploadingTime)
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div class="form-group" style="padding-bottom: 20px">
+                                        
+                                        @{
+                                            var caseFileTypeIds = string.Empty;
+                                            var caseFileTypeNames = string.Empty;
+                                            if (@Model != null && @Model.Search != null && @Model.Search.CaseFeeFileSearchCondition != null)
+                                            {
+                                                if (@Model.Search.CaseFeeFileSearchCondition.FileTypeId != null && @Model.Search.CaseFeeFileSearchCondition.FileTypeId.Any())
+                                                {
+                                                    caseFileTypeIds = string.Join(",", @Model.Search.CaseFeeFileSearchCondition.FileTypeId);
+                                                }
+
+                                                if (@Model.Search.CaseFeeFileSearchCondition.FileTypeName != null && @Model.Search.CaseFeeFileSearchCondition.FileTypeName.Any())
+                                                {
+                                                    caseFileTypeNames = string.Join(",", @Model.Search.CaseFeeFileSearchCondition.FileTypeName);
+                                                }
+                                            }
+                                        }
+
+                                        <label class="control-label" style="float:left;width:15%">
+                                            @Html.CheckBoxFor(m => m.Search.CaseFeeFileSearchCondition.HasFileTypeId, new { @class = "has" })
+                                            @Html.LabelFor(m => m.Search.CaseFeeFileSearchCondition.HasFileTypeId)
+                                        </label>
+                                        <div style="float:left;width:52%">
+                                            @Html.TextBoxFor(m => caseFileTypeNames, new { @id = "Search_CaseFeeFileSearchCondition_CaseFileType" })
+                                            @Html.HiddenFor(m => caseFileTypeIds, new { @id = "hid_Search_CaseFeeFileSearchCondition_CaseFileType", @style = "width: 99%" })
+
+                                        </div>
+                                        <label style="float: left; width: 10%" class=" control-label">
+                                            @Html.CheckBoxFor(m => m.Search.CaseFeeFileSearchCondition.NotInFileTypeId, new { @class = "notin" })
+                                            @Html.LabelFor(m => m.Search.CaseFeeFileSearchCondition.NotInFileTypeId)
+                                        </label>
+                                    </div>
+                                </div>
+
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+
+
+
+

@@ -1,0 +1,433 @@
+﻿@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service
+@model  Dchien.Legal.Web.Areas.FAM.ViewModels.AR.ReceivedPayment.PaymentObjectListModel
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.core.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.excheck.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Common/ztree/jquery.ztree.exedit.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script src="@Url.Content("~/Scripts/FAM/AR/FAM.AR.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/FAM/AR/FAM.AR.Payment.ObjectList.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/zTree/zTreeStyle.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<style type="text/css">
+    ul.ztree {
+        margin-top: 0px;
+        border-right: 0px solid #e1e6eb;
+        overflow-y: auto;
+        overflow-x: auto;
+    }
+
+    .ztree li {
+        line-height: 20px;
+    }
+
+        .ztree li a {
+            width: 150px;
+            height: 20px;
+            padding-top: 0px;
+        }
+
+            .ztree li a:hover {
+                text-decoration: none;
+                background-color: #E7E7E7;
+            }
+
+            .ztree li a span.button.switch {
+                visibility: hidden;
+            }
+
+    .ztree.showIcon li a span.button.switch {
+        visibility: hidden;
+    }
+
+    .ztree li a.curSelectedNode {
+        background-color: #D4D4D4;
+        border: 0;
+        height: 20px;
+    }
+
+    .ztree li span {
+        line-height: 20px;
+    }
+
+        .ztree li span.button {
+            margin-top: 2px;
+        }
+
+            .ztree li span.button.switch {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+
+            .ztree li span.button.add {
+                margin-left: 2px;
+                margin-right: -1px;
+                background-position: -144px 0;
+                vertical-align: top;
+                *vertical-align: middle;
+            }
+
+
+            /*.ztree li span.button {background-image:url("./left_menuForOutLook.png"); *background-image:url("./left_menuForOutLook.gif")}*/
+
+            .ztree li span.button.ico_docu {
+                background-position: -110px -16px;
+            }
+
+            .ztree li span.button.switch.level0 {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+
+            .ztree li span.button.switch.level1 {
+                width: 15px;
+                height: 10px;
+                margin-bottom: 2px;
+            }
+    /*.ztree li span.button.noline_open {background-position: 0 0;}
+    .ztree li span.button.noline_close {background-position: -18px 0;}
+    .ztree li span.button.noline_open.level0 {background-position: 0 -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}
+    .ztree li span.button.noline_close.level0 {background-position: -18px -18px;}*/
+
+    .node_name {
+        margin-left: 10px;
+    }
+
+    div#rMenu {
+        position: absolute;
+        visibility: hidden;
+        top: 0;
+        background-color: #555;
+        text-align: left;
+        padding: 2px;
+    }
+
+        div#rMenu ul li {
+            margin: 1px 0;
+            padding: 0 5px;
+            cursor: pointer;
+            list-style: none outside none;
+            background-color: #DFDFDF;
+        }
+</style>
+
+<div class="viewFramework-product">
+    <div class="viewFramework-product-body" style="overflow-y:hidden">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5> 待支付</h5>
+                            </div>
+                        </div>
+                        <div class="pull-left margin-top-1 col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm">
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageId, new { name = "PageId" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageSize" })
+                                <table class="search_table" style="width: 600px">
+                                    <colgroup>
+                                        <col style="width: 60px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px" />
+                                        <col style="width: 200px" />
+
+                                        <col>
+                                    </colgroup>
+                                    <tr>
+                                        <th style="text-align: right">
+                                            案件类型：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.CaseTypeId, Dchien.Legal.Service.BAS.Type.CaseTypeService.Instance.GetCaseTypeList(true), new { maxlength = 60, @class = "form-control select", style = " width:90%" })
+                                        </td>
+                                        <th>
+                                            案件阶段：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CasePhaseName, new { @class = "form-control", @style = "width:90%", autocomplete = "off" })
+                                            @Html.HiddenFor(m => m.SearchCondition.CasePhaseId)
+                                        </td>
+             
+
+                                        <th>
+                                            回款单位：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.Payer, new { @class = "form-control", @style = "width:90%" })
+                                        </td>
+
+                                        <th>
+                                            回款时间：
+                                        </th>
+
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CashedDateStart, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.CashedDateEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                        </td>
+
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            开庭律师：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CourtLawyer, new { @class = "form-control", @style = "width:90%" })
+                                        </td>
+                                        <th>
+                                            律师助理：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseAssistantName, new { @class = "form-control", @style = "width:90%" })
+                                        </td>
+
+
+                                        <th>
+                                            提交人：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.ArchiveAmountSettlementToAuditBusinessOwner, new { @class = "form-control", @style = "width:90%" })
+                                        </td>
+                                        <th>
+                                            提交日期：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.ArchiveAmountSettlementToAuditDateStart, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.ArchiveAmountSettlementToAuditDateEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            案件编号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseNo, new { @class = "form-control", @style = "width:90%" })
+                                        </td>
+
+                                        <th>
+                                            客户名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control", @style = "width:90%" })
+                                        </td>
+
+                                        <th>
+                                            审核人：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.ArchiveAmountSettlementAuditor, new { @class = "form-control", @style = "width:90%" })
+                                        </td>
+                                        <th>
+                                            审核日期：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.ArchiveAmountSettlementAuditDateStart, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.ArchiveAmountSettlementAuditDateEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:80px" })
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>
+
+                                        </th>
+                                        <td>
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnPaymentObjectProcessingListSearch">
+                                                <span>查询</span>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </table>
+
+                                <div class='divcaseconditioncasephases' style='overflow-y: scroll; '>
+                                    <div id="divCasePhaseCheckBoxList" style="display:none" class='i_common_box'>
+                                        <div class='i_common_hd'>
+                                            从下列案件阶段中选择
+                                            <input type='hidden' id='hidCasePhaseId'>
+                                            <input type='hidden' id='hidCasePhaseName'>
+                                        </div>
+                                        <div class='i_common_bd'>
+                                            <ul id='casePhaseTree' class='ztree' style="max-height:600px"></ul>
+                                            <div class="pull-right">
+                                                <input class='btn btn-primary' type='button' id='btnCasePhaseSelected' value='确定' />
+                                                <input class='btn btn-default' type='button' value='取消' />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </form>
+                        </div>
+
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="">
+                            <table class="aps-table aps-widget aps-ani-transition ">
+                                <colgroup>
+                                    <col style="width: 3%">
+                                    <col style="width: 5%">
+                                    <col style="width: 8%">
+                                    <col style="width: 15%">
+                                    <col style="width: 7%">
+                                    <col style="width: 7%">
+                                    <col style="width: 6%">
+                                    <col style="width: 8%">
+                                    <col style="width: 6%">
+                                    <col style="width: 6%">
+                                    <col style="width: 6%">
+                                    <col style="width: 6%">
+                                    <col style="width: 6%">
+                                    <col style="width: 6%">
+                                    <col style="width: 6%">
+                                    <col style="width:17px">
+                                </colgroup>
+                                <thead>
+                                    <tr>
+                                        <td><input type="checkbox" id="chkPaymentAll" name="chkPaymentAll"></td>
+                                        <th style="text-align: center">操作</th>
+                                        <th style="text-align: center">案号</th>
+                                        <th style="text-align: center">客户</th>
+                                        <th style="text-align: center">案件阶段</th>
+                                        <th style="text-align: center">
+                                            律师助理
+                                        </th>
+                                        <th style="text-align: center">
+                                            开庭律师
+                                        </th>
+                                        <th style="text-align: center">
+                                            客户<br>管理人
+                                        </th>
+                                        <th style="text-align: center">
+                                            费用类型
+                                        </th>
+                                        <th style="text-align: center">
+                                            金额
+                                        </th>
+                                        <th style="text-align: center">
+                                            回款<br>时间
+                                        </th>
+                                        <th style="text-align: center">
+                                            回款<br>金额
+                                        </th>
+                                        <th style="text-align: center">归档费<br>金额</th>
+                                        <th style="text-align: center">结算时间</th>
+                                        <th style="text-align: center">支付状态</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                            </table>
+
+                            <div id="divPaymentList" style="border-top: 0;margin-top: -1px; overflow-x:hidden; overflow-y: scroll;">
+                                <div class="simple-grid-none-data-wrap">
+                                    <div class="simple-grid-none-data text-center  ">
+                                        <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                            <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                            <div class="text-size-16 tip-text inline-block">
+                                                <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                                <span class="">。</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <table id="tblPaymentObjectList" class="aps-table aps-widget aps-ani-transition ">
+                                    <colgroup>
+                                        <col style="width: 3%">
+                                        <col style="width: 5%">
+                                        <col style="width: 8%">
+                                        <col style="width: 15%">
+                                        <col style="width: 7%">
+                                        <col style="width: 7%">
+                                        <col style="width: 6%">
+                                        <col style="width: 8%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                        <col style="width: 6%">
+                                    </colgroup>
+
+                                    <tbody>
+                                        <tr style="display: none">
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: left;white-space: nowrap"></td>
+                                            <td style="text-align: left;white-space: nowrap"></td>
+                                            <td style="text-align: left;white-space: nowrap"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: center"></td>
+                                        </tr>
+                                        <tr style="display: none">
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: center"></td>
+                                            <td style="text-align: left;white-space: nowrap"></td>
+                                            <td style="text-align: left;white-space: nowrap"></td>
+                                            <td style="text-align: left;white-space: nowrap"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: left"></td>
+                                            <td style="text-align: center"></td>
+                                        </tr>
+                                    </tbody>
+                                    <tfoot class="" style="display: none">
+
+                                        <tr>
+                                            <td><input type="checkbox" id="chkPaymentAll" name="chkPaymentAll"></td>
+
+                                            <td colspan="14">
+                                                <div class="pull-left">
+                                                    <input type="button" id="btnPaymentObjectListApproved" class="btn btn-default" style="height:32px" value="同意结算" onclick="javascript: payment.Payment.ArchiveSettlement.Approved($.checkbox.vals('chkPaymentId'));" />
+                                                    <input type="button" id="btnPaymentObjectListRejected" class="btn btn-default" style="height:32px" value="拒绝结算" onclick="javascript: payment.Payment.ArchiveSettlement.Rejected($.checkbox.vals('chkPaymentId'));" />
+                                                    <input type="button" class="btn btn-default" style="height:32px" value="导出选中" onclick="javascript: payment.Payment.ArchiveSettlement.ExportSelectedToExcel($.checkbox.vals('chkPaymentId'));" />
+
+                                                  </div>
+                                                <div class="">
+                                                    <div class="pull-right page-box paymentObjectList">
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                            
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+    </div>
+</div>
+
+
+
+

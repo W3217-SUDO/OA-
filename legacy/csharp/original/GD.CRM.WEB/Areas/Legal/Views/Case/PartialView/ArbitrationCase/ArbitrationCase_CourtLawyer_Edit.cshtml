@@ -1,0 +1,98 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.BAS.Type
+@using Dchien.Legal.Entity.Legal.Case
+@using Dchien.Legal.Service.Legal.Investigation.Clue
+@using Dchien.Legal.Entity.Account
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.Case.CaseModel
+
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/bootstrap-tagsinput.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<script src="@Url.Content("~/Scripts/Common/bootstrap-tagsinput.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.Basic.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<style>
+    .bootstrap-tagsinput {
+        width: 100%;
+        border-radius: 0px;
+        padding: 2px 4px;
+    }
+
+        .bootstrap-tagsinput input {
+            padding: 0px;
+            width: 50px;
+        }
+            /*.bootstrap-tagsinput span {
+            line-height: 1.4;
+        }*/
+    .chosen-container-multi .chosen-choices {
+        border: 1px solid #cccccc;
+        font-size: 12px;
+    }
+</style>
+
+
+<div class="modal fade" id="caseBasicModal" >
+ 
+    <div class="modal-dialog" style="width:600px" >
+        <div class="modal-content" ng-transclude="">
+            <div class="ng-scope">
+                @using (Html.BeginForm("Edit", "Case", FormMethod.Post, new { id = "caseLog", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+
+                    <div class="modal-header">
+                        <button type="button" class="close" onclick="javascript:$('#caseBasicModal').modal('hide');">×</button>
+                        <h5 class="modal-title ng-binding">开庭律师</h5>
+                    </div>
+                    <div class="modal-body">
+             
+                        <div class="form-group">
+                            <label class="col-sm-3 control-label">
+                                <span class="text-danger">*</span>
+                                <span>开庭律师：</span>
+                            </label>
+                            <div class="col-sm-7">
+                                <div class="bootstrap-tagsinput">
+                           
+                                    @if (!string.IsNullOrEmpty(Model.Case.Basic.CourtLawyer))
+                                    {
+                                        var caseLawyerNames = Model.Case.Basic.CourtLawyerName.Split(',');
+                                        var i = 0;
+                                        foreach (var caseLawyer in Model.Case.Basic.CourtLawyer.Split(','))
+                                        {
+                                                <span class="tag label label-info">
+                                                <a name="courtlawyername" style="color:white; width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                    username="REDACTED_ARCHIVE_ONLY"  userchname="@caseLawyerNames[i]" data-toggle="tooltip" data-container="body" href="javascript:void(0);"
+                                                    target="_blank" data-original-title="@caseLawyerNames[i]">@caseLawyerNames[i]</a>
+                                                    @if (CommonService.Instance.CheckPermission((int)Permission.EditCaseLawer))
+                                                    {
+                                                        <span class="lawyerremove" data-role="remove"></span>
+                                                    }
+                                            </span>
+                                            i++;
+                                        }
+                                    }
+                                    @if (CommonService.Instance.CheckPermission((int)Permission.EditCaseLawer))
+                                    {
+                                        <input type="text" placeholder="开庭律师" class="form-control inline-block" style="height:22px;width: 100px;margin-left: 6px;" id="Case_Basic_CourtLawyer_Input" autocomplete="off" size="1">
+                                    }
+                                </div>
+                                <div class="i_common_select" id="div_courtlawyerlist" style="display: none;">
+                                    <div class="i_common_wrap">
+                                        <div class="i_common_list"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+  
+                    </div>
+                    <div class="modal-footer">
+                        <input class="btn btn-primary ng-binding" type="button"    onclick="javascript: c.Cases.Case.CourtLawerUpdate(c.Cases.Case.CreateUpdate_Refersh);" value="确定" />
+                        <input class="btn btn-default ng-binding" type="button"    onclick="javascript:$('#caseBasicModal').modal('hide');"  value="取消" />
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+   
+</div>

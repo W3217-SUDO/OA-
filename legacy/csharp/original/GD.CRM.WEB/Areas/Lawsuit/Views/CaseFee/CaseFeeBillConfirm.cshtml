@@ -1,0 +1,117 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+
+@model Dchien.Legal.Web.Areas.Lawsuit.ViewModels.Case.CaseFeeModel
+
+@{
+    object htmlAttribute = null;
+}
+<style>
+    .btn-expense-file-upload input {
+        position: absolute;
+        top: 0px;
+        right: 0px;
+        left: 0px;
+        bottom: 0px;
+        opacity: 0;
+        filter: alpha(opacity=0);
+        overflow: hidden;
+    }
+ 
+</style>
+
+<script src="@Url.Content("~/Scripts/Common/jquery.form.js")" type="text/javascript"></script>
+
+<div class="modal fade" id="caseFeeBillConfirmModal" >
+  
+        <div class="modal-dialog" >
+            <div class="modal-content" ng-transclude="">
+                <div class="ng-scope">
+                    @using (Html.BeginForm("CaseFeeBillConfirmCreate", "CaseFee", FormMethod.Post, new { id = "caseFeeBillConfirm", enctype = "multipart/form-data", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                    {
+                        @Html.HiddenFor(m => m.CaseId)
+                        @Html.HiddenFor(m => m.CaseTypeId)
+                        @Html.HiddenFor(m => m.CaseNo)
+                        @Html.HiddenFor(m => m.CaseFeeId)
+                        @Html.HiddenFor(m => m.DefaultCaseFee.FeeTypeId)
+                        @Html.HiddenFor(m => m.DefaultCaseFee.FeeItemId)
+
+                        <div class="modal-header">
+                            <button type="button" class="close" id="btnCaseFeeBillConfirmClose">×</button>
+                            <h5 class="modal-title ng-binding">财务票据确认</h5>
+                        </div>
+                        <div class="modal-body">
+                            <div>
+                                <div class="form-group">
+                                    <label for="InvoiceNo" class="col-sm-3 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">票据编号</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        @Html.TextBoxFor(m => m.DefaultCaseFee.BillNo, new { @class = "form-control" })
+                                    </div>
+                                </div>
+                            </div>
+ 
+                            <div>
+                                <div class="form-group">
+                                    <label for="InvoiceAmount" class="col-sm-3 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">票据金额</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        @Html.TextBoxFor(m => m.DefaultCaseFee.BillAmount, new
+                                   {
+                                       @class = "form-control",
+                                       @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')",
+                                       @onafterpaste = "this.value=this.value.replace(/\\D/g,'')"
+                                   })
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="form-group">
+                                    <label for="PaymentDate" class="col-sm-3 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">票据日期</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        @Html.TextBoxFor(m => m.DefaultCaseFee.BillDate, "{0:yyyy-MM-dd}", new { @class = "form-control input_time", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", required = "true" })
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <div class="form-group">
+                                    <label for="ActualAmount" class="col-sm-3 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">发票文件</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        <div class="form-control-wrap">
+                                            <input id="txtBillFilePath" placeholder="选择一个文件" disabled="disabled" class="form-control ng-pristine ng-valid" style="display: inline-block">
+
+                                            <div class="btn btn-default btn-xs btn-expense-file-upload" style="height: 0px; line-height: 0px; padding: 0px;border:0px">
+                                                <input type="file" value="" id="flBillFile" name="flBillFile" style="height: 40px; width: 250px; margin-left: 10px;">
+                                            </div>
+
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                        <div class="modal-footer">
+                            <input class="btn btn-primary ng-binding" type="button" id="btnCaseFeeBillConfirm" value="确定" />
+                            <input class="btn btn-default ng-binding" type="button" id="btnCaseFeeBillConfirmCancel" value="取消" />
+                        </div>
+                    }
+                </div>
+            </div>
+        </div> 
+    
+</div>
+
+
+

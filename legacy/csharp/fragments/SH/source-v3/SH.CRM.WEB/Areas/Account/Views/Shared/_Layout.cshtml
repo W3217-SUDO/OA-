@@ -1,0 +1,351 @@
+﻿@using Dchien.Legal.Infrastructure
+@using Dchien.Legal.Web
+@using Dchien.Legal.Web.Areas.IPR.ViewModels.Case
+@using Dchien.Legal.Service
+@{
+    string basUrl = System.Configuration.ConfigurationManager.AppSettings["CertGateway"];
+    if (String.IsNullOrEmpty(basUrl))
+    {
+        basUrl = "http://service.sh.ctriptravel.com";
+    }
+
+    var caseTypes = CaseTypeService.Instance.GetAllCaseTypes();
+    var caseFileTypes = CaseTypeService.Instance.GetAllCaseFileTypes();
+    var casePhaseTypes = CaseTypeService.Instance.GetAllCasePhases();
+    var caseTypesToJosn = Newtonsoft.Json.JsonConvert.SerializeObject(caseTypes);
+    var casePhasesToJosn = Newtonsoft.Json.JsonConvert.SerializeObject(casePhaseTypes);
+    var caseFeeTypes = CaseTypeService.Instance.GetAllCaseFeeTypes();
+    var caseFileTypesToJosn = Newtonsoft.Json.JsonConvert.SerializeObject(caseFileTypes);
+    var caseFeeTypesToJosn = Newtonsoft.Json.JsonConvert.SerializeObject(caseFeeTypes);
+
+    var caseFeeInvoiceStatus = CaseFeeTypeService.Instance.GetCaseFeeInvoiceStatus();
+    var caseFeeInvoiceStatusToJosn = Newtonsoft.Json.JsonConvert.SerializeObject(caseFeeInvoiceStatus);
+    
+    var menus = MenuService.Instance.GetMenusByCurrentUser();
+    
+
+}
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <style type="text/css">
+        [ng\:cloak], [ng-cloak], [data-ng-cloak], [x-ng-cloak], .ng-cloak, .x-ng-cloak, .ng-hide {
+            display: none !important;
+        }
+
+        ng\:form {
+            display: block;
+        }
+
+        .ng-animate-start {
+            border-spacing: 1px 1px;
+            -ms-zoom: 1.0001;
+        }
+
+        .ng-animate-active {
+            border-spacing: 0px 0px;
+            -ms-zoom: 1;
+        }
+    </style>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="data-spm" content="5176" />
+    <meta name="referrer" content="origin" />
+    <meta name="aplus-rate-ahot" content="0.5" />
+    <meta name="aplus-rate-ahot-res" content="0.5" />
+    <title>管理控制台首页</title>
+    <link rel="shortcut icon" href="@Url.Content("~/icon.ico")" type="image/x-icon" />
+
+    <link href=" https://g.alicdn.com/hichina/user-center/1.0.4/dpl/style/base.css" rel="stylesheet" />
+
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bootstrap.css")" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/angular-growl.min.css")" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/console.css")" />
+    <link rel="stylesheet" href="@Url.Content("~/Resource/css/case.console.css")" />
+
+    <script src="@Url.Content("~/Scripts/Common/jquery.js")" type="text/javascript"></script>
+    <script type="text/javascript" src="@Url.Content("~/Scripts/Common/bootstrap.js")"></script>
+    <script type="text/javascript" src="@Url.Content("~/Scripts/Common/jquery.contextmenu.r2.js")"></script>
+    <script src="@Url.Content("~/Scripts/Common/json.js")" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/Common/jquery.ipr.fn.extend.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/Common/jquery.messager.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+    <script src="@Url.Content("~/Scripts/Common/DatePicker4.6/WdatePicker.js")" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/IPR/base.console.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+    <!--[if lt IE 8]>
+    <script src="@Url.Content("~/Scripts/Common/browser-not-supported-ie8.js")"></script>
+    <![endif]-->
+    <!--[if lt IE 8]>
+    <script src="@Url.Content("~/Scripts/Common/browser-not-supported.js")"></script>
+    <![endif]-->
+
+    <script type="text/javascript">
+
+        var AP_ROOT = '@Url.Content("~/")';
+
+
+        var GV_IPR = {
+            CaseTypes: @Html.Raw(caseTypesToJosn),
+            CaseFileTypes: @Html.Raw(caseFileTypesToJosn),
+            CasePhaseTypes : @Html.Raw(casePhasesToJosn),
+            CaseFeeTypes: @Html.Raw(caseFeeTypesToJosn),
+            CaseFeeInvoiceStatus: @Html.Raw(caseFeeInvoiceStatusToJosn),
+            };
+
+    </script>
+    <style type="text/css"></style>
+    @{
+
+        var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+        var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+
+        var actived = "";
+    }
+</head>
+<body class="@ViewBag.BodyClass">
+
+    @*<div style='position: fixed; top: 0; right: 0; left: 0; bottom: 0; background-color: #373737; background-color: rgba(55,55,55,.6); height: 100%; z-index: 1000;'></div>*@
+
+    <div>
+        <div class="viewFramework-topbar ng-scope">
+            <div class="dchien-console-topbar ng-isolate-scope">
+                <div class="topbar-wrap topbar-clearfix">
+                    <div class="topbar-head topbar-left">
+                        <a href="javascript:void(0);" target="_blank" class="topbar-logo topbar-left">
+                            @*<span class="icon-logo1" ></span>*@
+                            <img src="@Url.Content("~/Resource/css/images/icon.ico")" style="width:28px;padding-top: 13px" /> 
+                        </a>
+
+                        <a href='@Url.Content("~/IPR/Case/CreateUpdate")' target="_self" class="topbar-home-link topbar-btn topbar-left">
+                            <span class="ng-binding">管理控制台</span>
+                        </a>
+                    </div>
+                    <div id="divNavigation" class="topbar-nav topbar-left dropdown">
+                        <a href="javascript:void(0);" id="btnNavigation" class="dropdown-toggle topbar-btn topbar-nav-btn">
+                            <span class="ng-binding">系统导航</span>
+                            <span class="icon-arrow-down"></span>
+                        </a>
+                        <div id="divNavigationPanel" class="dropdown-menu topbar-nav-list topbar-clearfix" style="display:none">
+                            @{
+                                if (menus != null && menus.Count > 0)
+                                {
+                                    foreach (var m in menus.FindAll(x => x.ParentMenuId == -1))
+                                    {
+                                        <div class="topbar-nav-col ng-scope">
+                                            <div class="topbar-nav-item ng-scope">
+                                                <p class="topbar-nav-item-title ng-binding">@m.MenuName</p>
+                                                <ul>
+                                                    @foreach (var x in menus.FindAll(x => x.ParentMenuId == m.MenuId))
+                                                    {
+                                                        <li class="ng-scope">
+                                                            <a target="_self" href="@Url.Content(x.LinkUrl)">
+                                                                <span style="height: 22px ;padding-top:8px" class="topbar-nav-item-icon @x.ImageUrl"></span>
+                                                                <span class="ng-binding">@x.MenuName</span>
+                                                                <span class="topbar-nav-item-short ng-binding"></span>
+                                                            </a>
+                                                        </li>
+                                                    }
+
+                                                </ul>
+                                                <div class="topbar-nav-gap ng-scope"></div>
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                            }
+
+                        </div>
+                    </div>
+                    <div class="topbar-info topbar-right topbar-clearfix">
+                        <!-- 搜索 -->
+                        <div class="topbar-btn topbar-btn-search topbar-left ng-isolate-scope">
+                            <div class="dchien-console-topbar-search-v1_3_21 ng-scope">
+                                <a href="javascript:void(0);" id="btnSearch" class="topbar-btn">
+                                    <span class="icon-search"></span>
+                                    <span>搜索</span>
+                                </a>
+                                <div class="topbar-search-dropdown ng-hide">
+                                    <input id="txtKeyword" class="topbar-search-ask ng-pristine ng-valid" type="text" name="input" placeholder="搜索" />
+                                    <a class="topbar-search-mark icon-enter" id="btnSearchGo"></a>
+                                    <a class="topbar-search-button " href="javascript:void(0);" id="btnAdvancedSearch">高级搜索</a>
+                                </div>
+
+                            </div>
+                        </div>
+
+                        <div class="dropdown topbar-notice topbar-btn topbar-left ng-scope">
+                            <a href="javascript:void(0);" class="dropdown-toggle topbar-btn-notice" data-toggle="dropdown">
+                                <span class="topbar-btn-notice-icon icon-bell"></span>
+                                <span class="topbar-btn-notice-num ng-binding"></span>
+                            </a>
+                            <div class="topbar-notice-panel">
+                                <div class="topbar-notice-arrow"></div>
+                                <div class="topbar-notice-head">
+                                    <span class="ng-binding">消息通知</span>
+                                    @*<a href="javascript:void(0)" class="ng-binding pull-right" style="font-size: 13px">消息接收管理</a>*@
+                                 /></div>
+                                <div class="topbar-notice-body">
+                                    <ul class="ng-scope"></ul>
+                                </div>
+                                <div class="topbar-notice-foot">
+                                    <a class="topbar-notice-more ng-binding" target="_blank" href="@Url.Content("~/MessageCenter/Index/1")">
+
+                                        查看更多
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="topbar-left topbar-help topbar-info-item ng-scope">
+                            <div class="dropdown" dropdown="">
+                                <a href="javascript:void(0);" class="dropdown-toggle topbar-btn" data-toggle="dropdown">
+                                    <span ng-bind="navLinks.help.text" class="ng-binding">帮助与文档</span>
+                                    <span class="icon-arrow-down"></span>
+                                </a>
+                                <ul class="dropdown-menu">
+                                    <li ng-repeat="link in navLinks.help.links" class="topbar-info-btn ng-scope">
+                                        <a href="javascript:void(0)" target="_blank">
+                                            <span class="ng-binding">帮助与文档</span>
+                                        </a>
+                                    </li>
+                                    <li ng-repeat="link in navLinks.help.links" class="topbar-info-btn ng-scope">
+                                        <a href="javascript:void(0)" target="_blank">
+                                            <span class="ng-binding">论坛</span>
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="topbar-left topbar-user ng-scope">
+                            <div class="dropdown topbar-info-item" dropdown="">
+                                <a href="javascript:void(0);" class="dropdown-toggle topbar-btn" data-toggle="dropdown">
+                                    <span class="ng-binding">@LoginHelper.GetUserName()</span>
+                                    <span class="icon-arrow-down"></span>
+                                </a>
+                                <ul class="dropdown-menu">
+                                    <li class="topbar-info-btn ng-scope">
+                                        <a href="@Url.Content("~/Home/Logout")" target="_self">
+                                            <span class="ng-binding">退出</span>
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="viewFramework-body viewFramework-sidebar-mini">
+            <div class="viewFramework-sidebar ng-scope">
+                <div class="sidebar-content ng-scope">
+                    <div class="sidebar-inner ng-scope">
+                        <div class="sidebar-fold ng-scope icon-fold"></div>
+                        @{
+                            if (menus != null && menus.Count > 0)
+                            {
+                                var i = 0;
+                                foreach (var m in menus.FindAll(x => x.ParentMenuId == -1))
+                                {
+                                    <div class="sidebar-nav ng-scope">
+                                        <div class="sidebar-title">
+                                            <div class="sidebar-title-inner ng-scope" data-toggle="tooltip" title="@m.MenuName" data-placement="right">
+                                                <span class="sidebar-title-icon icon-arrow-down"></span>
+                                                <span class="sidebar-title-text ng-binding">@m.MenuName</span>
+                                                <span class="sidebar-manage ng-scope">
+                                                    <a class="icon-setup ng-isolate-scope" title="@m.MenuName">
+                                                    </a>
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <ul class="sidebar-trans" style='max-height:0px'>
+
+                                            @foreach (var x in menus.FindAll(x => x.ParentMenuId == m.MenuId))
+                                            {
+                                                actived = "";
+                                                if (!string.IsNullOrEmpty(x.LinkUrl) && x.LinkUrl.ToLower().IndexOf(controller) > -1)
+                                                {
+                                                    if (controller == "case")
+                                                    {
+                                                        var lst = new List<string>();
+                                                        
+                                                        lst.Add("CaseFileBatchImport");
+                                                        lst.Add("CaseFileCustomImport");
+                                                        lst.Add("CaseListToWord");
+                                                        lst.Add("CaseFeeFileCustomImport");
+                                                        
+                                                        if (x.LinkUrl.ToLower().IndexOf("typeid=1") > -1
+                                                            && (ViewContext.HttpContext.Request["typeId"] == "1"
+                                                                || !string.IsNullOrEmpty(ViewContext.HttpContext.Request["categoryTypeId"])))
+                                                        {
+                                                            actived = "active";
+                                                        }
+                                                        else if (x.LinkUrl.ToLower().IndexOf("typeid=2") > -1 &&
+                                                                 (ViewContext.HttpContext.Request["typeId"] == "2"
+                                                                  || !string.IsNullOrEmpty(ViewContext.HttpContext.Request["reminderTypeId"])))
+                                                        {
+                                                            actived = "active";
+                                                        }
+                                                        else if (x.LinkUrl.ToLower().IndexOf(action.ToLower()) > -1 && lst.Any(a => a.ToLower() == action.ToLower()))
+                                                        {
+                                                            actived = "active";
+                                                        }
+                                                        else
+                                                        {
+                                                            actived = string.Empty;
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        actived = "active";
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    actived = string.Empty;
+                                                }
+
+                                                <li class="nav-item ng-scope @actived " li-nva-id="@i">
+                                                    <a href="@Url.Content(x.LinkUrl)" sidebar-tooltip="@x.MenuName" class="sidebar-trans ng-scope">
+                                                        <div class="nav-icon sidebar-trans">
+                                                            <span class="@x.ImageUrl" style='padding-top:12px'></span>
+                                                        </div>
+                                                        <span class="nav-title ng-binding">@x.MenuName&nbsp;</span>
+                                                    </a>
+                                                </li>
+                                            }
+                                        </ul>
+                                    </div>
+                            
+                                    i++;
+                                }
+                            }
+                        }
+
+                    </div>
+                </div>
+
+            </div>
+            <div class='viewFramework-body-product'>@RenderBody()</div>
+
+
+        </div>
+    </div>
+
+    <div class='caseadvancedsearch' style="display:none">
+        @{
+            var model = new CaseSearchConditionModel();
+
+            model.CasePhases = CaseTypeService.Instance.GetAllCasePhases();
+            model.CaseFeeTypes = CaseTypeService.Instance.GetAllCaseFeeTypes();
+            model.CaseFileTypes = CaseTypeService.Instance.GetAllCaseFileTypes();
+
+            @Html.Partial(Url.Content("~/Areas/IPR/Views/Case/PartialView/CaseSearchCondition.cshtml"), model)
+        }
+    </div>
+
+</body>
+</html>

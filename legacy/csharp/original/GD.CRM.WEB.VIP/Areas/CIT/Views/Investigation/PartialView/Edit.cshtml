@@ -1,0 +1,229 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.BAS.Type;
+@using Dchien.Legal.Web.Areas.CIT.ViewModels.InvestigationTask;
+@using Dchien.Legal.Service.Legal.Investigation;
+@model Dchien.Legal.Web.Areas.CIT.ViewModels.Investigation.InvestigationModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/font-awesome.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/citys/city.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/bootstrap-tagsinput.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<link type="text/css" rel="stylesheet" href=@Url.Content("~/Resource/css/ticketSystem/add.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"]) />
+
+<style>
+    .bootstrap-tagsinput {
+        width: 100%;
+        border-radius: 0px;
+        padding: 2px 4px;
+    }
+
+        .bootstrap-tagsinput input {
+            padding: 0px;
+            width: 50px;
+        }
+</style>
+
+<div class="modal fade" id="investigationModal">
+    <div class="modal-dialog" style="width:660px">
+        <div class="modal-content" >
+            <div class="ng-scope">
+                @using (Html.BeginForm("Investigation", "Edit", FormMethod.Post, new { id = "investigation", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+                    <div class="modal-header">
+                        <button type="button" class="close" onclick="javascript: $('#investigationModal').modal('hide');">×</button>
+                        <h5 class="modal-title ng-binding">基本信息修改</h5>
+                    </div>
+                        <div class="modal-body">
+                            <div class="">
+                                <div class="form-horizontal margin-top-3 " >
+                                    <div class="form-group">
+                                        <label class="col-sm-3 control-label">
+                                            <span class="text-danger">*</span>
+                                            <span>权利人：</span>
+                                        </label>
+                                        <div class="col-sm-6">
+                                            <div class="bootstrap-tagsinput">
+                                                @Html.HiddenFor(m => m.Investigation.Basic.InvestigationNo)
+                                                @Html.HiddenFor(m => m.Investigation.Basic.Indicter)
+                                                @Html.TextBoxFor(m => m.Investigation.Basic.IndicterName,
+                                               new
+                                               {
+                                                   placeholder = "权利人",
+                                                   style = "height:24px;width:90%",
+                                                   autocomplete = "off",
+                                                   @readonly=true
+                                               })
+
+                                                <div style="display:none;float:right;margin-top:2px;background-color:white; important" class="label">
+                                                    <a style="color:green;" title="新增权利人" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                        <span class="btn_indicter_add fa fa-user-plus"></span>
+                                                    </a>
+                                                </div>
+                                            </div>
+
+                                            <div class="i_common_select" id="div_customer" style="display: none;">
+                                                <div class="i_common_wrap">
+                                                    <div class="i_common_list"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="col-sm-3 control-label">
+                                            <span class="text-danger">*</span>
+                                            <span>权利类型：</span>
+                                        </label>
+                                        <div class="col-sm-6">
+                                            @Html.DropDownListFor(m => m.Investigation.Basic.CaseTypeId, CaseRightTypeService.Instance.GetCaseRightTypeList(false), new { maxlength = 60, @class = "form-control select", style = "height:28px; " })
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="col-sm-3 control-label">
+                                            <span class="text-danger">*</span>
+                                            <span>线索是否客户审核：</span>
+                                        </label>
+                                        <div class="col-sm-6">
+                                            @Html.DropDownListFor(m => m.Investigation.Basic.NeedToAuditOnCustomer, CommonService.Instance.GetTrueFalseList(), new { maxlength = 60, @class = "form-control select", style = "height:29px; " })
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="col-sm-3 control-label">
+                                            <span class="text-danger">*</span>
+                                            <span>授权期限：</span>
+                                        </label>
+                                        <div class="col-sm-6">
+
+                                            <div style="float:left;height:28px;width:50%;padding-right:10px">
+                                                @Html.TextBoxFor(m => m.Investigation.Basic.AuthorizationBeginTime, "{0:yyyy-MM-dd}",
+                                               new
+                                               {
+                                                   @class = "form-control inline-block "
+                                                   ,
+                                                   onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})"
+                                                   ,
+                                                   @placeholder = "开始时间"
+                                                   ,
+                                                   @style = "height:28px; "
+                                                   ,
+                                                   required = "true"
+                                               })
+                                            </div>
+
+                                            <div style="float:right;height:28px;width:50%;padding-left:10px">
+
+                                                @Html.TextBoxFor(m => m.Investigation.Basic.AuthorizationEndTime, "{0:yyyy-MM-dd}",
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})",
+                                                   @placeholder = "结束时间",
+                                                   @style = "height:28px; ",
+                                                   required = "true"
+                                               })
+
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="col-sm-3 control-label">
+                                            <span class="text-danger">*</span>
+                                            <span>授权范围：</span>
+                                        </label>
+                                        <div class="col-sm-6">
+                                            @Html.DropDownListFor(m => m.Investigation.Basic.InvestigationScope, InvestigationScopeTypeService.Instance.GetInvestigationScopeTypeList(false), new { maxlength = 60, @class = "form-control select", style = "height:29px; " })
+                                        </div>
+                                    </div>
+
+                                    <div class="investigationScope form-group" style="@(Model.Investigation.Basic.InvestigationScope=="N"?"display:none":"")">
+                                        <label class="col-sm-3 control-label">
+                                            <span class="text-danger">*</span>
+                                            <span>授权区域：</span>
+                                        </label>
+                                        <div class="col-sm-6">
+                                            @Html.HiddenFor(m => m.Investigation.Basic.City)
+                                            @Html.TextBoxFor(m => m.Investigation.Basic.Province,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "授权区域",
+                                                   style = "height:28px;width:100%",
+                                                   @value = "",
+                                                   cityvalue = "",
+                                                   autocomplete = "off"
+                                               })
+
+                                        </div>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="col-sm-3 control-label">
+                                            <span class="text-danger">*</span>
+                                            <span>备注：</span>
+                                        </label>
+                                        <div class="col-sm-6">
+
+                                            @Html.TextAreaFor(m => m.Investigation.Basic.Remark,
+                                               new
+                                               {
+                                                   @class = "form-control inline-block ",
+                                                   placeholder = "备注",
+                                                   rows = "3",
+                                                   style = "width:100%"
+                                               })
+
+                                        </div>
+                                    </div>
+
+                                    @*<div class="form-group">
+                                        <label class="col-sm-3 control-label">
+                                            <span class="text-danger">*</span>
+                                            <span>资料：</span>
+                                        </label>
+                                        <div class="col-sm-10">
+                                            <input class="btn btn-default btn-xs " id="btnFileUpload" style="width:80px;overflow: hidden;" value="上传附件" />
+                                            @using (Html.BeginForm("InvestigationFileUpload", "InvestigationFile", FormMethod.Post, new { id = "uploadForm", enctype = "multipart/form-data", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                                            {
+                                                @Html.HiddenFor(m => m.Investigation.Basic.InvestigationGuid)
+                                                <input type="file" multiple="multiple" id="flFile" name="flFile" accept=".jpg, .jpeg, .bmp, .png, .gif,.txt, .rar, .zip, .doc, .docx, .ini, .conf, .eml, .xlsx, .xls, .pdf" tabindex="-1"
+                                                       style="width: 1px; height: 1px; opacity: 0; position: absolute; padding: 0px; margin: 0px; overflow: hidden;">
+                                            }
+
+                                            <p id="custom5_description" class="help-block">
+                                                <span class="ng-binding">
+                                                    <div class="text-muted">
+                                                        附件支持的格式有:'jpg', 'bmp', 'png','gif','txt','rar','zip','doc','docx','ini','conf','eml','pdf', 'xlsx', 'xls'
+                                                    </div>
+                                                </span>
+                                            </p>
+                                            <div id="attachments"> </div>
+                                            <div class="help-block" style="display:none">上传失败</div>
+                                        </div>
+                                    </div>*@
+                                    @*<div class="form-group">
+                                        <div class="col-sm-6 col-sm-offset-2">
+                                            <input type="button" id="btnInvestigationCreateUpdate" class="btn btn-primary ng-binding" style="height: 32px; line-height: 14px;    padding: 8px 16px;" value="下一步" />
+                                        </div>
+                                    </div>*@
+                                </div>
+                            </div>
+                   
+
+                        </div>
+                        <div class="modal-footer">
+                            <input class="btn btn-primary ng-binding" type="button"   onclick="javascript: investigation.Investigations.Investigation.CreateUpdate(false);" value="确定" />
+                            <input class="btn btn-default ng-binding" type="button"   onclick="javascript: $('#investigationModal').modal('hide');" value="取消" />
+
+                        </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+ 

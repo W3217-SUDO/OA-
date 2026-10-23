@@ -1,0 +1,281 @@
+﻿@using Dchien.Legal.BizModel.FCM.Contract
+@model Dchien.Legal.Web.Areas.FCM.ViewModels.ContractPayment.ApplicationCreateModel
+<script type="text/javascript" src="@Url.Content("~/Scripts/FCM/Contract/CMS.Contract.Payment.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/components.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/font-awesome.css")" />
+<script type="text/javascript">
+
+</script>
+<style>
+    input.input_text, textarea, select, input.input_time {
+        border: 1px solid #ccc;
+    }
+
+    /*select {
+        color: rgb(84, 84, 84);
+        background-color: rgb(235, 235, 228);
+    }*/
+
+    input.input_text, textarea, input.input_time {
+        padding: 2px 2px 2px 3px;
+    }
+
+    input.input_text, textarea, input.input_time {
+        background-color: #fff;
+    }
+
+    .case-form-control {
+        /*border-radius: 0px;*/
+        -webkit-transition: none;
+        transition: none;
+        font-size: 12px;
+        width: 100%;
+        height: 24px;
+    }
+
+    .case-section-product .product-container .product-section .section-content .content-table td {
+        padding-left: 1px;
+    }
+
+
+    .input_table th {
+        padding: 2px;
+        font-weight: normal;
+        text-align: right;
+    }
+
+    .input_table td {
+        padding: 2px;
+        text-align: left;
+    }
+
+    .case-section-wrap {
+        padding: 2px;
+    }
+
+    .case-section-main {
+        margin: 0 3px;
+        padding: 0px;
+        position: relative;
+    }
+</style>
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.index.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/case.createupdate.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/messageCenter.console.css")" />
+<div class="viewFramework-product " style='background: #eaedf1;'>
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+    <div class="viewFramework-product-body">
+        <div class="ng-scope">
+            <div class="ng-scope">
+                <div class="case-section-main clearfix" style="padding:0px">
+                    <!-- 左侧 -->
+                    <div class="case-section-left" style="padding-right: 0%;">
+                        <div class="case-section-wrap">
+                            <div class="case-section-product">
+                                <!-- product section -->
+                                <div class="product-container">
+                                    <div class="product-section">
+                                        @using (Html.BeginForm("ApplicationCreate", "ContractPayment", FormMethod.Post, new { id = "applicationForm", enctype = "multipart/form-data", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                                        {
+                                            <div class="section-content clearfix" style="padding: 0;">
+                                                <div class="ng-scope">
+                                                    @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractGuid)
+                                                    @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractId)
+                                                    <table class="input_table" style='width:100%'>
+                                                        <colgroup>
+                                                            <col style="width: 7%;" />
+                                                            <col style="width: 13%;" />
+                                                            <col style="width: 7%;" />
+                                                            <col style="width: 13%;" />
+                                                            <col style="width: 7%;" />
+                                                            <col style="width: 13%;" />
+                                                            <col style="width: 7%;" />
+                                                            <col style="width: 13%;" />
+                                                            <col style="width: 7%;" />
+                                                            <col style="width: 13%;" />
+                                                        </colgroup>
+                                                        <tr>
+                                                            <th colspan="10" style="text-align: center">
+                                                                <span style='font-weight: bold; font-size: 10pt; '>付款信息-新建</span>
+                                                            </th>
+                                                        </tr>
+       
+                                                        <tr>
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Contract.ContractBasicInfo.ContractNo)
+                                                            </th>
+                                                            <td>
+                                                                @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractId)
+
+                                                                @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.ContractNo, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on"})
+                                                            </td>
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Contract.ContractBasicInfo.ContractName)
+                                                            </th>
+                                                            <td colspan="3">
+                                                                @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.ContractName, new { @class = "input_text case-form-control", @unselectable = "on", @readonly = true })
+                                                            </td>
+  
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Customer.CustomerName)
+                                                            </th>
+                                                            <td colspan="3">
+                                                                @Html.TextBoxFor(m => m.Customer.CustomerName, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Application.ApplicationBasic.ApplicationNo)
+                                                            </th>
+                                                            <td>
+                                                                @Html.TextBoxFor(m => m.Application.ApplicationBasic.ApplicationNo, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                                            </td>
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Contract.ContractBasicInfo.BusinessOwnerName)
+                                                            </th>
+                                                            <td >
+                                                                @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.BusinessOwnerName, new { @class = "input_text case-form-control", @unselectable = "on", @readonly = true })
+                                                            </td>
+
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Application.ApplicationBasic.ApplicationDate)
+                                                            </th>
+                                                            <td>
+                                                                @Html.TextBoxFor(m => m.Application.ApplicationBasic.ApplicationDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                                            </td>
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Application.ApplicationBasic.CustomerName)
+                                                            </th>
+                                                            <td colspan="3">
+                                                                @Html.TextBoxFor(m => m.Application.ApplicationBasic.CustomerName, new { @class = "input_text case-form-control", @unselectable = "on" })
+                                                            </td>
+                   
+                                                        </tr>
+                                                        
+                                                        <tr>
+                                                            <th>
+                                                                <a id='lblPaymentType'  href="javascript:void(0);" onclick="javascript:void(0);">@Html.LabelFor(m => m.Application.PaymentType.PaymentTypeName)</a>
+                                                            </th>
+                                                            <td>
+                                                                @Html.TextBoxFor(m => m.Application.PaymentType.PaymentTypeName, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                                                @Html.HiddenFor(m => m.Application.PaymentType.PaymentTypeId, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                                            </td>
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Application.PaymentType.OrganizationName)
+                                                            </th>
+                                                            <td colspan="3">
+                                                                @Html.TextBoxFor(m => m.Application.PaymentType.OrganizationName, new { @class = "input_text case-form-control", @unselectable = "on", @readonly = true })
+                                                            </td>
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Application.PaymentType.Account)
+                                                            </th>
+                                                            <td colspan="3">
+                                                                @Html.TextBoxFor(m => m.Application.PaymentType.Account, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                                            </td>
+     
+                                                        </tr>
+                                                        
+                                                        <tr>
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Application.ApplicationBasic.Remark)
+                                                            </th>
+                                                            <td colspan="5" rowspan="1">
+                                                                @Html.TextAreaFor(m => m.Application.ApplicationBasic.Remark, new { maxlength = 600, @class = "input_text case-form-control ", style = "width:100%; height:42px" })
+                                                            </td>
+                                                            <th colspan="4">
+                                                            </th>
+                                                        </tr>
+                                                        
+                                                        <tr>
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Contract.ContractBasicInfo.TotalAmount)
+                                                            </th>
+                                                            <td>
+                                                                @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.TotalAmount, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                                            </td>
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Contract.ContractBasicInfo.PaidCaseFeeAmount)
+                                                            </th>
+                                                            <td>
+                                                                @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.PaidCaseFeeAmount, new { @class = "input_text case-form-control", @unselectable = "on", @readonly = true })
+                                                            </td>
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Contract.ContractBasicInfo.UnPaidCaesFeeAmount)
+                                                            </th>
+                                                            <td>
+                                                                @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.UnPaidCaesFeeAmount, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                                            </td>
+               
+                                                            <th>@Html.LabelFor(m => m.Application.ApplicationBasic.PaidAmount)
+                                                            </th>
+                                                            <td>
+                                                                @Html.TextBoxFor(m => m.Application.ApplicationBasic.PaidAmount, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                                            </td>
+                                                            <th>
+                                                                
+                                                        </th>
+                                                        <td>
+                                                        </td>
+                                                        </tr>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="case-section-wrap" style="padding-top: 0;">
+                            <div class="case-section-product">
+                                <!-- product section -->
+                                <div class="product-container">
+                                    <div class="product-section">
+                                        <ul class="nav nav-tabs">
+                                            <li id="liContractObjectList" class='active'><a href="javascript:void(0);" id="btnContractObjectList">应付款</a></li>
+                                            <li class="pull-right" style=" border:none">
+                                                <div style="margin-top:3px">
+                                                    <div style="text-align: inherit;">
+                                                        <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+          
+                                                            <input class="btn btn-primary ng-binding" type="button" id="btnPaymentApply" value="提交" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </li>
+                                        </ul>
+                                        <div class="section-content clearfix">
+                                            <div class="product-col ng-scope" style="width: 100%">
+                                                <div id="dv_List">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+                    <div class="i_common_select" id="div_customer" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

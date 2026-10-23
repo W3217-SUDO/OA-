@@ -1,0 +1,67 @@
+﻿@{
+    ViewBag.Title = "cusomter list";
+}
+
+@using SunHold.Legal.Common
+@model SunHold.Legal.Web.Areas.IPR.ViewModels.Customer.IndexModel
+
+@{
+    object htmlAttribute = null;
+}
+
+
+<div class="viewFramework-product viewFramework-product-col-1">
+    <div class="viewFramework-product-navbar ng-scope">
+        <!-- product nav -->
+        <div class="product-nav-stage ng-scope product-nav-stage-main">
+            <div class="product-nav-scene product-nav-main-scene">
+                <div class="product-nav-title ng-binding">我的客户</div>
+                <div class="ng-isolate-scope"></div>
+
+                <div class="product-nav-list">
+                    <ul class="top-level">
+
+                        @if (Model.CaseCustomerTypeList != null)
+                        {
+                            foreach (var item in Model.CaseCustomerTypeList)
+                            {
+                                var selected = item.CustomerTypeId == Model.CustomerTypeId ? "class=active" : "";
+
+                                <li>
+                                    <a href="@Url.Content("~/IPR/Customer/Index/" + item.CustomerTypeId)" @selected>
+                                        <div class="nav-icon">
+                                        </div>
+                                        <div class="nav-title ng-binding">@item.CustomerTypeName</div>
+                                    </a>
+                                </li>
+                            }
+                        }
+                    </ul>
+                </div>
+
+            </div>
+            <div class="product-nav-scene product-nav-sub-scene">
+                <div class="product-nav-title">xxx</div>
+                <div class="product-nav-list">
+                    <ul></ul>
+                </div>
+            </div>
+        </div>
+    </div><!-- /product nav -->
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="viewFramework-product-body">
+        @{
+            Html.RenderPartial("List", Model);
+        }
+    </div>
+
+</div>

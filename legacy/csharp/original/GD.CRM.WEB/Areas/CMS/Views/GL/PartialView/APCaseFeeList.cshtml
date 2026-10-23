@@ -1,0 +1,158 @@
+﻿@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.CMS.ViewModels.GL.APCaseFeeListModel
+
+<form id="postForm" action="">
+    <div id="casegridSection" class="gridSection">
+        <div id='divContextList' style="overflow-y: auto; margin-top: -1px; overflow-x: hidden; overflow-y: auto; ">
+            <table class='table' id="tblAPCaseFeeList" width="100%">
+                <colgroup>
+                    <col style="width: 3%">
+                    <col style="width: 3%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th width="10">
+                            <input type="checkbox" id="chkCaseAPListAll" class="ng-pristine ng-valid">
+                        </th>
+                        <th>序号</th>
+                        <th>案号</th>
+                        <th>费用类型</th>
+                        <th>提交日期</th>
+                        <th>应付金额</th>
+                        <th>收款人</th>
+                        <th>付款方式</th>
+                        <th>付款人</th>
+                        <th>审批状态</th>
+                        <th>付款申请人</th>
+                        <th>付款申请日</th>
+                        <th>付款申请单号</th>
+                    </tr>
+                </thead>
+               
+                <tbody>
+                    @if (Model.CaseFeeList != null && Model.CaseFeeList.Any())
+                    {
+                        var i = 1;
+                        foreach (var item in Model.CaseFeeList)
+                        {
+                            <tr>
+                                
+                                <td>
+                                    <input type="checkbox" name="chkCaseFeeId" casefeetypeid="@item.CaseFeeTypeId" casefeetypename="@item.CaseFeeTypeName" value="@item.CaseFeeId">
+                                </td>
+                                
+                                <td class="feeId" style="display:none">
+                                    @Html.HiddenFor(m => item.CaseFeeId)
+                                    @Html.HiddenFor(m => item.CaseFeeGuid)
+                                    @Html.HiddenFor(m => item.CaseNo)
+                                    @Html.HiddenFor(m => item.Invoice.InvoiceFileName)
+                                </td>
+
+                                <td>
+                                    <span class="caseFeeId" style="display:none">@item.CaseFeeId</span>
+                                    <span>@i</span>
+                                </td>
+
+                                <td style="text-align: center">
+                                    <span>@item.CaseNo</span>
+                                </td>
+ 
+                                <td style="text-align: center">
+                                    <span>@item.CaseFeeTypeName</span>
+                                </td>
+                                
+                                <td style="text-align: center">
+                                    <span>@(item.InformDate.HasValue?item.InformDate.Value.ToString("yyyy-MM-dd"):string.Empty)</span>
+                                </td>
+
+                                <td style="text-align: center">
+                                    <span>@item.Amount</span>
+                                </td>
+
+                                <td style="text-align: center">
+                                    <span>@item.PayeeName</span>
+                                </td>
+
+                                <td style="text-align: center">
+                                    <span>@item.PaymentModeName</span>
+                                </td>
+                                
+
+                                <td style="text-align: center">
+                                    <span>@item.PayerName</span>
+                                </td>
+
+                                <td style="text-align: center">
+                                    <span>@(item.Application != null ? item.Application.ApplicationStatusName : string.Empty) </span>
+                                </td>
+                                
+                                <td style="text-align: center">
+                                    <span>@(item.Application != null ? item.Application.ApplicantName : string.Empty)</span>
+                                </td>
+                                
+                                <td style="text-align: center">
+                                    <span>@(item.Application != null && item.Application.ApplicationDate.HasValue ? item.Application.ApplicationDate.Value.ToString("yyyy-MM-dd") : string.Empty)</span>
+                                </td>
+                                
+                                <td style="text-align: center">
+                                    @{
+                                        if (item.Application != null)
+                                        {
+                                            <a href="javascript:void(0);" onclick="javascript:gl.AP.PaymentApply.Audit.Open('@item.Application.ApplicationId'); "><span>@item.Application.ApplicationNo </span></a>
+                                        }
+                                    }
+
+                                </td>
+
+                            </tr>
+                        
+                            i++;
+                        }
+                    }
+                </tbody>
+                <tfoot class="ng-scope" style="display:none">
+                    <tr>
+                        <td colspan="13">
+                            <div class="pull-left"></div>
+                            <div class="ng-scope">
+                                <div class="pull-right page-box apcasefeelist">
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                </tfoot>
+                 
+            </table>
+        </div>
+    </div>
+    
+    <div class="contextMenu" id="feeMenu" style="display: none;">
+        <ul>
+            @*@if (CommonService.Instance.CheckPermission((int)Permission.ConfirmCaseFeeInvoice))
+            {
+                <li id="invoiceConfirm">上传付款凭证</li>
+            }*@
+            <li id="view">查看付款凭证</li>
+            <li id="download">下载付款凭证</li>
+            <li id="paymentapply">付款申请</li>
+            <li id="refresh">刷新</li>
+        </ul>
+    </div>
+    @Html.HiddenFor(m => m.TotalCount, new { name = "TotalCount" })
+    @Html.HiddenFor(m => m.PageNo, new { name = "PageNo" })
+    @Html.HiddenFor(m => m.PageSize, new { name = "PageSize" })
+
+</form>
+

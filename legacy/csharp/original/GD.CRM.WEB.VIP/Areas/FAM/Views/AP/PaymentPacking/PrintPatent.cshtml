@@ -1,0 +1,351 @@
+﻿@using Dchien.Legal.Common
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.AP.Payment.Packing.PrintModel
+ <style>
+    .input_table td {
+        border: 1px solid #000;
+        text-align: center;
+        padding: 2px;
+        background: #fff;
+    }
+</style>
+<script src="@Url.Content("~/Scripts/FAM/AP/FAM.AP.Payment.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+
+<div class="viewFramework-product ">
+    @*<div class="viewFramework-product-navbar ng-scope">
+       
+        @{
+            Html.RenderPartial("~/Areas/FAM/Views/AP/Payment/MenuList.cshtml");
+        }
+    </div> 
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>*@
+
+    <div class="viewFramework-product-body" >
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>打包打印</h5>
+                            </div>
+                            <div class="pull-right">
+                                <a href="javascript:void(0);" class="btn btn-primary ng-isolate-scope" id="btnExportToWord">
+                                    <span>生成缴费清单</span>
+                                    @Html.HiddenFor(m=>m.Packing.PaymentPackingBasic.PackingId)
+                                </a>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="ng-scope">
+                                <div class="ng-scope">
+                                    <div class="case-section-main clearfix" style="padding-top:10px">
+                                        <!-- 左侧 -->
+                                        <div class="case-section-left" style="padding-right: 25%;">
+                                            <div class="case-section-wrap">
+                                                <div class="case-section-product">
+                                                    <!-- product section -->
+                                                    <div class="product-container">
+                                                        <div class="product-section">
+                                                            <div class="section-content clearfix" style="padding: 0;">
+                                                                <div class="ng-scope">
+
+                                                                    <table class="input_table" style='width:100%; align-content:center'>
+                                                                        <colgroup>
+                                                                            <col style="width:160px;">
+                                                                            <col style="width:127px;">
+                                                                            <col style="width:28px;">
+                                                                            <col style="width:28px;">
+                                                                            <col style="width:29px;">
+                                                                            <col style="width:28px;">
+                                                                            <col style="width:28px;">
+                                                                            <col style="width:29px;">
+                                                                            <col style="width:28px;">
+                                                                            <col style="width:28px;">
+                                                                            <col style="width:29px;">
+                                                                            <col style="width:28px;">
+                                                                            <col style="width:28px;">
+                                                                            <col style="width:29px;">
+                                                                            <col style="width:28px;">
+                                                                            <col style="width:28px;">
+                                                                            <col style="width:29px;">
+                                                                            <col style="width:42px;">
+                                                                        </colgroup>
+                                                                        <tbody>
+                                                                            <tr>
+                                                                                <td colspan="11" style="text-align: center; font-weight: bold; font-size: 14pt; font-family: 华文楷体; height: 27px; ">
+                                                                                    @Model.Company.CompanyName（@Model.Company.CompanyCode）
+                                                                                </td>
+                                                                                <td colspan="3" style="text-align: center;line-height:130%;">
+                                                                                    缴费日期：
+                                                                                </td>
+                                                                                <td colspan="4" style="text-align: center;line-height:130%;">
+                                                                                    @DateTime.Now.ToString("yyyy-MM-dd")
+                                                                                </td>
+
+                                                                            </tr>
+
+                                                                            <tr style="height:31px;">
+                                                                                <td class="fh bw fwb f8-0 pl2 b1" style="line-height:130%;" colspan="18" id="B2-0-944">
+                                                                                    地址：@Model.Company.ContractAddress &nbsp;&nbsp; 联系人：@Model.Company.Contracts &nbsp;&nbsp; 电话：@Model.Company.ContractPhone &nbsp;&nbsp; 传真：@Model.Company.ContractFax
+                                                                                </td>
+                                                                            </tr>
+
+                                                                            <tr style="height:26px;">
+
+                                                                                <td class="fh bw fwb pl2 b1" style="line-height:130%;">
+                                                                                    单位：人民币
+                                                                                </td>
+                                                                                <td class="fh tac bw fwb pl2 b1" style="line-height:130%;" colspan="3">
+                                                                                    缴费金额总计：
+                                                                                </td>
+                                                                                <td class="fh tac bw fwb pl2 b1" style="line-height:130%;" colspan="5">
+                                                                                    ￥@Model.Packing.PaymentPackingBasic.PackingAmount.Value.ToString("###,##0.00")
+                                                                                </td>
+                                                                                <td class="fh tac bw fwb pl2 b1" style="line-height:130%;" colspan="4">
+                                                                                    缴费流水号：
+                                                                                </td>
+                                                                                <td class="fh tac bw pl2 b1" style="line-height:130%;" colspan="5">
+                                                                                    @Model.Packing.PaymentPackingBasic.PackageNo
+                                                                                </td>
+                                                                            </tr>
+
+                                                                            <tr style="height:55px;">
+                                                                                <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">
+                                                                                    交款人
+                                                                                </td>
+                                                                                <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">
+                                                                                    申请/专利号
+                                                                                </td>
+                                                                                <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">
+                                                                                    申<br>请<br>费
+                                                                                </td>
+                                                                                <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">
+                                                                                    公<br>告<br>印<br>刷
+                                                                                </td>
+                                                                                <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">
+                                                                                    年<br>费
+                                                                                </td>
+                                                                                <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">
+                                                                                    登<br>记
+                                                                                </td>
+                                                                                <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">
+                                                                                    印<br>花
+                                                                                </td>
+                                                                                <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">
+                                                                                    滞<br>纳<br>金
+                                                                                </td>
+                                                                                <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">
+                                                                                    权<br>利<br>附<br>加<br>费
+                                                                                </td>
+                                                                                <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">
+                                                                                    说<br>明<br>书<br>附<br>加<br>费
+                                                                                </td>
+                                                                                <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">
+                                                                                    优<br>先<br>权
+                                                                                </td>
+                                                                                <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">
+                                                                                    延<br>长<br>费
+                                                                                </td>
+                                                                                <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">
+                                                                                    实<br>审
+                                                                                </td>
+                                                                                <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">
+                                                                                    恢<br>复<br>费
+                                                                                </td>
+                                                                                <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">
+                                                                                    变<br>更<br>费
+                                                                                </td>
+                                                                                <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">
+                                                                                    无<br>效<br>宣<br>告<br>费
+                                                                                </td>
+                                                                                <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">
+                                                                                    复<br>审
+                                                                                </td>
+                                                                                <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;">
+                                                                                    合<br>计
+                                                                                </td>
+                                                                            </tr>
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                                <div class="context" id='divContextList' style="overflow-y: auto; margin-top: -1px; overflow-x: hidden; overflow-y: auto; ">
+                                                                    <table class=" input_table" id="tblCaseFile" style=' width:100%; margin-top: -1px; margin-bottom: 0px;'>
+                                                                    <colgroup>
+                                                                        <col style="width:160px;">
+                                                                        <col style="width:127px;">
+                                                                        <col style="width:28px;">
+                                                                        <col style="width:28px;">
+                                                                        <col style="width:29px;">
+                                                                        <col style="width:28px;">
+                                                                        <col style="width:28px;">
+                                                                        <col style="width:29px;">
+                                                                        <col style="width:28px;">
+                                                                        <col style="width:28px;">
+                                                                        <col style="width:29px;">
+                                                                        <col style="width:28px;">
+                                                                        <col style="width:28px;">
+                                                                        <col style="width:29px;">
+                                                                        <col style="width:28px;">
+                                                                        <col style="width:28px;">
+                                                                        <col style="width:29px;">
+                                                                        <col style="width:42px;">
+                                                                    </colgroup>
+                                                                    <tbody>
+                                                                        @if (Model.Packing != null && Model.Packing.PaymentObjects.Any())
+                                                                        {
+                                                                            foreach (var item in Model.Packing.PaymentObjects.OrderBy(x => x.PaymentBasic.PayerName))
+                                                                            {
+                                                                                var payerName = "";
+                                                                                foreach (var paymentItem in item.PaymentObjects)
+                                                                                {
+                                                                                    var c = Dchien.Legal.Service.IPR.Case.CaseService.Instance.GetCaseBasic(paymentItem.CaseId);
+                                                                                    var caseno = (c == null ? "" : (string.IsNullOrEmpty(c.CaseBasicInfo.CaseRequestNo) ? c.CaseBasicInfo.CaseNo : c.CaseBasicInfo.CaseRequestNo));
+
+                                                                                    <tr>
+                                                                                        @if (item.PaymentBasic.PayerName != payerName)
+                                                                                        {
+                                                                                            <td rowspan="@item.PaymentObjects.Count">@item.PaymentBasic.PayerName</td>
+                                                                                            payerName = item.PaymentBasic.PayerName;
+                                                                                        }
+                                                                                        <td>@caseno</td>
+                                                                                        <td>@(paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType11002
+                                                                                               || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType21002
+                                                                                                || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType31002
+
+                                                                                        ? paymentItem.CaseOfficeFeePaidAmount.Value.ToString("###,##") : "")</td>
+
+                                                                                        <td>@(paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType11016
+                                                                                           || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType21016
+                                                                                           || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType31016
+
+                                                                                        ? paymentItem.CaseOfficeFeePaidAmount.Value.ToString("###,##") : "")</td>
+
+                                                                                        <td>@(paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType11020
+                                                                                              || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType21020
+                                                                                              || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType31020
+                                                                                        ? paymentItem.CaseOfficeFeePaidAmount.Value.ToString("###,##") : "")</td>
+
+                                                                                        <td>@(paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType11015
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType21015
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType31015
+
+                                                                                        ? paymentItem.CaseOfficeFeePaidAmount.Value.ToString("###,##") : "")</td>
+                                                                                        <td>@(paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType11001
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType21001
+                                                                                         || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType31001
+                                                                                        ? paymentItem.CaseOfficeFeePaidAmount.Value.ToString("###,##") : "")</td>
+
+                                                                                        <td>@(paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType11021
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType21021
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType31021
+
+                                                                                        ? paymentItem.CaseOfficeFeePaidAmount.Value.ToString("###,##") : "")</td>
+
+                                                                                        <td>@(paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType11018
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType21018
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType31018
+                                                                                        ? paymentItem.CaseOfficeFeePaidAmount.Value.ToString("###,##") : "")</td>
+
+                                                                                        <td>@(paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType11019
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType21019
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType31019
+
+                                                                                        ? paymentItem.CaseOfficeFeePaidAmount.Value.ToString("###,##") : "")</td>
+
+                                                                                        <td>@(paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType11011
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType21011
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType31011
+
+                                                                                        ? paymentItem.CaseOfficeFeePaidAmount.Value.ToString("###,##") : "")</td>
+
+                                                                                        <td>@(paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType11017
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType21017
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType31017
+                                                                                        ? paymentItem.CaseOfficeFeePaidAmount.Value.ToString("###,##") : "")</td>
+
+                                                                                        <td>@(paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType11008
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType21008
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType31008
+
+                                                                                        ? paymentItem.CaseOfficeFeePaidAmount.Value.ToString("###,##") : "")</td>
+
+                                                                                        <td>@(paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType11012
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType21012
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType31012
+                                                                                        ? paymentItem.CaseOfficeFeePaidAmount.Value.ToString("###,##") : "")</td>
+
+                                                                                        <td>@(paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType11010
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType21010
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType31010
+                                                                                        ? paymentItem.CaseOfficeFeePaidAmount.Value.ToString("###,##") : "")</td>
+
+                                                                                        <td>@(paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType11014
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType21014
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType31014
+                                                                                        ? paymentItem.CaseOfficeFeePaidAmount.Value.ToString("###,##") : "")</td>
+                                                                                        <td>@(paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType11009
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType21009
+                                                                                        || paymentItem.CaseOfficeFeeTypeId == (int)Dchien.Legal.Entity.IPR.Case.CaseFeeType.FeeType31009
+
+                                                                                        ? paymentItem.CaseOfficeFeePaidAmount.Value.ToString("###,##") : "")</td>
+
+                                                                                        <td>@(paymentItem.CaseOfficeFeePaidAmount.HasValue ? paymentItem.CaseOfficeFeePaidAmount.Value.ToString("###,##") : "0")</td>
+                                                                                    </tr>
+                                                                                }
+                                                                                <tr style="height:26px;">
+                                                                                    <td class="fh tac bw pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;" colspan="2">
+                                                                                        小计
+                                                                                    </td>
+                                                                                    <td class="fh tac bw fwb pl2 b1" style="background-color:rgb(192,192,192);line-height:130%;" colspan="16">
+                                                                                        ￥@(item.PaymentBasic.PaidAmount.ToString("###,##0.00"))
+                                                                                    </td>
+                                                                                </tr>
+                                                                            }
+                                                                        }
+                                                                    </tbody>
+                                                                    </table>
+                                                                </div>
+
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                            </div>
+                                            <div class="case-section-right" style='width:25%; '>
+                                                <div class="case-section-wrap">
+                                                    <div id='divInvoiceInfo' class="case-section-product">
+                                                        <!-- product section -->
+                                                        <div class="product-container">
+                                                            <div class="product-section">
+                                                                <div class="section-content clearfix" style='padding:0px'>
+                                                                    <div class="ng-scope">
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div>
+    </div>
+ 

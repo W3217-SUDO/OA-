@@ -1,0 +1,426 @@
+﻿@using Dchien.Legal.Infrastructure
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.HR.Staff
+@using Dchien.Legal.Service.IPR.Case
+@using Dchien.Legal.Service.BAS.Type
+@using Dchien.Legal.Web.Areas.IPR.ViewModels.Case
+@using Dchien.ServiceStack.Text
+@{
+
+    var caseTypes = CaseTypeService.Instance.GetAllCaseTypes();
+    var caseFileTypes = CaseTypeService.Instance.GetAllCaseFileTypes();
+    var casePhaseTypes = CaseTypeService.Instance.GetAllCasePhases();
+    var caseTypesToJosn = Newtonsoft.Json.JsonConvert.SerializeObject(caseTypes);
+    var casePhasesToJosn = Newtonsoft.Json.JsonConvert.SerializeObject(casePhaseTypes);
+    var caseFeeTypes = CaseTypeService.Instance.GetAllCaseFeeTypes();
+    var caseFileTypesToJosn = Newtonsoft.Json.JsonConvert.SerializeObject(caseFileTypes);
+    var caseFeeTypesToJosn = Newtonsoft.Json.JsonConvert.SerializeObject(caseFeeTypes);
+
+    var caseFeeInvoiceStatus = CaseFeeTypeService.Instance.GetCaseFeeInvoiceStatus();
+    var caseFeeInvoiceStatusToJosn = Newtonsoft.Json.JsonConvert.SerializeObject(caseFeeInvoiceStatus);
+
+    var caseTaskTypes = TaskTypeService.Instance.GetAllTaskTypes();
+    var caseTaskTypesToJosn = Newtonsoft.Json.JsonConvert.SerializeObject(caseTaskTypes);
+
+    var menus = MenuService.Instance.GetMenusByCurrentUser();
+
+}
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="data-spm" content="5176" />
+    <meta name="referrer" content="origin" />
+    <meta name="aplus-rate-ahot" content="0.5" />
+    <meta name="aplus-rate-ahot-res" content="0.5" />
+    <title>律师协作平台-管理控制台首页</title>
+    <link rel="shortcut icon" href="@Url.Content("~/icon.ico")" type="image/x-icon" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/base.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/assets/css/ace.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/assets/css/font-awesome.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/assets/css/ace-skins.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bootstrap.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/angular-growl.min.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/console.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+    <link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/case.console.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+  
+      <script src="@Url.Content("~/Scripts/Common/jquery.js")" type="text/javascript"></script>
+    <script type="text/javascript" src="@Url.Content("~/Scripts/Common/bootstrap.js")"></script>
+    <script type="text/javascript" src="@Url.Content("~/Scripts/Common/jquery.contextmenu.r2.js")"></script>
+    <script src="@Url.Content("~/Scripts/Common/json.js")" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/Common/jquery.ipr.fn.extend.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/Common/jquery.messager.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/Common/jquery.slimscroll.min.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/Common/DatePicker4.6/WdatePicker.js")" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/IPR/base.console.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+    <script src="@Url.Content("~/Scripts/Common/jquery-citys.js")" type="text/javascript"></script>
+
+    <!--[if lt IE 8]>
+    <script src="@Url.Content("~/Scripts/Common/browser-not-supported-ie8.js")"></script>
+    <![endif]-->
+    <!--[if lt IE 8]>
+    <script src="@Url.Content("~/Scripts/Common/browser-not-supported.js")"></script>
+    <![endif]-->
+    <script type="text/javascript">
+
+        var AP_ROOT = '@Url.Content("~/")';
+        //var AP_PAGE_ID = '@Guid.NewGuid()';
+
+       
+        var GV_IPR = {
+            OfficeOnlineUrl: 'https://view.officeapps.live.com/op/view.aspx?src=',
+            IPROnlineUrl: '@System.Configuration.ConfigurationManager.AppSettings["ipronlineurl"]',
+            OnlineUrl: '@System.Configuration.ConfigurationManager.AppSettings["onlineurl"]',
+            CaseTypes: @Html.Raw(caseTypesToJosn),
+            CaseFileTypes: @Html.Raw(caseFileTypesToJosn),
+            CasePhaseTypes: @Html.Raw(casePhasesToJosn),
+            CaseFeeTypes: @Html.Raw(caseFeeTypesToJosn),
+            CaseFeeInvoiceStatus: @Html.Raw(caseFeeInvoiceStatusToJosn),
+            CaseTaskTypes: @Html.Raw(caseTaskTypesToJosn),
+        };
+
+        @*var GV_LS = {
+            OfficeOnlineUrl: 'https://view.officeapps.live.com/op/view.aspx?src=',
+            IPROnlineUrl: '@System.Configuration.ConfigurationManager.AppSettings["ipronlineurl"]',
+            OnlineUrl: '@System.Configuration.ConfigurationManager.AppSettings["onlineurl"]',
+            CaseTypes: @Html.Raw(caseTypesToJosn),
+            CaseFileTypes: @Html.Raw(caseFileTypesToJosn),
+            CasePhaseTypes: @Html.Raw(casePhasesToJosn),
+            CaseFeeTypes: @Html.Raw(caseFeeTypesToJosn),
+            CaseFeeInvoiceStatus: @Html.Raw(caseFeeInvoiceStatusToJosn),
+        };*@
+
+    </script>
+    <style type="text/css"></style>
+    @{
+
+        var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+        var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+        var areaName = ViewContext.RouteData.DataTokens["area"] == null ? "" : ViewContext.RouteData.DataTokens["area"].ToString().ToLower();
+        var actived = "";
+        var activedOpen = "";
+        var viewFrameworksidebar = "";
+        var sidebar = "";
+        var id = string.Empty;
+        if (ViewContext.RouteData.Values.ContainsKey("id"))
+        {
+            id = ViewContext.RouteData.Values["id"].ToString().ToLower();
+        }
+    }
+
+    <script type="text/javascript">
+        AP_PAGE_ID = '@id';
+    </script>
+
+</head>
+<body class="skin-1 message-center">
+    @*<div style='position: fixed; top: 0; right: 0; left: 0; bottom: 0; background-color: #373737; background-color: rgba(55,55,55,.6); height: 100%; z-index: 1000;'></div>*@
+    <div>
+        <div class="viewFramework-topbar ng-scope">
+            <div class="dchien-console-topbar ng-isolate-scope">
+                <div class="topbar-wrap topbar-clearfix">
+                    <div class="topbar-head topbar-left">
+                        <a href="javascript:void(0);" target="_blank" class="topbar-logo topbar-left">
+                            @*<span class="icon-logo1" ></span>*@
+                            <img src="@Url.Content("~/Resource/css/images/icon.ico")" style="width:28px;padding-top: 13px" />
+                        </a>
+                        <a href='@Url.Content("~/Console/Index")' target="_self" class="topbar-home-link topbar-btn topbar-left">
+                            <span class="ng-binding">律师协作平台</span>
+                        </a>
+                    </div>
+                    <div id="divNavigationTopbar" class="topbar-nav topbar-left dropdown">
+                        <a href="javascript:void(0);" id="btnNavigation" class="dropdown-toggle topbar-btn topbar-nav-btn">
+                            <span class="ng-binding">系统导航</span>
+                            <span class="icon-arrow-down"></span>
+                        </a>
+                        <div id="divNavigationPanel" class="dropdown-menu topbar-nav-list topbar-clearfix" style="display:none">
+                            @{
+                                if (menus != null && menus.Count > 0)
+                                {
+                                    foreach (var m in menus.FindAll(x => x.ParentMenuId == -1).OrderBy(x => x.OrderId))
+                                    {
+                                        <div class="topbar-nav-col ng-scope">
+                                            <div class="topbar-nav-item ng-scope">
+                                                <p class="topbar-nav-item-title ng-binding">@m.MenuName</p>
+                                                <ul>
+                                                 @foreach (var x in menus.FindAll(x => x.ParentMenuId.ToString() == m.MenuCode && (x.MenuTypeId == 0 || x.MenuTypeId == 1)).OrderBy(x => x.OrderId))
+                                                 {
+                                                     if (menus.Any(s => s.ParentMenuId.ToString() == x.MenuCode))
+                                                     {
+                                                         var menu = menus.FirstOrDefault(s => s.ParentMenuId.ToString() == x.MenuCode);
+
+                                                            <li class="ng-scope">
+                                                                <a target="_self" href="@Url.Content(menu.LinkUrl)">
+                                                                    <span style="height: 22px ;padding-top:8px" class="topbar-nav-item-icon @x.ImageUrl"></span>
+                                                                    <span class="ng-binding">@x.MenuName</span>
+                                                                    <span class="topbar-nav-item-short ng-binding"></span>
+                                                                </a>
+                                                            </li>
+                                                        }
+
+                                                        else
+                                                        {
+                                                            <li class="ng-scope">
+                                                                <a target="_self" href="@Url.Content(x.LinkUrl)">
+                                                                    <span style="height: 22px ;padding-top:8px" class="topbar-nav-item-icon @x.ImageUrl"></span>
+                                                                    <span class="ng-binding">@x.MenuName</span>
+                                                                    <span class="topbar-nav-item-short ng-binding"></span>
+                                                                </a>
+                                                            </li>
+                                                        }
+
+                                                    }
+                                                </ul>
+                                                <div class="topbar-nav-gap ng-scope"></div>
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                            }
+                        </div>
+                    </div>
+                    <div class="topbar-info topbar-right topbar-clearfix">
+                        <!-- 搜索 -->
+                        <div class="topbar-btn topbar-btn-search topbar-left ng-isolate-scope" style="margin-left:0px">
+                            <div class="dchien-console-topbar-search-v1_3_21 ng-scope">
+                                @*<a class="topbar-search-mark icon-enter" id="btnSearchGo"></a>
+                                    <a class="topbar-search-button " href="javascript:void(0);" id="btnAdvancedSearch">高级搜索</a>*@
+                                <span style="padding-left: 10px; padding-right: 5px">
+                                    <input id="txtKeyword" class="form-control" style="width: 220px; height: 25px; vertical-align:baseline;  display:inline-block" type="text" name="input" placeholder="案号、申请号、案件名称、客户名称" />
+                                </span>
+                                <a href="javascript:void(0);" id="btnSearchGo" class="topbar-btn" style="display: inline-block">
+                                    <span class="icon-search"></span>
+                                    <span>搜索</span>
+                                </a>
+                            </div>
+                        </div>
+                        <!-- 高级搜索 -->
+                        @*<div class="topbar-btn topbar-btn-search topbar-left ng-isolate-scope">
+                                <div class="dchien-console-topbar-search-v1_3_21 ng-scope">
+                                    <a href="javascript:void(0);" id="btnAdvancedSearch" class="topbar-btn" style="display: block">
+                                        <span>高级搜索</span>
+                                    </a>
+                                </div>
+                            </div>*@
+
+                        <div class="dropdown topbar-notice topbar-btn topbar-left ng-scope">
+                            <a href="javascript:void(0);" class="dropdown-toggle topbar-btn-notice" data-toggle="dropdown">
+                                <span class="topbar-btn-notice-icon icon-bell"></span>
+                                <span class="topbar-btn-notice-num ng-binding"></span>
+                            </a>
+                            <div class="topbar-notice-panel">
+                                <div class="topbar-notice-arrow"></div>
+                                <div class="topbar-notice-head">
+                                    <span class="ng-binding">任务新消息</span>
+                                    @*<a href="javascript:void(0)" class="ng-binding pull-right" style="font-size: 13px">消息接收管理</a>*@
+
+                                </div>
+                                <div class="topbar-notice-body">
+                                    <ul class="ng-scope"></ul>
+                                </div>
+                                <div class="topbar-notice-foot">
+                                    <a class="topbar-notice-more ng-binding" target="_blank" href="@Url.Content("~/9001001004/TP/Task/TaskList?typeId=3")">
+                                        查看更多
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+
+
+                        <div class="topbar-left topbar-help topbar-info-item ng-scope">
+                            <div class="dropdown" dropdown="">
+                                <a href="javascript:void(0);" class="dropdown-toggle topbar-btn" data-toggle="dropdown">
+                                    <span ng-bind="navLinks.help.text" class="ng-binding">帮助与文档</span>
+                                    <span class="icon-arrow-down"></span>
+                                </a>
+                                <ul class="dropdown-menu">
+                                    <li ng-repeat="link in navLinks.help.links" class="topbar-info-btn ng-scope">
+                                        <a href="javascript:void(0)" target="_blank">
+                                            <span class="ng-binding">帮助与文档</span>
+                                        </a>
+                                    </li>
+                                    <li ng-repeat="link in navLinks.help.links" class="topbar-info-btn ng-scope">
+                                        <a href="javascript:void(0)" target="_blank">
+                                            <span class="ng-binding">论坛</span>
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="topbar-left topbar-user ng-scope">
+                            <div class="dropdown topbar-info-item" dropdown="">
+                                <a href="javascript:void(0);" class="dropdown-toggle topbar-btn" data-toggle="dropdown">
+                                    <span class="ng-binding">@LoginHelper.GetUserName()</span>
+                                    <span class="icon-arrow-down"></span>
+                                </a>
+                                <ul class="dropdown-menu">
+                                    <li class="topbar-info-btn">
+                                        <a href="@Url.Content("~/Home/Logout")"  >
+                                            <span class="dropdown-menu-logout" >退出</span>
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (!StaffSettingService.Instance.MenuFold() || areaName.ToLower() == "console")
+        {
+            viewFrameworksidebar = "viewFramework-sidebar-full";
+            sidebar = "";
+        }
+        else
+        {
+            viewFrameworksidebar = "viewFramework-sidebar-mini";
+            sidebar = "menu-min";
+        }
+
+        <div class="viewFramework-body  @viewFrameworksidebar">
+            <div class="viewFramework-sidebar ng-scope">
+                  
+                    <div id="sidebar" class="sidebar   responsive @sidebar" data-sidebar="true" data-sidebar-scroll="true" data-sidebar-hover="true">
+
+                        <div class="sidebar-shortcuts" id="sidebar-shortcuts">
+                            <div class="sidebar-shortcuts-large" id="sidebar-shortcuts-large">
+                                <button class="btn btn-success" style="height: 28px;">
+                                    <i class="ace-icon fa fa-signal"></i>
+                                </button>
+
+                                <button class="btn btn-info" style="height: 28px;">
+                                    <i class="ace-icon fa fa-pencil"></i>
+                                </button>
+                                <button class="btn btn-warning" style="height: 28px;">
+                                    <i class="ace-icon fa fa-users"></i>
+                                </button>
+
+                                <button class="btn btn-danger"style="height: 28px;">
+                                    <i class="ace-icon fa fa-cogs"></i>
+                                </button>
+                            </div>
+
+                            <div class="sidebar-shortcuts-mini" id="sidebar-shortcuts-mini">
+                                <span class="btn btn-success" style="height:16px"></span>
+
+                                <span class="btn btn-info" style="height:16px"></span>
+
+                                <span class="btn btn-warning " style="height:16px"></span>
+
+                                <span class="btn btn-danger" style="height:16px"></span>
+                            </div>
+                        </div><!-- /.sidebar-shortcuts -->
+
+                        <ul class="nav nav-list" style="top: 0px;">
+
+                            @if (menus != null && menus.Count > 0)
+                            {
+
+                                var i = 0;
+                                foreach (var m in menus.FindAll(x => x.ParentMenuId == -1).OrderBy(x => x.OrderId))
+                                {
+                                    actived = "";
+                                    if (!string.IsNullOrEmpty(id) && id.ToString().StartsWith(m.MenuCode.ToString()))
+                                    {
+                                        activedOpen = "active open";
+                                    }
+                                    else
+                                    {
+                                        activedOpen = string.Empty;
+                                    }
+
+
+                                    <li class="@activedOpen">
+                                        <a href="javascript:void(0);" id="ace-dropdown-toggle" class="dropdown-toggle">
+                                            <i class="menu-icon  @m.ImageUrl"></i>
+                                            <span class="menu-text"> @m.MenuName </span>
+                                            <b class="arrow fa fa-angle-down"></b>
+                                        </a>
+
+                                        <b class="arrow"></b>
+                                        <ul name="first-ul" class="submenu">
+                                            @foreach (var x in menus.FindAll(x => x.ParentMenuId.ToString() == m.MenuCode && (x.MenuTypeId == 0 || x.MenuTypeId == 1)).OrderBy(x => x.OrderId))
+                                            {
+                                                actived = "";
+                                                if (!string.IsNullOrEmpty(id) && id.ToString().StartsWith(x.MenuCode.ToString()))
+                                                {
+                                                    if (menus.FindAll(subMenu => subMenu.ParentMenuId.ToString() == x.MenuCode && subMenu.MenuTypeId == 4).Any())
+                                                    {
+                                                        actived = "active open";
+                                                    }
+                                                    else
+                                                    {
+                                                        actived = "active";
+                                                    }
+
+                                                }
+                                                else
+                                                {
+                                                    actived = string.Empty;
+                                                }
+                                                <li class="@actived">
+
+                                                    @if(menus.FindAll(subMenu => subMenu.ParentMenuId.ToString() == x.MenuCode && subMenu.MenuTypeId == 4).Any())
+                                                    {
+                                                        <a href="javascript:void(0);" id="ace-dropdown-toggle" class="dropdown-toggle">
+                                                            <i class="menu-icon fa fa-caret-right"></i>
+                                                            @(x.MenuName)
+                                                            <b class="arrow fa fa-angle-down"></b>
+                                                        </a>
+                                                        <b class="arrow"></b>
+                                                        foreach (var subMenu in menus.FindAll(subMenu => subMenu.ParentMenuId.ToString() == x.MenuCode && subMenu.MenuTypeId == 4).OrderBy(subMenu => subMenu.OrderId))
+                                                        {
+                                                            actived = "";
+                                                            if (!string.IsNullOrEmpty(id) && id.ToString() == subMenu.MenuCode.ToString())
+                                                            {
+                                                                actived = "active";
+                                                            }
+                                                            else
+                                                            {
+                                                                actived = string.Empty;
+                                                            }
+
+                                                            <ul class="submenu"  >
+                                                                <li class="@actived">
+                                                                    <a href="@Url.Content(subMenu.LinkUrl)">
+                                                                        <i class="menu-icon fa fa-caret-right"></i>
+                                                                        @(subMenu.MenuName)
+                                                                    </a>
+                                                                    <b class="arrow"></b>
+                                                                </li>
+                                                            </ul>
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        <a href="@Url.Content(x.LinkUrl)" >
+                                                            <i class="menu-icon fa fa-caret-right"></i>
+                                                            @(x.MenuName)
+                                                             
+                                                        </a>
+                                                        <b class="arrow"></b>
+                                                    }
+                                                </li>
+                                            }
+                                        </ul>
+                                    </li>
+                                }
+                            }
+
+
+                        </ul>
+                        <div class="sidebar-toggle sidebar-collapse" id="sidebar-collapse">
+                            <i  id="sidebar-collapse-i" class="ace-icon fa fa-angle-double-left" data-icon1="ace-icon fa fa-angle-double-left" data-icon2="ace-icon fa fa-angle-double-right"></i>
+                         </div>
+                    </div>
+              
+            </div>
+            <div class='viewFramework-body-product'>@RenderBody()</div>
+        </div>
+  
+    </div>
+     
+</body>
+</html>

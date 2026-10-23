@@ -1,0 +1,497 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.CRM.ViewModels.Customer.CreateUpdateModel
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/CRM/Customer/CRM.Customer.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/CRM/Customer/CRM.Customer.Create.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script src="@Url.Content("~/Scripts/Common/jquery-citys.js")" type="text/javascript"></script>
+
+<script type="text/javascript">
+
+</script>
+<style>
+    .input_table th {
+        padding: 2px;
+        font-weight: normal;
+        text-align: right;
+    }
+
+    .input_table td {
+        padding: 0px;
+        text-align: left;
+    }
+
+    .form-control {
+        border:0
+    }
+</style>
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.index.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/case.createupdate.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/messageCenter.console.css")" />
+<div class="viewFramework-product " style='background: #eaedf1;'>
+    <div class="viewFramework-product-body">
+        <div class="ng-scope">
+            <div class="ng-scope">
+                <div class="case-section-main clearfix" style="padding:0px">
+                    <!-- 左侧 -->
+                    <div class="case-section-left" style="padding-right: 0%;">
+                        <div class="case-section-wrap">
+                            <div class="case-section-product">
+                                <!-- product section -->
+                                <div class="product-container">
+                                    <div class="product-section">
+                                        <div class="section-content clearfix" style="padding: 0px; padding-left: 10px; padding-right: 10px; ">
+                                            <form id="customerForm">
+                                                <div class="ng-scope">
+                                                    @Html.HiddenFor(m => m.Customer.CustomerBasic.CustomerId)
+                                                    @Html.HiddenFor(m => m.Customer.CustomerBasic.CustomerGuid)
+                                                    <div class="gridSection">
+                                                        <table id="tblCustomer" class="input_table" width="100%">
+                                                            <colgroup>
+                                                                <col style="width: 8%;" />
+                                                                <col style="width: 12%;" />
+                                                                <col style="width: 7%;" />
+                                                                <col style="width: 12%;" />
+                                                                <col style="width: 11%;" />
+                                                                <col style="width: 12%;" />
+                                                                <col style="width: 7%;" />
+                                                                <col style="width: 12%;" />
+                                                                <col style="width: 9%;" />
+                                                                <col style="width: 12%;" />
+                                                            </colgroup>
+                                                            <tbody>
+                                                                <tr>
+                                                                    <th colspan="10" style="text-align:left">
+                                                                        <span style='font-weight: bold; padding-left:10px'>基本信息</span>
+                                                                    </th>
+                                                                </tr>
+                                                                <tr>
+                                                                    <th><span class="text-danger ng-binding">*</span>@Html.LabelFor(m => m.Customer.CustomerBasic.CustomerName) </th>
+                                                                    <td colspan="3">@Html.TextBoxFor(m => m.Customer.CustomerBasic.CustomerName, new { @class = "input_text form-control", @unselectable = "on" })</td>
+                                                                    <th>@Html.LabelFor(m => m.Customer.CustomerBasic.CustomerNo) </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.Customer.CustomerBasic.CustomerNo, new {@readonly=true, @class = "input_text form-control", @unselectable = "on", @placeholder = "自动生成" })
+                                                                    </td>
+
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerControlling.CustomerStatus)
+                                                                    </th>
+                                                                    <td>
+                                                                        @Html.DropDownListFor(m => m.Customer.CustomerControlling.CustomerStatus, CommonService.Instance.GetCustomerStatusList(), new { @class = "form-control", @style = "width:100%" })
+                                                                    </td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerBasic.CustomerTypeId  )
+                                                                    </th>
+                                                                    <td>
+                                                                        @Html.DropDownListFor(m => m.Customer.CustomerBasic.CustomerTypeId, CommonService.Instance.GetCustomerTypeIdList(), new { @class = "form-control", @style = "width:100%" })
+                                                                    </td>
+                                                  
+                                                                </tr>
+                                                                <tr>
+                                                                    <th>
+                                                                          @Html.LabelFor(m => m.Customer.CustomerRegistration.RegistrationAddress)
+                                                                    </th>
+                                                                    <td colspan="3">
+                                                                        @Html.TextBoxFor(m => m.Customer.CustomerRegistration.RegistrationAddress, new
+                                                                   {
+                                                                       @class = "input_text form-control",
+                                                                       @unselectable = "on"                                                                       
+                                                                   })
+                                                                    </td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerBasic.ContactPhone)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerBasic.ContactPhone, new {  @class = "input_text form-control", @unselectable = "on" })</td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerBasic.Fax)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerBasic.Fax, new {  @class = "input_text form-control", @unselectable = "on" })</td>
+                                                                    <td colspan="2"></td>                                                                </tr>
+
+                                                                <tr>
+                                                                    <th colspan="10" style="text-align:left">
+                                                                        <span style='font-weight: bold; padding-left:10px'>法人信息</span>
+                                                                    </th>
+                                                                </tr>
+
+                                                                <tr>
+
+                                                                    <th>
+                                                                        法人姓名
+                                                                    </th>
+                                                                    <td >
+                                                                        @Html.TextBoxFor(m => m.Customer.CustomerBasic.LegalAgentName, new { @class = "input_text form-control", @placeholder = "法人姓名", @unselectable = "on" })
+                                                                    </td>
+
+                                                                    <th>
+                                                                        身份证号
+                                                                    </th>
+                                                                    <td>
+                                                                        @Html.TextBoxFor(m => m.Customer.CustomerBasic.LegalAgentIdNo, new
+                                                                   {
+                                                                       @class = "input_text form-control",
+                                                                       @unselectable = "on",
+                                                                       @placeholder = "身份证号",
+                                                                       @onkeyup = "javascript:this.value=this.value.replace(/\\s+/g,'')",
+                                                                       @onafterpaste = "this.value=this.value.replace(/\\s+/gg,'')"
+                                                                   })
+                                                                </td>
+
+                                                                <th>
+                                                                    职务
+                                                                </th>
+                                                                <td>
+                                                                    @Html.TextBoxFor(m => m.Customer.CustomerBasic.LegalAgentTitle, new { @class = "input_text form-control", @placeholder = "职务", @unselectable = "on" })
+                                                                </td>
+
+
+                                                                <th>
+                                                                    
+                                                                </th>
+                                                                <td> </td>
+
+                                                            </tr>
+
+                                                                <tr>
+                                                                    <th colspan="10" style="text-align:left">
+                                                                        <span style='font-weight: bold; padding-left:10px'>开票信息</span>
+                                                                    </th>
+                                                                </tr>
+
+                                                                <tr >
+                
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerBasic.ContactAddress)
+                                                                    </th>
+                                                                    <td colspan="3">
+                                                                    @Html.TextBoxFor(m => m.Customer.CustomerBasic.ContactAddress, new { @class = "input_text form-control", @unselectable = "on" })</td>
+
+                                                                    <th>
+                                                                         @Html.LabelFor(m => m.Customer.CustomerRegistration.LicenseNo)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerRegistration.LicenseNo, new { @class = "input_text form-control", @unselectable = "on",
+                                                                       @placeholder = "不允许有空格.",
+                                                                       @onkeyup = "javascript:this.value=this.value.replace(/\\s+/g,'')",
+                                                                       @onafterpaste = "this.value=this.value.replace(/\\s+/gg,'')"
+                                                                   })</td>
+
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerRegistration.AccountBankName)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerRegistration.AccountBankName, new { @class = "input_text form-control", @unselectable = "on" })</td>
+
+
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerRegistration.BankAccount)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerRegistration.BankAccount, new { @class = "input_text form-control", @unselectable = "on" })</td>
+
+                                                                </tr>
+
+                                                                <tr style="display:none">
+                                                                    <th colspan="10" style="text-align:left">
+                                                                        <span style='font-weight: bold; padding-left:10px'>专利必填信息</span>
+                                                                    </th>
+                                                                </tr>
+
+                                                                <tr style="display:none">
+                                                                    <th>
+                                                                          @Html.LabelFor(m => m.Customer.CustomerBasic.Province)
+                                                                    </th>
+                                                                    <td colspan="3">
+
+                                                                        <div  id="district">
+                                                                            <select class="form-control"  style="width:100px;display:inline" id="province" name="province"></select>
+                                                                            <select class="form-control"  style="width:100px;display:inline" id="city" name="city"></select>
+                                                                            @*<select class="form-control"  style="width:100px;display:inline" id="area" name="area"></select>*@
+                                                                        </div>
+
+                                                                        @Html.HiddenFor(m => m.Customer.CustomerBasic.Province)
+                                                                        @Html.HiddenFor(m => m.Customer.CustomerBasic.City)
+                                                                    </td>
+ 
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerBasic.Zip)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerBasic.Zip, new { @class = "input_text form-control", @unselectable = "on", @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')", @onafterpaste = "this.value=this.value.replace(/\\D/g,'')" })</td>
+                                                                    <th>
+                                                                         @Html.LabelFor(m => m.Customer.CustomerExtend.CustomerTypeName)
+                                                                    </th>
+                                                                    <td>@Html.DropDownListFor(m => m.Customer.CustomerExtend.CustomerTypeName, CommonService.Instance.GetCustomerTypeList(), new { @class = "form-control", @style = "width:100%" }) </td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerControlling.IsFeeReducing)
+                                                                    </th>
+                                                                    <td>@Html.DropDownListFor(m => m.Customer.CustomerControlling.IsFeeReducing, CommonService.Instance.GetTrueFalseList(), new { @class = "form-control", @style = "width:100%" })</td>
+
+
+
+                                                                </tr>
+
+
+                                                                <tr  style="display:none">
+                                                                    <th colspan="10" style="text-align:left">
+                                                                        <span style='font-weight: bold; padding-left: 10px'>附加信息</span>
+                                                                    </th>
+                                                                </tr>
+                                                                <tr  style="display:none">
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerExtend.Industry)
+                                                                    </th>
+                                                                    <td>@Html.DropDownListFor(m => m.Customer.CustomerExtend.Industry, CommonService.Instance.GetIndustryList(), new { @class = "form-control", @style = "width:100%" })</td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerExtend.ProductionValue)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerExtend.ProductionValue, new {  @class = "input_text form-control", @unselectable = "on" }) </td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerExtend.CooperatioSituation)
+                                                                    </th>
+                                                                    <td>@Html.DropDownListFor(m => m.Customer.CustomerExtend.CooperatioSituation, CommonService.Instance.GetCooperatioSituationList(), new { @class = "form-control", @style = "width:100%" }) </td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerExtend.CustomerSourceType)
+                                                                    </th>
+                                                                    <td>@Html.DropDownListFor(m => m.Customer.CustomerExtend.CustomerSourceType, CommonService.Instance.GetCustomerSourceTypeList(), new { @class = "form-control", @style = "width:100%" })</td>
+                                                                    <td colspan="2"></td>
+                                                                </tr>
+
+
+
+                                                                <tr  style="display:none">
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerExtend.GBTypeName)
+                                                                    </th>
+                                                                    <td>@Html.DropDownListFor(m => m.Customer.CustomerExtend.GBTypeName, CommonService.Instance.GetGBTypeList(), new { @class = "form-control", @style = "width:100%" })</td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerExtend.WebSite)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerExtend.WebSite, new {  @class = "input_text form-control", @unselectable = "on" })</td>
+
+
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerExtend.CompanyTypeName)
+                                                                    </th>
+                                                                    <td>@Html.DropDownListFor(m => m.Customer.CustomerExtend.CompanyTypeName, CommonService.Instance.GetCompanyTypeList(), new { @class = "form-control", @style = "width:100%" })</td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerRegistration.OrganizationCode)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerRegistration.OrganizationCode, new { @class = "input_text form-control", @unselectable = "on" })</td>
+                                                                    <td colspan="2"></td>
+                                                                </tr>
+
+
+                                                                <tr  style="display:none">
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerRegistration.RegistrationCity)
+                                                                    </th>
+                                                                    <td>@Html.DropDownListFor(m => m.Customer.CustomerRegistration.RegistrationCity, CommonService.Instance.GetCityList(), new { @class = "form-control", @style = "width:100%" })</td>
+
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerRegistration.RegistrationZip)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerRegistration.RegistrationZip, new { @class = "input_text form-control", @unselectable = "on" })</td>
+
+
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerRegistration.RegisteredCapital)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerRegistration.RegisteredCapital, new {  @class = "input_text form-control", @unselectable = "on" })</td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerRegistration.RegistrationDate)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerRegistration.RegistrationDate, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+                                                                    <td colspan="2"></td>
+
+                                                                </tr>
+                                                                <tr>
+                                                                    <th colspan="10" style="text-align:left">
+                                                                        <span style='font-weight: bold; padding-left: 10px'>控制信息</span>
+                                                                    </th>
+                                                                </tr>
+                                                                <tr>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerControlling.InputDate)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerControlling.InputDate, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })</td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerExtend.BusinessOwnerName)
+                                                                        @Html.HiddenFor(m => m.Customer.CustomerExtend.BusinessOwner)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerExtend.BusinessOwnerName, new { @class = "input_text form-control", @unselectable = "on"})</td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerControlling.IsShared)
+                                                                    </th>
+                                                                    <td>@Html.DropDownListFor(m => m.Customer.CustomerControlling.IsShared, CommonService.Instance.GetTrueFalseList(), new { @class = "form-control", @style = "width:100%" })</td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerControlling.CustomerLevelName)
+                                                                    </th>
+                                                                    <td>
+                                                                        @Html.DropDownListFor(m => m.Customer.CustomerControlling.CustomerLevelName, CommonService.Instance.CustomerLevelList(false), new { @class = "form-control", @style = "width:100%" })
+                                                                    </td>
+
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerExtend.IsAssisted)
+                                                                    </th>
+                                                                    <td>@Html.DropDownListFor(m => m.Customer.CustomerExtend.IsAssisted, CommonService.Instance.GetTrueFalseList(), new { @class = "form-control", @style = "width:100%" })</td>
+
+                                                                </tr>
+
+                                                                <tr>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerBasic.Coordinator)
+                                                                    </th>
+                                                                    <td colspan="5"   >
+                                                                        <div class="bootstrap-tagsinput" style="border:0px">
+
+                                                                            @if (!string.IsNullOrEmpty(Model.Customer.CustomerBasic.Coordinator))
+                                                                            {
+                                                                                var coordinatorNames = Model.Customer.CustomerBasic.CoordinatorName.Split(',');
+                                                                                var i = 0;
+                                                                                foreach (var coordinator in Model.Customer.CustomerBasic.Coordinator.Split(','))
+                                                                                {
+                                                                                    if (Model.Customer.CustomerBasic.BusinessOwner != coordinator)
+                                                                                    {
+                                                                                        <span class="tag label label-info">
+                                                                                            <a name="coordinatorname" style="color:white; width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                                                               username="REDACTED_ARCHIVE_ONLY" userchname="@coordinatorNames[i]" data-toggle="tooltip" data-container="body" href="javascript:void(0);"
+                                                                                               target="_blank" data-original-title="@coordinatorNames[i]">@coordinatorNames[i]</a>
+                                                                                            <span class="userremove" data-role="remove"></span>
+                                                                                        </span>
+
+                                                                                    }
+
+                                                                                    i++;
+
+                                                                                }
+                                                                            }
+
+                                                                            <input type="text" placeholder="协作人" class="form-control inline-block" style="height:22px;width: 200px;margin-left: 6px;" id="Customer_Coordinator_Input" autocomplete="off" size="1">
+                                                                            
+                                                                        </div>
+
+                                                             
+                                                                    </td>
+                                                                    <th colspan="4">
+                                                                       @Html.HiddenFor(m => m.Customer.CustomerBasic.Coordinator)
+                                                                    </th>
+                                                                </tr>
+
+                                                                <tr style="display:none">
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerControlling.BusinessOpportunities)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerControlling.BusinessOpportunities, new {  @class = "input_text form-control", @unselectable = "on" })</td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerControlling.LastContactTime)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerControlling.LastContactTime, new { @class = "input_text form-control", @unselectable = "on" })</td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerControlling.ContactCount)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerControlling.ContactCount, new {  @class = "input_text form-control", @unselectable = "on" })</td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerControlling.ContractCount)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerControlling.ContractCount, new {  @class = "input_text form-control", @unselectable = "on" })</td>
+                                                                </tr>
+                                                                <tr style="display:none">
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerControlling.ARAmount)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerControlling.ARAmount, new {  @class = "input_text form-control", @unselectable = "on" })</td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerControlling.CaseNonOfficeFeeAmount)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerControlling.CaseNonOfficeFeeAmount, new {  @class = "input_text form-control", @unselectable = "on" })</td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerControlling.CashedAmount)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerControlling.CashedAmount, new {  @class = "input_text form-control", @unselectable = "on" })</td>
+                                                                    <th>
+                                                                        @Html.LabelFor(m => m.Customer.CustomerControlling.CaseCount)
+                                                                    </th>
+                                                                    <td>@Html.TextBoxFor(m => m.Customer.CustomerControlling.CaseCount, new {  @class = "input_text form-control", @unselectable = "on" })</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="case-section-wrap" style="padding-top: 0;">
+                            <div class="case-section-product">
+                                <!-- product section -->
+                                <div class="product-container">
+                                    <div class="product-section">
+                                        <ul class="nav nav-tabs">
+                                            <li id="liCustomerContactsList" class='active'><a href="javascript:void(0);" id="btnCustomerContactsList">联系人</a></li>
+                                            <li id="liCustomerEventList"><a href="javascript:void(0);" id="btnCustomerEventList">事项记录</a></li>
+                                            <li id="liCustomerFileList"><a href="javascript:void(0);" id="btnCustomerFileList">客户文档</a></li>
+                                            <li class="pull-right" style=" border:none">
+                                                <div style="margin-top:3px">
+                                                    <div style="text-align: inherit;">
+                                                        <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+                                                            <input class="btn btn-primary ng-binding" type="button" id="btnCustomerCreateUpdate" value="保存" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </li>
+                                        </ul>
+                                        <div class="section-content clearfix">
+                                            <div class="product-col ng-scope" style="width: 100%">
+                                                <div id="dv_List">
+
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="case-section-right" style='width: 10%; '>
+                        <div class="case-section-wrap">
+                            <div id='divInvoiceInfo' class="case-section-product">
+                                <!-- product section -->
+                                <div class="product-container">
+                                    <div class="product-section">
+                                        <div class="section-content clearfix" style='padding:0px'>
+                                            <div class="ng-scope">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+
+                    <div class="i_common_select" id="divAssociateProvinceList" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+
+                    <div class="i_common_select" id="div_coordinatorlist" style="display: none;">
+                        <div class="i_common_wrap">
+                            <div class="i_common_list"></div>
+                        </div>
+                    </div>
+ 
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+

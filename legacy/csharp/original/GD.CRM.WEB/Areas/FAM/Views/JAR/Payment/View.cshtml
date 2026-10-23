@@ -1,0 +1,342 @@
+﻿@using Dchien.Legal.BizModel.FCM.Contract
+
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.AR.Payment.PaymentModel
+<script type="text/javascript" src="@Url.Content("~/Scripts/FAM/AR/FAM.JAR.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/components.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/font-awesome.css")" />
+<style>
+    input.input_text, textarea, select, input.input_time {
+        border: 1px solid #ccc;
+    }
+
+    /*select {
+        color: rgb(84, 84, 84);
+        background-color: rgb(235, 235, 228);
+    }*/
+
+    input.input_text, textarea, input.input_time {
+        padding: 2px 2px 2px 3px;
+    }
+
+    input.input_text, textarea, input.input_time {
+        background-color: #fff;
+    }
+
+    .case-form-control {
+        /*border-radius: 0px;*/
+        -webkit-transition: none;
+        transition: none;
+        font-size: 12px;
+        width: 100%;
+        height: 24px;
+    }
+
+    .case-section-product .product-container .product-section .section-content .content-table td {
+        padding-left: 1px;
+    }
+
+
+    .input_table th {
+        padding: 2px;
+        font-weight: normal;
+        text-align: right;
+    }
+
+    .input_table td {
+        padding: 2px;
+        text-align: left;
+    }
+
+    .case-section-wrap {
+        padding: 2px;
+    }
+
+    .case-section-main {
+        margin: 0 3px;
+        padding: 0px;
+        position: relative;
+    }
+</style>
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/case.index.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/case.createupdate.console.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/messageCenter.console.css")" />
+<div class="viewFramework-product viewFramework-product-col-1">
+    <div class="viewFramework-product-navbar ng-scope">
+        <!-- product nav -->
+        @{
+            Html.RenderPartial("~/Areas/FAM/Views/JAR/MenuList.cshtml");
+        }
+    </div><!-- /product nav -->
+    <div class="viewFramework-product-navbar-collapse ng-scope">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+    <div class="viewFramework-product-body">
+        <div class="ng-scope">
+            <div class="ng-scope">
+                <div class="case-section-main clearfix" style="padding:0px">
+                    <!-- 左侧 -->
+                    <div class="case-section-left" style="padding-right: 0%;">
+                        <div class="case-section-wrap">
+                            <div class="case-section-product">
+                                <!-- product section -->
+                                <div class="product-container">
+                                    <div class="product-section">
+                                        @using (Html.BeginForm("PaymentCreate", "AR", FormMethod.Post, new { id = "paymentForm", enctype = "multipart/form-data", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                                        {
+                                            <div class="section-content clearfix" style="padding: 0;">
+                                                <div class="ng-scope">
+                                                    @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractId)
+                                                    @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractNo)
+                                                    @Html.HiddenFor(m => m.Customer.CustomerBasic.CustomerId)
+                                                    @Html.HiddenFor(m => m.Customer.CustomerBasic.CustomerNo)
+                                                    <table class="input_table" style='width:100%'>
+                                                        <colgroup>
+                                                            <col style="width: 8%;" />
+                                                            <col style="width: 12%;" />
+                                                            <col style="width: 8%;" />
+                                                            <col style="width: 12%;" />
+                                                            <col style="width: 8%;" />
+                                                            <col style="width: 12%;" />
+                                                            <col style="width: 8%;" />
+                                                            <col style="width: 12%;" />
+                                                            <col style="width: 8%;" />
+                                                            <col style="width: 12%;" />
+                                                        </colgroup>
+                                                        <tr>
+                                                            <th colspan="10" style="text-align: center">
+                                                                <span style='font-weight: bold; font-size: 10pt; '>回款信息-查看</span>
+                                                            </th>
+                                                        </tr>
+
+                                                        <tr>
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Payment.PaymentBasic.InputDate)
+                                                            </th>
+                                                            <td>
+                                                                @Html.TextBoxFor(m => m.Payment.PaymentBasic.InputDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})" })
+                                                            </td>
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Contract.ContractBasicInfo.BusinessOwnerName)
+                                                            </th>
+                                                            <td>
+                                                                @Html.HiddenFor(m => m.Contract.ContractBasicInfo.BusinessOwner)
+                                                                @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.BusinessOwnerName, new { @class = "input_text case-form-control", @unselectable = "on", @readonly = true })
+                                                            </td>
+
+                                                            <th>
+                                                               增加预存款
+                                                            </th>
+                                                            <td>
+                                                                @Html.TextBoxFor(m => m.Payment.PaymentBasic.PrePaidAmount, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                                            </td>
+      
+                                                            <th>
+                                                                回款录入
+                                                            </th>
+                                                            <td>
+                                                                @Html.TextBoxFor(m => m.Payment.PaymentBasic.BusinessOwnerName, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                                            </td>
+                                                            <th colspan="2" rowspan="5">
+                                                            </th>
+                                                        </tr>
+                                                        <tr>
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Payment.PaymentBasic.PayerName)
+                                                            </th>
+                                                            <td colspan="3">
+                                                                @Html.TextBoxFor(m => m.Payment.PaymentBasic.PayerName, new { @class = "input_text case-form-control", @unselectable = "on" })
+                                                            </td>
+                                                            <th>
+                                                                客户名称
+                                                            </th>
+                                                            <td colspan="3">
+                                                                @Html.TextBoxFor(m => m.Customer.CustomerBasic.CustomerName, new { @class = "input_text case-form-control", @unselectable = "on" })
+                                                            </td>
+
+                                                        </tr>
+                                                        <tr>
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Payment.PaymentBasic.PaymentModeName)
+                                                            </th>
+                                                            <td>
+                                                                @Html.TextBoxFor(m => m.Payment.PaymentBasic.PaymentModeName, new { @class = "input_text case-form-control" })
+                                                            </td>
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Payment.PaymentBasic.CashedDate)
+                                                            </th>
+                                                            <td>
+                                                                @Html.TextBoxFor(m => m.Payment.PaymentBasic.CashedDate, "{0:yyyy-MM-dd}", new { @class = "input_time case-form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", required = "true" })
+                                                            </td>
+                                                            
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Payment.PaymentBasic.InvoiceNo)
+                                                            </th>
+                                                            <td>
+                                                                @Html.TextBoxFor(m => m.Payment.PaymentBasic.InvoiceNo,  new {@class = "input_text case-form-control", @unselectable = "on" })
+                                                            </td>
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Payment.PaymentBasic.TotalAmount)
+                                                            </th>
+                                                            <td>
+                                                                @Html.TextBoxFor(m => m.Payment.PaymentBasic.TotalAmount, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                                            </td>
+                                                        </tr>
+                  
+
+                                                    </table>
+                                            </div>
+                                        </div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="case-section-wrap" style="padding-top: 0;">
+                            <div class="case-section-product">
+                                <!-- product section -->
+                                <div class="product-container">
+                                    <div class="product-section">
+                                        <ul class="nav nav-tabs">
+                                            <li id="liContractObjectList" class='active'><a href="javascript:void(0);" id="btnContractObjectList">回款明细</a></li>
+                                        </ul>
+                                        <div class="section-content clearfix">
+                                            <div class="product-col ng-scope" style="width: 100%">
+                                                <div>
+                                                    <table class="input_table" style='width:100%'>
+                                                        <colgroup>
+                                                            <col style="width: 8%;" />
+                                                            <col style="width: 12%;" />
+                                                            <col style="width: 8%;" />
+                                                            <col style="width: 12%;" />
+                                                            <col style="width: 8%;" />
+                                                            <col style="width: 12%;" />
+                                                            <col style="width: 8%;" />
+                                                            <col style="width: 12%;" />
+                                                            <col style="width: 8%;" />
+                                                            <col style="width: 12%;" />
+                                                        </colgroup>
+                                                        <tr>
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Contract.ContractBasicInfo.ContractNo)
+                                                            </th>
+                                                            <td>
+                                                                @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractId)
+                                                                @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.ContractNo, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                                            </td>
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Contract.ContractBasicInfo.ContractName)
+                                                            </th>
+                                                            <td colspan="3">
+                                                                @Html.TextBoxFor(m => m.Contract.ContractBasicInfo.ContractName, new { @class = "input_text case-form-control", @unselectable = "on", @readonly = true })
+                                                            </td>
+                                                            <th>
+                                                                @Html.LabelFor(m => m.Customer.CustomerBasic.CustomerNo)
+                                                            </th>
+                                                            <td>
+                                                                @Html.TextBoxFor(m => m.Customer.CustomerBasic.CustomerNo, new { @readonly = true, @class = "input_text case-form-control", @unselectable = "on" })
+                                                            </td>
+                                                        </tr>
+                                                    </table>
+                                                    <br>
+                                                </div>
+                                                <div id="dv_List">
+                                                    <div class="gridSection">
+                                                        <div id='divContextList' style="overflow-y: auto; margin-top: -1px; overflow-x: hidden; overflow-y: auto; ">
+                                                            <table class='table table-hover' id="tblARObjectList" width="100%">
+                                                                <colgroup>
+                                                                    <col style="width: 4%">
+                                                                    <col style="width: 6%">
+                                                                    <col style="width: 15%">
+                                                                    <col style="width: 10%">
+                                                                    <col style="width: 10%">
+                                                                    <col style="width: 8%">
+                                                                    <col style="width: 8%">
+                                                                    <col style="width: 8%">
+                                                                    <col style="width: 8%">
+                                                                    <col style="width: 8%">
+
+                                                                </colgroup>
+                                                                <thead>
+                                                                    <tr>
+                                                                        <th>序号</th>
+                                                                        <th>案件类型</th>
+                                                                        <th>案件名称</th>
+                                                                        <th>案号</th>
+                                                                        <th>申请号</th>
+                                                                        <th>官费类型</th>
+                                                                        <th>官费</th>
+                                                                         <th>代理费</th>
+                                                                         <th>其他费用费用</th>
+                                                                         <th>合计</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    @{ var i = 1; }
+                                                                    @if (Model.Payment != null && Model.Payment.PaymentObjects != null)
+                                                                    {
+                                                                        var caseFeeTypes = CaseTypeService.Instance.GetAllCaseFeeTypes();
+
+                                                                        foreach (var item in Model.Payment.PaymentObjects.OrderBy(x=>x.CaseNo))
+                                                                        {
+                                                                            var caseInfo = CaseService.Instance.GetCaseBasic(item.CaseId);
+
+                                                                            <tr>
+                                                                                <td>
+                                                                                    <span>@(i++)</span>
+                                                                                </td>
+                                                                                <td style="text-align: center">
+                                                                                    <span>@CaseTypeService.Instance.GetCaseType(caseInfo.CaseBasicInfo.CaseTypeId).CaseTypeName</span>
+                                                                                </td>
+                                                                                <td style="text-align: center">
+                                                                                    <span>@caseInfo.CaseBasicInfo.CaseName</span>
+                                                                                </td>
+                                                                                <td style="text-align: center;">
+                                                                                    <span>@caseInfo.CaseBasicInfo.CaseNo</span>
+                                                                                </td>
+                                                                                <td style="text-align: center;">
+                                                                                    <span>@caseInfo.CaseBasicInfo.CaseRequestNo</span>
+                                                                                </td>
+                                                                                <td style="text-align: center;">
+                                                                                    <span>@(item.CaseOfficeFeeTypeId.HasValue ? caseFeeTypes.FirstOrDefault(x => x.FeeTypeId == item.CaseOfficeFeeTypeId).FeeTypeName : "")</span>
+                                                                                </td>
+                                                                                <td style="text-align: center;">
+                                                                                    <span>@(item.CaseOfficeFeeCashedAmount.HasValue ? item.CaseOfficeFeeCashedAmount.Value : 0)</span>
+                                                                                </td>
+                                                                                <td style="text-align: center;">
+                                                                                    <span>@(item.CaseNonOfficeFeeCashedAmount.HasValue ? item.CaseNonOfficeFeeCashedAmount.Value : 0)</span>
+                                                                                </td>
+                                                                                <td style="text-align: center">
+                                                                                    <span>@(item.CaseCommissionFeeCashedAmount.HasValue ? item.CaseCommissionFeeCashedAmount.Value : 0)</span>
+                                                                                </td>
+                                                                                <td style="text-align: center">
+                                                                                    <span>@(item.CaseFeeCashedTotalAmount.HasValue ? item.CaseFeeCashedTotalAmount.Value : 0)</span>
+                                                                                </td>
+   
+                                                                            </tr>
+                                                                        }
+                                                                    }
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

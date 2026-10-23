@@ -1,0 +1,148 @@
+﻿@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.CIT.ViewModels.Investigation.InvestigationModel
+<script type="text/javascript" src="@Url.Content("~/Scripts/CIT/Investigation/CIT.Investigation.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<div class="case-section-wrap" style="padding-top: 3px;">
+    <div class="case-section-product">
+        <!-- product section -->
+        <div class="product-container">
+            <div class="product-section">
+                <div class="section-content clearfix" style="padding: 0px; padding-left: 5px; padding-right: 5px; ">
+                    <form id="form">
+                        <div class="ng-scope">
+                            @Html.HiddenFor(m => m.Investigation.Basic.InvestigationId)
+                            @Html.HiddenFor(m => m.Investigation.Basic.InvestigationNo)
+                            @Html.HiddenFor(m => m.Investigation.Basic.InvestigationGuid)
+
+                            <div class="table-viewer-header clearfix" style="margin-top: 0px">
+                                <span class="table-viewer-topbar-title">
+                                    基本信息
+                                </span>
+                                <div class="pull-right table-viewer-topbar-content" >
+
+                                    @if (Model.Investigation.Basic.BusinessOwner == LoginHelper.GetUserName())
+                                    {
+                                        <input class="btn btn-default" type="button" id="btnInvestigationEdit" value="修改">
+                                    }
+
+                                    <input class="btn btn-default" type="button" onclick="javascript:investigation.Investigations.Investigation.Close();" value="关闭">
+                                    <input class="btn btn-default" type="button" id="btnInvestigationCreateUpdate" value="保存" style="display:none">
+
+                                </div>
+                            </div>
+                            <div id="divBasic" class="gridSection">
+
+                                <table class="view_table table" style="width:100%">
+                                    <colgroup>
+                                        <col style="width: 8%;" />
+                                        <col style="width: 12%;" />
+                                        <col style="width: 8%;" />
+                                        <col style="width: 12%;" />
+                                        <col style="width: 8%;" />
+                                        <col style="width: 12%;" />
+
+                                    </colgroup>
+                                    <tbody>
+
+                                        <tr>
+                                            <th>@Html.LabelFor(m => m.Investigation.Basic.InvestigationNo) </th>
+                                            <td style="text-align:left">@Html.DisplayTextFor(m => m.Investigation.Basic.InvestigationNo)</td>
+
+                                            <th>@Html.LabelFor(m => m.Investigation.Basic.BusinessOwnerName) </th>
+                                            <td style="text-align:left">@Html.DisplayTextFor(m => m.Investigation.Basic.BusinessOwnerName)</td>
+                                            <th>@Html.LabelFor(m => m.Investigation.Basic.CaseTypeId) </th>
+                                            <td style="text-align:left">
+                                                @Html.DisplayTextFor(m => m.Investigation.Basic.CaseTypeName)
+                                            </td>
+                                        </tr>
+                                        <tr>
+
+                                            <th>@Html.LabelFor(m => m.Investigation.Basic.IndicterName) </th>
+                                            <td colspan="3" style="text-align:left;white-space: nowrap;" >
+
+                                                @Html.DisplayTextFor(m => m.Investigation.Basic.IndicterName)
+                                            </td>
+
+                                            <th>@Html.LabelFor(m => m.Investigation.Basic.AuthorizationBeginTime) </th>
+                                            <td>
+                                                @Html.DisplayFor(m => m.Investigation.Basic.AuthorizationBeginTime)
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <th>@Html.LabelFor(m => m.Investigation.Basic.Province) </th>
+                                            <td colspan="3" style="text-align:left;white-space: nowrap;">
+                                                @Html.DisplayTextFor(m => m.Investigation.Basic.InvestigationRegion)
+                                            </td>
+
+                                            <th>@Html.LabelFor(m => m.Investigation.Basic.AuthorizationEndTime) </th>
+                                            <td>
+                                                @Html.DisplayFor(m => m.Investigation.Basic.AuthorizationEndTime)
+                                            </td>
+                                        </tr>
+
+                                        <tr>
+                                            <th>@Html.LabelFor(m => m.Investigation.Basic.Remark ) </th>
+                                            <td colspan="5" style="text-align:left;">
+                                                @Html.DisplayTextFor(m => m.Investigation.Basic.Remark)
+                                            </td>
+
+                                           
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="case-section-wrap" style="padding-top: 0;">
+    <div class="case-section-product">
+        <!-- product section -->
+        <div class="product-container">
+            <div class="product-section">
+
+                <div class="section-content clearfix" style="padding: 0px; padding-left: 5px; padding-right: 5px; ">
+                    <div class="table-viewer-header clearfix" style="margin-top: 0px">
+                        <span class="table-viewer-topbar-title">
+                            调查资料
+                        </span>
+
+                    </div>
+
+                    <div id="dv_List">
+
+                    </div>
+
+                </div>
+                </div>
+        </div>
+    </div>
+</div>
+<div class="case-section-wrap" style="padding-top: 0;">
+    <div class="case-section-product">
+        <!-- product section -->
+        <div class="product-container">
+            <div class="product-section">
+
+                <div class="section-content clearfix" style="padding: 0px; padding-left: 5px; padding-right: 5px; ">
+                    <div class="table-viewer-header clearfix" style="margin-top: 0px">
+                        <span class="table-viewer-topbar-title">
+                            调查子任务
+                        </span>
+
+                    </div>
+
+                    <div id="dv_TaskList">
+
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+

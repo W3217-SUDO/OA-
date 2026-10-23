@@ -1,0 +1,54 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity
+@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.CRM.ViewModels.CustomerFile.CustomerFileListModel
+
+
+<form id="postForm" action="">
+    <div class="gridSection">
+        <div id='divContextList' style="overflow-y: auto; margin-top: -1px; overflow-x: hidden; overflow-y: auto; ">
+            <table class='table table-hover' id="tblCustomerFileList" width="100%">
+                <colgroup>
+                    <col style="width: 5%">
+                    <col style="width: 15%">
+                    <col style="width: 45%">
+                    <col style="width: 15%">
+                    <col style="width: 10%">
+                 </colgroup>
+                <thead>
+                    <tr>
+                        <th style="text-align: center">
+                            序号
+                        </th>
+                        <th style="text-align: center">
+                            上传人
+                        </th>
+                        <th style="text-align: center">
+                            文件名称
+                        </th>
+                        <th style="text-align: center">
+                            文档日期
+                        </th>
+                        <th style="text-align: center">
+                            查看
+                        </th>
+ 
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="display: none">
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                     </tr>
+                </tbody>
+            </table>
+           
+        </div>
+    </div>
+  
+</form>
+

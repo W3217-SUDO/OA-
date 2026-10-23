@@ -1,0 +1,103 @@
+﻿@using Dchien.Legal.Service.Lawsuit.Case
+
+@model Dchien.Legal.Web.Areas.Lawsuit.ViewModels.Case.AR.CaseFeeModel
+
+<div class="modal fade" id="createModal">
+    <div class="modal-dialog" style="width:1200px">
+        <div class="modal-content">
+            @using (Html.BeginForm("Edit", "ARCaseFee", FormMethod.Post, new { id = "create", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+            {
+                <div class="modal-header">
+                    <button type="button" class="close" id="btnCaseFeeCreateClose">×</button>
+                    <h5 class="modal-title ng-binding">修改费用</h5>
+                </div>
+
+                <div class="modal-body">
+                    <div class="form-group">
+                        <div class="col-sm-12">
+                            <div class="gridSection">
+                                    <table class='table table-hover' id="tblContractObjectList" width="100%">
+                                        <colgroup>
+                                            <col style="width: 12%">
+                                            <col style="width:10%">
+                                            <col style="width: 8%">
+                                            <col style="width: 10%">
+                                            <col style="width: 8%">
+                                            <col style="width: 10%">
+                                            <col style="width: 8%">
+                                            <col style="width: 15%">
+                                        </colgroup>
+                                        <thead>
+                                            <tr>
+                                                <th>合同</th>
+                                              
+                                                <th>官费类型</th>
+                                                <th>官费金额</th>
+                                                <th>代理费类型</th>
+                                                <th>代理费</th>
+                                                <th>其他费用类型</th>
+                                                <th>其他费用</th>
+                                                <th>说明</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @if (Model.ContractObject != null)
+                                            {
+                                                var caseInfo = CaseService.Instance.GetCaseBasic(Model.ContractObject.CaseId.Value);
+
+                                                var contractObjectList = new List<SelectListItem>();
+                                                contractObjectList.Add(new SelectListItem { Value = Model.ContractObject.ContractId.ToString(), Text = Model.ContractObject.ContractNo });
+
+                                                <tr>
+                                                    <td>
+                                                        <span>@Html.DropDownListFor(m => m.ContractObject.ContractId, contractObjectList, new { @id = "item_ContractId", @class = "form-control", @unselectable = "on",@disabled= "disabled" })</span>
+                                                    </td>
+                                                    <td style="text-align: center;">
+                                                        <span>@Html.DropDownListFor(m => m.ContractObject.CaseOfficeFeeTypeId, CaseTypeService.Instance.GetCaseOfficeFeeTypeList(),
+                                                             new { @id = "item_CaseOfficeFeeTypeId", @CaseOfficeFeeId=Model.ContractObject.CaseOfficeFeeId,  @class = "form-control", @unselectable = "on" })</span>
+                                                    </td>
+
+                                                    <td style="text-align: center">
+                                                        <span>@Html.TextBoxFor(m => m.ContractObject.CaseOfficeFeeAmount, new { @id = "item_CaseOfficeFeeAmount", @class = "form-control", @unselectable = "on" })</span>
+                                                    </td>
+
+  
+                                                    <td style="text-align: center;">
+                                                        <span>@Html.DropDownListFor(m => m.ContractObject.CaseNonOfficeFeeTypeId,
+                                                             CaseTypeService.Instance.GetCaseNonOfficeFeeTypeList(),
+                                                             new { @id = "item_CaseNonOfficeFeeTypeId", @CaseNonOfficeFeeId = Model.ContractObject.CaseNonOfficeFeeId, @class = "form-control", @unselectable = "on" })</span>
+                                                    </td>
+                                                    <td>
+                                                        <span>@Html.TextBoxFor(m => m.ContractObject.CaseNonOfficeFeeAmount, new { @id = "item_CaseNonOfficeFeeAmount", @class = "form-control", @unselectable = "on" })</span>
+                                                    </td>
+
+                                                    <td style="text-align: center;">
+                                                        <span>
+                                                            @Html.DropDownListFor(m => m.ContractObject.CaseCommissionFeeTypeId,
+                                                             CaseTypeService.Instance.GetCaseCommissionFeeTypeList(),
+                                                             new { @id = "item_CaseCommissionFeeTypeId", @CaseCommissionFeeTypeId = Model.ContractObject.CaseCommissionFeeTypeId, @class = "form-control", @unselectable = "on" })
+                                                    </span>
+                                                </td>
+                                                    <td>
+                                                        <span>@Html.TextBoxFor(m => m.ContractObject.CaseCommissionFeeAmount, new { @id = "item_CaseCommissionFeeAmount", @CaseCommissionFeeId = Model.ContractObject.CaseCommissionFeeId, @class = "form-control", @unselectable = "on"  })</span>
+                                                    </td>
+                                                    <td>
+                                                        <span>@Html.TextBoxFor(m => m.ContractObject.Remark, new { @id = "item_Remark", @class = "form-control", @unselectable = "on" })</span>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                            </div>
+                        </div>
+                    </div>
+                 </div>
+                <div class="modal-footer">
+                    <input class="btn btn-primary ng-binding" type="button" id="btnCaseFeeCreateUpdate" value="保存" />
+                    <input class="btn btn-default ng-binding" type="button" id="btnCaseFeeCreateCancel" value="取消" />
+                </div>
+            }
+        </div>
+    </div>
+</div>
+

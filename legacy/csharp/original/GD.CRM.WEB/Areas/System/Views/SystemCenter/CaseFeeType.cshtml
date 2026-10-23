@@ -1,0 +1,100 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.BAS.Type
+
+@model Dchien.Legal.Web.Areas.System.ViewModels.SystemCenter.CaseFeeType.CaseFeeTypeModel
+
+<script type="text/javascript"></script>
+
+<div class="modal fade" id="caseFeeTypeModal" >
+         <div class="modal-dialog" style="width:560px">
+            <div class="modal-content" ng-transclude="">
+                <div class="ng-scope">
+                    @using (Html.BeginForm("CaseFeeType", "SystemCenter", FormMethod.Post, new { id = "CaseFeeType", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                    {
+                        @Html.HiddenFor(m => m.CaseFeeType.FeeTypeId)
+                        @Html.HiddenFor(m => m.IsNew )
+
+                        <div class="modal-header">
+                            <button type="button" class="close" id="btnCaseFeeTypeClose">×</button>
+                            <h5 class="modal-title ng-binding">费用类型</h5>
+                        </div>
+
+
+                        <div class="modal-body">
+                            <div>
+                                @if (Model.CaseFeeTypeId.HasValue)
+                                {
+                                    <div class="form-group">
+                                        <label for="CaseFileType_DirId" class="col-sm-3 control-label">
+                                            <span class="text-danger ng-binding">*</span>
+                                            <span class="ng-binding">类型代码</span>
+                                        </label>
+                                        <div class="col-sm-6">
+                                            @Html.TextBoxFor(m => m.CaseFeeTypeId, new
+                                       {
+                                           @readonly = true,
+                                           @maxlength = "7",
+                                           @class = "form-control",
+                                           @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')",
+                                           @onafterpaste = "this.value=this.value.replace(/\\D/g,'')",
+                                           @placeholder = "小于7位数字类型."
+                                       })
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="form-group">
+                                        <label for="CaseFileType_DirId" class="col-sm-3 control-label">
+                                            <span class="text-danger ng-binding">*</span>
+                                            <span class="ng-binding">类型代码</span>
+                                        </label>
+                                        <div class="col-sm-6">
+                                            @Html.TextBoxFor(m => m.CaseFeeTypeId, new
+                                       {
+                                           @maxlength = "7",
+                                           @class = "form-control",
+                                           @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')",
+                                           @onafterpaste = "this.value=this.value.replace(/\\D/g,'')",
+                                           @placeholder = "小于7位数字类型."
+                                       })
+                                        </div>
+                                    </div>
+                                }
+
+
+                                <div class="form-group">
+                                    <label for="CaseFileType_FileTypeName" class="col-sm-3 control-label">
+                                        <span class="text-danger ng-binding">*</span>
+                                        <span class="ng-binding">类型名称</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        @Html.TextBoxFor(m => m.CaseFeeType.FeeTypeName, new { @class = "form-control" })
+                                    </div>
+                                </div>
+
+
+                                <div class="form-group">
+                                    <label for="CaseFileType_TransformedFileName" class="col-sm-3 control-label">
+                                        <span class="text-danger ng-binding"></span>
+                                        <span class="ng-binding">费用大类</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        @Html.DropDownListFor(m => m.CaseFeeType.TypeId, CaseFeeTypeService.Instance.GetCaseFeeTypeIdList(), new { @class = "form-control", @style = "width:100%" })
+                                    </div>
+                                </div>
+
+                            </div>
+
+                        </div>
+                        <div class="modal-footer">
+                            <input class="btn btn-primary ng-binding" type="button" id="btnCaseFeeType" value="确定" />
+                            <input class="btn btn-default ng-binding" type="button" id="btnCaseFeeTypeCancel" value="取消" />
+                        </div>
+                    }
+                </div>
+            </div>
+        </div><!-- /.modal -->
+    
+</div>

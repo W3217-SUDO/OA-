@@ -1,0 +1,97 @@
+﻿@using Dchien.Legal.Service
+@using Dchien.Legal.Entity.System
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+    var caseTypeId = string.Empty;
+    var invoiceTypeId = string.Empty;
+
+    if (!string.IsNullOrEmpty(this.Request["caseTypeId"]))
+    {
+        caseTypeId = this.Request["caseTypeId"].ToLower();
+    }
+    if (!string.IsNullOrEmpty(this.Request["invoiceTypeId"]))
+    {
+        invoiceTypeId = this.Request["invoiceTypeId"].ToLower();
+    }
+    var actived = "active";
+
+    var menus = MenuService.Instance.GetMenusByCurrentUser();
+}
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding">收发文台</div>
+        <div class="ng-isolate-scope"></div>
+        <div class="product-nav-list">
+            <ul class="top-level">
+
+                @{
+
+                    if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1101001001) != null)
+                    {
+                        actived = action == "PatentOfficeFileImport".ToLower() ? "class=active" : "";
+                        <li @actived>
+                            <div class="ng-isolate-scope">
+                                
+                                    <a href=@Url.Content(string.Format("~/{0}/FIO/PatentOffice/PatentOfficeFileImport", PageId.PageId_1101001001)) class="ng-scope" >
+                                        <div class="nav-icon"></div>
+                                        <div class="nav-title ng-binding">专利官文导入</div>
+                                    </a>
+                            </div>
+                        </li>
+                    }
+
+                    if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1101001002) != null)
+                    {
+                        actived = action == "PatentOfficeFileList".ToLower() ? "class=active" : "";
+                        <li @actived>
+                            <div class="ng-isolate-scope">
+                                 
+                                    <a href=@Url.Content(string.Format("~/{0}/FIO/PatentOffice/PatentOfficeFileList", PageId.PageId_1101001002)) class="ng-scope">
+                                        <div class="nav-icon"></div>
+                                        <div class="nav-title ng-binding">专利官文查询</div>
+                                    </a>
+                            </div>
+                        </li>
+                    }
+
+                    if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1101001003) != null)
+                    {
+                        actived = action == "UnDisposedPatentOfficeFileList".ToLower() ? "class=active" : "";
+                        <li @actived>
+                            <div class="ng-isolate-scope">
+                                 
+                                    <a href=@Url.Content(string.Format("~/{0}/FIO/PatentOffice/UnDisposedPatentOfficeFileList", PageId.PageId_1101001003)) class="ng-scope">
+                                        <div class="nav-icon"></div>
+                                        <div class="nav-title ng-binding">未导入专利官文</div>
+                                    </a>
+                            </div>
+                        </li>
+                    }
+
+                    if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_1101001004) != null)
+                    {
+                        actived = action == "PatentOfficeFileCheckList".ToLower() ? "class=active" : "";
+                        <li @actived>
+                            <div class="ng-isolate-scope">
+                                 
+                                    <a href=@Url.Content(string.Format("~/{0}/FIO/PatentOffice/PatentOfficeFileCheckList", PageId.PageId_1101001004)) class="ng-scope">
+                                        <div class="nav-icon"></div>
+                                        <div class="nav-title ng-binding">专利官文检查</div>
+                                    </a>
+                            </div>
+                        </li>
+                    }
+
+                }
+
+            </ul>
+        </div>
+    </div>
+    <div class="product-nav-scene product-nav-sub-scene">
+        <div class="product-nav-title">xxx</div>
+        <div class="product-nav-list">
+            <ul></ul>
+        </div>
+    </div>
+</div>

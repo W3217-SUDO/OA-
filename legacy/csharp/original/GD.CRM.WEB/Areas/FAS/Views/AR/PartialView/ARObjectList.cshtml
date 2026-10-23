@@ -1,0 +1,108 @@
+﻿@using Dchien.Legal.Common
+@using Dchien.Legal.Entity
+@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.IPR.Case
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.AR.ARObjectListModel
+
+
+<form id="postForm" action="">
+    <div id="casegridSection" class="gridSection">
+        <div id='divContextList' style="overflow-y: auto; margin-top: -1px; overflow-x: hidden; overflow-y: auto; ">
+            <table class='table table-hover' id="tblARObjectList" width="100%">
+                <colgroup>
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 10%">
+                    <col style="width: 5%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                    <col style="width: 8%">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>案号</th>
+                        <th>申请号</th>
+                        <th>申请日</th>
+                        <th>官费类型</th>
+                        <th>官费金额</th>
+                        <th>年度</th>
+                        <th>首年</th>
+                        <th>代理费类型</th>
+                        <th>代理费</th>
+                        <th>说明</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="display: none">
+                        <td style="text-align: left"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                        <td style="text-align: center"></td>
+                    </tr>
+
+                    @if (Model.ARObjects != null && Model.ARObjects.Count > 0)
+                    {
+                        foreach (var item in Model.ARObjects)
+                        {
+                            <tr>
+                                <td>
+                                    @Html.TextBoxFor(m => item.CaseNo, new { @class = "item_CaseNo form-control", })
+                                    @Html.HiddenFor(m => item.CaseId, new { @class = "item_CaseId form-control", })
+                                </td>
+                                <td>
+                                    @Html.TextBoxFor(m => item.CaseRequestNo, new { @class = "item_CaseRequestNo form-control", })
+                                </td>
+                                <td>
+                                    @Html.TextBoxFor(m => item.CaseRequestDate, "{0:yyyy-MM-dd}", new { @class = "item_CaseRequestDate form-control", @readonly = true })
+                                </td>
+                                <td>
+                                    @Html.DropDownListFor(m => item.CaseOfficeFeeTypeId, CaseTypeService.Instance.GetCaseOfficeFeeTypeList(), new { @class = "form-control" })
+                                </td>
+                                <td>
+                                    @Html.TextBoxFor(m => item.CaseOfficeFeeAmount, new { @class = "item_CaseOfficeFeeAmount form-control", @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')", @onafterpaste = "this.value=this.value.replace(/\\D/g,'')" })
+                                </td>
+                                <td>
+                                    <select class="form-control" id="item_CaseFeeAnnualYear" disabled='disabled'>
+                                        <option value="-1">无</option>
+                                    </select>
+                                </td>
+                                <td style="text-align: center">
+                                    @Html.CheckBoxFor(m => item.IsFirstYear, new { @class = "item_IsFirstYear", style = "height: 20px;width: 20px ", @disabled = "disabled" })
+                                </td>
+                                <td>
+                                    @Html.DropDownListFor(m => item.CaseNonOfficeFeeTypeId, CaseTypeService.Instance.GetCaseNonOfficeFeeTypeList(), new { @class = "form-control" })
+                                </td>
+                                <td>
+                                    @Html.TextBoxFor(m => item.CaseNonOfficeFeeAmount, new { @class = "item_CaseNonOfficeFeeAmount form-control", @onkeyup = "javascript:this.value=this.value.replace(/\\D/g,'')", @onafterpaste = "this.value=this.value.replace(/\\D/g,'')" })
+                                </td>
+                                <td>
+                                    @Html.TextBoxFor(m => item.Remark, new { @class = "item_Remark form-control", })
+                                </td>
+                                <td>
+                                    <input type="button" value="新增" class="btn_ar_add" />
+                                    <input type="button" value="移除" class="btn_ar_remove" />
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div style="display: none;" id="div_AR_CaseFee">
+    </div>
+</form>
+

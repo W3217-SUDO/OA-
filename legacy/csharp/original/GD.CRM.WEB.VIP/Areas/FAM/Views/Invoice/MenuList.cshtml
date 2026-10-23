@@ -1,0 +1,68 @@
+﻿@using Dchien.Legal.Service
+@using Dchien.Legal.Entity.System
+@{
+    var controller = ViewContext.RouteData.Values["controller"].ToString().ToLower();
+    var action = ViewContext.RouteData.Values["action"].ToString().ToLower();
+
+    var actived = "active";
+    var menus = MenuService.Instance.GetMenusByCurrentUser();
+
+}
+<div class="product-nav-stage ng-scope product-nav-stage-main">
+    <div class="product-nav-scene product-nav-main-scene">
+        <div class="product-nav-title ng-binding">开票管理</div>
+        <div class="ng-isolate-scope"></div>
+        <div class="product-nav-list">
+            <ul class="top-level">
+                @{
+
+                    if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_5001006001) != null)
+                    {
+                        actived = (controller == "Invoice".ToLower() && action == "InvoiceList".ToLower()) ? "class=active" : "";
+                        <li @actived>
+                            <div class="ng-isolate-scope">
+                               
+                                    <a href=@Url.Content(string.Format("~/{0}/FAM/Invoice/InvoiceList", PageId.PageId_5001006001)) class="ng-scope">
+                                        <div class="nav-icon"></div>
+                                        <div class="nav-title ng-binding">我的开票</div>
+                                    </a>
+                            </div>
+                        </li>
+                    }
+                    if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_5001006002) != null)
+                    {
+                        actived = (controller == "InvoiceProcess".ToLower() && action == "PendingList".ToLower()) ? "class=active" : "";
+                        <li @actived>
+                            <div class="ng-isolate-scope">
+                                 
+                                    <a href=@Url.Content(string.Format("~/{0}/FAM/InvoiceProcess/PendingList", PageId.PageId_5001006002)) class="ng-scope">
+                                        <div class="nav-icon"></div>
+                                        <div class="nav-title ng-binding">待处理开票</div>
+                                    </a>
+                            </div>
+                        </li>
+                    }
+                    if (menus.FirstOrDefault(m => m.MenuCode == PageId.PageId_5001006003) != null)
+                    {
+                        actived = (controller == "InvoiceProcess".ToLower() && action == "InvoicedList".ToLower()) ? "class=active" : "";
+                        <li @actived>
+                            <div class="ng-isolate-scope">
+                                
+                                    <a href=@Url.Content(string.Format("~/{0}/FAM/InvoiceProcess/InvoicedList", PageId.PageId_5001006003)) class="ng-scope">
+                                        <div class="nav-icon"></div>
+                                        <div class="nav-title ng-binding">公司开票</div>
+                                    </a>
+                            </div>
+                        </li>
+                    }
+                }
+            </ul>
+        </div>
+    </div>
+    <div class="product-nav-scene product-nav-sub-scene">
+        <div class="product-nav-title">xxx</div>
+        <div class="product-nav-list">
+            <ul></ul>
+        </div>
+    </div>
+</div>

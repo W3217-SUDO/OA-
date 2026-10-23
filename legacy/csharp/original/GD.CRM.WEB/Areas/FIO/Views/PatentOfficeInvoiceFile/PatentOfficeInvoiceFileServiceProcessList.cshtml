@@ -1,0 +1,290 @@
+﻿@using Dchien.Legal.Entity.FAM.AR.CaseFee
+@using Dchien.Legal.Entity.IPR.Case
+@using Dchien.Legal.Service
+@using Dchien.Legal.Service.FIO.PatentOfficeInvoice
+@model  Dchien.Legal.Web.Areas.FIO.ViewModels.PatentOfficeInvoiceFileListModel
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<script type="text/javascript" src="@Url.Content("~/Scripts/FIO/FIO.Patent.Office.InvoiceFile.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body" style="overflow-y:hidden">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>专利官费票据流程处理</h5>
+                            </div>
+                        </div>
+                        <div class="pull-left margin-top-1 col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid " id="postForm" >
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageId)
+                                <table class="search_table" style="width: 100%">
+                                    <colgroup>
+                                        <col style="width: 80px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 100px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 80px" />
+                                        <col style="width: 230px" />
+                                        <col style="width: 60px" />
+                                        <col/>
+                                    </colgroup>
+                                    <tr>
+
+                                        <th>
+                                            案号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseNo, new { @class = "form-control", @placeholder = "案件编号或申请号" })
+                                        </td>
+
+                                        <th>
+                                            专利名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CaseName, new { @class = "form-control", @placeholder = "专利名称" })
+                                        </td>
+
+                                        <th>
+                                            申请人：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.ApplicantName, new { @class = "form-control", @style = "width:93%" , @placeholder = "客户/申请人" })
+                                        </td>
+
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            票据号：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.InvoiceNo, new { @class = "form-control", @placeholder = "票据号" })
+                                        </td>
+                                        <th>
+                                            业务处理状态：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.BusinessProcessStatus, PatentOfficeInvoiceFileService.Instance.GetBusinessProcessStatusList(), new { @class = "form-control", @style = "width:95.5%" })
+                                        </td>
+ 
+
+                                        <th>
+                                            入库日期：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.InDateStart, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.InDateEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                        </td>
+
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            导入状态：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.Status, PatentOfficeInvoiceFileService.Instance.GetStatusList(), new { @class = "form-control", @style = "width:95.5%" })
+                                        </td>
+
+                                        <th>
+                                            流程处理状态：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.ServiceProcessStatus, PatentOfficeInvoiceFileService.Instance.GetServiceProcessStatusList(), new { @class = "form-control", @style = "width:95.5%" })
+                                        </td>
+
+
+                                        <th>
+                                            缴费日期：
+                                        </th>
+                                        <td  >
+                                            @Html.TextBoxFor(m => m.SearchCondition.InvoiceDateStart, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.InvoiceDateEnd, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                        </td>
+
+
+                                    </tr>
+                                        <tr>
+                                            <td  ></td>
+                                        <td colspan="4">
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnSearch">
+                                                <span>查询</span>
+                                            </a>
+                                            @*<a href="javascript:void(0);" class="btn btn-primary " id="btnPacking">
+                                                <span>打包下载</span>
+                                            </a>
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnServiceOnProcess">
+                                                <span>标记已跟进</span>
+                                            </a>
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnServiceProcess">
+                                                <span>标记已处理</span>
+                                            </a>
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnServiceUnProcess">
+                                                <span>标记未处理</span>
+                                            </a>
+
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnPatentOfficeFileListExportToExcel">
+                                                <span>导出</span>
+                                            </a>*@
+                                        </td>
+                                    </tr>
+                                </table>
+                            </form>
+                        </div>
+
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="ng-isolate-scope">
+                            <div class="ng-scope">
+                                <div id="casegridSection" class="gridSection">
+                                    <table id="" class="aps-table aps-widget aps-ani-transition" style="width:100%">
+                                        <colgroup>
+                                            <col style="width: 3%" />
+                                            <col style="width: 6%" />
+                                            <col style="width: 6%" />
+                                            <col style="width: 26%" />
+                                            <col style="width: 8%" />
+                                            <col style="width: 6%" />
+                                            <col style="width: 8%" />
+                                            <col style="width: 5%" />
+                                            <col style="width: 5%" />
+                                            <col style="width: 22%" />
+                                            <col style="width: 8%" />
+                                            <col style="width: 6%" />
+                                            <col style="width:17px" />
+                                        </colgroup>
+                                        <thead>
+                                            <tr>
+                                                <th>
+                                                    <input type="checkbox" id="chkInvoiceFileAll" class="">
+                                                </th>
+                                                <th style="text-align: center">流程处理</th>
+                                                <th style="text-align: center">业务处理</th>
+                                                <th style="text-align: center">文件名称</th>
+                                                <th style="text-align: center">申请号</th>
+                                                <th style="text-align: center">缴费日期</th>
+                                                <th style="text-align: center">票据号码</th>
+                                                <th style="text-align: center">开票金额</th>
+                                                <th style="text-align: center">状态</th>
+                                                <th style="text-align: center">申请人</th>
+                                                <th style="text-align: center">案号</th>
+                                                <th style="text-align: center">案件管理人</th>
+                                                <th></th>
+                                            </tr>
+                                        </thead>
+                                    </table>
+                                    <div id="divCaseFileList" style="border-top: 0px; margin-top: -1px; overflow-x:hidden; overflow-y: scroll; " >
+                                        <table id="tblInvoiceFileList" class="aps-table aps-widget aps-ani-transition ">
+                                            <colgroup>
+                                                <col style="width: 3%" />
+                                                <col style="width: 6%" />
+                                                <col style="width: 6%" />
+                                                <col style="width: 26%" />
+                                                <col style="width: 8%" />
+                                                <col style="width: 6%" />
+
+                                                <col style="width: 8%" />
+                                                <col style="width: 5%" />
+                                                <col style="width: 5%" />
+
+                                                <col style="width: 22%" />
+                                                <col style="width: 8%" />
+                                                <col style="width: 6%" />
+
+
+
+                                            </colgroup>
+                              
+                                            <tbody>
+                                                <tr style="display: none">
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: left"></td>
+                                                    <td style="text-align: left"></td>
+                                                     
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                  
+                                                    <td style="text-align: left"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: left"></td>
+                                                    <td style="text-align: center"></td>
+                                                </tr>
+                                                <tr style="display: none">
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: left"></td>
+                                                    <td style="text-align: left"></td>
+
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+
+                                                    <td style="text-align: left"></td>
+                                                    <td style="text-align: center"></td>
+                                                    <td style="text-align: center"></td>
+                                                    
+                                                </tr>
+                                            </tbody>
+                                            <tfoot class="ng-scope" style="display: none">
+                                                <tr>
+                                                    <td width="1">
+                                                        <input type="checkbox" id="chkInvoiceFileAll">
+                                                    </td>
+                                                    <td colspan="11">
+                                                        <div class="pull-left">
+                                                            <input type="button" id="btnPacking" class="btn btn-default" style="height:32px" value="打包下载" />
+                                                            <input type="button" id="btnServiceOnProcess" class="btn btn-default" style="height:32px" value="标记已跟进" />
+                                                            <input type="button" id="btnServiceProcess" class="btn btn-default" style="height:32px" value="标记已处理" />
+                                                            <input type="button" id="btnServiceUnProcess" class="btn btn-default" style="height:32px" value="标记未处理" />
+                                                            <input type="button" id="btnPatentOfficeFileListExportToExcel" class="btn btn-default" style="height:32px" value="导出" />
+                                                        </div>
+                                                        <div class="">
+                                                            <div class="pull-right page-box invoiceFileList">
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+ 
+                                            </tfoot>
+                                        </table>
+                                        </div>
+                                    </div>
+                                    <div class="simple-grid-none-data-wrap">
+                                        <div class="simple-grid-none-data text-center  ">
+                                            <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                                <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                                <div class="text-size-16 tip-text inline-block">
+                                                    <span class="margin-left " ng-bind-html="vm.msg">没有查询到符合条件的记录</span>
+                                                    <span class="">。</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="contextMenu" id="menu" style="display: none;">
+            <ul>
+                <li id="logging">增加日志</li>
+                <li id="download">打包下载</li>
+                <li id="serviceprocess">标记已处理</li>
+                <li id="serviceunprocess">标记未处理</li>
+            </ul>
+        </div>
+    </div>
+</div>

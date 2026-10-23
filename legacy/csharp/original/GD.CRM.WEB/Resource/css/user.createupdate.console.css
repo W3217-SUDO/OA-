@@ -1,0 +1,57 @@
+﻿/* role */  
+.role_box { background-color: #fff; font-size: 12px; width: 315px; }  
+.role_box a { text-decoration: none; }  
+.role_hd { height: 24px; border-color: #2C7ECF; border-style: solid; border-width: 1px 1px 0; background-color: #67A1E2; color: #fff; line-height: 24px; padding-left: 10px; }  
+.role_bd, .role_chooselist { border-color: #999999; border-style: solid; border-width: 0 1px 1px; overflow: hidden; padding:10px; }  
+.role_ol { margin:0; padding:0 0 20px; border-bottom: 1px solid #5DA9E2; }  
+.role_ol li { color: #005DAA; cursor: pointer; float: left; height: 20px; line-height: 20px; list-style-type: none; text-align: center; }  
+.role_ol li span { padding:0 8px; }  
+.role_ol li .hot_selected { display:block; padding:0 5px; background-color: #FFFFFF; border-color: #5DA9E2; border-style: solid; border-width: 1px 1px 0; color: #000000; font-weight: bold; }  
+.role_ul { zoom:1; margin:0; padding: 4px 0 0; }  
+.role_ul li { float: left; height: 24px; overflow: hidden; width: 72px; }  
+.role_ul li a{ display: block; height: 22px;  border: 1px solid #FFFFFF; color: #333; line-height: 22px; padding-left: 5px; }  
+.role_ul li a:hover { background-color: #E8F4FF; border: 1px solid #ACCCEF; text-decoration: none; } 
+.role_ul .l_role{min-width:72px;width:auto; white-space: nowrap;overflow:visible;}
+.role_ul .l_role a{padding:0 5px;}
+.role_chooselist{padding:5px 10px;}
+.role_chooselist .role_ul{border-bottom:1px dotted #ccc;padding-bottom:5px;}
+.role_chooselist .role_ul li a{color:#333}
+.role_chooselist .noborder{border:0 none}
+.resource_list .role_ul{padding-left:72px;}
+.resource_list .role_ul .li_title{margin-left:-72px;line-height:24px;_display:inline}
+.role_select { width:222px;font-family: Arial, Simsun; font-size: 12px; }  
+.role_wrap { width: 220px; margin: 0; padding: 0 0 4px; border: 1px solid #969696; background:#fff; text-align: left; }  
+.role_select .role_list { margin: 0; padding: 0; }  
+.role_select .role_list span { float: right; font: 10px/22px verdana; margin: 0; overflow: hidden; padding: 0; text-align: right; white-space: nowrap; width: 110px; }  
+.role_select .role_list a { border-bottom: 1px solid #FFFFFF; border-top: 1px solid #FFFFFF; color: #0055AA; cursor: pointer; display: block; height: 22px; line-height: 22px; overflow: hidden; padding: 1px 9px 0; text-align: left; text-decoration: none; }  
+.role_select .role_list a:hover,.role_select .role_list a.cur { background: none repeat scroll 0 0 #E8F4FF; border-bottom: 1px solid #7F9DB9; border-top: 1px solid #7F9DB9; }
+.role_select .role_list  a em{color:#999;font-style:normal}
+.role_select .role_selected { background: none repeat scroll 0 0 #FFE6A6; color: #FFFFFF; height: 22px; }  
+.role_select .role_pagebreak { display: none; line-height: 25px; margin: 0; padding: 0; text-align: center; }  
+.role_select .role_pagebreak a { color: #0055AA; display: inline-block; font-family: Arial, Simsun, sans-serif; font-size: 14px; margin: 0; padding: 0 4px; text-align: center; text-decoration: underline; width: 15px; }  
+.role_select #role_arrowl, .role_select #role_arrowr { color: #0055AA; }  
+.role_select a.role_current { color: #000; text-decoration: none; } 
+.role_select .role_sub_list{width: 100%; background: #fff; border: 1px solid #969696; position: absolute; left: 222px; padding-bottom: 4px;}
+.resource_list .h_list{padding-left:130px;}
+.resource_list .h_list .li_title{float:left;width:130px;margin-left:-130px;}
+.resource_list .h_list li{float:left;width:150px;}
+.from_box{width:360px;overflow:hidden;zoom:1;border:1px solid #BCD8F4;background:#F0FAFF;padding:5px 10px}
+.from_box li{width:60px;float:left;height:24px;line-height:24px;color:#0053AA}
+.hotel_first_has{position: absolute; right: 10px; top: 8px;}
+.hotel_first_has b,.hotel_first_has i{position: absolute; width: 0; height: 0; font-size: 0; line-height: 0; border-right: 0 none;}
+.hotel_first_has b{border-top: 5px dashed transparent; border-bottom: 5px dashed transparent; border-left: 5px solid #ffb533;}
+.hotel_first_has i{border-top: 5px dashed transparent; border-bottom: 5px dashed transparent; border-left: 5px solid #fff; left: -2px;}
+.role_select .role_list a:hover i, .role_select .role_list a.cur i{border-left: 5px solid #e8f4ff;}
+
+.role_select_w { width:350px;font-family: Arial, Simsun; font-size: 12px; }  
+.role_wrap_w { width: 350px; margin: 0; padding: 0 0 4px; border: 1px solid #969696; background:#fff; text-align: left; } 
+.role_select_w .role_list_w { margin: 0; padding: 0; }  
+.role_select_w .role_list_w span { float: right; font: 10px/22px verdana; margin: 0; overflow: hidden; padding: 0; text-align: right; white-space: nowrap; width: 110px; }  
+.role_select_w .role_list_w a { border-bottom: 1px solid #FFFFFF; border-top: 1px solid #FFFFFF; color: #0055AA; cursor: pointer; display: block; height: 22px; line-height: 22px; overflow: hidden; padding: 1px 9px 0; text-align: left; text-decoration: none; }  
+.role_select_w .role_list_w a:hover { background: none repeat scroll 0 0 #E8F4FF; border-bottom: 1px solid #7F9DB9; border-top: 1px solid #7F9DB9; }  
+.role_select_w .role_list_w  a em{color:#999;font-style:normal}
+.role_select_w .role_selected_w { background: none repeat scroll 0 0 #FFE6A6; color: #FFFFFF; height: 22px; }  
+.role_select_w .role_pagebreak { display: none; line-height: 25px; margin: 0; padding: 0; text-align: center; }  
+.role_select_w .role_pagebreak a { color: #0055AA; display: inline-block; font-family: Arial, Simsun, sans-serif; font-size: 14px; margin: 0; padding: 0 4px; text-align: center; text-decoration: underline; width: 15px; }  
+.role_select_w #role_arrowl, .role_select #role_arrowr { color: #0055AA; }  
+.role_select_w a.role_current { color: #000; text-decoration: none; } 

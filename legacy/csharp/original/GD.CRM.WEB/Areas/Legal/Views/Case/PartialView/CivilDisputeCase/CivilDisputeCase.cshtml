@@ -1,0 +1,714 @@
+﻿@using Dchien.Legal.Entity.Account
+@using Dchien.Legal.Entity.Legal.Case
+@using Dchien.Legal.Service.HR.Staff
+@using Dchien.Legal.Service.BAS.Court
+@using Dchien.Legal.Web.Areas.Legal.ViewModels.Case
+@using Dchien.Legal.Service
+
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.Case.CaseModel
+
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/CIT/Investigation/CIT.Investigation.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+
+<div class="case-section-wrap" style="padding:2px">
+    <div class="case-section-product">
+        <!-- product section -->
+        <div class="product-container">
+            <div class="product-section">
+                @using (Html.BeginForm("CaseInfo", "Case", FormMethod.Post, new { id = "caseForm", enctype = "multipart/form-data", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+                    @Html.HiddenFor(m => m.Case.Basic.CaseId)
+                    @Html.HiddenFor(m => m.Case.Basic.CaseNo)
+                    @Html.HiddenFor(m => m.Case.Basic.CaseTypeId)
+                    @*@Html.HiddenFor(m => m.Case.Basic.CasePhaseId)*@
+                    @Html.HiddenFor(m => m.Case.Basic.CustomerNo)
+                    @Html.HiddenFor(m => m.Case.Basic.ContractNo)
+
+                    @Html.HiddenFor(m => m.Case.Basic.CaseLawyer)
+                    @Html.HiddenFor(m => m.Case.Basic.CaseLawyerName)
+                    @Html.HiddenFor(m => m.Case.Basic.Investigator)
+                    @Html.HiddenFor(m => m.Case.Basic.InvestigatorName)
+                    @Html.HiddenFor(m => m.Case.Basic.CaseAssistant)
+                    @Html.HiddenFor(m => m.Case.Basic.CaseAssistantName)
+                    @Html.HiddenFor(m => m.Case.Basic.BusinessOwner)
+                    @Html.HiddenFor(m => m.Case.Basic.BusinessOwnerName)
+
+
+                    <div class="section-content clearfix" style='padding:0px'>
+                        <div class="ng-scope">
+                            <table class="input_table" id='tabCase' style='width:100%'>
+                                <colgroup>
+                                    <col style="width: 12%;" />
+                                    <col style="width: 10%" />
+                                    <col style="width: 10%;" />
+                                    <col style="width: 18%" />
+                                    <col style="width: 10%;" />
+                                    <col style="width: 12%" />
+                                    <col style="width: 10%;" />
+                                    <col style="width: 42%" />
+                                </colgroup>
+                                <tr>
+                                    <th>
+                                        @Html.LabelFor(m => m.Case.Basic.CaseNo)
+                                    </th>
+                                    <td>
+                                        @Html.DisplayTextFor(m => m.Case.Basic.CaseNo)
+                                    </td>
+
+                                    <th>
+                                        @Html.LabelFor(m => m.Case.Basic.CauseName)
+                                    </th>
+                                    <td  >
+
+                                        @Html.DisplayTextFor(m => m.Case.Basic.CauseName)
+                                    </td>
+                                    <th>
+                                        @Html.LabelFor(m => m.Case.Basic.CasePhaseId)
+                                    </th>
+                                    <td>
+                                        @Html.DisplayTextFor(m => m.Case.Basic.CasePhaseName)
+                                    </td>
+                                    <th>
+                                        原告
+                                    </th>
+                                    <td>
+                                        <div>
+                                            <span>
+                                                @if (!string.IsNullOrEmpty(Model.Case.Basic.AppellantNos))
+                                                {
+                                                    var appellantNames = Model.Case.Basic.AppellantNames.Split(',');
+                                                    var i = 0;
+                                                    foreach (var appellantNo in Model.Case.Basic.AppellantNos.Split(','))
+                                                    {
+                                                        <a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                           data-toggle="tooltip"
+                                                           data-container="body"
+                                                           href="javascript:$.customer.View('@appellantNo');"
+                                                           data-original-title="@appellantNames[i]">@appellantNames[i]</a>
+
+                                                        i++;
+                                                    }
+                                                }
+                                            </span>
+                                        </div>
+                                    </td>
+
+                                </tr>
+                                <tr>
+                                    <th>
+                                        @Html.LabelFor(m => m.Case.Basic.CaseName)
+                                    </th>
+                                    <td colspan=3>
+                                        @Html.DisplayTextFor(m => m.Case.Basic.CaseName)
+                                    </td>
+
+                                    <th>
+                                        @Html.LabelFor(m => m.Case.Basic.CourtLawyer  )
+                                    </th>
+                                    <td>
+                                        <div>
+                                            <span>
+                                                @if (!string.IsNullOrEmpty(Model.Case.Basic.CourtLawyer))
+                                                {
+                                                    var caseLawyerNames = Model.Case.Basic.CourtLawyerName.Split(',');
+                                                    var i = 0;
+                                                    foreach (var caseLawyer in Model.Case.Basic.CourtLawyer.Split(','))
+                                                    {
+                                                        var staff = StaffService.Instance.GetStaff(caseLawyer);
+
+                                                        <a class="popover-show" style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                           data-container="body"
+                                                           data-toggle="popover_lawyer"
+                                                           title="开庭律师"
+                                                           staff_name="@staff.StaffBasic.StaffName"
+                                                           staff_chname="@staff.StaffBasic.StaffChName"
+                                                           staff_mobilephone="@staff.StaffBasic.MobilePhone"
+                                                           staff_email="@staff.StaffBasic.Email"
+                                                           href="javascript:;"
+                                                           target="_blank" data-original-title="@caseLawyerNames[i]">@caseLawyerNames[i]</a>
+                                                        i++;
+                                                    }
+                                                }
+                                            </span>
+                                        </div>
+                                    </td>
+     
+                                    @*<th>
+                                        原告代理人
+                                    </th>
+                                    <td>
+                                        <div>
+                                            <span>
+                                                @if (Model.Case.Basic.AppellantAgents != null && Model.Case.Basic.AppellantAgents.Any())
+                                                {
+                                                    foreach (var appellant in Model.Case.Basic.AppellantAgents)
+                                                    {
+                                                        <a name="caseLawyer" style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                           data-toggle="popover"
+                                                           data-container="body"
+                                                           title="原告代理人"
+                                                           litigant_position="@appellant.Position"
+                                                           litigant_name="@appellant.Name"
+                                                           litigant_authCode="@appellant.AgentAuthCode"
+                                                           href="javascript:;"
+                                                           target="_blank" data-original-title="@appellant.Name">@appellant.Name</a>
+                                                    }
+                                                }
+                                            </span>
+                                        </div>
+                                    </td>*@
+
+                                    <th>
+                                        被告
+                                    </th>
+                                    <td>
+                                        <span>
+                                            @if (!string.IsNullOrEmpty(Model.Case.Basic.AppelleeNames))
+                                            {
+                                                var appelleeNames = Model.Case.Basic.AppelleeNames.Split(',');
+                                                var i = 0;
+                                                foreach (var appelleeNo in Model.Case.Basic.AppelleeNos.Split(','))
+                                                {
+                                                    <a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                       data-toggle="tooltip" data-container="body" href="javascript:$.customer.View('@appelleeNo');"
+                                                       data-original-title="@appelleeNames[i]">@appelleeNames[i]</a>
+
+                                                    i++;
+                                                }
+                                            }
+                                        </span>
+                                    </td>
+
+                                </tr>
+                                <tr>
+                                    <th>
+                                        客户
+                                    </th>
+                                    <td colspan=3>
+                                        <div>
+                                            <span>
+                                                <a name="customer" style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                   data-toggle="tooltip"
+                                                   data-container="body"
+                                                   href="javascript:$.customer.View('@Model.Case.Basic.CustomerNo');"
+                                                   data-original-title="@Model.Case.Basic.CustomerName">@Model.Case.Basic.CustomerName</a>
+                                            </span>
+                                        </div>
+                                    </td>
+
+                                    <th>
+                                        @Html.LabelFor(m => m.Case.Basic.CaseLawyer)
+                                    </th>
+                                    <td>
+                                        <div>
+                                            <span>
+                                                @if (!string.IsNullOrEmpty(Model.Case.Basic.CaseLawyer))
+                                                {
+                                                    var caseLawyerNames = Model.Case.Basic.CaseLawyerName.Split(',');
+                                                    var i = 0;
+                                                    foreach (var caseLawyer in Model.Case.Basic.CaseLawyer.Split(','))
+                                                    {
+                                                        var staff = StaffService.Instance.GetStaff(caseLawyer);
+
+                                                        <a class="popover-show" style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                           data-container="body"
+                                                           data-toggle="popover_lawyer"
+                                                           title="经办律师"
+                                                           staff_name="@staff.StaffBasic.StaffName"
+                                                           staff_chname="@staff.StaffBasic.StaffChName"
+                                                           staff_mobilephone="@staff.StaffBasic.MobilePhone"
+                                                           staff_email="@staff.StaffBasic.Email"
+                                                           href="javascript:;"
+                                                           target="_blank" data-original-title="@caseLawyerNames[i]">@caseLawyerNames[i]</a>
+                                                        i++;
+                                                    }
+                                                }
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <th>
+                                        第三人
+                                    </th>
+                                    <td>
+                                        <span>
+                                            @if (!string.IsNullOrEmpty(Model.Case.Basic.TheThirdNames))
+                                            {
+                                                var theThirdNames = Model.Case.Basic.TheThirdNames.Split(',');
+                                                var i = 0;
+                                                foreach (var theThirdNo in Model.Case.Basic.TheThirdNos.Split(','))
+                                                {
+                                                    <a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                       data-toggle="tooltip" data-container="body" href="javascript:$.customer.View('@theThirdNo');"
+                                                       data-original-title="@theThirdNames[i]">@theThirdNames[i]</a>
+                                                    i++;
+                                                }
+                                            }
+                                        </span>
+
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>
+                                        合同号
+                                    </th>
+                                    <td>
+                                        <div>
+                                            <span>
+                                                <a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                   href="javascript:contract.Contracts.Contract.View('@Model.Case.Basic.ContractNo');">@Model.Case.Basic.ContractNo</a>
+                                            </span>
+                                        </div>
+                                    </td>
+
+                                    <th>
+                                        调查员
+                                    </th>
+                                    <td>
+                                        <div>
+                                            <span>
+                                                @if (!string.IsNullOrEmpty(Model.Case.Basic.Investigator))
+                                                {
+                                                    var investigatorNames = Model.Case.Basic.InvestigatorName.Split(',');
+                                                    var i = 0;
+                                                    foreach (var investigator in Model.Case.Basic.Investigator.Split(','))
+                                                    {
+                                                        var staff = StaffService.Instance.GetStaff(investigator);
+                                                        <a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                           data-container="body"
+                                                           data-toggle="popover_assistant"
+                                                           title="调查人员"
+                                                           href="javascript:;"
+                                                           target="_blank"
+                                                           staff_chname="@staff.StaffBasic.StaffChName"
+                                                           staff_name="@staff.StaffBasic.StaffName"
+                                                           staff_mobilephone="@staff.StaffBasic.MobilePhone"
+                                                           staff_email="@staff.StaffBasic.Email"
+                                                           data-original-title="@investigatorNames[i]">@investigatorNames[i]</a>
+
+                                                        i++;
+                                                    }
+                                                }
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <th>
+                                        律师助理
+                                    </th>
+                                    <td>
+                                        <div>
+                                            <span>
+                                                @if (!string.IsNullOrEmpty(Model.Case.Basic.CaseAssistant))
+                                                {
+                                                    var caseAssistantNames = Model.Case.Basic.CaseAssistantName.Split(',');
+                                                    var i = 0;
+                                                    foreach (var caseAssistant in Model.Case.Basic.CaseAssistant.Split(','))
+                                                    {
+                                                        var staff = StaffService.Instance.GetStaff(caseAssistant);
+                                                        <a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                           data-container="body"
+                                                           data-toggle="popover_assistant"
+                                                           title="律师助理"
+                                                           href="javascript:;"
+                                                           target="_blank"
+                                                           staff_chname="@staff.StaffBasic.StaffChName"
+                                                           staff_name="@staff.StaffBasic.StaffName"
+                                                           staff_mobilephone="@staff.StaffBasic.MobilePhone"
+                                                           staff_email="@staff.StaffBasic.Email"
+                                                           data-original-title="@staff.StaffBasic.StaffChName">@staff.StaffBasic.StaffChName</a>
+
+                                                        i++;
+                                                    }
+                                                }
+                                            </span>
+                                        </div>
+                                    </td>
+
+                                    <th>
+                                        公证书号
+                                    </th>
+                                    <td>
+                                        <div>
+                                            <span>@Model.Case.Basic.NotarialNos
+                                        </span>
+                                        </div>
+                                    </td>
+
+                                    @*<th>
+                                        第三人代理人
+                                    </th>
+                                    <td>
+                                        <div>
+                                            <span>
+                                                @if (Model.Case.Basic.TheThirdAgents != null && Model.Case.Basic.TheThirdAgents.Any())
+                                                {
+                                                    foreach (var theThird in Model.Case.Basic.TheThirdAgents)
+                                                    {
+                                                        <a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                           data-container="body"
+                                                           data-toggle="popover"
+                                                           title="第三人代理人"
+                                                           litigant_position="@theThird.Position"
+                                                           litigant_name="@theThird.Name"
+                                                           litigant_authCode="@theThird.AgentAuthCode"
+                                                           href="javascript:;"
+                                                           target="_blank" data-original-title="@theThird.Name">@theThird.Name</a>
+                                                    }
+                                                }
+                                            </span>
+                                        </div>
+                                    </td>*@
+
+                                    @*<th>
+                                        被告代理人
+                                    </th>
+                                    <td>
+                                        <div>
+                                            <span>
+                                                @if (Model.Case.Basic.AppelleeAgents != null && Model.Case.Basic.AppelleeAgents.Any())
+                                                {
+                                                    foreach (var appellee in Model.Case.Basic.AppelleeAgents)
+                                                    {
+                                                        <a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                           data-container="body"
+                                                           data-toggle="popover"
+                                                           title="被告代理人"
+                                                           litigant_position="@appellee.Position"
+                                                           litigant_name="@appellee.Name"
+                                                           litigant_authCode="@appellee.AgentAuthCode"
+                                                           href="javascript:;"
+                                                           target="_blank" data-original-title="@appellee.Name">@appellee.Name</a>
+                                                    }
+                                                }
+                                            </span>
+                                        </div>
+                                    </td>*@
+  
+    
+
+                                </tr>
+
+                                <tr>
+                                    <th>
+                                        线索号
+                                    </th>
+                                    <td colspan="3">
+                                        <span>
+                                            @if (!string.IsNullOrEmpty(Model.Case.Basic.InvestigationClueNos))
+                                            {
+                                                foreach (var clueNo in Model.Case.Basic.InvestigationClueNos.Split(','))
+                                                {
+                                                    <a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                       href="javascript:investigation.InvestigationClue.View('@clueNo');">@clueNo</a>
+                                                }
+                                            }
+                                        </span>
+                                    </td>
+                                    <th>
+                                        @Html.LabelFor(m => m.Case.Basic.CaseRegisterDate)
+                                    </th>
+                                    <td>
+                                        @Html.DisplayFor(m => m.Case.Basic.CaseRegisterDate)
+                                    </td>
+                                    <th>
+                                        仓库位置
+                                    </th>
+                                    <td>
+                                        <div>
+                                            <span>
+                                                @Model.Case.Basic.DepositAddress
+                                        </span>
+                                    </div>
+                                </td>
+                                </tr>
+                                <tr>
+                                    <th>
+                                        判决/调解金额
+                                    </th>
+                                    <td colspan="3">
+                                        @Html.DisplayFor(m => m.Case.Basic.SettlementAmount)
+                                    </td>
+                                    <th>
+                                        @Html.LabelFor(m => m.Case.Basic.BusinessOwner)
+                                    </th>
+                                    <td>
+                                        @Html.DisplayTextFor(m => m.Case.Basic.BusinessOwnerName)
+                                    </td>
+                                    @*<th>
+                                        第三人代理人
+                                    </th>
+                                    <td>
+                                        <div>
+                                            <span>
+                                                @if (Model.Case.Basic.TheThirdAgents != null && Model.Case.Basic.TheThirdAgents.Any())
+                                                {
+                                                    foreach (var theThird in Model.Case.Basic.TheThirdAgents)
+                                                    {
+                                                        <a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                           data-container="body"
+                                                           data-toggle="popover"
+                                                           title="第三人代理人"
+                                                           litigant_position="@theThird.Position"
+                                                           litigant_name="@theThird.Name"
+                                                           litigant_authCode="@theThird.AgentAuthCode"
+                                                           href="javascript:;"
+                                                           target="_blank" data-original-title="@theThird.Name">@theThird.Name</a>
+                                                    }
+                                                }
+                                            </span>
+                                        </div>
+                                    </td>*@
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="table-viewer-header" style="margin-top: 0px;height:28px;line-height:26px">
+    <span class="table-viewer-topbar-title">
+        法院信息
+    </span>
+    <div class="pull-right table-viewer-topbar-content">
+        <span class="toggle-drop-down-icon ng-isolate-scope" style="height:28px;line-height:26px">
+            <span id="spanCaseCourt" class="table-viewer-dropdown icon-up" style="margin-top: 0px"></span>
+        </span>
+    </div>
+</div>
+
+<div class="case-section-wrap" id="divCourt" style="padding:1px; ">
+    <div class="case-section-product">
+        <!-- product section -->
+        <div class="product-container">
+            <div class="product-section">
+                @using (Html.BeginForm("CaseInfo", "Case", FormMethod.Post, new { id = "caseForm", enctype = "multipart/form-data", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+                {
+                    <div class="section-content clearfix" style='padding:0px'>
+                        <div class="ng-scope">
+                            <table class="input_table" id='tabCase' style='width:100%'>
+                                <colgroup>
+                                    <col style="width: 7%;" />
+                                    <col style="width: 25%" />
+                                    <col style="width: 4%;" />
+                                    <col style="width: 15%" />
+                                    <col style="width: 7%;" />
+                                    <col style="width: 20%" />
+                                    <col style="width: 7%;" />
+                                    <col style="width: 10%" />
+                                    <col style="width: 7%;" />
+                                    <col style="width: 10%" />
+                                    <col style="width: 7%;" />
+                                    <col style="width: 10%" />
+                                </colgroup>
+                                <tr>
+                                    <th>
+                                        一审法院
+                                    </th>
+                                    <td>
+                                        @{
+                                            var courtJudgeOfficer = string.IsNullOrEmpty(Model.Case.Basic.FirstIntanceJudge) ? null : CourtOfficerService.Instance.GetCourtOfficer(Model.Case.Basic.FirstIntanceJudge);
+                                            var courtClerkOfficer = string.IsNullOrEmpty(Model.Case.Basic.FirstIntanceJudge) ? null : CourtOfficerService.Instance.GetCourtOfficer(Model.Case.Basic.FirstIntanceClerk);
+
+                                            <a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                               data-container="body"
+                                               data-toggle="popover_court"
+                                               title="一审法院"
+                                               href="javascript:;"
+                                               court_name="@Model.Case.Basic.FirstIntanceCourtName"
+                                               court_judge_name="@Model.Case.Basic.FirstIntanceJudgeName"
+                                               court_judge_phone="@(courtJudgeOfficer == null ? string.Empty : courtJudgeOfficer.Phone)"
+                                               court_judge_email="@(courtJudgeOfficer == null ? string.Empty : courtJudgeOfficer.Email)"
+                                               court_clerk_name="@Model.Case.Basic.FirstIntanceClerkName"
+                                               court_clerk_phone="@(courtClerkOfficer == null ? string.Empty : courtClerkOfficer.Phone)"
+                                               court_clerk_email="@(courtClerkOfficer == null ? string.Empty : courtClerkOfficer.Email)"
+                                               target="_blank"
+                                               data-original-title="@Model.Case.Basic.FirstIntanceCourtName">@Model.Case.Basic.FirstIntanceCourtName</a>
+                                        }
+                                    </td>
+                                    <th>
+                                        法庭
+                                    </th>
+                                    <td>
+                                        @Html.DisplayTextFor(m => m.Case.Basic.FirstIntanceCourtRoom)
+                                    </td>
+                                    <th>
+                                        一审案号
+                                    </th>
+                                    <td>
+                                        @Html.DisplayTextFor(m => m.Case.Basic.FirstIntanceCaseNo)
+                                    </td>
+
+                                    <th>
+                                        立案时间
+                                    </th>
+                                    <td>
+                                        @Html.DisplayFor(m => m.Case.Basic.FirstIntanceRegisterDate)
+                                    </td>
+
+                                    <th>
+                                        开庭时间
+                                    </th>
+                                    <td>
+                                        @Html.DisplayFor(m => m.Case.Basic.FirstIntanceLawfulDay)
+                                    </td>
+
+                                    <th>
+                                        判决日期
+                                    </th>
+                                    <td>
+                                        @Html.DisplayFor(m => m.Case.Basic.FirstIntanceJudgmentDate)
+                                    </td>
+                                </tr>
+
+                                <tr>
+                                    <th>
+                                        二审法院
+                                    </th>
+                                    <td>
+                                        @*<a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                            data-container="body"
+                                            data-toggle="popover"
+                                            title="二审法院"
+                                            href="javascript:;"
+                                            target="_blank"
+                                            data-original-title="@Model.Case.Basic.SecondIntanceCourtName">@Model.Case.Basic.SecondIntanceCourtName</a>*@
+
+                                        @{
+                                            var courtJudgeOfficer2 = string.IsNullOrEmpty(Model.Case.Basic.SecondIntanceJudge) ? null : CourtOfficerService.Instance.GetCourtOfficer(Model.Case.Basic.SecondIntanceJudge);
+                                            var courtClerkOfficer2 = string.IsNullOrEmpty(Model.Case.Basic.SecondIntanceJudge) ? null : CourtOfficerService.Instance.GetCourtOfficer(Model.Case.Basic.SecondIntanceClerk);
+
+                                            <a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                               data-container="body"
+                                               data-toggle="popover_court"
+                                               title="二审法院"
+                                               href="javascript:;"
+                                               court_name="@Model.Case.Basic.SecondIntanceCourtName"
+                                               court_judge_name="@Model.Case.Basic.SecondIntanceJudgeName"
+                                               court_judge_phone="@(courtJudgeOfficer == null ? string.Empty : courtJudgeOfficer.Phone)"
+                                               court_judge_email="@(courtJudgeOfficer == null ? string.Empty : courtJudgeOfficer.Email)"
+                                               court_clerk_name="@Model.Case.Basic.SecondIntanceClerkName"
+                                               court_clerk_phone="@(courtClerkOfficer == null ? string.Empty : courtClerkOfficer.Phone)"
+                                               court_clerk_email="@(courtClerkOfficer == null ? string.Empty : courtClerkOfficer.Email)"
+                                               target="_blank"
+                                               data-original-title="@Model.Case.Basic.SecondIntanceCourtName">@Model.Case.Basic.SecondIntanceCourtName</a>
+                                        }
+                                    </td>
+                                    <th>
+                                        法庭
+                                    </th>
+                                    <td>
+                                        @Html.DisplayTextFor(m => m.Case.Basic.SecondIntanceCourtRoom)
+                                    </td>
+                                    <th>
+                                        二审案号
+                                    </th>
+                                    <td>
+                                        @Html.DisplayTextFor(m => m.Case.Basic.SecondIntanceCaseNo)
+                                    </td>
+
+                                    <th>
+                                        立案时间
+                                    </th>
+                                    <td>
+                                        @Html.DisplayFor(m => m.Case.Basic.SecondIntanceRegisterDate)
+                                    </td>
+
+                                    <th>
+                                        开庭时间
+                                    </th>
+                                    <td>
+                                        @Html.DisplayFor(m => m.Case.Basic.SecondIntanceLawfulDay)
+                                    </td>
+
+                                    <th>
+                                        判决日期
+                                    </th>
+                                    <td>
+                                        @Html.DisplayFor(m => m.Case.Basic.SecondIntanceJudgmentDate)
+                                    </td>
+                                </tr>
+
+                                @if (!string.IsNullOrEmpty(Model.Case.Basic.LastIntanceCaseNo))
+                                {
+                                    <tr>
+                                        <th>
+                                            再审法院
+                                        </th>
+                                        <td >
+
+                                            @*<a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                data-container="body"
+                                                data-toggle="popover"
+                                                title="再审法院"
+                                                href="javascript:;"
+                                                target="_blank"
+                                                data-original-title="@Model.Case.Basic.LastIntanceCourtName">@Model.Case.Basic.LastIntanceCourtName</a>*@
+
+                                            @{
+                                                var courtJudgeOfficer3 = string.IsNullOrEmpty(Model.Case.Basic.LastIntanceJudge) ? null : CourtOfficerService.Instance.GetCourtOfficer(Model.Case.Basic.LastIntanceJudge);
+                                                var courtClerkOfficer3 = string.IsNullOrEmpty(Model.Case.Basic.LastIntanceJudge) ? null : CourtOfficerService.Instance.GetCourtOfficer(Model.Case.Basic.LastIntanceClerk);
+
+                                                <a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                   data-container="body"
+                                                   data-toggle="popover_court"
+                                                   title="再审法院"
+                                                   href="javascript:;"
+                                                   court_name="@Model.Case.Basic.LastIntanceCourtName"
+                                                   court_judge_name="@Model.Case.Basic.LastIntanceJudgeName"
+                                                   court_judge_phone="@(courtJudgeOfficer == null ? string.Empty : courtJudgeOfficer.Phone)"
+                                                   court_judge_email="@(courtJudgeOfficer == null ? string.Empty : courtJudgeOfficer.Email)"
+                                                   court_clerk_name="@Model.Case.Basic.LastIntanceClerkName"
+                                                   court_clerk_phone="@(courtClerkOfficer == null ? string.Empty : courtClerkOfficer.Phone)"
+                                                   court_clerk_email="@(courtClerkOfficer == null ? string.Empty : courtClerkOfficer.Email)"
+                                                   target="_blank"
+                                                   data-original-title="@Model.Case.Basic.LastIntanceCourtName">@Model.Case.Basic.LastIntanceCourtName</a>
+                                            }
+                                        </td>
+                                        <th>
+                                            法庭
+                                        </th>
+                                        <td>
+                                            @Html.DisplayTextFor(m => m.Case.Basic.FirstIntanceCourtRoom)
+                                        </td>
+                                        <th>
+                                            再审案号
+                                        </th>
+                                        <td>
+                                            @Html.DisplayTextFor(m => m.Case.Basic.LastIntanceCaseNo)
+                                        </td>
+
+                                        <th>
+                                            立案时间
+                                        </th>
+                                        <td>
+                                            @Html.DisplayFor(m => m.Case.Basic.LastIntanceRegisterDate)
+                                        </td>
+
+                                        <th>
+                                            开庭时间
+                                        </th>
+                                        <td>
+                                            @Html.DisplayFor(m => m.Case.Basic.LastIntanceLawfulDay)
+                                        </td>
+
+                                        <th>
+                                            判决日期
+                                        </th>
+                                        <td>
+                                            @Html.DisplayFor(m => m.Case.Basic.LastIntanceJudgmentDate)
+                                        </td>
+                                    </tr>
+                                                }
+                            </table>
+                        </div>
+                    </div>
+                 }
+            </div>
+        </div>
+    </div>
+</div>
+

@@ -1,0 +1,189 @@
+﻿@using Dchien.Legal.Service.CRM.Customer
+@using Dchien.Legal.Service.HR.Staff
+
+@model Dchien.Legal.Web.Areas.RPT.ViewModels.Report.CountRefundListModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/index.css")" />
+ 
+<script src="@Url.Content("~/Scripts/Common/charts/Chart.min.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/RPT/Refund/FAM.Refund.Report.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/RPT/Refund/FAM.Refund.Report.CountStaff.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+ 
+
+<style>
+    .chosen-container-single .chosen-single {
+        border: 1px solid #cccccc;
+        font-size: 12px;
+        border-radius: 0px;
+    }
+
+    .chosen-container-multi .chosen-choices {
+        border: 1px solid #cccccc;
+        font-size: 12px;
+    }
+
+    .chosen-drop, chosen-results, .chosen-results li {
+        overflow: visible !important;
+    }
+
+    .chosen-container-multi .chosen-choices li.search-field input[type=text] {
+        margin: 1px 0;
+        padding: 0;
+        height: 21px;
+        outline: 0;
+        border: 0 !important;
+        background: 0 0 !important;
+        -webkit-box-shadow: none;
+        box-shadow: none;
+        color: #999;
+        font-size: 100%;
+        font-family: sans-serif;
+        line-height: normal;
+        border-radius: 0;
+        width: 25px;
+    }
+</style>
+
+<div class="viewFramework-product">
+    <div class="viewFramework-product-body">
+        <div ng-transclude="">
+            <div class="console-container ng-scope">
+                <div class="row ng-scope">
+
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>退费进度案件统计</h5>
+                            </div>
+                        </div>
+                        <form class="form-inline ng-valid " id="postForm">
+                            <div class="pull-left   col-sm-12" style="margin-top: 1px;margin-bottom:4px">
+                                @Html.HiddenFor(m => m.SearchCondition.PageId)
+                                @Html.HiddenFor(m => m.SearchCondition.PageName, new { name = "PageName" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.TotalCount, new { name = "TotalCount" })
+                             </div>
+                        </form>
+                    </div>
+
+                    <div class="col-sm-12">
+
+                        <div class="case-section-wrap" style="padding:2px">
+                            <div class="case-section-product">
+                                <!-- product section -->
+                                <div class="product-container">
+                                    <div class="product-section">
+                                        @*<ul class="nav nav-tabs">
+                                            <li class="active" ><a href="javascript:void(0);" id="liGroupName">退费进度案件统计表</a></li>
+                                            <li class="pull-right" style="border:none">
+                                                <div style="margin-top:3px">
+                                                    <div style="text-align: inherit;">
+                                                        <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </li>
+                                        </ul>*@
+                                        <div class="section-content clearfix">
+                                            <div class="product-col ng-scope" style="width: 100%">
+                                                <div id="dv_List">
+
+                                                    <div class="ng-scope">
+                                                        <div class="gridSection" id="refundgridSection">
+                                                            <div class="col-sm-6">
+                                                                <div style="float: left; width: 100%;">
+                                                                    <div style="height: 100%;  width: 100%; background-color: #fff;">
+                                                                        <div class="panel panel-default">
+                                                                            <div class="panel-heading">
+                                                                                <a href="javascript:void(0);">
+                                                                                    <i class="fa fa-bar-chart fa-lg" style="padding-right: 5px;"></i>准备资料进度案件数量
+                                                                                </a>
+                                                                                <div style="float: right !important;">单位： 个/案</div>
+                                                                            </div>
+                                                                            <div id="refund10_container" class="panel-body">
+                                                                                <canvas id="refund10" style="height: 280px; width: 100%;"></canvas>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="col-sm-6">
+                                                                <div style="float: left; width: 100%;">
+                                                                    <div style="height: 100%;  width: 100%; background-color: #fff;">
+                                                                        <div class="panel panel-default">
+                                                                            <div class="panel-heading">
+                                                                                <a href="javascript:void(0);">
+                                                                                    <i class="fa fa-bar-chart fa-lg" style="padding-right: 5px;"></i>客户盖章进度案件数量
+                                                                                </a>
+                                                                                <div style="float: right !important;">单位： 个/案</div>
+                                                                            </div>
+                                                                            <div id="refund20_container" class="panel-body">
+                                                                                <canvas id="refund20" style="height: 280px; width: 100%;"></canvas>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="col-sm-6">
+                                                                <div style="float: left; width: 100%;">
+                                                                    <div style="height: 100%;  width: 100%; background-color: #fff;">
+                                                                        <div class="panel panel-default">
+                                                                            <div class="panel-heading">
+                                                                                <a href="javascript:void(0);">
+                                                                                    <i class="fa fa-bar-chart fa-lg" style="padding-right: 5px;"></i>提交法院进度案件数量
+                                                                                </a>
+                                                                                <div style="float: right !important;">单位： 个/案</div>
+                                                                            </div>
+                                                                            <div id="refund30_container"  class="panel-body">
+                                                                                <canvas id="refund30" style="height: 280px; width: 100%;"></canvas>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="col-sm-6">
+                                                                <div style="float: left; width: 100%;">
+                                                                    <div style="height: 100%;  width: 100%; background-color: #fff;">
+                                                                        <div class="panel panel-default">
+                                                                            <div class="panel-heading">
+                                                                                <a href="javascript:void(0);">
+                                                                                    <i class="fa fa-bar-chart fa-lg" style="padding-right: 5px;"></i>等待客户回款进度案件数量
+                                                                                </a>
+                                                                                <div style="float: right !important;">单位： 个/案</div>
+                                                                            </div>
+                                                                            <div id="refund40_container" class="panel-body">
+                                                                                <canvas id="refund40" style="height: 280px; width: 100%;"></canvas>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+
+

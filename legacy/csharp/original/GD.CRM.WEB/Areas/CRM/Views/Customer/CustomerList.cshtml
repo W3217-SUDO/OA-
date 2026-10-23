@@ -1,0 +1,450 @@
+﻿@{
+    ViewBag.Title = "客户列表";
+}
+
+@using Dchien.Legal.Common
+@using Dchien.Legal.Entity.CRM.Customer
+@using Dchien.Legal.Service
+@model Dchien.Legal.Web.Areas.CRM.ViewModels.Customer.ListModel
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/bsn.console.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+
+<script src="@Url.Content("~/Scripts/CRM/Customer/CRM.Customer.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/CRM/Customer/CRM.Customer.List.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body">
+
+        <div ng-transclude="">
+            <div class="console-container ng-scope">
+                <div class="row ng-scope">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5 class="ng-binding">客户列表</h5>
+                            </div>
+                        </div>
+                        <div class="pull-left margin-top-1 col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline" id="postForm">
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                @Html.TextAreaFor(m => m.SearchCondition.PageId, new { @style = "display:none" })
+
+                                <table class="search_table" style="width: 100%">
+                                    <colgroup>
+                                        <col style="width: 60px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 80px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 80px;" />
+                                        <col style="width: 160px" />
+
+                                        <col />
+                                    </colgroup>
+                                    <tr>
+                                        <th>
+                                            客户名称：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.CustomerName, new { @class = "form-control" })
+                                            @Html.TextBoxFor(m => m.SearchCondition.PageId, new { @style = "display:none" })
+                                        </td>
+                                        <th>
+                                            客户/当事人：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.CustomerType, CommonService.Instance.GetCustomerTypeIdList(), new { @class = "form-control select" , @style = "width:90%" })
+                                        </td>
+                                        <th>
+                                           客户管理人：
+                                        </th>
+                                        <td>
+
+                                            @if (Model.SearchCondition.PageId != Dchien.Legal.Entity.System.PageId.PageId_6001001
+                                                && Model.SearchCondition.PageId != Dchien.Legal.Entity.System.PageId.PageId_6001002
+                                                && Model.SearchCondition.PageId != Dchien.Legal.Entity.System.PageId.PageId_6001007
+                                                && Model.SearchCondition.PageId != Dchien.Legal.Entity.System.PageId.PageId_6001008
+                                                && Model.SearchCondition.PageId != Dchien.Legal.Entity.System.PageId.PageId_6001009)
+                                            {
+                                                @Html.HiddenFor(m => m.SearchCondition.BusinessOwner, new { @class = "form-control", @style = "" })
+                                                @Html.TextBoxFor(m => m.SearchCondition.BusinessOwnerName, new { @class = "form-control", @style = "" })
+
+                                            }
+
+                                            else
+                                            {
+                                                @Html.HiddenFor(m => m.SearchCondition.BusinessOwner, new { @class = "form-control", @style = "",@disabled=true })
+                                                @Html.TextBoxFor(m => m.SearchCondition.BusinessOwnerName, new { @class = "form-control", @style = "", @disabled = true })
+                                            }
+                                        </td>
+                    
+                                        <td>
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnCustomerSearch">
+                                                <span>查询</span>
+                                            </a>
+                                        </td>
+                                    
+                                    </tr>
+ 
+                                </table>
+                                <div class="i_common_select" id="divAssociateUserList" style="display: none;">
+                                    <div class="i_common_wrap">
+                                        <div class="i_common_list"></div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="ng-scope">
+                            <div class="gridSection" id="customergridSection">
+                                    <table class="aps-table aps-widget aps-ani-transition" style="width:100%">
+                                        <colgroup>
+                                            <col style="width: 3%">
+                                            <col style="width: 10%">
+                                            <col style="width: 20%">
+                                            <col style="width: 8%">
+                                            <col style="width: 15%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 8%">
+                                            <col style="width: 17px">
+                                        </colgroup>
+                                        <thead>
+                                        <thead>
+                                            <tr>
+                                                <th width="10">
+                                                    <input type="checkbox" id="chkCustomerAll" name="chkCustomerAll">
+                                                </th>
+                                                <th>
+                                                    客户编号
+                                                </th>
+                                                <th>
+                                                    客户名称
+                                                </th>
+                                                <th>
+                                                    案源人
+                                                </th>
+                                                <th>
+                                                    客户管理人
+                                                </th>
+                                                <th>
+                                                    建档日期
+                                                </th>
+                                                <th>
+                                                    最后联系日期
+                                                </th>
+                                                <th>
+                                                    最后修改日期
+                                                </th>
+                                                <th>
+                                                    联系次数
+                                                </th>
+                                                <th>
+                                                    合同数量
+                                                </th>
+                                                <th>
+                                                    民事案件数
+                                                </th>
+
+                                                <th>
+                                                    代理费
+                                                    <br>
+                                                    待收金额
+                                                </th>
+
+                                                <th>
+                                                    官费
+                                                    <br>
+                                                    未到金额
+                                                </th>
+
+                                                <th>
+                                                    客户状态
+                                                </th>
+
+                                            </tr>
+                                      
+                                        </thead>
+                                    </table>
+                                    <div id="divList" style="border-top: 0;margin-top: -1px; overflow-x:hidden; overflow-y: scroll;">
+                                        <table id="tblCustomerList" class="aps-table aps-widget aps-ani-transition ">
+                                            <colgroup>
+                                                <col style="width: 3%">
+                                                <col style="width: 10%">
+                                                <col style="width: 20%">
+                                                <col style="width: 8%">
+                                                <col style="width: 15%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                                <col style="width: 8%">
+                                            </colgroup>
+                                            
+                                            <tbody>
+                                                <tr style="display: none">
+                                                    <td>
+                                                        &nbsp;
+                                                    </td>
+                                                    <td>
+                                                        &nbsp;
+                                                    </td>
+                                                    <td style="text-align:left"></td>
+                                                    <td style="text-align:left"></td>
+                                                    <td style="text-align:left"></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td style="text-align:right"></td>
+                                                    <td style="text-align:right"></td>
+                                                    <td></td>
+                                                </tr>
+                                                <tr style="display: none">
+                                                    <td>
+                                                        &nbsp;
+                                                    </td>
+                                                    <td>
+                                                        &nbsp;
+                                                    </td>
+                                                    <td style="text-align:left"></td>
+                                                    <td style="text-align:left"></td>
+                                                    <td style="text-align:left"></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td style="text-align:right"></td>
+                                                    <td style="text-align:right"></td>
+                                                    <td></td>
+                                                </tr>
+                                            </tbody>
+                                            <tfoot class="ng-scope" style="display: none">
+                                                <tr>
+                                                    <td width="1">
+                                                        <input type="checkbox" id="chkCustomerAll" name="chkCustomerAll">
+                                                    </td>
+                                                    <td colspan="13">
+                                                        <div class="pull-left" style="position:absolute;z-index: 1000;">
+                                                            <input type="button" id="btnCustomerView" class="btn btn-default" style="height:32px" value="客户查看" onclick="javascript: if ($.checkbox.vals('chkCustomerId').length > 0) { customer.Customer.View($.checkbox.vals('chkCustomerId')[0]); };" />
+
+                                                            <div class="inline-block dropup" style="margin-left: 4px">
+                                                                <div class="dropdown ng-scope">
+                                                                    <button class="btn btn-default dropdown-toggle" style="height:32px" data-toggle="dropdown">
+                                                                        更多操作
+                                                                        <span class="caret"></span>
+                                                                    </button>
+                                                                    <ul class="dropdown-menu" style="position:absolute;z-index: 99999;text-align: left;">
+
+
+                                                                        @if (Model.SearchCondition.PageId == Dchien.Legal.Entity.System.PageId.PageId_6001001)
+                                                                {
+                                                                    //我的客户
+                                                                <li>
+                                                                    <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCustomerId').length > 0) { customer.Customer.Delete($.checkbox.vals('chkCustomerId')[0]); };"><span style="font-size:12px">客户删除</span></a>
+                                                                </li>
+                                                                <li>
+                                                                    <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCustomerId').length > 0) { customer.Customer.Edit($.checkbox.vals('chkCustomerId')[0]); };"><span style="font-size:12px">客户编辑</span></a>
+                                                                </li>
+                                                                <li>
+                                                                    <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCustomerId').length > 0) { customer.Customer.AddContract($.checkbox.vals('chkCustomerId')[0]); };"><span style="font-size:12px">新增合同</span></a>
+                                                                </li>
+                                                                }
+                                                                else if (Model.SearchCondition.PageId == Dchien.Legal.Entity.System.PageId.PageId_6001002)
+                                                                {
+
+                                                                <li>
+                                                                    <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCustomerId').length > 0) { customer.Customer.Restore($.checkbox.vals('chkCustomerId')[0]); };"><span style="font-size:12px">客户恢复</span></a>
+                                                                </li>
+                                                                <li>
+                                                                    <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCustomerId').length > 0) { customer.Customer.InOpen($.checkbox.vals('chkCustomerId')[0]); };"><span style="font-size:12px">进入公海</span></a>
+                                                                </li>
+                                                                }
+                                                                else if (Model.SearchCondition.PageId == Dchien.Legal.Entity.System.PageId.PageId_6001003)
+                                                                {
+                                                                <li>
+                                                                    <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCustomerId').length > 0) { customer.Customer.Assignment.Open($.checkbox.vals('chkCustomerId')[0]); };"><span style="font-size:12px">分配客户</span></a>
+                                                                </li>
+                                                                }
+                                                                else if (Model.SearchCondition.PageId == Dchien.Legal.Entity.System.PageId.PageId_6001004)
+                                                                {
+                                                                    //部门回收站
+
+                                                                <li>
+                                                                    <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCustomerId').length > 0) { customer.Customer.Restore($.checkbox.vals('chkCustomerId')[0]); };"><span style="font-size:12px">客户恢复</span></a>
+                                                                </li>
+                                                                <li>
+                                                                    <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCustomerId').length > 0) { customer.Customer.InOpen($.checkbox.vals('chkCustomerId')[0]); };"><span style="font-size:12px">进入公海</span></a>
+                                                                </li>
+                                                                }
+
+                                                                else if (Model.SearchCondition.PageId == Dchien.Legal.Entity.System.PageId.PageId_6001005)
+                                                                {
+                                                                    //公司客户
+
+                                                                <li>
+                                                                    <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCustomerId').length > 0) { customer.Customer.Assignment.Open($.checkbox.vals('chkCustomerId')[0]); };"><span style="font-size:12px">分配客户</span></a>
+                                                                </li>
+                                                                }
+                                                                else if (Model.SearchCondition.PageId == Dchien.Legal.Entity.System.PageId.PageId_6001010)
+                                                                {
+                                                                <li>
+                                                                    <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCustomerId').length > 0) { customer.Customer.Restore($.checkbox.vals('chkCustomerId')[0]); };"><span style="font-size:12px">客户恢复</span></a>
+                                                                </li>
+                                                                <li>
+                                                                    <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCustomerId').length > 0) { customer.Customer.InOpen($.checkbox.vals('chkCustomerId')[0]); };"><span style="font-size:12px">进入公海</span></a>
+                                                                </li>
+                                                                }
+
+                                                                else if (Model.SearchCondition.PageId == Dchien.Legal.Entity.System.PageId.PageId_6001006)
+                                                                {
+                                                                <li>
+                                                                    <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCustomerId').length > 0) { customer.Customer.InClose($.checkbox.vals('chkCustomerId')[0]); };"><span style="font-size:12px">拾回</span></a>
+                                                                </li>
+                                                                }
+                                                                else if (Model.SearchCondition.PageId == Dchien.Legal.Entity.System.PageId.PageId_6001007)
+                                                                {
+                                                                    //共享客户
+
+                                                                }
+                                                                else if (Model.SearchCondition.PageId == Dchien.Legal.Entity.System.PageId.PageId_6001008)
+                                                                {
+                                                                    //最近联系的客户
+
+                                                                <li>
+                                                                    <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCustomerId').length > 0) { customer.Customer.Edit($.checkbox.vals('chkCustomerId')[0]); };"><span style="font-size:12px">客户编辑</span></a>
+                                                                </li>
+                                                                }
+                                                                else if (Model.SearchCondition.PageId == Dchien.Legal.Entity.System.PageId.PageId_6001009)
+                                                                {
+                                                                <li>
+                                                                    <a href="javascript:;" onclick="javascript: if ($.checkbox.vals('chkCustomerId').length > 0) { customer.Customer.Edit($.checkbox.vals('chkCustomerId')[0]); };"><span style="font-size:12px">客户编辑</span></a>
+                                                                </li>
+                                                                }
+
+                                                                    </ul>
+                                                                </div>
+                                                            </div>
+
+                                                        </div>
+                                                        <div class="ng-scope">
+                                                            <div class="pull-right page-box customer">
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                    <div class="simple-grid-none-data-wrap">
+                                        <div class="simple-grid-none-data text-center ng-scope ng-isolate-scope">
+                                            <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                                <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                                <div class="text-size-16 tip-text inline-block">
+                                                    <span class="margin-left ng-binding">没有查询到符合条件的记录</span>
+                                                    <span class="ng-binding">。</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    <div class="contextMenu" id="customerMenu" style="display: none;">
+                        <ul style="width:150px">
+
+                            @if (Model.SearchCondition.PageId == Dchien.Legal.Entity.System.PageId.PageId_6001001)
+                            {
+                                //我的客户
+                                <li id="view"> 客户查看</li>
+                                <li id="delete">客户删除</li>
+                                <li id="edit">客户编辑</li>
+                                <li id="createcontract">新增合同</li>
+                            }
+                            else if (Model.SearchCondition.PageId == Dchien.Legal.Entity.System.PageId.PageId_6001002)
+                            {
+                                //个人回收站
+                                <li id="view">客户查看</li>
+                                <li id="restore">客户恢复</li>
+                                <li id="inopen">进入公海</li>
+                            }
+                            else if (Model.SearchCondition.PageId == Dchien.Legal.Entity.System.PageId.PageId_6001003)
+                            {
+                                //部门客户
+                                <li id="view"> 客户查看</li>
+                                <li id="assigning">分配客户</li>
+                            }
+                            else if (Model.SearchCondition.PageId == Dchien.Legal.Entity.System.PageId.PageId_6001004)
+                            {
+                                //部门回收站
+                                 <li id="view">客户查看</li>
+                                <li id="restore">客户恢复</li>
+                                <li id="inopen">进入公海</li>
+                            }
+
+                            else if (Model.SearchCondition.PageId == Dchien.Legal.Entity.System.PageId.PageId_6001005)
+                            {
+                                //公司客户
+                                <li id="view"> 客户查看</li>
+                                <li id="assigning">分配客户</li>
+                            }
+                            else if (Model.SearchCondition.PageId == Dchien.Legal.Entity.System.PageId.PageId_6001010)
+                            {
+                                //公司回收站
+                                <li id="view"> 客户查看</li>
+                                <li id="restore">客户恢复</li>
+                                <li id="inopen">进入公海</li>
+                            }
+                            
+                            else if (Model.SearchCondition.PageId == Dchien.Legal.Entity.System.PageId.PageId_6001006)
+                            {
+                                //公海客户
+                                <li id="view"> 客户查看</li>
+                                <li id="inclose">拾回</li>
+                            }
+                            else if (Model.SearchCondition.PageId == Dchien.Legal.Entity.System.PageId.PageId_6001007)
+                            {
+                                //共享客户
+                                <li id="view"> 客户查看</li>
+                            }
+                             else if (Model.SearchCondition.PageId == Dchien.Legal.Entity.System.PageId.PageId_6001008)
+                            {
+                                //最近联系的客户
+                                <li id="view"> 客户查看</li>
+                                 <li id="edit">客户编辑</li>
+ 
+                            }
+                             else if (Model.SearchCondition.PageId == Dchien.Legal.Entity.System.PageId.PageId_6001009)
+                            {
+                                //最近更新的客户
+                                <li id="view"> 客户查看</li>
+                                <li id="edit">客户编辑</li>
+                             }
+                            @*<li id="sharing">分享客户</li>*@
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+

@@ -1,0 +1,328 @@
+﻿@using Dchien.Legal.Service.BAS.Type
+
+@model Dchien.Legal.Web.Areas.Legal.ViewModels.Case.CaseModel
+
+
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/font-awesome.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/input.dynamic.css")" />
+<link type="text/css" rel="stylesheet" href="@Url.Content("~/Resource/css/citys/city.css")" />
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/bootstrap-tagsinput.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" />
+<link type="text/css" rel="stylesheet" href=@Url.Content("~/Resource/css/ticketSystem/add.css?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"]) />
+
+<script src="@Url.Content("~/Scripts/Common/jquery.form.js")" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Common/citys/jquery.citys.json.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Common/citys/jquery.citys.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script src="@Url.Content("~/Scripts/Common/bootstrap-tagsinput.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+<script type="text/javascript" src="@Url.Content("~/Scripts/Legal/Case/Legal.Case.Litigant.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<style>
+    .bootstrap-tagsinput {
+        width: 100%;
+        border-radius: 0px;
+        padding: 2px 4px;
+    }
+
+        .bootstrap-tagsinput input {
+            padding: 0px;
+            width: 50px;
+        }
+
+        .bootstrap-tagsinput span {
+            
+        }
+
+        .bootstrap-tagsinput .tagClick {
+            cursor: pointer;
+        }
+</style>
+
+<div class="viewFramework-product">
+    <div class="viewFramework-product-body">
+        <div class="console-container ">
+            <div class="row ">
+                <div class="col-sm-12">
+                    <div class="console-title console-title-border clearfix">
+                        <div class="pull-left">
+                            <h5>当事人信息</h5>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-sm-12">
+
+                    <div style="margin-top:24px">
+                        <div class="create-ticket-step clearfix">
+                            <div class="create-ticket-step-item " style="width:50%">
+                                <div class="item-wrap">
+                                    <span class="icon-step">1</span>
+                                    <span class="dingding-text">基本信息</span>
+                                </div>
+                            </div>
+                            <div class="create-ticket-step-item active" style="width:50%">
+                                <div class="item-wrap">
+                                    <span class="icon-step">2</span>
+                                    <span class="dingding-text">当事人信息</span>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <div class="table-viewer-header clearfix" style="margin-top: 10px;height:40px;line-height:40px">
+                            <span class="table-viewer-topbar-title">
+                                当事人信息
+                                @Html.HiddenFor(m => m.Case.Basic.CaseNo)
+                                @Html.HiddenFor(m => m.Case.Basic.CaseTypeId)
+                            </span>
+                            <div class="pull-right table-viewer-topbar-content"></div>
+
+                        </div>
+
+                        <div class="console-box-border ">
+                            <div class="form-horizontal margin-top-3 " novalidate="">
+
+                                <div class="form-group">
+                                    <label class="col-sm-2 control-label">
+                                        <span>原告：</span>
+                                    </label>
+
+                                    <div class="col-sm-6">
+                                        <div class="bootstrap-tagsinput">
+                                            @if (!string.IsNullOrEmpty(Model.Case.Basic.AppellantNos))
+                                            {
+                                                var appellantNames = Model.Case.Basic.AppellantNames.Split(',');
+                                                var i = 0;
+                                                foreach (var appellantNo in Model.Case.Basic.AppellantNos.Split(','))
+                                                {
+                                                    <span class="tag label label-info">
+                                                        <a name="appellant" style="color:white; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                           customerno="@appellantNo" customername="@appellantNames[i]"
+                                                           data-toggle="tooltip" data-container="body" href="javascript:$.customer.View('@appellantNo');"
+                                                           target="_blank" data-original-title="@appellantNames[i]">@appellantNames[i]</a>
+                                                        <span class="appellantremove" data-role="remove"></span>
+                                                    </span>
+                                                    i++;
+                                                }
+                                            }
+
+                                            <input type="text" placeholder="原告" class="form-control inline-block" style="height:22px;width: 200px;margin-left: 6px;" id="Case_Basic_Appellant_Input" autocomplete="off" size="1">
+                                            <div style="float:right;background-color:white; important" class="label">
+                                                <a style="color:green;" title="新增" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                    <span class="btn_appellant_add fa fa-user-plus"></span>
+                                                </a>
+                                            </div>
+
+                                        </div>
+                                        <div class="i_common_select" id="div_appellantlist" style="display: none;">
+                                            <div class="i_common_wrap">
+                                                <div class="i_common_list"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="col-sm-2 control-label">
+
+                                        <span>原告代理人：</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        <div class="bootstrap-tagsinput">
+
+                                            @if (Model.Case.Basic.AppellantAgents != null && Model.Case.Basic.AppellantAgents.Any())
+                                            {
+                                                foreach (var appellant in Model.Case.Basic.AppellantAgents)
+                                                {
+                                                    <span class="tag label label-info">
+                                                        <a name="appellantAgent" style="color:white; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                           data-toggle="tooltip" data-container="body" href="javascript:$.customer.ViewCustomer('@appellant.Name');"
+                                                           litigantno="@appellant.Name" litigantname="@appellant.Name" litigantposition="@appellant.Position" litigantauthcode="@appellant.AgentAuthCode"
+                                                           target="_blank" data-original-title="@appellant.Name">@appellant.Name</a>
+                                                        <span class="appellantagentremove" data-role="remove"></span>
+                                                    </span>
+                                                }
+                                            }
+
+                                            <input type="text" placeholder="原告代理人" class="form-control inline-block" style="height:22px;width: 200px;margin-left: 6px;" id="Case_Basic_AppellantAgent_Input" autocomplete="off" size="1">
+                                            <div style="display:none;float:right;background-color:white; important" class="label">
+                                                <a style="color:green;" title="新增" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                    <span class="btn_appellantagent_add glyphicon glyphicon-plus"></span>
+                                                </a>
+                                            </div>
+                                        </div>
+                                        <div class="i_common_select" id="div_lawyerlist" style="display: none;">
+                                            <div class="i_common_wrap">
+                                                <div class="i_common_list"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="col-sm-2 control-label">
+
+                                        <span>被告：</span>
+                                    </label>
+
+                                    <div class="col-sm-6">
+                                        <div class="bootstrap-tagsinput">
+
+                                            @if (!string.IsNullOrEmpty(Model.Case.Basic.AppelleeNos))
+                                            {
+                                                var appelleeNames = Model.Case.Basic.AppelleeNames.Split(',');
+                                                var i = 0;
+                                                foreach (var appelleeNo in Model.Case.Basic.AppelleeNos.Split(','))
+                                                {
+                                                    <span class="tag label label-info">
+                                                        <a name="appellee" style="color:white; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                           customerno="@appelleeNo" customername="@appelleeNames[i]"
+                                                           data-toggle="tooltip" data-container="body" href="javascript:$.customer.View('@appelleeNo');"
+                                                           target="_blank" data-original-title="@appelleeNames[i]">@appelleeNames[i]</a>
+                                                        <span class="appelleeremove" data-role="remove"></span>
+                                                    </span>
+                                                    i++;
+                                                }
+                                            }
+
+                                            <input type="text" placeholder="被告" class="form-control inline-block" style="height:22px;width: 200px;margin-left: 6px;" id="Case_Basic_Appellee_Input" autocomplete="off" size="1">
+                                            <div style="float:right;background-color:white; important" class="label">
+                                                <a style="color:green;" title="新增" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                    <span class="btn_appellee_add fa fa-user-plus"></span>
+                                                </a>
+                                            </div>
+                                        </div>
+                                        <div class="i_common_select" id="div_appelleelist" style="display: none;">
+                                            <div class="i_common_wrap">
+                                                <div class="i_common_list"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="col-sm-2 control-label">
+
+                                        <span>被告代理人：</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        <div class="bootstrap-tagsinput">
+
+                                            @if (Model.Case.Basic.AppelleeAgents != null && Model.Case.Basic.AppelleeAgents.Any())
+                                            {
+                                                foreach (var appellee in Model.Case.Basic.AppelleeAgents)
+                                                {
+                                                    <span class="tag label label-info">
+                                                        <a name="appelleeAgent" style="color:white; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                           litigantno="@appellee.Name" litigantname="@appellee.Name" litigantposition="@appellee.Position" litigantauthcode="@appellee.AgentAuthCode"
+                                                           data-toggle="tooltip" data-container="body" href="javascript:caseInfo.CaseCustomer.ViewCustomer('@appellee.Name');"
+                                                           target="_blank" data-original-title="@appellee.Name">@appellee.Name</a>
+                                                        <span class="appelleeagentremove" data-role="remove"></span>
+                                                    </span>
+                                                }
+                                            }
+
+                                            <input type="text" placeholder="原告代理人" class="form-control inline-block" style="height:22px;width: 200px;margin-left: 6px;" id="Case_Basic_AppelleeAgent_Input" autocomplete="off" size="1">
+                                            <div class="label" style="display:none;float:right;background-color:white; important">
+                                                <a style="color:green;" title="新增" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                    <span class="btn_appelleeagent_add glyphicon glyphicon-plus"></span>
+                                                </a>
+                                            </div>
+                                        </div>
+                                        <div class="i_common_select" id="div_appelleeagentlist" style="display: none;">
+                                            <div class="i_common_wrap">
+                                                <div class="i_common_list"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="col-sm-2 control-label">
+
+                                        <span>第三人：</span>
+                                    </label>
+
+                                    <div class="col-sm-6">
+                                        <div class="bootstrap-tagsinput">
+                                            @if (!string.IsNullOrEmpty(Model.Case.Basic.TheThirdNos))
+                                            {
+                                                var theThirdNames = Model.Case.Basic.TheThirdNames.Split(',');
+                                                var i = 0;
+                                                foreach (var theThirdNo in Model.Case.Basic.TheThirdNos.Split(','))
+                                                {
+                                                    <span class="tag label label-info">
+                                                        <a name="thethird" style="color:white; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                           customerno="@theThirdNo" customername="@theThirdNames[i]"
+                                                           data-toggle="tooltip" data-container="body" href="javascript:$.customer.View('@theThirdNo');"
+                                                           target="_blank" data-original-title="@theThirdNames[i]">@theThirdNames[i]</a>
+                                                        <span class="thethirdremove" data-role="remove"></span>
+                                                    </span>
+                                                    i++;
+                                                }
+                                            }
+                                            <input type="text" placeholder="第三人" class="form-control inline-block" style="height:22px;width: 200px;margin-left: 6px;" id="Case_Basic_TheThird_Input" autocomplete="off" size="1">
+                                            <div style="float:right;background-color:white; important" class="label">
+                                                <a style="color:green;" title="新增" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                    <span class="btn_thethird_add fa fa-user-plus"></span>
+                                                </a>
+                                            </div>
+
+                                        </div>
+                                        <div class="i_common_select" id="div_thethirdlist" style="display: none;">
+                                            <div class="i_common_wrap">
+                                                <div class="i_common_list"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="col-sm-2 control-label">
+
+                                        <span>第三人代理人：</span>
+                                    </label>
+                                    <div class="col-sm-6">
+                                        <div class="bootstrap-tagsinput">
+
+                                            @if (Model.Case.Basic.TheThirdAgents != null && Model.Case.Basic.TheThirdAgents.Any())
+                                            {
+                                                foreach (var thethird in Model.Case.Basic.TheThirdAgents)
+                                                {
+                                                    <span class="tag label label-info">
+                                                        <a name="theThirdAgent" style="color:white; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                           litigantno="@thethird.Name" litigantname="@thethird.Name" litigantposition="@thethird.Position" litigantauthcode="@thethird.AgentAuthCode"
+                                                           data-toggle="tooltip" data-container="body" href="javascript:caseInfo.CaseCustomer.ViewCustomer('@thethird.Name');"
+                                                           target="_blank" data-original-title="@thethird.Name">@thethird.Name</a>
+                                                        <span class="thethirdagentremove" data-role="remove"></span>
+                                                    </span>
+                                                }
+                                            }
+
+                                            <input type="text" placeholder="第三人代理人" class="form-control inline-block" style="height:22px;width: 200px;margin-left: 6px;" id="Case_Basic_TheThirdAgent_Input" autocomplete="off" size="1">
+                                            <div style="display:none;float:right;background-color:white; important" class="label">
+                                                <a style="color:green;" title="新增" data-toggle="tooltip" data-container="body" href="javascript:void(0);">
+                                                    <span class="btn_thethird_add glyphicon glyphicon-plus"></span>
+                                                </a>
+                                            </div>
+                                        </div>
+                                        <div class="i_common_select" id="div_thethirdagentlist" style="display: none;">
+                                            <div class="i_common_wrap">
+                                                <div class="i_common_list"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <div class="col-sm-6 col-sm-offset-2">
+                                        <input type="button" id="btnLitigantCreateUpdateNext" class="btn btn-primary ng-binding" style="height: 32px; line-height: 14px;    padding: 8px 16px;" value="下一步" />
+                                        <input type="button" id="btnLitigantCreateUpdate" class="btn btn-primary ng-binding" style="height: 32px; line-height: 14px;    padding: 8px 16px;" value="完成" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

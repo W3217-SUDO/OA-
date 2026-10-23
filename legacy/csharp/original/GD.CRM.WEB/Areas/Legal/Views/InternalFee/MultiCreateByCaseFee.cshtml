@@ -1,0 +1,70 @@
+﻿@model Dchien.Legal.Web.Areas.Legal.ViewModels.Case.InternalFee.InteralFeeListModel
+
+<div class="modal fade" id="internalFeeModal">
+    <div class="modal-dialog" style="width:800px">
+        <div class="modal-content">
+            @using (Html.BeginForm("InternalFeeInform", "InternalFee", FormMethod.Post, new { id = "create", @class = "form-horizontal ng-invalid ng-invalid-required" }))
+            {
+                <div class="modal-header">
+                    <button type="button" class="close" onclick="javascript: $('#internalFeeModal').modal('hide');">×</button>
+                    <h5 class="modal-title ng-binding">新增结算费用</h5>
+                </div>
+
+                <div class="modal-body">
+                    <div class="form-group">
+                        <div class="col-sm-12">
+                            <div class="gridSection">
+                                    <table class='table table-hover' id="tblInternalFeeObjects" width="100%">
+                                        <colgroup>
+                                            <col style="width: 10%">
+                                            <col style="width: 8%">
+                                            <col style="width: 6%">
+                                            <col style="width: 18%">
+                                            <col style="width: 6%">
+                                            <col style="width: 20%">
+                                            <col style="width: 5%">
+                                        </colgroup>
+                                        <thead>
+
+                                            <tr>
+                                                <th>案号</th>
+                                                <th>费用类型</th>
+                                                <th>基数</th>
+                                                <th>支付对象</th>
+                                                <th>金额</th>
+                                                <th>说明</th>
+                                                <th>操作</th>
+                                            </tr>
+
+                                        </thead>
+                                        <tbody>
+                                            <tr style="display: none">
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                                <td style="text-align: center"></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+
+                                <div class="i_common_select" id="divAssociateUserList_InternalFee" style="display: none;">
+                                    <div class="i_common_wrap">
+                                        <div class="i_common_list"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                 </div>
+                <div class="modal-footer">
+                    <input class="btn btn-primary ng-binding" type="button"  onclick="javascript: c.Cases.Case.InternalFees.InternalFee.MultiInternalFeeCreateUpdate(c.Cases.Case.InternalFees.List);" value="申请付款" />
+                    <input class="btn btn-default ng-binding" type="button" onclick="javascript: $('#internalFeeModal').modal('hide');" value="取消" />
+                </div>
+            }
+        </div>
+    </div>
+</div>
+

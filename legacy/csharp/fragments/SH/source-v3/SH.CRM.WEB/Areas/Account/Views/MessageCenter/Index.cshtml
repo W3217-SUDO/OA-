@@ -1,0 +1,226 @@
+﻿@model Dchien.Legal.Web.Areas.Account.ViewModels.Message.MessageListModel
+@using Dchien.Legal.Service.BAS.Type;
+
+<link rel="stylesheet" href="@Url.Content("~/Resource/css/messageCenter.console.css")" />
+<script src="@Url.Content("~/Scripts/Account/MessageCenter/Message.List.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<div class="viewFramework-product viewFramework-product-col-1">
+    <div class="viewFramework-product-navbar ">
+        <!-- product nav -->
+        @{
+            Html.RenderPartial("List");
+        }
+    </div><!-- /product nav -->
+    <div class="viewFramework-product-navbar-collapse ">
+        <div class="product-navbar-collapse-inner">
+            <div class="product-navbar-collapse-bg"></div>
+            <div class="product-navbar-collapse">
+                <span class="icon-collapse-left"></span>
+                <span class="icon-collapse-right"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="viewFramework-product-body">
+
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5 class="ng-binding">消息列表</h5>
+                            </div>
+                        </div>
+                        <div class="pull-left margin-top-1 col-sm-12" style="margin-bottom:4px">
+                            <form class="form-inline ng-valid ng-valid-required" id="postForm" action="@Url.Content("~/Account/Message/List")">
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.MessageStatusId)
+                                <table class="search_table" style="width: 600px">
+                                    <colgroup>
+                                        <col style="width: 80px;" />
+                                        <col style="width: 220px" />
+                                        <col style="width: 70px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 70px" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 160px" />
+                                    </colgroup>
+                                    <tr>
+                                        <th>
+                                            消息时间：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.SendTimeFrom, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.SendTimeTo, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                        </td>
+                                        <th>
+                                            发送人：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.Receiver, new { @class = "form-control", @placeholder = "发送人", @style = "width:97.2%" })
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            消息关键字：
+                                        </th>
+                                        <td>
+                                            @Html.TextBoxFor(m => m.SearchCondition.Keyword, new { @class = "form-control", @placeholder = "消息内容", @style = "width:97.2%" })
+                                        </td>
+                                        <th>
+                                            消息类型：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.MessageTypeId, MessageTypeService.Instance.GetMessageTypeList(true), new { @class = "form-control", @style = "width:97.2%" })
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            
+                                        </th>
+                                        <td>
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnMessageListSearch">
+                                                <span>查询</span>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="col-sm-12">
+
+                        <div class="">
+                            <div class="gridSection">
+                                <table id="tblMessageList" class="aps-table aps-widget aps-ani-transition" style="width:100%;margin-bottom: 57px;">
+                                    <colgroup>
+                                        <col style="width: 3%" />
+                                        <col style="width: 5%" />
+                                        <col style="width: 6%" />
+                                        <col style="width: 6%" />
+                                        <col style="width: 15%" />
+                                        <col style="width: 45%" />
+                                        <col style="width: 8%" />
+                                        <col style="width: 8%" />
+                                        <col style="width: 5%" />
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 3%; text-align:center">
+                                                <input type="checkbox" onclick="javascript: message.Selected(this);" id="chkMessageAll" name="chkMessageAll">
+                                            </th>
+
+                                            <th>
+                                                序号
+                                           
+                                            </th>
+                                            <th>
+                                                发送者
+                                            </th>
+                                            <th>
+                                                接收者
+                                            </th>
+                                            <th>
+                                                标题
+                                            </th>
+                                            <th>
+                                                内容
+                                            </th>
+                                            <th>
+                                                提交时间
+                                                <span>
+                                                    <span class="aps-state-hidden"></span>
+                                                    <span data-field="T.SendTime" class="aps-widget aps-ani-transition aps-sort aps-state-visible">
+                                                        <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                                                        <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                                                           style="top:9px">
+                                                        </i>
+                                                    </span>
+                                                </span>
+                                            </th>
+                                            <th>
+                                                类型
+                                            </th>
+                                            <th>
+                                                操作
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr style="display: none">
+                                            <td>
+                                                &nbsp;
+                                            </td>
+                                            <td>
+                                               
+                                            </td>
+                                            <td></td>
+                                            <td></td>
+                                           
+                                            <td></td>
+                                            <td style="text-align:left"></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                        </tr>
+                                        <tr style="display: none">
+                                            <td>
+                                                &nbsp;
+                                            </td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            
+                                            <td></td>
+                                            <td style="text-align:left"></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                        </tr>
+                                    </tbody>
+                                    <tfoot class="" style="display: none">
+                                        <tr>
+                                            <td><input type="checkbox" onclick="javascript: message.Selected(this);" id="chkMessageAll" name="chkMessageAll"></td>
+                                            <td colspan="8">
+                                                <div class="pull-left">
+                                                    <input type="button" id="btnTaskMultipleRollback" onclick="javascript: message.MarkReadAll();" class="btn btn-default" style="height:32px" value="标记已读" />
+
+                                                </div>
+                                                <div class="">
+                                                    <div class="pull-right page-box message">
+
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+
+                            </div>
+
+                            <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center  ng-isolate-scope">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left ng-binding">没有查询到符合条件的记录.</span>
+                                            @*<a href="javascript:void(0);" class="messageCreate ng-binding">发送消息</a>*@
+                                            <span class="ng-binding">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+</div>

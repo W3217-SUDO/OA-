@@ -1,0 +1,112 @@
+﻿@using System.Resources
+@using SunHold.Legal.Common
+@model SunHold.Legal.Web.Areas.Lawsuit.ViewModels.Case.CaseSearchConditionModel
+
+@{
+    object htmlAttribute = null;
+    var title = Model.CaseSearchConditionId > 0 ? "修改案件查询条件" : "新增案件查询条件";
+}
+<style>
+    .casesearchcondition_checkbox {
+        height: 32px;
+        width: 15px;
+        font-size: 12px;
+    }
+</style>
+
+<script src="@Url.Content("~/Scripts/IPR/Case/Case.SearchCondition.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<form id="caseSearchFormSubmit" action="@Url.Content("~/IPR/Case/CaseList")" method="post" novalidate="novalidate">
+    <div class='modal fade' id="caseSearchModal" >
+        <div class="modal-dialog" style="width:55%">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" id="btnSearchConditionClose">×</button>
+                    <h5 class="modal-title ng-binding">@title</h5>
+                </div>
+                <div class="modal-body">
+                    <div class="case-section-wrap">
+                        <div class="case-section-product">
+                            <!-- product section -->
+                            <div class="product-container">
+                                <div class="product-section">
+                                    <ul class="nav nav-tabs">
+                                        <li class="active" id="liCaseBasicSearchCondition"><a href="javascript:void(0);" id="btnCaseBasicSearchCondition">基本数据</a></li>
+                                        <li id="liCaseAssistedFeeSearchCondition"><a href="javascript:void(0);" id="btnCaseAssistedFeeSearchCondition">资助数据</a></li>
+                                        <li id="liCaseFeeSearchCondition"><a href="javascript:void(0);" id="btnCaseFeeSearchCondition">财务数据</a></li>
+                                        <li id="liCaseFileSearchCondition"><a href="javascript:void(0);" id="btnCaseFileSearchCondition">文档数据</a></li>
+                                    </ul>
+                                    <div class="section-content clearfix">
+                                        <div id="caseSearchForm" class="product-col ng-scope" style="width: 100%">
+                                            <link rel="stylesheet" href="@Url.Content("~/Resource/css/case.search.console.css")" />
+                                            <div style="background: #eaedf1;">
+                                                <div id="casebasicsearchcondition">
+                                                    @{
+                                                        @Html.Partial(Url.Content("~/Areas/IPR/Views/Case/PartialView/CaseBasicSearchCondition.cshtml"), @Model)
+                                                    }
+                                                </div>
+                                                <div id="caseassistedfeesearchcondition" style="display: none">
+                                                    @{
+
+                                                        @Html.Partial(Url.Content("~/Areas/IPR/Views/Case/PartialView/CaseAssistedFeeSearchCondition.cshtml"), @Model)
+                                                    }
+                                                </div>
+                                                <div id="casefeesearchcondition" style="display: none">
+                                                    @{
+
+                                                        @Html.Partial(Url.Content("~/Areas/IPR/Views/Case/PartialView/CaseFeeSearchCondition.cshtml"), @Model)
+                                                    }
+                                                </div>
+                                                <div id="casefilesearchcondition" style="display: none">
+                                                    @{
+
+                                                        @Html.Partial(Url.Content("~/Areas/IPR/Views/Case/PartialView/CaseFileSearchCondition.cshtml"), @Model)
+                                                    }
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+
+                </div>
+                <div class="modal-footer">
+
+                    <div style='float:left;width:50%'>
+                        @Html.HiddenFor(m => m.Search.SearchConditionId)
+                        @Html.LabelFor(m => m.Search.Name)
+                        @Html.TextBoxFor(m => m.Search.Name, htmlAttribute)
+                    </div>
+                    <div style='float:left;width:15%'>
+                        <input type="checkbox" class="btn  ng-binding"><label>并集</label>
+                        <input type="checkbox" class="btn  ng-binding"><label>交集</label>
+                    </div>
+
+                    <div style='float:left;width:35%'>
+                        <input type="button" class="btn btn-primary ng-binding" id="btnSearchCondition" value="查询" />
+                        <input type="button" class="btn btn-primary ng-binding" id="btnSearchConditionCreateUpdate" value="保存">
+                        <input type="button" class="btn btn-default ng-binding" id="btnSearchConditionCancel" value="取消">
+                    </div>
+
+
+                </div>
+                
+                <div class='divcaseconditioncasephases'></div>
+                
+                <div id='divcaseconditionusers' style="display: none">
+                    @Html.Partial("~/Areas/IPR/Views/IPRBase/UserList.cshtml")
+                </div>
+                <div class='divcaseconditioncasetypes'></div>
+                <div class='divcaseconditioncasefiletypes'></div>
+                <div class='divcaseconditioncasefeetypes'></div>
+                <div class='divcaseconditioncasefeebillstatus'></div>
+
+            </div>
+        </div>
+    </div>
+</form>
+
+

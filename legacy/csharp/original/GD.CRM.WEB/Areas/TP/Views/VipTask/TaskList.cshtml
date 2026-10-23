@@ -1,0 +1,530 @@
+﻿@{
+    ViewBag.Title = "任务列表";
+}
+@using Dchien.Legal.Service.TP.Task;
+@using Dchien.Legal.Entity.TP.Task;
+@using Dchien.Legal.Entity.System
+@using Dchien.Legal.Service;
+
+@model Dchien.Legal.Web.Areas.TP.ViewModels.Task.ListModel
+
+>
+
+<script src="@Url.Content("~/Scripts/TP/Task/Legal.Task.List.Invoke.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])" type="text/javascript"></script>
+
+<div class="viewFramework-product">
+    <div class="viewFramework-product-body">
+        <div ng-transclude="">
+            <div class="console-container ">
+                <div class="row ">
+                    <div class="col-sm-12">
+                        <div class="console-title console-title-border clearfix">
+                            <div class="pull-left">
+                                <h5>任务列表</h5>
+                            </div>
+                        </div>
+
+                        <div class="pull-left margin-top-1 col-sm-12" style="margin-bottom:4px">
+                            <div class="ng-isolate-scope" style="margin-bottom:4px">
+                                <ul class="nav nav-pills">
+
+                                    @if (Model.SearchCondition.PageId == PageId.PageId_9001001010
+                                      || Model.SearchCondition.PageId == PageId.PageId_9001002010
+                                      || Model.SearchCondition.PageId == PageId.PageId_9001003010)
+                                    {
+                                        var search = new TaskSearchCondition();
+                                        var processingCount = 0;
+
+                                    <li class="state-selector-item active">
+                                        @{
+
+                                            search = new TaskSearchCondition();
+                                            if (Model.SearchCondition.PageId == PageId.PageId_9001001010)
+                                            {
+                                                search.Initiator = LoginHelper.GetUserName();
+                                            }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001002010)
+                                            {
+                                                search.Initiator_DepartmentId = LoginHelper.GetDepartmentId();
+                                            }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001003010)
+                                            {
+                                                search.Initiator_CompanyId = LoginHelper.GetCompanyId();
+                                            }
+                                            search.TaskStatus = TaskStatus.Processing;
+                                            search.PageId = Model.SearchCondition.PageId;
+                                            processingCount = TaskService.Instance.GetTaskListTotalCount(search);
+
+                                        }
+                                        <a href="javascript:void(0);" onclick="javascript:task.Tasks.SelectedStatus(this,2);"> 进行中(@(processingCount))</a>
+                                    </li>
+
+                                    <li class="state-selector-item ">
+                                        @{
+                                            search = new TaskSearchCondition();
+                                            if (Model.SearchCondition.PageId == PageId.PageId_9001001010)
+                                            {
+                                                search.Initiator = LoginHelper.GetUserName();
+                                            }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001002010)
+                                            {
+                                                search.Initiator_DepartmentId = LoginHelper.GetDepartmentId();
+                                            }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001003010)
+                                            {
+                                                search.Initiator_CompanyId = LoginHelper.GetCompanyId();
+                                            }
+                                            search.Initiator = LoginHelper.GetUserName();
+                                            search.TaskStatus = TaskStatus.Finished;
+                                            search.PageId = Model.SearchCondition.PageId;
+                                            var finishedCount = TaskService.Instance.GetTaskListTotalCount(search);
+                                        }
+                                        <a href="javascript:void(0);" onclick="javascript: task.Tasks.SelectedStatus(this, 3);"> 进行中-已完成(@(finishedCount))</a>
+                                    </li>
+
+                                    <li class="state-selector-item ">
+                                        @{
+                                            search = new TaskSearchCondition();
+                                            if (Model.SearchCondition.PageId == PageId.PageId_9001001010)
+                                            {
+                                                search.Initiator = LoginHelper.GetUserName();
+                                            }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001002010)
+                                            {
+                                                search.Initiator_DepartmentId = LoginHelper.GetDepartmentId();
+                                            }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001003010)
+                                            {
+                                                search.Initiator_CompanyId = LoginHelper.GetCompanyId();
+                                            }
+                                            search.TaskStatus = TaskStatus.Rejected;
+                                            search.PageId = Model.SearchCondition.PageId;
+                                            var rejectedCount = TaskService.Instance.GetTaskListTotalCount(search);
+                                        }
+                                        <a href="javascript:void(0);" onclick="javascript: task.Tasks.SelectedStatus(this, 4);"> 进行中-拒绝(@(rejectedCount))</a>
+                                    </li>
+
+                                    <li class="state-selector-item ">
+                                        @{
+                                            search = new TaskSearchCondition();
+                                            if (Model.SearchCondition.PageId == PageId.PageId_9001001010)
+                                            {
+                                                search.Initiator = LoginHelper.GetUserName();
+                                            }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001002010)
+                                            {
+                                                search.Initiator_DepartmentId = LoginHelper.GetDepartmentId();
+                                            }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001003010)
+                                            {
+                                                search.Initiator_CompanyId = LoginHelper.GetCompanyId();
+                                            }
+                                            search.TaskStatus = TaskStatus.Stoped;
+                                            search.PageId = Model.SearchCondition.PageId;
+                                            var stopedCount = TaskService.Instance.GetTaskListTotalCount(search);
+                                        }
+                                        <a href="javascript:void(0);" onclick="javascript: task.Tasks.SelectedStatus(this, 5);"> 进行中-已停止(@(stopedCount))</a>
+                                    </li>
+
+                                    <li class="state-selector-item ">
+                                        @{
+                                            search = new TaskSearchCondition();
+                                            if (Model.SearchCondition.PageId == PageId.PageId_9001001010)
+                                            {
+                                                search.Initiator = LoginHelper.GetUserName();
+                                            }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001002010)
+                                            {
+                                                search.Initiator_DepartmentId = LoginHelper.GetDepartmentId();
+                                            }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001003010)
+                                            {
+                                                search.Initiator_CompanyId = LoginHelper.GetCompanyId();
+                                            }
+                                            search.TaskStatus = TaskStatus.Checked;
+                                            search.PageId = Model.SearchCondition.PageId;
+                                            var checkedCount = TaskService.Instance.GetTaskListTotalCount(search);
+                                        }
+                                        <a href="javascript:void(0);" onclick="javascript: task.Tasks.SelectedStatus(this, 10);"> 已验收(@(checkedCount))</a>
+                                    </li>
+
+                                    }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001001020
+                                                || Model.SearchCondition.PageId == PageId.PageId_9001002020
+                                                || Model.SearchCondition.PageId == PageId.PageId_9001003020)
+                                            {
+                                                var search = new TaskSearchCondition();
+
+                                                <li class="state-selector-item active">
+                                                    @{
+                                                        search = new TaskSearchCondition();
+                                                        if (Model.SearchCondition.PageId == PageId.PageId_9001001020)
+                                                        {
+                                                            search.Officer = LoginHelper.GetUserName();
+                                                        }
+                                                        else if (Model.SearchCondition.PageId == PageId.PageId_9001002020)
+                                                        {
+                                                            search.Officer_DepartmentId = LoginHelper.GetDepartmentId();
+                                                        }
+                                                        else if (Model.SearchCondition.PageId == PageId.PageId_9001003020)
+                                                        {
+                                                            search.Officer_CompanyId = LoginHelper.GetCompanyId();
+                                                        }
+                                                        search.NodeStatus = NodeStatus.Pending;
+                                                        search.PageId = Model.SearchCondition.PageId;
+                                                        var pendingCount = TaskService.Instance.GetTaskListTotalCount(search);
+                                                    }
+                                                    <a href="javascript:void(0);" onclick="javascript: task.Tasks.SelectedNodeStatus(this, 1);"> 待处理(@(pendingCount))</a>
+                                                </li>
+
+                                    <li class="state-selector-item ">
+                                        @{
+                                            search = new TaskSearchCondition();
+                                            if (Model.SearchCondition.PageId == PageId.PageId_9001001020)
+                                            {
+                                                search.Officer = LoginHelper.GetUserName();
+                                            }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001002020)
+                                            {
+                                                search.Officer_DepartmentId = LoginHelper.GetDepartmentId();
+                                            }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001003020)
+                                            {
+                                                search.Officer_CompanyId = LoginHelper.GetCompanyId();
+                                            }
+                                            search.NodeStatus = NodeStatus.Processing;
+                                            search.PageId = Model.SearchCondition.PageId;
+                                            var processingCount = TaskService.Instance.GetTaskListTotalCount(search);
+                                        }
+                                        <a href="javascript:void(0);" onclick="javascript: task.Tasks.SelectedNodeStatus(this, 2);"> 进行中(@(processingCount))</a>
+                                    </li>
+
+                                    <li class="state-selector-item ">
+                                        @{
+                                            search = new TaskSearchCondition();
+                                            if (Model.SearchCondition.PageId == PageId.PageId_9001001020)
+                                            {
+                                                search.Officer = LoginHelper.GetUserName();
+                                            }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001002020)
+                                            {
+                                                search.Officer_DepartmentId = LoginHelper.GetDepartmentId();
+                                            }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001003020)
+                                            {
+                                                search.Officer_CompanyId = LoginHelper.GetCompanyId();
+                                            }
+                                            search.NodeStatus = NodeStatus.Finished;
+                                            search.PageId = Model.SearchCondition.PageId;
+                                            var finishedCount = TaskService.Instance.GetTaskListTotalCount(search);
+                                        }
+                                        <a href="javascript:void(0);" onclick="javascript: task.Tasks.SelectedNodeStatus(this, 3);"> 完成(@(finishedCount))</a>
+                                    </li>
+
+                                    <li class="state-selector-item ">
+                                        @{
+                                            search = new TaskSearchCondition();
+                                            if (Model.SearchCondition.PageId == PageId.PageId_9001001020)
+                                            {
+                                                search.Officer = LoginHelper.GetUserName();
+                                            }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001002020)
+                                            {
+                                                search.Officer_DepartmentId = LoginHelper.GetDepartmentId();
+                                            }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001003020)
+                                            {
+                                                search.Officer_CompanyId = LoginHelper.GetCompanyId();
+                                            }
+                                            search.NodeStatus = NodeStatus.Stoped;
+                                            search.PageId = Model.SearchCondition.PageId;
+                                            var stopedCount = TaskService.Instance.GetTaskListTotalCount(search);
+                                        }
+                                        <a href="javascript:void(0);" onclick="javascript: task.Tasks.SelectedNodeStatus(this, 5);"> 停止(@(stopedCount))</a>
+                                    </li>
+
+                                            }
+
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001001030
+                                ||  Model.SearchCondition.PageId == PageId.PageId_9001002030
+                                || Model.SearchCondition.PageId == PageId.PageId_9001003030)
+                                            {
+                                                var search = new TaskSearchCondition();
+
+                                    <li class="state-selector-item active">
+                                        @{
+                                            search = new TaskSearchCondition();
+                                            if (Model.SearchCondition.PageId == PageId.PageId_9001001030)
+                                            {
+                                                search.Participant = LoginHelper.GetUserName();
+                                            }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001002030)
+                                            {
+                                                search.Participant_DepartmentId = LoginHelper.GetDepartmentId();
+                                            }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001003030)
+                                            {
+                                                search.Participant_CompanyId = LoginHelper.GetCompanyId();
+                                            }
+                                            search.NodeStatus = NodeStatus.Processing;
+                                            search.PageId = Model.SearchCondition.PageId;
+                                            var processingCount = TaskService.Instance.GetTaskListTotalCount(search);
+                                        }
+                                        <a href="javascript:void(0);" onclick="javascript: task.Tasks.SelectedNodeStatus(this, 2);"> 进行中(@(processingCount))</a>
+                                    </li>
+
+                                    <li class="state-selector-item ">
+                                        @{
+                                            search = new TaskSearchCondition();
+                                            if (Model.SearchCondition.PageId == PageId.PageId_9001001030)
+                                            {
+                                                search.Participant = LoginHelper.GetUserName();
+                                            }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001002030)
+                                            {
+                                                search.Participant_DepartmentId = LoginHelper.GetDepartmentId();
+                                            }
+                                            else if (Model.SearchCondition.PageId == PageId.PageId_9001003030)
+                                            {
+                                                search.Participant_CompanyId = LoginHelper.GetCompanyId();
+                                            }
+                                            search.NodeStatus = NodeStatus.Finished;
+                                            search.PageId = Model.SearchCondition.PageId;
+                                            var finishedCount = TaskService.Instance.GetTaskListTotalCount(search);
+                                        }
+                                        <a href="javascript:void(0);" onclick="javascript: task.Tasks.SelectedNodeStatus(this, 3);"> 完成(@(finishedCount))</a>
+                                    </li>
+
+                                                               }
+
+                                </ul>
+                            </div>
+
+                            <form class="form-inline" id="postForm">
+                                @Html.HiddenFor(m => m.SearchCondition.PageId)
+                                @Html.HiddenFor(m => m.SearchCondition.Sorting)
+                                @Html.HiddenFor(m => m.SearchCondition.PageName, new { name = "PageName" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageNo, new { name = "PageNo" })
+                                @Html.HiddenFor(m => m.SearchCondition.PageSize, new { name = "PageSize" })
+                                @Html.HiddenFor(m => m.SearchCondition.TotalCount, new { name = "TotalCount" })
+                                @Html.HiddenFor(m => m.SearchCondition.TaskStatus)
+                                @Html.HiddenFor(m => m.SearchCondition.NodeStatus)
+                                @Html.HiddenFor(m => m.SearchCondition.Initiator)
+                                @Html.HiddenFor(m => m.SearchCondition.Initiator_DepartmentId)
+                                @Html.HiddenFor(m => m.SearchCondition.Initiator_CompanyId)
+                                @Html.HiddenFor(m => m.SearchCondition.Officer)
+                                @Html.HiddenFor(m => m.SearchCondition.Officer_DepartmentId)
+                                @Html.HiddenFor(m => m.SearchCondition.Officer_CompanyId)
+                                @Html.HiddenFor(m => m.SearchCondition.Participant)
+                                @Html.HiddenFor(m => m.SearchCondition.Participant_DepartmentId)
+                                @Html.HiddenFor(m => m.SearchCondition.Participant_CompanyId)
+
+                                @Html.HiddenFor(m => m.TaskId)
+
+                                <table class="search_table" style="width: 100%">
+                                    <colgroup>
+                                        <col style="width: 60px;" />
+                                        <col style="width: 160px" />
+                                        <col style="width: 60px;" />
+                                        <col style="width: 60px;" />
+                                        <col style="width: 80px" />
+                                        <col>
+                                    </colgroup>
+                                    <tr>
+                                        <th>
+                                            关键字：
+                                        </th>
+                                        <td colspan="4">
+                                            @Html.TextBoxFor(m => m.SearchCondition.Keyword, new { @class = "form-control", @style = "width:100%" })
+                                        </td>
+
+                           
+
+                                    </tr>
+                                    <tr>
+                                        <th>
+                                            提交日期：
+                                        </th>
+                                        <td colspan="2">
+                                            @Html.TextBoxFor(m => m.SearchCondition.TaskSubmitDateFrom, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                            -
+                                            @Html.TextBoxFor(m => m.SearchCondition.TaskSubmitDateTo, "{0:yyyy-MM-dd}", new { @class = "input_time form-control", onfocus = "WdatePicker({doubleCalendar:true,dateFmt:'yyyy-MM-dd'})", @style = "width:100px" })
+                                        </td>
+                                        <th>
+                                            优先级：
+                                        </th>
+                                        <td>
+                                            @Html.DropDownListFor(m => m.SearchCondition.TaskPriority, TaskService.Instance.GetTaskPriorityList(true), new { @class = "form-control", @style = "width:100%" })
+                                        </td>
+                                        <td>
+                                            <a href="javascript:void(0);" class="btn btn-primary " id="btnTaskSearch">
+                                                <span>查询</span>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </table>
+
+                            </form>
+                        </div>
+
+                    </div>
+                    <div class="col-sm-12">
+                        <div class="">
+                            <div class="gridSection" id="taskgridSection">
+                                <table id="tblTaskList" class="aps-table aps-widget aps-ani-transition ">
+
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 9%">
+                                                编号
+                                            </th>
+                                            <th style="width: 8%">
+                                                关联案号
+                                            </th>
+                                            <th  style="width: 15%">
+                                                客户
+                                            </th>
+                                            <th style="width: 8%">
+                                                状态
+                                            </th>
+
+                                            <th style="width: 5%">
+                                                优先级
+                                            </th>
+                                            <th style="width: 10%">
+                                                标题
+                                            </th>
+
+                                            <th style="width: 6%">
+                                                发起时间
+                                                <span>
+                                                    <span class="aps-state-hidden"></span>
+                                                    <span data-field="T.TaskBeginTime" class="aps-widget aps-ani-transition aps-sort aps-state-visible">
+                                                        <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                                                        <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                                                           style="top:9px">
+                                                        </i>
+                                                    </span>
+                                                </span>
+                                            </th>
+                                            <th style="width: 6%">
+                                                截止时间
+                                                <span>
+                                                    <span class="aps-state-hidden"></span>
+                                                    <span data-field="T.TaskEndTime" class="aps-widget aps-ani-transition aps-sort aps-state-visible">
+                                                        <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                                                        <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                                                           style="top:9px">
+                                                        </i>
+                                                    </span>
+                                                </span>
+                                            </th>
+
+                                            <th style="width: 6%">
+                                                剩余天数
+                                                <span>
+                                                    <span class="aps-state-hidden"></span>
+                                                    <span data-field="T.TaskStatus,T.TaskEndTime" class="aps-widget aps-ani-transition aps-sort aps-state-visible">
+                                                        <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                                                        <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                                                           style="top:9px">
+                                                        </i>
+                                                    </span>
+                                                </span>
+                                            </th>
+
+
+                                            <th style="width: 10%">
+                                                最后更新时间
+                                                <span>
+                                                    <span class="aps-state-hidden"></span>
+                                                    <span data-field="T.ChangeTime" class="aps-widget aps-ani-transition aps-sort aps-state-visible">
+                                                        <i type="up" class="aps-icon aps-ani-transition aps-widget aps-icon-shangjiantou aps-sort-btn aps-sort-btn-up"></i>
+                                                        <i type="down" class="aps-icon aps-ani-transition aps-widget aps-icon-xiajiantou aps-sort-btn aps-sort-btn-down"
+                                                           style="top:9px">
+                                                        </i>
+                                                    </span>
+                                                </span>
+                                            </th>
+
+                
+                                            <th style="width: 6%">
+                                                发起人
+                                            </th>
+                                            <th style="width: 6%">
+                                                负责人
+                                            </th>
+
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr style="display: none">
+                                            <td>
+                                                &nbsp;
+                                            </td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                        </tr>
+                                        <tr style="display: none">
+                                            <td>
+                                                &nbsp;
+                                            </td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                            <td></td>
+                                        </tr>
+                                    </tbody>
+                                    <tfoot class="" style="display: none">
+                                        <tr>
+                                            <td colspan="12">
+                                                <div class="pull-left"></div>
+                                                <div class="">
+                                                    <div class="pull-right page-box task">
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                            <div class="simple-grid-none-data-wrap">
+                                <div class="simple-grid-none-data text-center  ng-isolate-scope">
+                                    <div class="simple-grid-none-data row-padding row-margin text-center  grid-no-data-sm" ng-class="vm.cls">
+                                        <span class="text-size-16 text-success icon-info-1" style="vertical-align: middle" ng-class="vm.iconCls"></span>
+                                        <div class="text-size-16 tip-text inline-block">
+                                            <span class="margin-left ng-binding">没有查询到符合条件的记录</span>
+                                            <span class="ng-binding">。</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+ 
+            </div>
+        </div>
+
+
+    </div>
+</div>
+<div class="slide-panel-container show-panel">
+
+</div>

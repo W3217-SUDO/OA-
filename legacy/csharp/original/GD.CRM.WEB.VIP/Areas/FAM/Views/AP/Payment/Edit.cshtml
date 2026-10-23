@@ -1,0 +1,332 @@
+﻿@using Dchien.Legal.BizModel.FCM.Contract
+@using Dchien.Legal.Service.Legal.Case
+@using Dchien.Legal.Service.BAS.Type
+
+@model Dchien.Legal.Web.Areas.FAM.ViewModels.AP.Payment.PaymentModel
+@*<link type="text/css" rel="stylesheet" href="https://g.alicdn.com/aliyun/ticketsystem/1.6.17//styles/ticketSystem/detail.css" />
+<link type="text/css" rel="stylesheet" href="https://g.alicdn.com/aliyun/ticketsystem/1.6.17//styles/ticketSystem/tip.css" />
+<link type="text/css" rel="stylesheet" href="https://g.alicdn.com/aliyun/ticketsystem/1.6.17//styles/ticketSystem/common.css" />*@
+<script type="text/javascript" src="@Url.Content("~/Scripts/FAM/AP/FAM.AP.Payment.js?releaseno=" + System.Configuration.ConfigurationManager.AppSettings["ReleaseNo"])"></script>
+
+<div class="viewFramework-product ">
+    <div class="viewFramework-product-body">
+        <div>
+            <div class="console-container ng-scope">
+                <div class="ng-scope">
+                    <div class="row ng-scope">
+                        <div class="col-sm-12">
+                            <div ui-view="myTicket">
+                                <div class="ticket-detail ng-scope">
+                                    <div class="console-title console-title-border clearfix">
+                                        <h5 class="pull-left">申请付款</h5>
+
+                                    </div>
+                                    <div class="margin-top-3"></div>
+                                    <div style="margin-top:12px" class="ng-isolate-scope">
+                                        <div class="console-step row step-bar">
+                                            <div class="step col-md-3 ng-scope step-first step-active">
+                                                <span class="">付款信息填写</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope  ">
+                                                <span class="">提交申请</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope ">
+                                                <span class="">财务审批</span>
+                                            </div>
+                                            <div class="step col-md-3 ng-scope step-end">
+                                                <span class="">财务付款</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="info-panel" style="margin-top:12px">
+
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-2">
+                                                <span class="text-explode">
+                                                    <span>合同编号</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractId)
+                                                    @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractNo)
+                                                    @Html.HiddenFor(m => m.Customer.CustomerBasic.CustomerId)
+                                                    @Html.HiddenFor(m => m.Customer.CustomerBasic.CustomerNo)
+                                                  
+                                                    @Html.HiddenFor(m => m.Payment.PaymentBasic.ApplicationNo)
+                                                    @Html.HiddenFor(m => m.Payment.PaymentBasic.ApplicationDate)
+
+                                                    @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.ContractNo)
+                                                </span>
+                                            </div>
+
+                                            <div class="col-sm-3 ">
+                                                <span class="text-explode">
+                                                    <span>合同名称</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.ContractName)
+                                                </span>
+                                            </div>
+
+                                            <div class="col-sm-3 ">
+                                                <span class="text-explode">
+                                                    <span>客户名称</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Customer.CustomerBasic.CustomerName)
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-2">
+                                                <span class="text-explode">
+                                                    <span>申请编号</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span class="">
+                                                    @Html.DisplayTextFor(m => m.Payment.PaymentBasic.ApplicationNo)
+                                                </span>
+                                            </div>
+
+                                            <div class="col-sm-3">
+                                                <span class="text-explode">
+                                                    <span>销售代表</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.DisplayTextFor(m => m.Contract.ContractBasicInfo.BusinessOwnerName)
+                                                </span>
+                                            </div>
+                                            <div class="col-sm-2">
+                                                <span class="text-explode">
+                                                    <span>申请日期</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    <span class=""> @Html.DisplayFor(m => m.Payment.PaymentBasic.ApplicationDate) </span>
+                                                </span>
+                                            </div>
+
+
+                                        </div>
+                                        <div class="row" style="margin-top:8px">
+
+                                            <div class="col-sm-7 ">
+                                                <span class="text-explode">
+                                                    <span>交&nbsp&nbsp款&nbsp人</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span>
+                                                    @Html.TextBoxFor(m => m.Payment.PaymentBasic.PayerName, new { @class = "input_text form-control", @style = "display:inline;border:0px;width:77%", @unselectable = "on" })
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-7  ">
+                                                <span class="text-explode">
+                                                    <span>
+                                                        @Html.HiddenFor(m => m.Payment.PaymentType.PaymentTypeId)
+                                                        @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractId)
+                                                        @Html.HiddenFor(m => m.Contract.ContractBasicInfo.ContractNo)
+                                                        @Html.HiddenFor(m => m.Customer.CustomerBasic.CustomerId)
+                                                        @Html.HiddenFor(m => m.Customer.CustomerBasic.CustomerNo)
+                                                        @Html.HiddenFor(m => m.Payment.PaymentBasic.ApplicationNo)
+                                                        @Html.HiddenFor(m => m.Payment.PaymentBasic.ApplicationDate)
+                                                        @Html.HiddenFor(m => m.Payment.PaymentBasic.PaymentId)
+
+                                                        
+                                                        <a id='lblPaymentType' href="javascript:void(0);" onclick="javascript:void(0);">收款单位</a>
+                                                    </span>
+                                                    <span>:</span>
+                                                </span>
+
+                                                @Html.TextBoxFor(m => m.Payment.PaymentType.OrganizationName, new { @class = "input_text form-control", @readonly = true, @style = "display:inline;border:0px;width:77%", @unselectable = "on" })
+                                            </div>
+                                        </div>
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-7 ">
+                                                <span class="text-explode">
+                                                    <span>开&nbsp&nbsp户&nbsp行</span>
+                                                    <span>:</span>
+                                                </span>
+
+                                                @Html.TextBoxFor(m => m.Payment.PaymentType.AccountBank, new { @class = "input_text form-control", @readonly = true, @style = "display:inline;border:0px;width:77%", @unselectable = "on" })
+                                            </div>
+                                        </div>
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-7  ">
+                                                <span class="text-explode">
+                                                    <span>帐号信息</span>
+                                                    <span>:</span>
+                                                </span>
+
+                                                @Html.TextBoxFor(m => m.Payment.PaymentType.Account, new { @class = "input_text form-control", @readonly = true, @style = "display:inline;border:0px;width:77%", @unselectable = "on" })
+                                            </div>
+
+                                        </div>
+
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="col-sm-7 ">
+                                                <span class="text-explode">
+                                                    <span>备&nbsp&nbsp&nbsp&nbsp&nbsp&nbsp注</span>
+                                                    <span>:</span>
+                                                </span>
+                                                <span> @Html.TextBoxFor(m => m.Payment.PaymentBasic.Remark, new { @class = "input_text form-control", @style = "display:inline;border:0px;width:77%", @unselectable = "on" }) </span>
+                                            </div>
+                                        </div>
+
+
+                                        <div class="row" style="margin-top:4px">
+                                            <div class="simple-form-field ng-scope ng-isolate-scope">
+                                                <div class="form-group simple-form-submit ng-scope" style="margin-bottom:0px">
+                                                    <label for="submit5" class="col-sm-12 control-label"><span class="ng-binding"></span></label>
+                                                    <div class="col-sm-2">
+                                                        <input class="btn btn-primary ng-binding" type="button" id="btnInvoiceSubmit" onclick="javascript: payment.Payment.Application.CreateUpdate(true);" value="提交">
+                                                    </div>
+                                                </div>
+
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+
+                            <div class="case-section-wrap" style="padding-top: 12px;">
+                                <div class="case-section-product">
+                                    <!-- product section -->
+                                    <div class="product-container">
+                                        <div class="product-section">
+                                            <ul class="nav nav-tabs">
+                                                <li id="liContractObjectList" class='active'><a href="javascript:void(0);" id="btnContractObjectList">付款信息</a></li>
+                                                <li class="pull-right" style="border:none">
+                                                    <div style="margin-top:3px">
+                                                        <div style="text-align: inherit;">
+                                                            <div style="text-align: right; padding-right: 8px; padding-bottom: 3px; float: right; display: inline;">
+
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </li>
+                                            </ul>
+                                            <div class="section-content clearfix">
+                                                <div class="product-col ng-scope" style="width: 100%">
+
+                                                    <div id="dv_List">
+                                                        <div class="gridSection">
+                                                            <div id='divContextList' style="overflow-y: auto; overflow-x: hidden; overflow-y: auto; ">
+                                                                <table class='table table-hover' id="tblAPObjectList" width="100%">
+                                                                    <colgroup>
+                                                                        <col style="width: 4%">
+                                                                        <col style="width: 10%">
+                                                                        <col style="width: 15%">
+
+                                                                        <col style="width: 8%">
+                                                                        <col style="width: 15%">
+                                                                        <col style="width: 8%">
+                                                                        <col style="width: 6%">
+                                                                        <col style="width: 6%">
+                                                                        <col style="width: 6%">
+                                                                        <col style="width: 12%">
+                                                                    </colgroup>
+                                                                    <thead>
+                                                                        <tr>
+                                                                            <th>序号</th>
+                                                                            <th>案件类型</th>
+                                                                            <th>案件名称</th>
+                                                                            <th>案号</th>
+                                                                            <th>费用类型</th>
+                                                                            <th>通知时间</th>
+                                                                            <th>待付金额</th>
+                                                                            <th>本次支付</th>
+                                                                            <th><input id="item_PaymentAllApply" name='item_PaymentAllApply' type='checkbox' /></th>
+                                                                            <th>备注</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                        @{ var i = 1; }
+                                                                        @if (Model.Payment != null && Model.Payment.PaymentObjects != null)
+                                                                        {
+                                                                            var caseFeeTypes = CaseTypeService.Instance.GetAllCaseFeeTypes();
+
+                                                                            foreach (var item in Model.Payment.PaymentObjects.OrderBy(x => x.CaseNo))
+                                                                            {
+                                                                                var caseInfo = CaseService.Instance.GetCaseBasic(item.CaseNo);
+
+                                                                                <tr>
+                                                                                    <td>
+                                                                                        <span>@(i++)</span>
+                                                                                    </td>
+                                                                                    <td style="text-align: center">
+                                                                                        <span>@CaseTypeService.Instance.GetCaseType(caseInfo.Basic.CaseTypeId.Value).CaseTypeName</span>
+                                                                                    </td>
+                                                                                    <td style="text-align: center">
+                                                                                        <span>@caseInfo.Basic.CaseName</span>
+                                                                                    </td>
+                                                                                    <td style="text-align: center;">
+                                                                                        <span>
+                                                                                            <a style="color:#06C; width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                                                                               href="javascript:c.View('@caseInfo.Basic.CaseNo')">@caseInfo.Basic.CaseNo</a>
+                                                                                        </span>
+                                                                                    </td>
+
+                                                                                    <td style="text-align: center;">
+                                                                                        <span>@(item.CaseFeeTypeId.HasValue ? caseFeeTypes.FirstOrDefault(x => x.FeeTypeId == item.CaseFeeTypeId).FeeTypeName : "")</span>
+                                                                                    </td>
+                                                                                    <td style="text-align: center;">
+                                                                                        <span>@(item.InformDate.Value.ToString("yyyy-MM-dd"))</span>
+                                                                                    </td>
+                                                                                    <td style="text-align: center;">
+                                                                                        <span>@(item.CaseFeeOpenPayAmount.HasValue ? item.CaseFeeOpenPayAmount.Value : 0)</span>
+                                                                                    </td>
+                                                                                    <td style="text-align: center; padding:0px">
+                                                                                        <input class='form-control' style="background-color:yellow;border:0px" id='item_CaseFeePayAmount' name='item_CaseFeePayAmount'
+                                                                                               casefeeamount=@(item.CaseFeeAmount.HasValue ? item.CaseFeeAmount.Value : 0)
+                                                                                               casefeecashedamount=@(item.CaseFeeCashedAmount.HasValue ? item.CaseFeeCashedAmount.Value : 0)
+                                                                                               casefeepaidamount=@(item.CaseFeePaidTotalAmount.HasValue ? item.CaseFeePaidTotalAmount.Value : 0)
+                                                                                               casefeeopenpayamount=@((item.CaseFeeOpenPayAmount.HasValue ?item.CaseFeeOpenPayAmount.Value:0)  + (item.CaseFeePaidAmount.HasValue?item.CaseFeePaidAmount.Value:0))
+                                                                                               casefeeid=@item.CaseFeeId
+                                                                                               casefeeseqid=@item.CaseFeeSeqId
+                                                                                               casefeeprepaidtotalamount=@((item.CaseFeePrePaidTotalAmount.HasValue?item.CaseFeePrePaidTotalAmount.Value :0) -(item.CaseFeePrePaidAmount.HasValue ? item.CaseFeePrePaidAmount.Value : 0))
+                                                                                               casefeeprepaidamount=@(item.CaseFeePrePaidAmount.HasValue ? item.CaseFeePrePaidAmount.Value : 0)
+                                                                                               type='text'
+                                                                                               value='@item.CaseFeePaidAmount'>
+                                                                                    </td>
+
+                                                                                    <td style="text-align: center">
+                                                                                        <input id="item_PaymentApply" name='item_PaymentApply' type='checkbox' caseid="@caseInfo.Basic.CaseId" caseno="@caseInfo.Basic.CaseNo">
+                                                                                    </td>
+                                                                                    <td style="text-align: center">
+                                                                                        @if (item.CaseFeePrePaidTotalAmount > 0)
+                                                                                        {
+                                                                                            <span id="item_PaymentRemark"  style="color:red">费用累计垫付 @(item.CaseFeePrePaidTotalAmount) 元</span>
+                                                                                        }
+                                                                                        else
+                                                                                        { 
+                                                                                            <span id="item_PaymentRemark" style="color:red"></span>
+                                                                                        }
+                                                                                       
+                                                                                    </td>
+                                                                                </tr>
+                                                                            }
+                                                                        }
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
