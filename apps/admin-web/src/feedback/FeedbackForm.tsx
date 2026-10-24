@@ -173,7 +173,7 @@ export default function FeedbackForm({ sourceRoute, pageControls, openPages, men
 
   const submit = async () => {
     const text = description.trim();
-    if (text.length < 5 || text.length > 2000) { setDescriptionError("请填写 5 到 2000 字的问题描述"); return; }
+    if (!text) { setDescriptionError("请填写问题描述"); return; }
     if (!pageKeys.length) { message.warning("请勾选问题所在页面"); return; }
     const body = new FormData();
     body.append("description", text);
@@ -238,7 +238,7 @@ export default function FeedbackForm({ sourceRoute, pageControls, openPages, men
 
     <section className="feedback-section">
       <div className="feedback-section-title"><span className="feedback-required">*</span>问题描述</div>
-      <Input.TextArea value={description} rows={7} maxLength={2000} showCount status={descriptionError ? "error" : undefined}
+      <Input.TextArea value={description} rows={7} status={descriptionError ? "error" : undefined}
         aria-label="问题描述" placeholder={"请描述：\n1. 做了什么操作（点了哪个按钮、填了什么）\n2. 期望的结果\n3. 实际看到的问题"}
         onChange={(event) => { setDescription(event.target.value); if (descriptionError) setDescriptionError(""); }} />
       {descriptionError && <div className="feedback-error">{descriptionError}</div>}

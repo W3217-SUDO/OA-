@@ -167,8 +167,9 @@ async def create_feedback(
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     description = description.strip()
-    if not 5 <= len(description) <= 2000:
-        raise HTTPException(422, "问题描述需填写 5 到 2000 字")
+    # 描述不限字数，只要求不为空（用户要求，2026-10-24）。
+    if not description:
+        raise HTTPException(422, "请填写问题描述")
     if len(page) > 500 or len(route) > 300:
         raise HTTPException(422, "页面地址过长")
     if len(controls) > 1000:

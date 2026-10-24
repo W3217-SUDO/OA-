@@ -15,6 +15,8 @@ function collectPageControls(): string[] {
   const names: string[] = [];
   root.querySelectorAll<HTMLElement>("button, [role=tab], .ant-tabs-tab-btn, .ant-segmented-item-label").forEach((element) => {
     // 表格行、列表项里的按钮是数据（案号、客户名），不是页面功能。
+    // 筛选区折叠开关是页面通用的，不算页面功能。
+    if (element.closest(".oa-filter-toggle")) return;
     if (element.closest("tbody, li, [role=row], [role=listitem], .ant-list-item, .ant-timeline-item, .ant-pagination, .ant-select-dropdown, .ant-picker-dropdown")) return;
     if (element.closest("[aria-hidden=true]") || !element.getClientRects().length) return;
     const text = (element.innerText || element.getAttribute("aria-label") || element.title || "")
