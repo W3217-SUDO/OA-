@@ -12,6 +12,10 @@
   --oa-primary-soft-2: color-mix(in srgb, var(--oa-primary) 16%, transparent);
   --oa-accent: var(--oa-primary);
   --oa-accent-soft: color-mix(in srgb, var(--oa-primary) 8%, transparent);
+  /* 由主题色推出的常用色：深色文字、浅底、浅描边。切换主题色时一起变，夜间模式通过 --oa-ink 自动提亮。 */
+  --oa-primary-ink: color-mix(in srgb, color-mix(in srgb, var(--oa-primary) 76%, #000) var(--oa-ink), #fff);
+  --oa-primary-tint: color-mix(in srgb, var(--oa-primary) 10%, var(--oa-surface));
+  --oa-primary-line: color-mix(in srgb, var(--oa-primary) 28%, var(--oa-surface));
   --oa-bg: #ecf0f5;
   --oa-surface: #ffffff;
   --oa-surface-raised: #ffffff;

@@ -85,7 +85,7 @@ button.wb-todo-entry:active{background:color-mix(in srgb, #dcece3 var(--oa-tint)
 
 /* 问候语仅属于工作概况头部，称呼和工作摘要可换行，刷新图标保留固定空间。 */
 .wb-greeting{display:flex;flex:1;align-items:center;gap:12px;min-width:0}
-.wb-greeting-mark{display:grid;flex:none;place-items:center;width:44px;height:44px;border:1px solid color-mix(in srgb, #cfe9de var(--oa-tint), var(--oa-surface));border-radius:50%;background:radial-gradient(circle at 32% 26%,var(--oa-fill),color-mix(in srgb, #e4f6ee var(--oa-tint), var(--oa-surface)) 72%)}
+.wb-greeting-mark{display:grid;flex:none;place-items:center;width:44px;height:44px;border:1px solid var(--oa-primary-line);border-radius:50%;background:radial-gradient(circle at 32% 26%,var(--oa-fill),var(--oa-primary-tint) 72%)}
 .wb-greeting-text{flex:1;min-width:0;overflow-wrap:anywhere}
 .wb-greeting-text h2{margin:0;color:var(--wb-ink);font-size:20px;font-weight:600;line-height:1.3;letter-spacing:-.01em;white-space:normal}
 .wb-greeting-text p{margin:2px 0 0;color:var(--wb-slate);font-size:13px;line-height:1.5}
@@ -125,7 +125,7 @@ button.wb-todo-entry:active{background:color-mix(in srgb, #dcece3 var(--oa-tint)
 .wb-section-head h3{margin:0;color:var(--wb-ink);font-size:15px;font-weight:600}
 .wb-section-head .wb-title-link{height:auto;padding:0;color:var(--wb-ink);font-size:15px;font-weight:600}
 .wb-title-link .anticon{margin-left:4px;color:var(--wb-mute);font-size:11px}
-.wb-count{min-width:22px;padding:1px 8px;border-radius:999px;background:color-mix(in srgb, #e3f4ec var(--oa-tint), var(--oa-surface));color:color-mix(in srgb, #0b5e49 var(--oa-ink), #fff);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;text-align:center}
+.wb-count{min-width:22px;padding:1px 8px;border-radius:999px;background:var(--oa-primary-tint);color:var(--oa-primary-ink);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;text-align:center}
 .wb-count.is-alert{background:color-mix(in srgb, #fbeae7 var(--oa-tint), var(--oa-surface));color:var(--wb-red)}
 .wb-docket-body,.wb-rejection-list{flex:1;min-height:0;margin:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--oa-border-strong) transparent}
 .wb-docket-body{padding:0 16px 4px}
@@ -142,7 +142,7 @@ button.wb-todo-entry:active{background:color-mix(in srgb, #dcece3 var(--oa-tint)
 .wb-hearing{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:10px;padding:9px 0}
 .wb-hearing-main{display:flex;align-items:flex-start;gap:9px;min-width:0}
 .wb-hearing+.wb-hearing{border-top:1px dashed var(--oa-border)}
-.wb-hearing-time{display:inline-block;flex:none;min-width:46px;padding:1px 7px;border-radius:6px;background:var(--oa-fill);color:color-mix(in srgb, #0b5e49 var(--oa-ink), #fff);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;text-align:center;white-space:nowrap}
+.wb-hearing-time{display:inline-block;flex:none;min-width:46px;padding:1px 7px;border-radius:6px;background:var(--oa-fill);color:var(--oa-primary-ink);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;text-align:center;white-space:nowrap}
 .wb-hearing-body{display:flex;flex-direction:column;gap:3px;min-width:0}
 .wb-hearing-body>b{overflow:hidden;font-size:13px;font-weight:600;line-height:1.5;text-overflow:ellipsis;white-space:nowrap}
 .wb-hearing-case{display:flex;flex-wrap:wrap;gap:0 12px}
@@ -153,7 +153,7 @@ button.wb-todo-entry:active{background:color-mix(in srgb, #dcece3 var(--oa-tint)
 
 /* 交给智能体：把当前这条提醒连同关键信息发给工作台里的智能体。 */
 .wb-ask{display:inline-flex;align-items:center;gap:5px;flex:none;padding:4px 9px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--wb-jade);font:inherit;font-size:12px;white-space:nowrap;cursor:pointer;transition:background .15s,border-color .15s}
-.wb-ask:hover{border-color:color-mix(in srgb, #cfe9de var(--oa-tint), var(--oa-surface));background:var(--oa-fill)}
+.wb-ask:hover{border-color:var(--oa-primary-line);background:var(--oa-fill)}
 .wb-ask:focus-visible{outline:2px solid var(--wb-jade);outline-offset:1px}
 
 /* 审批驳回提醒：当前账号提交后被驳回的单据。 */
@@ -285,3 +285,80 @@ button.wb-todo-entry:active{background:var(--oa-fill)}
 }
 .wb-overview-cases th:first-child{width:156px}
 .wb-overview-case-number button{white-space:nowrap}
+
+/* 2026-10 提醒区：律所办公风格，统一用主题色（跟随“偏好设置”里的主题色），不做多彩；
+   数字为 0 的变灰，有待办的图标填满主题色并挂角标；红色只留给紧急事项（紧急案件有数时）。 */
+:is(.wb-metrics,.wb-overview,.wb-focus){--hue:var(--oa-primary);--hue-2:color-mix(in srgb,var(--oa-primary) 62%,#fff);--hue-ink:color-mix(in srgb,var(--oa-primary) var(--oa-ink-soft),#fff)}
+:is(.wb-metric,.wb-focus-chip).is-urgent{--hue:var(--oa-danger);--hue-2:color-mix(in srgb,var(--oa-danger) 62%,#fff);--hue-ink:var(--oa-danger)}
+@keyframes wb-ring{0%,60%,100%{transform:rotate(0)}8%{transform:rotate(16deg)}16%{transform:rotate(-14deg)}24%{transform:rotate(10deg)}32%{transform:rotate(-6deg)}40%{transform:rotate(3deg)}}
+@keyframes wb-glow{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--oa-danger) 0%,transparent)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--oa-danger) 18%,transparent)}}
+
+/* 提醒指标：白底卡片，左侧主题色图标，右侧数字和名称；未到官费金额数字长，占稍宽的一列。 */
+@container (min-width:980px){.wb-metric-grid{grid-template-columns:repeat(7,minmax(0,1fr)) minmax(0,1.6fr)}}
+.wb-metrics .wb-metric{position:relative;display:flex;flex-direction:row;align-items:center;gap:11px;min-height:64px;padding:10px 13px;border:1px solid var(--oa-border);border-radius:12px;background:var(--oa-surface);color:var(--oa-text);box-shadow:var(--oa-shadow-xs);text-align:left;transition:transform .18s var(--oa-ease),box-shadow .18s,border-color .18s}
+.wb-metrics .wb-metric-icon{position:static;display:grid;flex:none;place-items:center;width:38px;height:38px;border-radius:10px;background:color-mix(in srgb,var(--hue) 10%,var(--oa-surface));color:var(--hue-ink);font-size:18px;box-shadow:none}
+.wb-metrics .wb-metric-text{flex:1;width:auto;min-width:0}
+.wb-metrics .wb-metric .wb-metric-text strong{overflow:hidden;color:var(--oa-text);font-size:18px;font-weight:700;line-height:1.2;text-overflow:clip;white-space:nowrap}
+.wb-metrics .wb-metric.is-clear .wb-metric-text strong{color:var(--oa-text-3)}
+.wb-metrics .wb-metric .wb-metric-text strong small{margin-left:2px;color:var(--oa-text-3);font-size:11px;font-weight:500}
+.wb-metric-number{font-weight:inherit;white-space:nowrap}
+.wb-metrics .wb-metric .wb-metric-text span{padding-right:0;color:var(--oa-text-2);font-size:12px;font-weight:400}
+.wb-metrics .wb-metric:hover{border-color:color-mix(in srgb,var(--hue) 45%,var(--oa-border));transform:translateY(-1px);box-shadow:var(--oa-shadow-md)}
+.wb-metrics .wb-metric:focus-visible{outline:2px solid var(--hue);outline-offset:2px}
+.wb-metrics .wb-metric.is-urgent{border-color:color-mix(in srgb,var(--oa-danger) 45%,var(--oa-border));background:color-mix(in srgb,var(--oa-danger) 6%,var(--oa-surface));animation:wb-glow 2.2s ease-in-out infinite}
+.wb-metrics .wb-metric.is-urgent .wb-metric-icon{background:var(--oa-danger);color:#fff}
+.wb-metrics .wb-metric.is-urgent .wb-metric-text strong{color:var(--oa-danger)}
+.wb-metrics .wb-metric.is-loading{cursor:default;opacity:.6}
+
+/* 我的待办：图标宫格（类似钉钉工作台）。没有待办的图标浅色描边；有待办的填满主题色，右上角深色角标写件数。宽屏一行十个，否则两行。 */
+.wb-todo-summary{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;line-height:20px}
+.wb-todo-summary.is-pending{background:color-mix(in srgb,var(--oa-primary) 10%,var(--oa-surface));color:var(--hue-ink)}
+.wb-todo-summary.is-pending i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.wb-todo-summary.is-clear{background:var(--oa-fill);color:var(--oa-text-2)}
+.wb-overview .wb-todo-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:4px 8px}
+@container (min-width:1100px){.wb-overview .wb-todo-grid{grid-template-columns:repeat(10,minmax(0,1fr))}}
+.wb-overview .wb-todo-entry{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:8px;min-height:0;padding:12px 4px 10px;border:0;border-radius:12px;background:transparent;color:var(--oa-text-2);text-align:center;box-shadow:none;transition:background .18s,transform .18s var(--oa-ease)}
+.wb-overview button.wb-todo-entry:hover{background:var(--oa-fill);transform:translateY(-2px);box-shadow:none}
+.wb-overview button.wb-todo-entry:active{transform:translateY(0)}
+.wb-overview button.wb-todo-entry:focus-visible{outline:2px solid var(--hue);outline-offset:2px}
+.wb-overview .wb-todo-icon{position:relative;display:grid;flex:none;place-items:center;width:48px;height:48px;border:1px solid color-mix(in srgb,var(--hue) 22%,var(--oa-border));border-radius:14px;background:color-mix(in srgb,var(--hue) 7%,var(--oa-surface));color:var(--hue-ink);font-size:22px;box-shadow:none}
+.wb-overview .wb-todo-entry.has-pending .wb-todo-icon{border-color:transparent;background:linear-gradient(135deg,var(--hue-2),var(--hue));color:#fff;box-shadow:0 8px 16px -10px color-mix(in srgb,var(--hue) 70%,transparent)}
+.wb-todo-badge{position:absolute;top:-8px;left:calc(100% - 15px);min-width:22px;height:20px;padding:0 6px;border:2px solid var(--oa-surface);border-radius:999px;background:var(--oa-text);color:var(--oa-surface);font-size:11px;font-style:normal;font-weight:700;line-height:16px;text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap}
+.wb-overview .wb-todo-title{min-width:0;color:var(--oa-text-2);font-size:12.5px;line-height:1.35;overflow-wrap:anywhere}
+.wb-overview .wb-todo-entry.has-pending .wb-todo-title{color:var(--oa-text);font-weight:500}
+
+/* 问候语旁的“优先处理”：铃铛 + 几枚胶囊，点胶囊直达对应列表；只有紧急案件是红色。 */
+.wb-hero .wb-greeting{flex:0 1 auto}
+.wb-focus{display:flex;flex:1 1 auto;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px;min-width:0}
+.wb-focus-bell{display:grid;flex:none;place-items:center;width:30px;height:30px;border-radius:50%;background:color-mix(in srgb,var(--hue) 10%,var(--oa-surface));color:var(--hue-ink);font-size:15px}
+.wb-focus-bell.is-ringing .anticon{transform-origin:50% 8%;animation:wb-ring 2.6s ease-in-out infinite}
+.wb-focus-title{flex:none;color:var(--oa-text-2);font-size:13px;font-weight:600}
+.wb-focus-chip{display:inline-flex;flex:none;align-items:center;gap:6px;height:32px;padding:0 5px 0 11px;border:1px solid var(--oa-border);border-radius:999px;background:var(--oa-surface);color:var(--oa-text);font:inherit;font-size:13px;white-space:nowrap;cursor:pointer;transition:transform .15s var(--oa-ease),border-color .15s,box-shadow .15s}
+.wb-focus-chip .anticon{color:var(--hue-ink);font-size:14px}
+.wb-focus-chip b{min-width:26px;padding:2px 8px;border-radius:999px;background:var(--hue);color:#fff;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;line-height:18px;text-align:center}
+.wb-focus-chip:hover{border-color:color-mix(in srgb,var(--hue) 45%,var(--oa-border));transform:translateY(-1px);box-shadow:var(--oa-shadow-md)}
+.wb-focus-chip:focus-visible{outline:2px solid var(--hue);outline-offset:2px}
+.wb-focus-chip.is-urgent{border-color:color-mix(in srgb,var(--oa-danger) 45%,var(--oa-border));background:color-mix(in srgb,var(--oa-danger) 6%,var(--oa-surface));animation:wb-glow 2.2s ease-in-out infinite}
+.wb-focus-clear{display:inline-flex;align-items:center;gap:6px;color:var(--oa-text-2);font-size:13px}
+
+/* 标题不折行；标签放不下时整体换到标题下一行。 */
+.wb-overview-section-head{flex-wrap:wrap}
+.wb-overview-section-head h3{flex:none;white-space:nowrap}
+
+@media(max-width:720px){
+  .wb-metrics .wb-metric{flex-direction:column;justify-content:center;gap:4px;min-height:0;padding:9px 4px;text-align:center}
+  .wb-metrics .wb-metric-icon{width:28px;height:28px;border-radius:8px;font-size:14px}
+  .wb-metrics .wb-metric-text{align-items:center;width:100%}
+  .wb-metrics .wb-metric .wb-metric-text strong{overflow:visible;font-size:14px;white-space:normal}
+  .wb-metrics .wb-metric.is-wide .wb-metric-text strong{font-size:11.5px;line-height:1.25}
+  .wb-metrics .wb-metric .wb-metric-text strong small{font-size:10px}
+  .wb-metrics .wb-metric .wb-metric-text span{font-size:11px;white-space:normal}
+  .wb-overview .wb-todo-grid{gap:2px 2px}
+  .wb-overview .wb-todo-entry{gap:6px;padding:10px 0 8px}
+  .wb-overview .wb-todo-icon{width:42px;height:42px;border-radius:13px;font-size:19px}
+  .wb-overview .wb-todo-title{font-size:11.5px}
+  .wb-todo-badge{left:calc(100% - 13px);min-width:20px;height:18px;padding:0 5px;font-size:10px;line-height:14px}
+}
+@media (prefers-reduced-motion:reduce){
+  .wb-focus-bell.is-ringing .anticon,.wb-focus-chip.is-urgent,.wb-metrics .wb-metric.is-urgent{animation:none}
+}

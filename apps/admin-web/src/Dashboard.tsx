@@ -3,6 +3,7 @@ import { Button, message } from "antd";
 import dayjs from "dayjs";
 import AssistantPanel, { type AssistantSuggestion } from "./personal-agent/AssistantPanel";
 import { usePersonalWorkspaceContext } from "./personal-agent/PersonalWorkspaceProvider";
+import DashboardFocus from "./DashboardFocus";
 import DashboardHearingSchedule from "./DashboardHearingSchedule";
 import DashboardMetricTiles from "./DashboardMetricTiles";
 import DashboardRejectionReminder from "./DashboardRejectionReminder";
@@ -217,6 +218,14 @@ export default function Dashboard({
         {!isNarrowViewport && (
           <header className="wb-hero">
             <DashboardGreeting greeting={greeting} name={displayName} briefing={briefing} />
+            <DashboardFocus
+              todos={data.todos}
+              metrics={data.metrics}
+              loading={loading.todos}
+              canNavigate={canNavigate}
+              onNavigate={onNavigate}
+              onOpenMetric={navigateMetric}
+            />
             <Button className="wb-hero-refresh" onClick={refreshAll} aria-label="刷新工作台">刷新</Button>
           </header>
         )}

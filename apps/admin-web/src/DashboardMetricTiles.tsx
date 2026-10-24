@@ -26,6 +26,12 @@ const metricIcons: Record<string, ReactNode> = {
   "official-fee-unreceived": <PayCircleOutlined />,
 };
 
+// “356件”“2921498.23元”拆成数字和单位，数字醒目、单位缩小。
+function splitValue(value: string) {
+  const match = /^([-+]?[\d,]+(?:\.\d+)?)(.*)$/.exec(value.trim());
+  return match ? { number: match[1], unit: match[2], zero: Number(match[1].replace(/,/g, "")) === 0 } : { number: value, unit: "", zero: false };
+}
+
 const COLLAPSE_KEY = "sunhold:workbench-metrics-collapsed";
 
 type Props = {
@@ -82,23 +88,29 @@ export default function DashboardMetricTiles({ metrics, status, onOpen }: Props)
       </div>
       {!collapsed && (
         <div className="wb-metric-grid">
-          {slots.map(({ key, label, metric, tone }) => metric ? (
-            <button type="button" className={`wb-metric tone-${tone}${metric.key === "urgent-cases" && Number.parseInt(metric.value, 10) > 0 ? " is-urgent" : ""}`} key={key} onClick={() => onOpen(metric)}>
-              <span className="wb-metric-icon">{metricIcons[metric.key]}</span>
-              <span className="wb-metric-text">
-                <strong>{metric.value}</strong>
-                <span>{metric.label}</span>
-              </span>
-            </button>
-          ) : (
-            <button type="button" className={`wb-metric tone-${tone} is-loading`} key={key} disabled aria-busy="true">
-              <span className="wb-metric-icon">{metricIcons[key]}</span>
-              <span className="wb-metric-text">
-                <strong>…</strong>
-                <span>{label}</span>
-              </span>
-            </button>
-          ))}
+          {slots.map(({ key, label, metric, tone }) => {
+            if (!metric) return (
+              <button type="button" className={`wb-metric tone-${tone} is-loading`} key={key} disabled aria-busy="true">
+                <span className="wb-metric-icon">{metricIcons[key]}</span>
+                <span className="wb-metric-text">
+                  <strong>…</strong>
+                  <span>{label}</span>
+                </span>
+              </button>
+            );
+            const value = splitValue(metric.value);
+            // 统一用主题色；为 0 的数字变灰；紧急案件有数时整块变红，红色只用在这里。
+            const state = value.zero ? " is-clear" : metric.key === "urgent-cases" ? " has-pending is-urgent" : " has-pending";
+            return (
+              <button type="button" className={`wb-metric tone-${tone}${state}${metric.key === "official-fee-unreceived" ? " is-wide" : ""}`} key={key} onClick={() => onOpen(metric)} aria-label={`${metric.label} ${metric.value}`}>
+                <span className="wb-metric-icon">{metricIcons[metric.key]}</span>
+                <span className="wb-metric-text">
+                  <strong><b className="wb-metric-number">{value.number}</b>{value.unit && <small>{value.unit}</small>}</strong>
+                  <span>{metric.label}</span>
+                </span>
+              </button>
+            );
+          })}
         </div>
       )}
     </section>
