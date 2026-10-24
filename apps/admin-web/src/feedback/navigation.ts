@@ -1,11 +1,13 @@
 export const FEEDBACK_ROUTE = "feedback";
 export const FEEDBACK_SOURCE_PAGE_KEY = "sunhold:feedback-source-page";
 export const FEEDBACK_SOURCE_ROUTE_KEY = "sunhold:feedback-source-route";
-export const FEEDBACK_SOURCE_CONTROLS_KEY = "sunhold:feedback-source-controls";
+// 按页面记下的按钮清单 { route: 按钮名[] }，退出登录时随其他会话导航数据一起清掉。
+export const FEEDBACK_SOURCE_CONTROLS_KEY = "sunhold:feedback-page-controls";
 const FEEDBACK_TARGET_KEY = "sunhold:feedback-target";
 const MAX_CONTROLS = 40;
+const MAX_PAGES = 30;
 
-// 点“问题反馈”时当前页面还在，顺手记下页面上的按钮和标签页名称，反馈时直接点选“哪个按钮有问题”。
+// 页面打开期间读出页面上的按钮和标签页名称，反馈时勾选哪个页面就能点选那个页面的“哪个按钮有问题”。
 // 分页按钮跳过；名称里的统计数字（“(2021)”“433件”“595”）会变，去掉。
 function collectPageControls(): string[] {
   const root = document.querySelector("main.page-workbench");
@@ -21,25 +23,42 @@ function collectPageControls(): string[] {
       .replace(/[【\[（(]\s*[】\]）)]/g, "").trim();
     // 只有符号的按钮（如折叠箭头“‹”）不是页面功能。
     if (!/[\u4e00-\u9fa5A-Za-z]/.test(text)) return;
+    // 带冒号的是“删除对话：某对话名”这类拼了数据的按钮，不是固定功能。
+    if (/[:：]/.test(text)) return;
     if (text.length <= 20 && !names.includes(text)) names.push(text);
   });
   return names.slice(0, MAX_CONTROLS);
+}
+
+export function readFeedbackPageControls(): Record<string, string[]> {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(FEEDBACK_SOURCE_CONTROLS_KEY) || "{}");
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    return Object.fromEntries(Object.entries(value)
+      .filter(([, names]) => Array.isArray(names))
+      .map(([route, names]) => [route, (names as unknown[]).filter((item): item is string => typeof item === "string")]));
+  } catch {
+    return {};
+  }
+}
+
+// 记下当前页面的按钮；页面还没渲染出按钮时不覆盖之前记到的清单。最近打开的页面排在最后，最多留 30 个页面。
+export function rememberPageControls(route: string) {
+  if (!route || route === FEEDBACK_ROUTE) return;
+  const names = collectPageControls();
+  if (!names.length) return;
+  const map = readFeedbackPageControls();
+  delete map[route];
+  map[route] = names;
+  const entries = Object.entries(map).slice(-MAX_PAGES);
+  try { sessionStorage.setItem(FEEDBACK_SOURCE_CONTROLS_KEY, JSON.stringify(Object.fromEntries(entries))); } catch { /* 存储满时只是少记 */ }
 }
 
 export function rememberFeedbackSource(route: string) {
   if (route === FEEDBACK_ROUTE) return;
   sessionStorage.setItem(FEEDBACK_SOURCE_PAGE_KEY, `${window.location.pathname}${window.location.search}`);
   sessionStorage.setItem(FEEDBACK_SOURCE_ROUTE_KEY, route);
-  sessionStorage.setItem(FEEDBACK_SOURCE_CONTROLS_KEY, JSON.stringify(collectPageControls()));
-}
-
-export function readFeedbackSourceControls(): string[] {
-  try {
-    const value = JSON.parse(sessionStorage.getItem(FEEDBACK_SOURCE_CONTROLS_KEY) || "[]");
-    return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
-  } catch {
-    return [];
-  }
+  rememberPageControls(route);
 }
 
 export function rememberFeedbackTarget(id: number) {

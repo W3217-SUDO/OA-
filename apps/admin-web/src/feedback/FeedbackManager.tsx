@@ -11,7 +11,7 @@ import type { FeedbackPage, FeedbackRecord } from "./types";
 
 type Props = {
   sourceRoute: string;
-  sourceControls: string[];
+  pageControls: Record<string, string[]>;
   openPages: FeedbackPageOption[];
   menuPages: FeedbackPageOption[];
   onNavigate: (route: string) => void;
@@ -21,7 +21,7 @@ const statusColors: Record<string, string> = {
   待处理: "default", 处理中: "processing", 待补充: "warning", 待验证: "cyan", 已处理: "green", 已解决: "success",
 };
 
-export default function FeedbackManager({ sourceRoute, sourceControls, openPages, menuPages, onNavigate }: Props) {
+export default function FeedbackManager({ sourceRoute, pageControls, openPages, menuPages, onNavigate }: Props) {
   const [rows, setRows] = useState<FeedbackRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -81,7 +81,7 @@ export default function FeedbackManager({ sourceRoute, sourceControls, openPages
   ];
 
   if (viewingId) return <FeedbackDetail feedbackId={viewingId} onNavigate={onNavigate} onBack={() => { setViewingId(null); setReload((current) => current + 1); }} />;
-  if (creating) return <FeedbackForm sourceRoute={sourceRoute} sourceControls={sourceControls} openPages={openPages} menuPages={menuPages} onCancel={() => setCreating(false)}
+  if (creating) return <FeedbackForm sourceRoute={sourceRoute} pageControls={pageControls} openPages={openPages} menuPages={menuPages} onCancel={() => setCreating(false)}
     onSubmitted={(id) => { setCreating(false); setViewingId(id); }} />;
 
   return <section aria-label="问题反馈列表">

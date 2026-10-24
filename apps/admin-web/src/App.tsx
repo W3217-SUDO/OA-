@@ -67,7 +67,7 @@ import requestDingTalkAuthCode from "dingtalk-jsapi/api/runtime/permission/reque
 import { getENV as getDingTalkEnvironment } from "dingtalk-jsapi/lib/env";
 import NotificationCenter from "./NotificationCenter";
 import BugFeedback from "./BugFeedback";
-import { FEEDBACK_ROUTE, FEEDBACK_SOURCE_CONTROLS_KEY, FEEDBACK_SOURCE_PAGE_KEY, FEEDBACK_SOURCE_ROUTE_KEY, rememberFeedbackSource } from "./feedback/navigation";
+import { FEEDBACK_ROUTE, FEEDBACK_SOURCE_CONTROLS_KEY, FEEDBACK_SOURCE_PAGE_KEY, FEEDBACK_SOURCE_ROUTE_KEY, rememberFeedbackSource, rememberPageControls } from "./feedback/navigation";
 import GlobalSearch from "./GlobalSearch";
 import {
   CONTRACT_DETAIL_TARGET_EVENT,
@@ -1346,6 +1346,11 @@ export default function App() {
   const isChatWorkspace = active === "ai-chat" || (active === "dashboard" && dashboardView === "conversation");
   const isDesktopAiWorkspace = active === "ai-chat" && !isNarrowViewport;
   useEffect(() => { setAiSystemNavigationOpen(false); }, [active, isNarrowViewport]);
+  // 问题反馈里勾选哪个页面就列出哪个页面的按钮：页面打开后（数据和按钮渲染出来）记一次，离开时 navigate 里再记一次。
+  useEffect(() => {
+    const timer = window.setTimeout(() => rememberPageControls(active), 2500);
+    return () => window.clearTimeout(timer);
+  }, [active]);
   useEffect(() => {
     // 工作台、页签和历史导航共用同一收起规则，固定展开偏好保持不变。
     setMobileSidebarOpen(false);
@@ -1568,6 +1573,7 @@ export default function App() {
     }
     // 不论从侧栏按钮、页签还是其他入口进入问题反馈，都在离开当前页前记下来源页和页面上的按钮。
     if (normalizedRoute === FEEDBACK_ROUTE && active !== FEEDBACK_ROUTE) rememberFeedbackSource(active);
+    else if (normalizedRoute !== active) rememberPageControls(active);
     if (normalizedRoute === active) {
       // 全局搜索每次提交都要重新读取关键词并查询，不能依赖切换案件菜单触发。
       if (normalizedRoute === "case-global-search") setWorkspaceReloadKey((value) => value + 1);

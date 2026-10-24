@@ -9,7 +9,7 @@ import "./feedback.css";
 
 type Props = {
   sourceRoute: string;
-  sourceControls: string[];
+  pageControls: Record<string, string[]>;
   openPages: FeedbackPageOption[];
   menuPages: FeedbackPageOption[];
   onCancel: () => void;
@@ -38,7 +38,7 @@ function FilePreview({ file, onRemove }: { file: File; onRemove: () => void }) {
   </div>;
 }
 
-export default function FeedbackForm({ sourceRoute, sourceControls, openPages, menuPages, onCancel, onSubmitted }: Props) {
+export default function FeedbackForm({ sourceRoute, pageControls, openPages, menuPages, onCancel, onSubmitted }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [description, setDescription] = useState("");
   const [pageKeys, setPageKeys] = useState<string[]>(sourceRoute ? [sourceRoute] : []);
@@ -63,7 +63,15 @@ export default function FeedbackForm({ sourceRoute, sourceControls, openPages, m
     return [...new Set(keys)].map((key) => ({ key, label: labels.get(key) || key }));
   }, [sourceRoute, openPages, pageKeys, labels]);
   // 按钮清单是点“问题反馈”那一刻从来源页读出来的，只有勾选了来源页时才出现。
-  const showControls = Boolean(sourceRoute) && pageKeys.includes(sourceRoute) && sourceControls.length > 0;
+  // 勾选了哪些页面就列出哪些页面的按钮；按钮清单是本次登录后打开过该页面时读出来的。
+  // 选中的按钮记成“页面::按钮名”，同名按钮在不同页面互不影响。
+  const controlKey = (route: string, name: string) => `${route}::${name}`;
+  const controlGroups = pageKeys.map((key) => ({
+    key, label: labels.get(key) || key, names: pageControls[key] || [],
+  }));
+  const showControls = controlGroups.length > 0;
+  const toggleControl = (key: string) => setControls((current) =>
+    current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,7 +81,10 @@ export default function FeedbackForm({ sourceRoute, sourceControls, openPages, m
         setDescription(draft.description);
         if (draft.sourceRoute === sourceRoute && draft.pageKeys.length) {
           setPageKeys(draft.pageKeys);
-          setControls(draft.controls.filter((name) => sourceControls.includes(name)));
+          setControls(draft.controls.filter((key) => {
+            const [route, ...rest] = key.split("::");
+            return (pageControls[route] || []).includes(rest.join("::"));
+          }));
         }
         setFiles(draft.files);
         setSavedAt(draft.savedAt);
@@ -82,7 +93,7 @@ export default function FeedbackForm({ sourceRoute, sourceControls, openPages, m
       setDraftReady(true);
     });
     return () => { cancelled = true; };
-  }, [sourceRoute, sourceControls]);
+  }, [sourceRoute, pageControls]);
 
   useEffect(() => {
     if (!draftReady || submitting) return;
@@ -168,7 +179,11 @@ export default function FeedbackForm({ sourceRoute, sourceControls, openPages, m
     body.append("description", text);
     body.append("page", pageKeys.map((key) => labels.get(key) || key).join("、"));
     body.append("route", pageKeys[0]);
-    if (showControls && controls.length) body.append("controls", controls.join("、"));
+    // 只勾了一个页面时只写按钮名；多个页面时带上页面名，处理人分得清是哪个页面的按钮。
+    const chosen = controlGroups.flatMap((group) => group.names
+      .filter((name) => controls.includes(controlKey(group.key, name)))
+      .map((name) => pageKeys.length > 1 ? `${group.label}·${name}` : name));
+    if (chosen.length) body.append("controls", chosen.join("、"));
     files.forEach((file) => body.append("files", file, file.name));
     setSubmitting(true);
     try {
@@ -209,14 +224,16 @@ export default function FeedbackForm({ sourceRoute, sourceControls, openPages, m
     </section>
 
     {showControls && <section className="feedback-section">
-      <div className="feedback-section-title">问题出在哪个按钮<span className="feedback-hint">来源页上的按钮，可多选；不涉及可不选</span></div>
-      <div className="feedback-page-chips">
-        {sourceControls.map((name) => <Tag.CheckableTag key={name} checked={controls.includes(name)}
-          className="feedback-page-chip feedback-control-chip"
-          onChange={() => setControls((current) => current.includes(name) ? current.filter((item) => item !== name) : [...current, name])}>
-          {name}
-        </Tag.CheckableTag>)}
-      </div>
+      <div className="feedback-section-title">问题出在哪个按钮<span className="feedback-hint">勾选页面上的按钮，可多选；不涉及可不选</span></div>
+      {controlGroups.map((group) => <div key={group.key} className="feedback-control-group">
+        {controlGroups.length > 1 && <div className="feedback-control-group-title">{group.label}</div>}
+        {group.names.length ? <div className="feedback-page-chips">
+          {group.names.map((name) => <Tag.CheckableTag key={name} checked={controls.includes(controlKey(group.key, name))}
+            className="feedback-page-chip feedback-control-chip" onChange={() => toggleControl(controlKey(group.key, name))}>
+            {name}
+          </Tag.CheckableTag>)}
+        </div> : <div className="feedback-hint feedback-control-empty">本次登录后还没打开过这个页面，先打开一次再回来就能选按钮</div>}
+      </div>)}
     </section>}
 
     <section className="feedback-section">
