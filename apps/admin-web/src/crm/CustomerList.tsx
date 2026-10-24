@@ -18,6 +18,7 @@ import { displayChinesePersonName, displayChinesePersonNames } from "../contract
 import type { Customer, DirectoryUser, Profile } from "./types";
 import type { CustomerListSummary } from "../customerParity.mjs";
 import type { Key } from "react";
+import { useFilterToggle } from "../components/common/MobileFilterToggle";
 
 interface CustomerListProps {
   initialView: string;
@@ -61,6 +62,7 @@ interface CustomerListProps {
 }
 
 export function CustomerList({ initialView, rows, total, page, pageSize, customerPageCount, customerPageNumbers, jumpPage, loading, keyword, customerType, customerTypeOptions, managerLocked, managerDisplay, isOriginalCustomerList, isReadOnlyCustomerList, selectedRowKeys, listSummary, directory, originalActionItems, onKeywordChange, onCustomerTypeChange, onManagerKeywordChange, onSearch, onReset, onSelectedRowKeysChange, onStartCreate, onOpenDetail, onOpenCustomerCommunication, onOpenCustomerContracts, onOpenCustomerCivilCases, onOpenCustomerIprCases, onRunOriginalAction, onGoToPage, onJumpPageChange, onPageSizeChange }: CustomerListProps) {
+  const filterToggle = useFilterToggle("查询条件");
   const amount = (value?: number) => Number(value || 0).toFixed(2);
   const displayDate = (value?: string) => {
     const parsed = dayjs(value);
@@ -296,7 +298,8 @@ export function CustomerList({ initialView, rows, total, page, pageSize, custome
         </Dropdown>
       )}
     >
-      <div className="customer-query">
+      {filterToggle.toggle}
+      <div className={`customer-query ${filterToggle.className}`}>
         <label>客户名称</label>
         <Input
           value={keyword}

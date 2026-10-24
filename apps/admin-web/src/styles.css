@@ -1257,16 +1257,73 @@ body {
   }
 }
 
-/* 手机筛选区开关（useMobileFilterToggle）：默认收起，点开后再显示整块筛选表单；桌面不显示开关。 */
+/* 筛选区开关（useMobileFilterToggle）：桌面是筛选区上方一行小字、默认展开；手机是整行按钮、默认收起。 */
 .oa-filter-toggle {
-  display: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  margin: 0 0 6px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--oa-text-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.oa-filter-toggle:hover,
+.oa-filter-toggle:focus-visible {
+  color: var(--oa-primary);
+  background: var(--oa-fill);
+  outline: none;
+}
+.oa-filter-toggle > .anticon {
+  color: var(--oa-primary);
+}
+.oa-filter-toggle-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--oa-primary);
+}
+.oa-filter-toggle-state .anticon {
+  font-size: 10px;
+  transition: transform 0.2s ease;
+}
+.oa-filter-toggle[aria-expanded="true"] .oa-filter-toggle-state .anticon {
+  transform: rotate(180deg);
+}
+.oa-filter-collapsible:not(.is-open),
+.oa-filter-fields:not(.is-open) > :not(.oa-filter-keep) {
+  display: none !important;
+}
+/* 只剩操作按钮时去掉筛选区的底色和边框，按钮在开关下面横排一行。 */
+.oa-filter-fields:not(.is-open) {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 0 !important;
+  margin-bottom: 10px;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+.oa-filter-fields:not(.is-open) > .oa-filter-keep {
+  width: auto;
+  min-width: 40px;
+  margin: 0;
+  /* 展开时按钮可能缩进对齐字段标签，收起后只剩按钮，贴左排。 */
+  padding-left: 0 !important;
 }
 @media (max-width: 720px) {
   .oa-filter-toggle {
     display: flex;
-    align-items: center;
     gap: 8px;
     width: 100%;
+    height: auto;
     min-height: 44px;
     margin: 0 0 10px;
     padding: 0 14px;
@@ -1274,47 +1331,13 @@ body {
     border-radius: 12px;
     background: var(--oa-surface);
     color: var(--oa-text);
-    font: inherit;
     font-size: 14px;
-    cursor: pointer;
-  }
-  .oa-filter-toggle > .anticon {
-    color: var(--oa-primary);
   }
   .oa-filter-toggle-state {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
     margin-left: auto;
-    color: var(--oa-primary);
     font-size: 13px;
   }
   .oa-filter-toggle-state .anticon {
     font-size: 11px;
-    transition: transform 0.2s ease;
-  }
-  .oa-filter-toggle[aria-expanded="true"] .oa-filter-toggle-state .anticon {
-    transform: rotate(180deg);
-  }
-  .oa-filter-collapsible:not(.is-open),
-  .oa-filter-fields:not(.is-open) > :not(.oa-filter-keep) {
-    display: none !important;
-  }
-  /* 只剩操作按钮时去掉筛选区的底色和边框，按钮在开关下面横排一行。 */
-  .oa-filter-fields:not(.is-open) {
-    display: flex !important;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    min-height: 0 !important;
-    margin-bottom: 10px;
-    padding: 0 !important;
-    border: 0 !important;
-    background: transparent !important;
-  }
-  .oa-filter-fields:not(.is-open) > .oa-filter-keep {
-    width: auto;
-    min-width: 40px;
-    margin: 0;
   }
 }

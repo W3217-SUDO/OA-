@@ -418,7 +418,15 @@ export default function CaseCenterPage({
   const [isPhoneViewport, setIsPhoneViewport] = useState(() => window.matchMedia("(max-width: 767px)").matches);
   const [mobilePhaseExpanded, setMobilePhaseExpanded] = useState(false);
   const [mobileQueryExpanded, setMobileQueryExpanded] = useState(false);
-  const [desktopQueryExpanded, setDesktopQueryExpanded] = useState(true);
+  // 桌面查询卡片的展开/收起按页面记住，和其他页面的筛选区开关一致。
+  const desktopQueryKey = `sunhold:filter-open:${initialView}:案件查询`;
+  const [desktopQueryExpanded, setDesktopQueryExpanded] = useState(() => {
+    try { return localStorage.getItem(desktopQueryKey) !== "0"; } catch { return true; }
+  });
+  const toggleDesktopQuery = () => setDesktopQueryExpanded((expanded) => {
+    try { localStorage.setItem(desktopQueryKey, expanded ? "0" : "1"); } catch { /* 存储不可用时只是不记住 */ }
+    return !expanded;
+  });
   useEffect(() => {
     const media = window.matchMedia("(max-width: 767px)");
     const updateViewport = () => setIsPhoneViewport(media.matches);
@@ -3140,7 +3148,7 @@ export default function CaseCenterPage({
             {expanded && <div className="case-phase-children">{children.map((child)=><button key={`${label}-${child.value}`} type="button" className="case-phase-child" onClick={()=>void searchByPhase(child.value)}><FolderOutlined /> {child.label}【{child.count}】</button>)}</div>}
           </div>;
         })}</div>}</aside>
-        <Card className="panel case-original-panel" title="案件列表" extra={<Button type="link" aria-expanded={listQueryExpanded} onClick={()=>isPhoneViewport ? setMobileQueryExpanded((expanded) => !expanded) : setDesktopQueryExpanded((expanded) => !expanded)}>{isPhoneViewport && listQueryExpanded ? "收起高级搜索" : "高级搜索"}</Button>}>
+        <Card className="panel case-original-panel" title="案件列表" extra={<Button type="link" aria-expanded={listQueryExpanded} onClick={()=>isPhoneViewport ? setMobileQueryExpanded((expanded) => !expanded) : toggleDesktopQuery()}>{isPhoneViewport ? (listQueryExpanded ? "收起高级搜索" : "高级搜索") : <>{listQueryExpanded ? "收起查询" : "展开查询"} <DownOutlined rotate={listQueryExpanded ? 180 : 0} /></>}</Button>}>
           {selectedCase?.status === "待立案审批" && <ConflictReviewNotice guard={selectedCaseConflict} />}
           <ListFilterBar form={caseQueryForm} className={`case-advanced-query${listQueryExpanded ? " case-query-expanded" : ""}`} onFinish={(values)=>{setCaseQuery(values);setOriginalPage(1);if(counselListMode)void loadCounselCases(values,1,counselPageSize);else void loadOrdinaryCases(values,1,originalPageSize);}}>
             {counselListMode ? <>

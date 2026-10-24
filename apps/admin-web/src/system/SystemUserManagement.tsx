@@ -20,6 +20,7 @@ import {
   PERSON_NAME_PLACEHOLDER,
   personDisplayName,
 } from "./constants";
+import { useFilterToggle } from "../components/common/MobileFilterToggle";
 
 interface SystemUserManagementProps {
   users: SystemUser[];
@@ -64,6 +65,7 @@ export function SystemUserManagement({
   onResetPasswordClose,
   onUnlockUser,
 }: SystemUserManagementProps) {
+  const filterToggle = useFilterToggle("查询条件");
   const renderPersonDisplayName = (_value: string, row: SystemUser) => {
     const name = personDisplayName(row);
     if (name !== PERSON_NAME_PLACEHOLDER) return name;
@@ -77,7 +79,8 @@ export function SystemUserManagement({
   return (
     <>
       <Card className="panel system-focused" title="系统用户管理">
-        <div className="system-query">
+        {filterToggle.toggle}
+        <div className={`system-query ${filterToggle.fieldsClassName}`}>
           <label>
             <span>账号/姓名</span>
             <Input
@@ -99,6 +102,7 @@ export function SystemUserManagement({
           </Tooltip>
           <Button
             type="primary"
+            className="oa-filter-keep"
             icon={<PlusOutlined />}
             onClick={() => onEditUser()}
           >

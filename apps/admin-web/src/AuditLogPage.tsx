@@ -9,6 +9,7 @@ import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { rememberTaskDetailTarget } from "./taskDetailNavigation";
 import { rememberInvestigationDetailTarget } from "./investigationDetailNavigation";
 import { rememberBusinessRecordDetailTarget } from "./businessRecordDetailNavigation";
+import { useFilterToggle } from "./components/common/MobileFilterToggle";
 
 type Log = {
   id: number;
@@ -44,6 +45,7 @@ const labels: Record<string, string> = {
 };
 
 export default function AuditLogPage({ onNavigate }: { onNavigate?: (route: string) => void }) {
+  const filterToggle = useFilterToggle("查询条件");
   const [rows, setRows] = useState<Log[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -113,7 +115,8 @@ export default function AuditLogPage({ onNavigate }: { onNavigate?: (route: stri
 
   return (
     <Card className="panel" title="操作日志" extra={<Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>}>
-      <div className="filter-bar">
+      {filterToggle.toggle}
+      <div className={`filter-bar ${filterToggle.className}`}>
         <Input value={keyword} onChange={(event) => setKeyword(event.target.value)} onPressEnter={() => { setPage(1); void load(1); }} allowClear prefix={<SearchOutlined />} placeholder="编号、标题、操作人或意见" />
         <Select value={module || undefined} allowClear placeholder="全部模块" onChange={(value) => setModule(value || "")} options={Object.entries(labels).map(([value, label]) => ({ value, label }))} />
         <Button type="primary" onClick={() => { setPage(1); void load(1); }}>查询</Button>

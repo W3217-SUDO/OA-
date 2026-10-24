@@ -3,6 +3,7 @@ import { Button, Card, Descriptions, Drawer, Input, Spin, message } from "antd";
 import { ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 import Table from "../components/ResizableTable";
 import { api } from "../api";
+import { useFilterToggle } from "../components/common/MobileFilterToggle";
 
 interface PartyLibraryRow {
   id: number;
@@ -35,6 +36,7 @@ interface PartyDetail {
 const SCOPE_TITLES: Record<string, string> = { mine: "我的当事人", department: "部门当事人", company: "公司当事人", recycle: "当事人回收站" };
 
 export default function PartyLibraryPage({ scope = "company", category = "", isAdmin = false, onOpenCase, onOpenCustomer }: { scope?: string; category?: string; isAdmin?: boolean; onOpenCase?: (row: PartyLibraryRow) => void; onOpenCustomer?: (target: { id: number; serial_no: string; title: string }) => void }) {
+  const filterToggle = useFilterToggle("查询条件");
   const [rows, setRows] = useState<PartyLibraryRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -108,7 +110,8 @@ export default function PartyLibraryPage({ scope = "company", category = "", isA
         <Button icon={<ReloadOutlined />} onClick={() => void rebuild()}>按案件重新生成</Button>
       ) : null}
     >
-      <div className="customer-query">
+      {filterToggle.toggle}
+      <div className={`customer-query ${filterToggle.className}`}>
         <label>案号</label>
         <Input value={caseNo} onChange={(e) => setCaseNo(e.target.value)} onPressEnter={() => void load(1)} allowClear />
         <label>姓名/名称/编号</label>

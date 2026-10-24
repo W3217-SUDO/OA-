@@ -2,6 +2,7 @@ import { KeywordPersonSelect } from "./components/KeywordPersonSelect";
 import {useEffect, useRef, useState} from 'react'
 import {Alert, Button, Card, DatePicker, Descriptions, Form, Input, InputNumber, message, Modal, Popconfirm, Select, Space} from 'antd'
 import Table from "./components/ResizableTable";
+import { useFilterToggle } from "./components/common/MobileFilterToggle";
 import type {TableColumnsType} from 'antd'
 import {DownloadOutlined, PlusOutlined, ReloadOutlined} from '@ant-design/icons'
 import dayjs from 'dayjs'
@@ -19,6 +20,7 @@ const defaults = {base_salary:0,hearing_rate:0.10,hearing_fixed:0,document_rate:
 const errorText = (error:any, fallback:string) => typeof error?.response?.data?.detail==='string'?error.response.data.detail:fallback
 
 export default function HrPerformancePage({onNavigate}:{onNavigate:(route:string)=>void}) {
+  const filterToggle = useFilterToggle("查询条件");
   const [rows,setRows]=useState<Performance[]>([]),[total,setTotal]=useState(0),[loading,setLoading]=useState(false)
   const [page,setPage]=useState(1),[pageSize,setPageSize]=useState(15),[filters,setFilters]=useState<Filters>({})
   const [employee,setEmployee]=useState(''),[department,setDepartment]=useState<string>(),[dates,setDates]=useState<[Dayjs|null,Dayjs|null]|null>(null)
@@ -82,7 +84,8 @@ export default function HrPerformancePage({onNavigate}:{onNavigate:(route:string
     {title:'操作',key:'actions',width:220,render:(_,row)=><Space size={4}><Button size="small" type="link" onClick={()=>void showDetails(row)}>查看</Button>{canManage&&<><Button size="small" type="link" onClick={()=>void showEditor(row)}>绩效设置 / 编辑</Button><Popconfirm title="确定删除此绩效记录？" description="删除后将不再用于该员工的提成方案匹配。" onConfirm={()=>remove(row)} okText="删除" cancelText="取消"><Button size="small" type="link" danger loading={deleting===row.id}>删除</Button></Popconfirm></>}</Space>},
   ]
   return <Card className="panel hr-panel" title="绩效管理">
-    <div className="hr-query">
+    {filterToggle.toggle}
+    <div className={`hr-query ${filterToggle.className}`}>
       <label><span>员工</span><Input aria-label="员工筛选" placeholder="姓名或员工编号" value={employee} onChange={event=>setEmployee(event.target.value)} allowClear/></label>
       <label><span>部门</span><Select aria-label="部门筛选" placeholder="全部部门" value={department} onChange={setDepartment} options={departments} showSearch allowClear optionFilterProp="label"/></label>
       <label><span>有效期</span><DatePicker.RangePicker aria-label="绩效有效期筛选" value={dates} onChange={setDates} allowEmpty={[true,true]} style={{minWidth:0,width:'100%'}}/></label>

@@ -31,6 +31,7 @@ import {
   taskStartedAt,
   visiblePersonName,
 } from "./constants";
+import { useFilterToggle } from "../components/common/MobileFilterToggle";
 
 
 // 一屏放不下时，原告/被告、发起人/负责人各叠放在一个单元格里（数据不减少）。
@@ -98,7 +99,9 @@ export interface TaskListProps {
 
 export default function TaskList(props: TaskListProps) {
   const { canRequestTaskException, onRequestException, onReviewException } = props;
-  const { isUnread, tabs, statusTab, counts, mobileFiltersOpen, queryForm, loading, columns, filteredTasks, taskMeta, selectedKeys, hideTaskFooter, actionSubmitting, profile, canManageInitiatedTask, canManageAcceptedTask, canManageCompanyCreatedTask, canWithdrawTask, canReviewTaskException, selectedRows, selected, caseBatchLabels, onTabChange, onToggleMobileFilters, onQuerySubmit, onQueryReset, onCreateTask, onSelectedKeysChange, onTableChange, onOpenCommunication, onMarkSelectedUnreadRead, onConfirmTask, onWithdrawTask, onResendTask, onRestartTask, onAcceptSelected, onCompleteSelected, onCompleteOne, onOpenHandoff, onOpenTaskBatchLifecycle, onMoreAction } = props;
+  const { isUnread, tabs, statusTab, counts, queryForm, loading, columns, filteredTasks, taskMeta, selectedKeys, hideTaskFooter, actionSubmitting, profile, canManageInitiatedTask, canManageAcceptedTask, canManageCompanyCreatedTask, canWithdrawTask, canReviewTaskException, selectedRows, selected, caseBatchLabels, onTabChange, onQuerySubmit, onQueryReset, onCreateTask, onSelectedKeysChange, onTableChange, onOpenCommunication, onMarkSelectedUnreadRead, onConfirmTask, onWithdrawTask, onResendTask, onRestartTask, onAcceptSelected, onCompleteSelected, onCompleteOne, onOpenHandoff, onOpenTaskBatchLifecycle, onMoreAction } = props;
+  // 查询区折叠：桌面默认展开、按页面记住；手机默认收起（原来的手机开关由共享开关替代）。
+  const filterToggle = useFilterToggle("查询条件");
 
   return (
     <Card
@@ -120,19 +123,11 @@ export default function TaskList(props: TaskListProps) {
         </div>
       )}
 
-      <button
-        type="button"
-        className="task-mobile-filter-toggle"
-        aria-expanded={mobileFiltersOpen}
-        onClick={onToggleMobileFilters}
-      >
-        <span>筛选条件</span>
-        <span>{mobileFiltersOpen ? "收起" : "展开"}</span>
-      </button>
+      {filterToggle.toggle}
 
       <Form<TaskQuery>
         form={queryForm}
-        className={`task-query${mobileFiltersOpen ? " mobile-open" : ""}`}
+        className={`task-query${filterToggle.open ? " mobile-open" : ""} ${filterToggle.fieldsClassName}`}
         colon
         onFinish={onQuerySubmit}
       >
@@ -186,7 +181,7 @@ export default function TaskList(props: TaskListProps) {
         <Form.Item label="截止日期" name="deadline_range">
           <DatePicker.RangePicker />
         </Form.Item>
-        <div className="task-query-submit">
+        <div className="task-query-submit oa-filter-keep">
           <Button type="primary" htmlType="submit">
             查询
           </Button>

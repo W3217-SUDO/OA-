@@ -35,6 +35,7 @@ import {
   feeTypeRootName,
   cleanCompanyDigitsInputEvent,
 } from "./constants";
+import { useFilterToggle } from "../components/common/MobileFilterToggle";
 
 interface SystemParameterManagementProps {
   category: string;
@@ -92,6 +93,7 @@ export function SystemParameterManagement({
   onRelationEditorClose,
   onSelectedRelationTargetIdsChange,
 }: SystemParameterManagementProps) {
+  const filterToggle = useFilterToggle("查询条件");
   const [parameterPage, setParameterPage] = useState(1);
   const [parameterPageSize, setParameterPageSize] = useState(15);
   useEffect(() => setParameterPage(1), [category, keyword, secondaryKeyword]);
@@ -385,7 +387,8 @@ export function SystemParameterManagement({
   return (
     <>
       <Card className="panel system-focused" title={title}>
-        <div className="system-query">
+        {filterToggle.toggle}
+        <div className={`system-query ${filterToggle.fieldsClassName}`}>
           <label>
             <span>
               {category === "court"
@@ -426,6 +429,7 @@ export function SystemParameterManagement({
           </Button>
           <Button
             type="primary"
+            className="oa-filter-keep"
             icon={<PlusOutlined />}
             onClick={() => onStartParameter()}
           >

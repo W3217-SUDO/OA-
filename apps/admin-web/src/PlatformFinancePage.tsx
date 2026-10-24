@@ -30,6 +30,7 @@ import { resolveDetailRelation } from "./detailRelationResolver";
 import { formatRequiredDate } from "./formSafety";
 import { displayFinancialValue } from "./financialValueDisplay";
 import "./platform-finance.css";
+import { useFilterToggle } from "./components/common/MobileFilterToggle";
 
 type FieldKind = "text" | "select" | "range" | "money-range";
 type QueryField = {
@@ -725,6 +726,7 @@ export default function PlatformFinancePage({
   initialView?: string;
   onNavigate?: (route: string) => void;
 }) {
+  const filterToggle = useFilterToggle("查询条件");
   const config = pages[initialView] || pages["platform-finance-overview-query"];
   const fields = fieldsByKind[config.kind];
   const columns = columnsByKind[config.kind];
@@ -956,7 +958,8 @@ export default function PlatformFinancePage({
   return (
     <Card className="platform-finance-original" variant="borderless">
       <div className="platform-finance-title">{config.title}</div>
-      <div className="platform-finance-query-panel">
+      {filterToggle.toggle}
+      <div className={`platform-finance-query-panel ${filterToggle.fieldsClassName}`}>
         <div className="platform-finance-query-grid">
           {fields.map((field) => (
             <label className="platform-finance-field" key={field.key}>
@@ -972,7 +975,7 @@ export default function PlatformFinancePage({
             </label>
           ))}
         </div>
-        <div className="platform-finance-actions">
+        <div className="platform-finance-actions oa-filter-keep">
           <Button
             type="primary"
             icon={<SearchOutlined />}

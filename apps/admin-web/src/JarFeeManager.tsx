@@ -29,6 +29,7 @@ import {
 import dayjs from "dayjs";
 import { api } from "./api";
 import { rememberContractDetailTarget } from "./contractDetailNavigation";
+import { useFilterToggle } from "./components/common/MobileFilterToggle";
 
 type JarFee = {
   id: number;
@@ -70,6 +71,7 @@ const amount = (value: unknown) =>
 const errorText = (error: any, fallback: string) => error?.response?.data?.detail || fallback;
 
 export default function JarFeeManager({ onNavigate }: { onNavigate?: (route: string) => void }) {
+  const filterToggle = useFilterToggle("查询条件");
   const [form] = Form.useForm();
   const [rows, setRows] = useState<JarFee[]>([]);
   const [loading, setLoading] = useState(false);
@@ -272,7 +274,8 @@ export default function JarFeeManager({ onNavigate }: { onNavigate?: (route: str
 
   return <div className="finance-center">
     <Card className="panel" title="JAR交案费管理" extra={<Space><Button icon={<ReloadOutlined />} onClick={() => void loadRows(pagination)} loading={loading}>刷新</Button><Button icon={<ExportOutlined />} onClick={() => void exportRows()}>导出 CSV</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor()}>新增交案费</Button></Space>}>
-      <Form layout="inline" style={{ marginBottom: 16 }}>
+      {filterToggle.toggle}
+      <Form layout="inline" className={filterToggle.className} style={{ marginBottom: 16 }}>
         <Form.Item label="关键词"><Input allowClear value={queryDraft.keyword} placeholder="编号、标题、客户、交款单位" onChange={(e) => setQueryDraft((v) => ({ ...v, keyword: e.target.value }))} /></Form.Item>
         <Form.Item label="合同"><Select allowClear showSearch filterOption={false} style={{ width: 190 }} value={queryDraft.contract_id} placeholder="输入合同编号查询" onSearch={(value) => void searchContracts(value)} options={contractOptions} onChange={(value) => setQueryDraft((v) => ({ ...v, contract_id: Number.isInteger(value) ? value : undefined }))} /></Form.Item>
         <Form.Item label="状态"><Select allowClear style={{ width: 120 }} value={queryDraft.status || undefined} options={statusOptions.map((value) => ({ value, label: value }))} onChange={(value) => setQueryDraft((v) => ({ ...v, status: value || "" }))} /></Form.Item>

@@ -20,6 +20,7 @@ import { DeleteOutlined, EditOutlined, MessageOutlined, PlusOutlined, ReloadOutl
 import dayjs from "dayjs";
 import { api } from "./api";
 import "./task-center.css";
+import { useFilterToggle } from "./components/common/MobileFilterToggle";
 
 type VipNode = {
   id: number;
@@ -76,6 +77,7 @@ const formatDate = (value?: string) => value ? dayjs(value).format("YYYY-MM-DD H
 const dateValue = (value?: string) => value ? dayjs(value) : undefined;
 
 export default function VipTaskCenterPage() {
+  const filterToggle = useFilterToggle("查询条件");
   const [items, setItems] = useState<VipTask[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -208,12 +210,13 @@ export default function VipTaskCenterPage() {
   };
 
   return <Card className="task-center-page" title="VIP任务" extra={<Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>}>
-    <Form form={queryForm} layout="inline" onFinish={(values) => { setQuery(values); void load(values, 1); }} style={{ marginBottom: 16 }}>
+    {filterToggle.toggle}
+    <Form form={queryForm} layout="inline" className={filterToggle.fieldsClassName} onFinish={(values) => { setQuery(values); void load(values, 1); }} style={{ marginBottom: 16 }}>
       <Form.Item name="keyword"><Input allowClear placeholder="任务编号、标题或内容" /></Form.Item>
       <Form.Item name="customer"><Input allowClear placeholder="客户" /></Form.Item>
       <Form.Item name="status_filter"><Select allowClear placeholder="状态" style={{ width: 120 }} options={statusOptions} /></Form.Item>
       <Form.Item name="priority"><Select allowClear placeholder="优先级" style={{ width: 110 }} options={priorityOptions} /></Form.Item>
-      <Space><Button type="primary" htmlType="submit">查询</Button><Button onClick={() => { queryForm.resetFields(); setQuery({}); void load({}, 1); }}>重置</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => openTaskModal()}>新建VIP任务</Button></Space>
+      <Space className="oa-filter-keep"><Button type="primary" htmlType="submit">查询</Button><Button onClick={() => { queryForm.resetFields(); setQuery({}); void load({}, 1); }}>重置</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => openTaskModal()}>新建VIP任务</Button></Space>
     </Form>
     <Table<VipTask> rowKey="id" loading={loading} dataSource={items} scroll={{ x: 1180 }} pagination={{ current: page, pageSize, total, showSizeChanger: true, showTotal: (value) => `共 ${value} 条` }} onChange={(pagination) => void load(query, pagination.current || 1, pagination.pageSize || pageSize)} columns={[
       { title: "任务编号", dataIndex: "serial_no", width: 145 },
