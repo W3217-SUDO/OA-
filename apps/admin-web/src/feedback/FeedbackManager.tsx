@@ -110,7 +110,6 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
     { title: "状态", dataIndex: "status", width: 100,
       render: (value: string) => <Tag color={statusColors[value] || "default"}>{value}</Tag> },
     { title: "提交人", width: 105, ellipsis: true, render: (_, row) => row.owner_display_name || row.owner },
-    { title: "处理人", width: 105, ellipsis: true, render: (_, row) => row.assignee_display_name || row.assignee || "未指派" },
     { title: "最近更新", width: 160, render: (_, row) => dayjs(row.updated_at || row.created_at).format("YYYY-MM-DD HH:mm") },
     { title: "提交页面", dataIndex: "page", width: 180, ellipsis: true },
     ...(center ? [{ title: "涉及按钮", key: "controls", width: 160, ellipsis: true,
@@ -143,7 +142,7 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
           ...statuses.map((value) => ({ value, label: `${value} ${statusCounts?.counts[value] ?? ""}` }))]} />}
       {error ? <Alert type="error" showIcon title={error} /> : <Table<FeedbackRecord>
         rowKey="id" size="small" tableLayout="fixed" columns={columns} dataSource={rows}
-        loading={loading} scroll={{ x: center ? 1390 : 1230 }} pagination={{
+        loading={loading} scroll={{ x: center ? 1285 : 1125 }} pagination={{
           current: page, pageSize, total, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100],
           showTotal: (count) => `共 ${count} 条`,
           onChange: (nextPage, nextSize) => { setPage(nextPage); setPageSize(nextSize); },

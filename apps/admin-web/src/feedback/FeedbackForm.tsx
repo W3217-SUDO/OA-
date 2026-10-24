@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button, Input, message, Space, Tag } from "antd";
-import { CloseOutlined, FileOutlined, InboxOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "../api";
+import FeedbackFileDrop, { FEEDBACK_MAX_FILES } from "./FeedbackFileDrop";
 import { clearFeedbackDraft, loadFeedbackDraft, saveFeedbackDraft } from "./draft";
 import type { FeedbackPageOption } from "./navigation";
 import "./feedback.css";
@@ -16,27 +16,7 @@ type Props = {
   onSubmitted?: (id: number) => void;
 };
 
-const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
-const FILE_SUFFIXES = [".png", ".jpg", ".jpeg", ".webp", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt", ".log", ".zip", ".mp4", ".mov"];
-const MAX_FILES = 10;
-const isImage = (file: File) => IMAGE_TYPES.includes(file.type);
-const formatSize = (size: number) => size >= 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(size / 1024))}KB`;
-
-function FilePreview({ file, onRemove }: { file: File; onRemove: () => void }) {
-  const [url, setUrl] = useState("");
-  useEffect(() => {
-    if (!isImage(file)) return;
-    const objectUrl = URL.createObjectURL(file);
-    setUrl(objectUrl);
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [file]);
-  return <div className="feedback-file" title={file.name}>
-    {url ? <img src={url} alt={file.name} /> : <div className="feedback-file-icon"><FileOutlined /></div>}
-    <div className="feedback-file-name">{file.name}</div>
-    <div className="feedback-file-size">{formatSize(file.size)}</div>
-    <button type="button" className="feedback-file-remove" aria-label={`移除 ${file.name}`} onClick={onRemove}><CloseOutlined /></button>
-  </div>;
-}
+const MAX_FILES = FEEDBACK_MAX_FILES;
 
 export default function FeedbackForm({ sourceRoute, pageControls, openPages, menuPages, onCancel, onSubmitted }: Props) {
   const [submitting, setSubmitting] = useState(false);
@@ -44,12 +24,9 @@ export default function FeedbackForm({ sourceRoute, pageControls, openPages, men
   const [pageKeys, setPageKeys] = useState<string[]>(sourceRoute ? [sourceRoute] : []);
   const [controls, setControls] = useState<string[]>([]);
   const [files, setFiles] = useState<File[]>([]);
-  const [dragging, setDragging] = useState(false);
   const [draftReady, setDraftReady] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [descriptionError, setDescriptionError] = useState("");
-  const fileInput = useRef<HTMLInputElement>(null);
-  const dragDepth = useRef(0);
 
   const labels = useMemo(() => {
     const map = new Map<string, string>();
@@ -104,69 +81,6 @@ export default function FeedbackForm({ sourceRoute, pageControls, openPages, men
     return () => window.clearTimeout(timer);
   }, [description, pageKeys, controls, sourceRoute, files, draftReady, submitting]);
 
-  const addFiles = useCallback((incoming: File[]) => {
-    const accepted: File[] = [];
-    for (const file of incoming) {
-      const suffix = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")).toLowerCase() : "";
-      if (!FILE_SUFFIXES.includes(suffix) && !isImage(file)) { message.warning(`不支持的文件类型：${file.name}`); continue; }
-      const limit = isImage(file) ? 10 : 20;
-      if (file.size > limit * 1024 * 1024) { message.warning(`${file.name} 超过 ${limit}MB`); continue; }
-      accepted.push(file);
-    }
-    setFiles((current) => {
-      const next = [...current, ...accepted];
-      if (next.length > MAX_FILES) message.warning(`截图和附件合计最多 ${MAX_FILES} 个`);
-      return next.slice(0, MAX_FILES);
-    });
-  }, []);
-
-  // 截图后直接 Ctrl+V：剪贴板图片没有文件名，按时间补一个。
-  useEffect(() => {
-    const onPaste = (event: ClipboardEvent) => {
-      const pasted = Array.from(event.clipboardData?.files || []);
-      if (!pasted.length) return;
-      event.preventDefault();
-      addFiles(pasted.map((file, index) => file.name && file.name !== "image.png" ? file : new File(
-        [file], `截图-${dayjs().format("YYYYMMDD-HHmmss")}${index ? `-${index}` : ""}.${file.type.split("/")[1] === "jpeg" ? "jpg" : file.type.split("/")[1] || "png"}`,
-        { type: file.type },
-      )));
-    };
-    window.addEventListener("paste", onPaste);
-    return () => window.removeEventListener("paste", onPaste);
-  }, [addFiles]);
-
-  // 整个窗口都接收拖拽，避免文件落在表单外被浏览器直接打开。
-  useEffect(() => {
-    const hasFiles = (event: DragEvent) => Array.from(event.dataTransfer?.types || []).includes("Files");
-    const onEnter = (event: DragEvent) => {
-      if (!hasFiles(event)) return;
-      event.preventDefault();
-      dragDepth.current += 1;
-      setDragging(true);
-    };
-    const onOver = (event: DragEvent) => { if (hasFiles(event)) event.preventDefault(); };
-    const onLeave = () => {
-      dragDepth.current = Math.max(0, dragDepth.current - 1);
-      if (!dragDepth.current) setDragging(false);
-    };
-    const onDrop = (event: DragEvent) => {
-      if (!hasFiles(event)) return;
-      event.preventDefault();
-      dragDepth.current = 0;
-      setDragging(false);
-      addFiles(Array.from(event.dataTransfer?.files || []));
-    };
-    window.addEventListener("dragenter", onEnter);
-    window.addEventListener("dragover", onOver);
-    window.addEventListener("dragleave", onLeave);
-    window.addEventListener("drop", onDrop);
-    return () => {
-      window.removeEventListener("dragenter", onEnter);
-      window.removeEventListener("dragover", onOver);
-      window.removeEventListener("dragleave", onLeave);
-      window.removeEventListener("drop", onDrop);
-    };
-  }, [addFiles]);
 
   const togglePage = (key: string) => setPageKeys((current) =>
     current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
@@ -210,8 +124,6 @@ export default function FeedbackForm({ sourceRoute, pageControls, openPages, men
   };
 
   return <div className="feedback-form">
-    {dragging && <div className="feedback-drop-mask"><InboxOutlined />松开即可添加截图或附件</div>}
-
     <section className="feedback-section">
       <div className="feedback-section-title"><span className="feedback-required">*</span>问题所在页面
         <span className="feedback-hint">点选即可，可多选</span></div>
@@ -246,18 +158,7 @@ export default function FeedbackForm({ sourceRoute, pageControls, openPages, men
 
     <section className="feedback-section">
       <div className="feedback-section-title">截图和附件<span className="feedback-hint">可选，最多 {MAX_FILES} 个</span></div>
-      <div className="feedback-dropzone" role="button" tabIndex={0} onClick={() => fileInput.current?.click()}
-        onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") fileInput.current?.click(); }}>
-        <InboxOutlined className="feedback-dropzone-icon" />
-        <div>把截图或文件<b>拖到这里</b>，或截图后直接 <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>V</kbd> 粘贴</div>
-        <div className="feedback-hint">也可点击选择 · 图片 PNG/JPG/WebP ≤10MB · PDF/Word/Excel/TXT/ZIP/视频 ≤20MB</div>
-      </div>
-      <input ref={fileInput} type="file" multiple hidden accept={FILE_SUFFIXES.join(",")}
-        onChange={(event) => { addFiles(Array.from(event.target.files || [])); event.target.value = ""; }} />
-      {!!files.length && <div className="feedback-files">
-        {files.map((file, index) => <FilePreview key={`${file.name}-${file.size}-${index}`} file={file}
-          onRemove={() => setFiles((current) => current.filter((_, i) => i !== index))} />)}
-      </div>}
+      <FeedbackFileDrop files={files} onChange={setFiles} disabled={submitting} />
     </section>
 
     <div className="feedback-actions">

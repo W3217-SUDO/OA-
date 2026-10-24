@@ -64,3 +64,7 @@
 
 .feedback-page-head { display: flex; align-items: center; gap: 16px; }
 .feedback-page-head .ant-segmented { font-weight: 400; }
+
+/* 详情回复用的小号上传区：一行提示，点击或拖拽、粘贴都可以。 */
+.feedback-dropzone.is-compact { flex-direction: row; justify-content: center; gap: 8px; padding: 10px 12px; font-size: 13px; }
+.feedback-dropzone.is-compact .feedback-dropzone-icon { font-size: 18px; }

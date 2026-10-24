@@ -5,7 +5,11 @@ import { api } from "../api";
 import type { FeedbackAttachment } from "./types";
 
 // 附件接口需要登录头，图片先取成 Blob 再预览；非图片点击时再下载。
-export default function FeedbackAttachments({ feedbackId, attachments }: { feedbackId: number; attachments: FeedbackAttachment[] }) {
+export default function FeedbackAttachments({ feedbackId, attachments, compact = false }: {
+  feedbackId: number; attachments: FeedbackAttachment[];
+  /** 处理记录里每条回复下面的文件：不显示标题，留白小一些。 */
+  compact?: boolean;
+}) {
   const [urls, setUrls] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -52,8 +56,8 @@ export default function FeedbackAttachments({ feedbackId, attachments }: { feedb
   };
 
   if (!attachments.length) return null;
-  return <div style={{ marginTop: 16 }}>
-    <div style={{ marginBottom: 8 }}>截图和附件（{attachments.length}）</div>
+  return <div style={{ marginTop: compact ? 6 : 16 }}>
+    {!compact && <div style={{ marginBottom: 8 }}>截图和附件（{attachments.length}）</div>}
     {error && <Alert type="error" showIcon title={error} style={{ marginBottom: 8 }} />}
     {loading && <Spin />}
     {!!images.length && <Image.PreviewGroup>

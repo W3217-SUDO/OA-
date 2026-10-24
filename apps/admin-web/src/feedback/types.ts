@@ -25,6 +25,7 @@ export type FeedbackEvent = {
   comment: string;
   created_at: string;
   has_screenshot: boolean;
+  attachments?: FeedbackAttachment[];
 };
 
 export type FeedbackAttachment = {

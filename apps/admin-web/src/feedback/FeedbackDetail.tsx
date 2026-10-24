@@ -1,15 +1,14 @@
-import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Alert, Button, Descriptions, Input, message, Space, Spin, Tag, Timeline } from "antd";
 import dayjs from "dayjs";
 import { api } from "../api";
 import type { FeedbackDetails } from "./types";
 import FeedbackEventImage from "./FeedbackEventImage";
+import FeedbackFileDrop from "./FeedbackFileDrop";
 import FeedbackAttachments from "./FeedbackAttachments";
 import "./feedback.css";
 
 type Props = { feedbackId: number; onBack: () => void; onNavigate: (route: string) => void };
-type PersonOption = { username: string; label: string };
 
 const requiresComment = new Set(["未解决，重新打开"]);
 const primaryActions = new Set(["处理完成，请验证", "验证通过"]);
@@ -23,10 +22,7 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [comment, setComment] = useState("");
-  const [screenshot, setScreenshot] = useState<File | null>(null);
-  const screenshotInput = useRef<HTMLInputElement>(null);
-  const [people, setPeople] = useState<PersonOption[]>([]);
-  const [assignee, setAssignee] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -34,7 +30,6 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
     try {
       const { data } = await api.get<FeedbackDetails>(`/feedback/${feedbackId}`);
       setFeedback(data);
-      setAssignee(data.assignee);
     } catch (failure: any) {
       setError(failure?.response?.data?.detail || "反馈详情加载失败");
     } finally {
@@ -44,27 +39,24 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
 
   useEffect(() => { void load(); }, [load]);
 
-  useEffect(() => {
-    if (!feedback?.can_assign) return;
-    let cancelled = false;
-    void api.get<{ items: PersonOption[] }>("/people/options").then(({ data }) => {
-      if (!cancelled) setPeople(data.items);
-    }).catch(() => {
-      if (!cancelled) message.error("处理人列表加载失败");
-    });
-    return () => { cancelled = true; };
-  }, [feedback?.can_assign]);
-
-  const perform = async (path: string, body: object, success: string, method: "post" | "put" = "post") => {
+  // 回复带的截图和附件走回复接口；点状态按钮时如果已经选了文件，先作为一条回复发出，再改状态。
+  const sendFiles = async () => {
+    const body = new FormData();
+    body.append("content", comment.trim());
+    files.forEach((file) => body.append("files", file, file.name));
+    await api.post(`/feedback/${feedbackId}/messages`, body);
+  };
+  const perform = async (path: "messages" | "transitions", body: object | null, success: string) => {
     setBusy(true);
     try {
-      await api[method](`/feedback/${feedbackId}/${path}`, body);
+      if (path === "messages") await sendFiles();
+      else {
+        if (files.length) await sendFiles();
+        await api.post(`/feedback/${feedbackId}/transitions`, files.length ? { ...body, comment: "" } : body);
+      }
       message.success(success);
       setComment("");
-      if (path === "messages") {
-        setScreenshot(null);
-        if (screenshotInput.current) screenshotInput.current.value = "";
-      }
+      setFiles([]);
       await load();
       window.dispatchEvent(new Event("sunhold:notifications-updated"));
     } catch (failure: any) {
@@ -76,11 +68,8 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
   };
 
   const reply = () => {
-    if (!comment.trim()) { message.warning("请填写回复内容"); return; }
-    const body = new FormData();
-    body.append("content", comment.trim());
-    if (screenshot) body.append("screenshot", screenshot);
-    void perform("messages", body, "回复已发送");
+    if (!comment.trim() && !files.length) { message.warning("请填写回复内容或添加截图、附件"); return; }
+    void perform("messages", null, "回复已发送");
   };
   const transition = (action: string) => {
     if (requiresComment.has(action) && !comment.trim()) {
@@ -88,10 +77,6 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
       return;
     }
     void perform("transitions", { action, comment: comment.trim() }, "状态已更新");
-  };
-  const assign = () => {
-    if (!assignee) { message.warning("请选择处理人"); return; }
-    void perform("assignee", { username: assignee }, "处理人已指派", "put");
   };
 
   if (loading && !feedback) return <Spin />;
@@ -108,7 +93,6 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
     <Descriptions bordered size="small" column={{ xs: 1, sm: 2, md: 2 }} items={[
       { key: "serial", label: "反馈编号", children: feedback.serial_no },
       { key: "owner", label: "提交人", children: feedback.owner_display_name || feedback.owner },
-      { key: "assignee", label: "处理人", children: feedback.assignee_display_name || feedback.assignee || "未指派" },
       { key: "date", label: "提交时间", children: dayjs(feedback.created_at).format("YYYY-MM-DD HH:mm:ss") },
       { key: "page", label: "问题页面", span: 2, children: <Space wrap size={4}>
         <span style={{ overflowWrap: "anywhere" }}>{feedback.page || "—"}</span>
@@ -120,13 +104,6 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
         children: <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{feedback.description}</div> },
     ]} />
     <FeedbackAttachments feedbackId={feedbackId} attachments={feedback.attachments || []} />
-    {feedback.can_assign && <Space wrap style={{ marginTop: 20 }}>
-      <KeywordPersonSelect showSearch value={assignee || undefined} placeholder="选择处理人" aria-label="选择处理人"
-        style={{ minWidth: 240 }} optionFilterProp="label"
-        options={people.map((person) => ({ value: person.username, label: `${person.label}（${person.username}）` }))}
-        onChange={setAssignee} />
-      <Button disabled={busy || !assignee || assignee === feedback.assignee} onClick={assign}>指派处理人</Button>
-    </Space>}
     <h3 style={{ marginTop: 24, marginBottom: 16 }}>处理记录</h3>
     <Timeline items={feedback.events.map((event) => ({
       key: event.id,
@@ -138,25 +115,26 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
           <span style={{ color: "var(--oa-text-2)" }}>{dayjs(event.created_at).format("YYYY-MM-DD HH:mm:ss")}</span>
         </Space>
         {event.comment && <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", marginTop: 4 }}>{event.comment}</div>}
-        {event.has_screenshot && <FeedbackEventImage feedbackId={feedbackId} eventId={event.id} />}
+        {event.attachments?.length
+          ? <FeedbackAttachments feedbackId={feedbackId} attachments={event.attachments} compact />
+          : event.has_screenshot && <FeedbackEventImage feedbackId={feedbackId} eventId={event.id} />}
       </div>,
     }))} />
     {feedback.available_actions.includes("验证通过") && <Alert type="info" showIcon style={{ maxWidth: 850, marginBottom: 12 }}
-      title="处理人已处理完成，请验证问题是否已解决：解决了点“验证通过”，没解决写明情况后点“未解决，重新打开”。" />}
+      title="已处理完成，请验证问题是否已解决：解决了点“验证通过”，没解决写明情况后点“未解决，重新打开”。" />}
     {feedback.available_actions.includes("处理完成，请验证") && <Alert type="info" showIcon style={{ maxWidth: 850, marginBottom: 12 }}
       title="处理完成后点“处理完成，请验证”，会通知提交人验证；可以先在下面写处理说明。" />}
-    <Input.TextArea value={comment} rows={4} maxLength={2000} showCount aria-label="回复或处理说明"
+    <Input.TextArea value={comment} rows={4} aria-label="回复或处理说明"
       placeholder="回复或填写处理说明（随状态操作一起提交）" onChange={(event) => setComment(event.target.value)}
       style={{ maxWidth: 850, marginBottom: 12 }} />
-    <div style={{ marginBottom: 12 }}>
-      <input ref={screenshotInput} type="file" accept="image/png,image/jpeg,image/webp"
-        aria-label="补充截图" onChange={(event) => setScreenshot(event.target.files?.[0] || null)} />
+    <div style={{ maxWidth: 850, marginBottom: 12 }}>
+      <FeedbackFileDrop files={files} onChange={setFiles} compact disabled={busy} />
     </div>
     <div><Space wrap>
       {feedback.available_actions.map((action) => <Button key={action}
         type={primaryActions.has(action) ? "primary" : "default"} danger={action === "未解决，重新打开"} disabled={busy}
         onClick={() => transition(action)}>{action}</Button>)}
-      <Button disabled={busy || !comment.trim()} loading={busy} onClick={reply}>发送回复</Button>
+      <Button disabled={busy || (!comment.trim() && !files.length)} loading={busy} onClick={reply}>发送回复</Button>
     </Space></div>
   </section>;
 }

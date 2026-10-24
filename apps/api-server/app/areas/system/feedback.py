@@ -42,6 +42,9 @@ def _stored_statuses(status: str) -> set[str]:
 
 
 FEEDBACK_ATTACHMENT_CATEGORIES = ("问题反馈截图", "问题反馈附件")
+# 回复里带的截图和附件，remark 记回复事件 ID。
+FEEDBACK_REPLY_CATEGORIES = ("问题反馈补充截图", "问题反馈补充附件")
+REPLY_CATEGORY = {"问题反馈截图": "问题反馈补充截图", "问题反馈附件": "问题反馈补充附件"}
 
 
 class FeedbackTransition(BaseModel):
@@ -323,7 +326,7 @@ async def get_feedback(feedback_id: int, identity: dict = Depends(current_identi
         WorkflowEvent.record_id == record.id,
     ).order_by(WorkflowEvent.created_at, WorkflowEvent.id))).all()
     screenshots = (await db.scalars(select(FileAttachment).where(
-        FileAttachment.record_id == record.id, FileAttachment.category == "问题反馈补充截图",
+        FileAttachment.record_id == record.id, FileAttachment.category.in_(FEEDBACK_REPLY_CATEGORIES),
     ))).all()
     screenshot_event_ids = {attachment.remark for attachment in screenshots}
     files = (await db.scalars(select(FileAttachment).where(
@@ -345,21 +348,29 @@ async def get_feedback(feedback_id: int, identity: dict = Depends(current_identi
             "to_status": _status(event.to_status), "operator": event.operator,
             "operator_display_name": names.get(event.operator, ""), "comment": event.comment,
             "created_at": event.created_at, "has_screenshot": str(event.id) in screenshot_event_ids,
+            "attachments": [{
+                "id": item.id, "name": item.original_name, "size": item.size,
+                "content_type": item.content_type, "is_image": item.category == "问题反馈补充截图",
+            } for item in screenshots if item.remark == str(event.id)],
         } for event in events],
     }
 
 
 @router.post(f"{settings.api_prefix}/feedback/{{feedback_id}}/messages")
 async def add_feedback_message(
-    feedback_id: int, content: str = Form(...), screenshot: UploadFile | None = File(None),
+    feedback_id: int, content: str = Form(""), screenshot: UploadFile | None = File(None),
+    files: list[UploadFile] = File(default=[]),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     content = content.strip()
-    if not 1 <= len(content) <= 2000:
-        raise HTTPException(422, "回复内容需填写 1 到 2000 字")
-    image_content, suffix = await _read_screenshot(screenshot)
+    uploads = ([screenshot] if screenshot else []) + [item for item in files if item.filename]
+    if not content and not uploads:
+        raise HTTPException(422, "请填写回复内容或添加截图、附件")
+    if len(uploads) > FEEDBACK_MAX_FILES:
+        raise HTTPException(422, f"截图和附件合计最多 {FEEDBACK_MAX_FILES} 个")
+    contents = [(upload, *await _read_feedback_file(upload)) for upload in uploads]
     record = await _get_feedback(db, feedback_id, identity, lock=True)
-    stored_path = None
+    stored_paths: list[Path] = []
     try:
         current = _status(record.status)
         record.updated_at = func.now()
@@ -369,17 +380,16 @@ async def add_feedback_message(
         )
         db.add(event)
         await db.flush()
-        if screenshot:
-            stored_path = _save_screenshot(
-                db, record.id, screenshot, image_content, suffix, identity["username"],
-                "问题反馈补充截图", event.id,
-            )
+        for upload, data, suffix, category in contents:
+            stored_paths.append(_save_screenshot(
+                db, record.id, upload, data, suffix, identity["username"], REPLY_CATEGORY[category], event.id,
+            ))
         await _notify_participants(db, record, identity["username"], event.action, event.id)
         await db.commit()
-        return {"status": record.status}
+        return {"status": _status(record.status)}
     except Exception:
         await db.rollback()
-        if stored_path:
+        for stored_path in stored_paths:
             stored_path.unlink(missing_ok=True)
         raise
 
@@ -480,7 +490,7 @@ async def feedback_attachment(
     await _get_feedback(db, feedback_id, identity)
     attachment = await db.scalar(select(FileAttachment).where(
         FileAttachment.id == attachment_id, FileAttachment.record_id == feedback_id,
-        FileAttachment.category.in_(FEEDBACK_ATTACHMENT_CATEGORIES),
+        FileAttachment.category.in_((*FEEDBACK_ATTACHMENT_CATEGORIES, *FEEDBACK_REPLY_CATEGORIES)),
     ))
     from app.core.storage import ensure_attachment_local
     path = (await ensure_attachment_local(attachment) or Path(str(attachment.path))) if attachment else None
