@@ -17,13 +17,19 @@ type Props = {
   onNavigate: (route: string) => void;
   /** 问题处理中心：只看和处理，不在这里提交；状态改成带数量的页签，多一列“涉及按钮”。 */
   center?: boolean;
+  /** 问题反馈页头部的“提交反馈 / 我的反馈”切换：由页面控制，列表只看自己提交或指派给自己的。 */
+  view?: "create" | "mine";
+  onViewChange?: (view: "create" | "mine") => void;
+  /** 头部切换按钮每点一次加一，用来从详情回到对应视图。 */
+  navKey?: number;
+  onChanged?: () => void;
 };
 const statuses = ["待处理", "处理中", "待补充", "待验证", "已处理", "已解决"];
 const statusColors: Record<string, string> = {
   待处理: "default", 处理中: "processing", 待补充: "warning", 待验证: "cyan", 已处理: "green", 已解决: "success",
 };
 
-export default function FeedbackManager({ sourceRoute, pageControls, openPages, menuPages, onNavigate, center = false }: Props) {
+export default function FeedbackManager({ sourceRoute, pageControls, openPages, menuPages, onNavigate, center = false, view, onViewChange, navKey = 0, onChanged }: Props) {
   const [rows, setRows] = useState<FeedbackRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -36,7 +42,13 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
   const [reload, setReload] = useState(0);
   const [viewingId, setViewingId] = useState<number | null>(null);
   // 从侧栏“问题反馈”进来时直接进入填写；从通知打开指定反馈时由 openTarget 切回详情。
-  const [creating, setCreating] = useState(!center && Boolean(sourceRoute));
+  const [creatingState, setCreatingState] = useState(!center && Boolean(sourceRoute));
+  const creating = view ? view === "create" : creatingState;
+  const setCreating = (next: boolean) => {
+    if (onViewChange) onViewChange(next ? "create" : "mine");
+    else setCreatingState(next);
+  };
+  const mine = Boolean(view);
   const [statusCounts, setStatusCounts] = useState<FeedbackStatusCounts | null>(null);
   const listVisible = !viewingId && !creating;
 
@@ -50,13 +62,15 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
     return () => window.removeEventListener("sunhold:feedback-target", openTarget);
   }, []);
 
+  useEffect(() => { if (navKey) setViewingId(null); }, [navKey]);
+
   useEffect(() => {
     if (!listVisible) return;
     const controller = new AbortController();
     setLoading(true);
     setError("");
     void api.get<FeedbackPage>("/feedback", {
-      params: { keyword: query, status, page, page_size: pageSize }, signal: controller.signal,
+      params: { keyword: query, status, page, page_size: pageSize, mine: mine || undefined }, signal: controller.signal,
     }).then(({ data }) => {
       if (controller.signal.aborted) return;
       setRows(data.items);
@@ -68,7 +82,7 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
       if (!controller.signal.aborted) setLoading(false);
     });
     return () => controller.abort();
-  }, [listVisible, page, pageSize, query, status, reload]);
+  }, [listVisible, page, pageSize, query, status, reload, mine]);
 
   // 状态页签上的数量随列表一起刷新（处理完回到列表也会更新）。
   useEffect(() => {
@@ -95,9 +109,9 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
     { title: "截图/附件", width: 85, render: (_, row) => row.has_screenshot ? "有" : "无" },
   ];
 
-  if (viewingId) return <FeedbackDetail feedbackId={viewingId} onNavigate={onNavigate} onBack={() => { setViewingId(null); setReload((current) => current + 1); }} />;
+  if (viewingId) return <FeedbackDetail feedbackId={viewingId} onNavigate={onNavigate} onBack={() => { setViewingId(null); setReload((current) => current + 1); onChanged?.(); }} />;
   if (creating) return <FeedbackForm sourceRoute={sourceRoute} pageControls={pageControls} openPages={openPages} menuPages={menuPages} onCancel={() => setCreating(false)}
-    onSubmitted={(id) => { setCreating(false); setViewingId(id); }} />;
+    onSubmitted={(id) => { setCreating(false); setViewingId(id); onChanged?.(); }} />;
 
   return <section aria-label="问题反馈列表">
       <Space wrap style={{ marginBottom: 16 }}>
@@ -109,7 +123,7 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
           { value: "", label: "全部状态" }, ...statuses.map((value) => ({ value, label: value })),
         ]} onChange={(value) => { setStatus(value); setPage(1); }} />}
         <Button onClick={() => setReload((current) => current + 1)} loading={loading}>刷新</Button>
-        {!center && <Button type="primary" onClick={() => setCreating(true)}>提交反馈</Button>}
+        {!center && !view && <Button type="primary" onClick={() => setCreating(true)}>提交反馈</Button>}
       </Space>
       {center && <Segmented aria-label="按状态筛选反馈" style={{ marginBottom: 12 }} value={status}
         onChange={(value) => { setStatus(String(value)); setPage(1); }}

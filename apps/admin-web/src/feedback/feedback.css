@@ -61,3 +61,6 @@
 
 .feedback-attachments { display: flex; flex-wrap: wrap; gap: 10px; }
 .feedback-attachments .ant-image img { width: 120px; height: 90px; object-fit: cover; border-radius: 4px; border: 1px solid var(--oa-border, #d9d9d9); }
+
+.feedback-page-head { display: flex; align-items: center; gap: 16px; }
+.feedback-page-head .ant-segmented { font-weight: 400; }

@@ -214,10 +214,13 @@ async def create_feedback(
 
 
 @router.get(f"{settings.api_prefix}/feedback/status-counts")
-async def feedback_status_counts(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def feedback_status_counts(
+    mine: bool = Query(False), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
     """问题处理中心的状态页签计数；范围与列表一致（管理员看全部，其他人看自己提交或指派给自己的）。"""
     conditions = [BusinessRecord.module == "bug_feedback", BusinessRecord.deleted_at.is_(None)]
-    if not _is_admin(identity):
+    # mine：“我的反馈”只看自己提交或指派给自己的（管理员也一样）；全部反馈在问题处理中心看。
+    if mine or not _is_admin(identity):
         conditions.append(or_(
             BusinessRecord.owner == identity["username"],
             BusinessRecord.data["assignee"].as_string() == identity["username"],
@@ -232,13 +235,14 @@ async def feedback_status_counts(identity: dict = Depends(current_identity), db:
 @router.get(f"{settings.api_prefix}/feedback")
 async def list_feedback(
     keyword: str = Query("", max_length=200), page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100), status: str = Query(""),
+    page_size: int = Query(20, ge=1, le=100), status: str = Query(""), mine: bool = Query(False),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     if status and status not in FEEDBACK_STATUSES:
         raise HTTPException(422, "反馈状态无效")
     conditions = [BusinessRecord.module == "bug_feedback", BusinessRecord.deleted_at.is_(None)]  # 核心 Table 联接不带自动过滤，显式排除已删除
-    if not _is_admin(identity):
+    # mine：“我的反馈”只看自己提交或指派给自己的（管理员也一样）；全部反馈在问题处理中心看。
+    if mine or not _is_admin(identity):
         conditions.append(or_(
             BusinessRecord.owner == identity["username"],
             BusinessRecord.data["assignee"].as_string() == identity["username"],
