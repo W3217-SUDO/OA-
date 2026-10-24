@@ -24,24 +24,42 @@ class FeeListFactsTest(unittest.IsolatedAsyncioTestCase):
         rows = [dict(FACTS, id=index) for index in range(3)]
         self.assertEqual(facts_cache._rows(facts_cache._columns(rows)), rows)
         self.assertEqual(facts_cache._rows(facts_cache._columns([])), [])
+        with self.assertRaises(ValueError):
+            facts_cache._columns([{"id": 1}, {"other": 2}])
 
     def test_compressed_entry_round_trips_and_rejects_corruption(self):
-        payload = facts_cache._encode("10:20:", {"fields": ["id"], "rows": [[1], [2]]})
-        self.assertEqual(facts_cache._decode(payload), {"snapshot": "10:20:", "result": {"fields": ["id"], "rows": [[1], [2]]}})
+        rows = [{"id": 1, "nested": {"a": [1, 2]}}, {"id": 2, "nested": {}}]
+        payload = facts_cache._encode("10:20:", rows)
+        self.assertEqual(facts_cache._decode(payload), {"snapshot": "10:20:", "result": rows})
         with self.assertRaises(HTTPException):
             facts_cache._decode(b"not-zlib")
         with patch.object(facts_cache.settings, "fee_facts_cache_max_payload_bytes", 8):
-            self.assertIsNone(facts_cache._encode("10:20:", {"rows": list(range(1000))}))
+            self.assertIsNone(facts_cache._encode("10:20:", [{"id": index} for index in range(1000)]))
+
+    async def test_same_payload_is_decoded_once_per_process(self):
+        payloads = {"k:data": facts_cache._encode("1:2:", [{"id": 1}])}
+        client = SimpleNamespace(get=AsyncMock(side_effect=lambda key: payloads.get(key)))
+        facts_cache._decoded.clear()
+        with patch.object(facts_cache.shared, "client", return_value=client), \
+             patch.object(facts_cache, "_decode", wraps=facts_cache._decode) as decode:
+            first = await facts_cache._read("k")
+            self.assertIs(await facts_cache._read("k"), first)
+            self.assertEqual(decode.call_count, 1)
+            payloads["k:data"] = facts_cache._encode("1:3:", [{"id": 2}])
+            self.assertEqual((await facts_cache._read("k"))["result"], [{"id": 2}])
+            self.assertEqual(decode.call_count, 2)
+            self.assertIsNone(await facts_cache._read("missing"))
+        facts_cache._decoded.clear()
 
     async def test_publish_skips_oversize_and_memory_pressure(self):
         client = SimpleNamespace(eval=AsyncMock(return_value=1))
         with patch.object(facts_cache.shared, "client", return_value=client), \
              patch.object(facts_cache.store, "_memory_allows_publish", AsyncMock(return_value=False)):
-            await facts_cache._publish("key", "owner", "1:2:", {"rows": []})
+            await facts_cache._publish("key", "owner", "1:2:", [])
         client.eval.assert_not_awaited()
         with patch.object(facts_cache.shared, "client", return_value=client), \
              patch.object(facts_cache.store, "_memory_allows_publish", AsyncMock(return_value=True)):
-            await facts_cache._publish("key", "owner", "1:2:", {"rows": []})
+            await facts_cache._publish("key", "owner", "1:2:", [])
         self.assertEqual(client.eval.await_args.args[2:4], ("key:lock", "key:data"))
 
     async def test_dashboard_scoped_identity_is_refused(self):

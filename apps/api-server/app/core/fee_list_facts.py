@@ -8,6 +8,8 @@
 import asyncio
 import logging
 import zlib
+from collections import OrderedDict
+from copy import deepcopy
 from types import SimpleNamespace
 
 import orjson
@@ -18,28 +20,57 @@ from app.core import query_cache_store as store
 
 
 logger = logging.getLogger(__name__)
-_FORMAT = 1
+_FORMAT = 2
+# 每个进程保留最近解码的几份事实：同一份缓存内容（按校验码判定）不再重复解压和解析。
+# 命中与否仍由共享流程按数据修订号核对，这里只省解码；全所约 5 万笔费用解码后数十 MB，只留少量。
+_DECODED_LIMIT = 3
+_decoded: OrderedDict[str, tuple[int, object]] = OrderedDict()
+
+
+def _columns(rows):
+    # 按列存放：数万行重复的字段名不进入缓存，解码后再还原为与实时计算相同的字典。
+    fields = list(rows[0]) if rows else []
+    if any(list(row) != fields for row in rows):
+        raise ValueError("费用筛选事实各行字段不一致")
+    return {"fields": fields, "rows": [[row[field] for field in fields] for row in rows]}
+
+
+def _rows(table):
+    fields = table["fields"]
+    return [dict(zip(fields, values)) for values in table["rows"]]
 
 
 def _encode(snapshot, result):
-    payload = zlib.compress(orjson.dumps({"format": _FORMAT, "snapshot": snapshot, "result": result}), 1)
+    payload = zlib.compress(orjson.dumps({"format": _FORMAT, "snapshot": snapshot, "result": _columns(result)}), 1)
     return payload if len(payload) <= settings.fee_facts_cache_max_payload_bytes else None
 
 
 def _decode(payload):
     try:
         entry = orjson.loads(zlib.decompress(payload))
-    except (zlib.error, orjson.JSONDecodeError, TypeError) as exc:
+        if (not isinstance(entry, dict) or entry.get("format") != _FORMAT
+                or not isinstance(entry.get("snapshot"), str) or not isinstance(entry.get("result"), dict)):
+            raise ValueError("字段类型无效")
+        return {"snapshot": entry["snapshot"], "result": _rows(entry["result"])}
+    except (zlib.error, orjson.JSONDecodeError, TypeError, ValueError, KeyError) as exc:
         raise store.unavailable("费用筛选事实缓存格式损坏，请核查服务日志") from exc
-    if (not isinstance(entry, dict) or entry.get("format") != _FORMAT
-            or not isinstance(entry.get("snapshot"), str) or "result" not in entry):
-        raise store.unavailable("费用筛选事实缓存字段类型无效，请核查服务日志")
-    return {"snapshot": entry["snapshot"], "result": entry["result"]}
 
 
 async def _read(key):
     payload = await shared.client().get(key + ":data")
-    return None if payload is None else await asyncio.to_thread(_decode, payload)
+    if payload is None:
+        return None
+    checksum = zlib.crc32(payload) ^ len(payload)
+    remembered = _decoded.get(key)
+    if remembered is not None and remembered[0] == checksum:
+        _decoded.move_to_end(key)
+        return remembered[1]
+    entry = await asyncio.to_thread(_decode, payload)
+    _decoded[key] = (checksum, entry)
+    _decoded.move_to_end(key)
+    while len(_decoded) > _DECODED_LIMIT:
+        _decoded.popitem(last=False)
+    return entry
 
 
 async def _publish(key, token, snapshot, result):
@@ -68,17 +99,6 @@ async def _cached(db, identity, namespace, parameters, compute):
                                snapshot_reader=finance_revision_snapshot, query_store=_STORE)
 
 
-def _columns(rows):
-    # 按列存放：数万行重复的字段名不进入缓存，解码后再还原为与实时计算相同的字典。
-    fields = list(rows[0]) if rows else []
-    return {"fields": fields, "rows": [[row[field] for field in fields] for row in rows]}
-
-
-def _rows(table):
-    fields = table["fields"]
-    return [dict(zip(fields, values)) for values in table["rows"]]
-
-
 async def fee_query_facts(identity, db, *, scope):
     """费用查询的全部可见费用事实（顺序与实时计算相同）。不适用于控制台限定费用集合的身份。"""
     from app.core.finance import _invoice_case_fee_rows
@@ -87,12 +107,12 @@ async def fee_query_facts(identity, db, *, scope):
         raise ValueError("控制台限定费用集合不使用费用事实缓存")
 
     async def compute():
-        rows = await _invoice_case_fee_rows(
+        return await _invoice_case_fee_rows(
             identity, db, scope=scope, include_all_fee_types=True, summary_only=True, facts_only=True,
         )
-        return _columns(rows)
 
-    return _rows(await _cached(db, identity, "finance.facts.fee_query", {"scope": scope}, compute))
+    # 返回的事实可能是进程内共用的解码结果，调用方只读不改。
+    return await _cached(db, identity, "finance.facts.fee_query", {"scope": scope}, compute)
 
 
 def fee_query_row_passes(facts, *, external_only, refund_amount_from, refund_amount_to, payment_status, unpaid_official):
@@ -121,4 +141,5 @@ async def refund_pending_base(identity, db):
     async def compute():
         return store.json_value(await _refund_case_fee_base(identity, db))
 
-    return await _cached(db, identity, "finance.facts.refund_pending", {}, compute)
+    # 当前页会被补人员显示名（改写行内 data），共用的解码结果先复制一份；候选通常只有数百行。
+    return deepcopy(await _cached(db, identity, "finance.facts.refund_pending", {}, compute))

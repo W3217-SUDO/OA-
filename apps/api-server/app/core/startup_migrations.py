@@ -155,6 +155,16 @@ def _apply_hz_allocation_read_model(connection: Connection, _upgrade_schema: Cal
     upgrade_hz_allocation_read_model(connection)
 
 
+def _apply_read_model_case_no_index(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    """费用按案号判定唯一性时在读模型上按 case_no 分组计数；建表达式索引后不必逐行解析全部读模型 JSON。"""
+    if connection.dialect.name != "postgresql":
+        return
+    connection.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_business_record_read_models_case_no "
+        "ON business_record_read_models ((data ->> 'case_no'))"
+    ))
+
+
 def _apply_customer_list_indexes(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
     from app.core.customer_readmodel import create_customer_list_indexes
     create_customer_list_indexes(connection)
@@ -186,6 +196,7 @@ def _run_versioned_schema_migrations(
         ("customer_list_indexes_v1", _apply_customer_list_indexes),
         # 只新增退费单编号表达式索引；其余 JSON 索引已存在时 IF NOT EXISTS 不做改动。
         ("refund_record_link_index_v1", _apply_case_link_json_indexes),
+        ("read_model_case_no_index_v1", _apply_read_model_case_no_index),
         # 放在所有建表修订之后：给此前新建的表补财务查询修订触发器，恢复财务查询缓存。
         (FINANCE_QUERY_REINSTALL_REVISION, _apply_finance_query_revision),
     )

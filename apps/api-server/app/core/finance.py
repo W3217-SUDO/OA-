@@ -2424,9 +2424,14 @@ async def _case_commission_lifecycle_statuses(
                 paid_source_fee_ids.add(fee_id)
 
     allocated_source_fee_ids: set[int] = set()
+    # 下面只收集编号属于 source_fee_ids 的分配；集合为空时不必读取，候选少时先按原文子串预检。
+    # 缺失或无法解析的编号按 0 计，原文未必含“0”，所以集合含 0 时不预检。
+    from app.core.json_relation_query import json_text_precheck
+    allocation_precheck = None if 0 in source_fee_ids else json_text_precheck(IncomingPayment.allocations, source_fee_ids)
     incoming_payments = (await db.scalars(select(IncomingPayment).where(
         IncomingPayment.status.in_({"部分分配", "已分配"}),
-    ))).all()
+        *([] if allocation_precheck is None else [allocation_precheck]),
+    ))).all() if source_fee_ids else []
     for payment in incoming_payments:
         for allocation in payment.allocations or []:
             if not isinstance(allocation, dict):

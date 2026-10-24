@@ -4,7 +4,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from types import SimpleNamespace
 
-from sqlalchemy import JSON, case, cast, column, func, literal, select, true
+from sqlalchemy import JSON, case, cast, column, func, literal, literal_column, select, true
 from sqlalchemy.dialects.postgresql import aggregate_order_by
 
 from app.models import BusinessRecord, IncomingPayment
@@ -75,7 +75,9 @@ async def unambiguous_fee_case_nos(case_nos, db):
     scope = _current_scope.get()
     read_model = uses_record_read_model(db, ("case_no",))
     source = record_read_models.c.data if read_model else BusinessRecord.data
-    number = source["case_no"].as_string()
+    # PostgreSQL 上键名写成字面量，才能命中 case_no 表达式索引（业务记录与读模型各一个）。
+    key = literal_column("'case_no'") if db.get_bind().dialect.name == "postgresql" else "case_no"
+    number = source[key].as_string()
     query = select(number, func.count(BusinessRecord.id)).select_from(BusinessRecord)
     if read_model:
         query = query.join(record_read_models, record_read_models.c.record_id == BusinessRecord.id)
