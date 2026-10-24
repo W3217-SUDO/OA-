@@ -26,14 +26,20 @@ async def dashboard_todos(identity, db, *, record_scope=None):
     # 控制台数字口径（用户 2026-10-23 确认）：右列五张卡片 = 点进去那个列表的总数，
     # 复用列表查询函数计数（dashboard_list_counts），不再按费用类型文字统计本人名下费用。
     from app.core import dashboard_list_counts as list_counts
-    right_counts = {
-        "待审批官方费用": await list_counts.payment_audit_total(identity, db),
-        "待审批内部费用": await list_counts.internal_review_total(identity, db, "other"),
-        "待审批结算费用": await list_counts.settlement_audit_total(identity, db),
-        "待归档费用": await list_counts.archive_fee_pending_total(identity, db),
+    archive_action_allowed = await _case_action_granted(identity, db, "case.archive.review")
+    # 各卡片计数互不依赖，独立只读会话并行计算（性能：原先串行约 5–8 秒）。
+    list_totals = await list_counts.gather_counts(db, {
+        "待审批官方费用": lambda session: list_counts.payment_audit_total(identity, session),
+        "待审批内部费用": lambda session: list_counts.internal_review_total(identity, session, "other"),
+        "待审批结算费用": lambda session: list_counts.settlement_audit_total(identity, session),
+        "待归档费用": lambda session: list_counts.archive_fee_pending_total(identity, session),
         # Q2(a)：库里没有“预损”费用，对应归档里的“亏损内审”案件，点进去是“亏损内审”标签。
-        "待审核预损费用": await list_counts.archive_queue_total(identity, db, "loss_internal"),
-    }
+        "待审核预损费用": lambda session: list_counts.archive_queue_total(identity, session, "loss_internal"),
+        **({"待审核归档": lambda session: list_counts.archive_queue_total(identity, session, "pending")}
+           if archive_action_allowed else {}),
+    })
+    right_counts = {name: list_totals[name] for name in (
+        "待审批官方费用", "待审批内部费用", "待审批结算费用", "待归档费用", "待审核预损费用")}
     todos = [[left, 0, 0, right, right_counts[right], right_counts[right]] for left, right in labels]
     # The legacy dashboard's blue number is the signed-in user's actionable
     # queue; the orange number is that user's rejected/returned queue.  Neither
@@ -99,7 +105,6 @@ async def dashboard_todos(identity, db, *, record_scope=None):
         )) or 0),
     )
 
-    archive_action_allowed = await _case_action_granted(identity, db, "case.archive.review")
     # 本函数没有业务写入，归档计数沿用本次调用已读取的同账号权限范围。
     archive_scope = scope
     archive_projection, archive_data = record_json_text_projection(db, (
@@ -109,7 +114,7 @@ async def dashboard_todos(identity, db, *, record_scope=None):
     # 待审核归档 = 归档“待审核归档”标签总数（状态 待归档审核/归档审核；管理员看全部，其他人按审核人分配），
     # 与点进去的列表同一查询；亏损内审、亏损审核在各自标签，不计入本卡（Q1）。
     personal_todo_counts["待审核归档"] = (
-        await list_counts.archive_queue_total(identity, db, "pending") if archive_action_allowed else 0,
+        list_totals.get("待审核归档", 0),
         int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
             BusinessRecord.module == "case",
             projected_record_condition(archive_projection, and_(

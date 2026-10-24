@@ -21,6 +21,9 @@ from app.core.request_metrics import measure_phase
 
 logger = logging.getLogger(__name__)
 MIGRATION_REVISION = "finance_query_revision_tables_v1"
+# v1 之后新建的表（当事人库等）没有触发器，导致覆盖检查一直失败、财务查询缓存整体失效；
+# v2 重新执行同一安装（只补缺失的触发器，不改业务行）。
+REINSTALL_REVISION = "finance_query_revision_tables_v2"
 
 # 后台循环或智能体持续写入、且财务查询不读取的表；修订日志及迁移登记表本身也不纳入。
 EXCLUDED_TABLES = frozenset({
@@ -28,6 +31,8 @@ EXCLUDED_TABLES = frozenset({
     "notification_sync_schedules", "ipr_case_reminder_types",
     "notifications", "notification_deliveries",
     "checkpoints", "checkpoint_blobs", "checkpoint_writes", "checkpoint_migrations",
+    # 每次写入都会追加的变更留痕与 MCP 调用/令牌记录：财务查询不读取，计入修订只会让缓存频繁失效。
+    "data_change_logs", "mcp_access_tokens", "mcp_call_logs",
 })
 _EXCLUDED_SQL = ", ".join("'" + name.replace("'", "''") + "'" for name in sorted(EXCLUDED_TABLES))
 

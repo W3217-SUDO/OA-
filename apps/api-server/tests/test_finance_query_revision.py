@@ -34,7 +34,11 @@ class FinanceQueryRevisionDefinitionTest(TestCase):
             "notification_sync_schedules", "ipr_case_reminder_types",
             "notifications", "notification_deliveries",
             "checkpoints", "checkpoint_blobs", "checkpoint_writes", "checkpoint_migrations",
+            # 变更留痕与 MCP 记录：每次写入都追加、财务查询不读取（2026-10-24 性能整改）。
+            "data_change_logs", "mcp_access_tokens", "mcp_call_logs",
         }))
+        for table in ("parties", "party_library"):
+            self.assertNotIn(table, revision.EXCLUDED_TABLES, "当事人库是业务表，必须装修订触发器")
         for table in ("business_records", "incoming_payments", "legacy_finance_records",
                       "legacy_finance_allocations", "receivable_plans", "Legal_Case_Log"):
             self.assertNotIn(table, revision.EXCLUDED_TABLES)

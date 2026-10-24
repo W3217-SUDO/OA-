@@ -3,6 +3,7 @@
 控制台数字口径（2026-10-23 用户确认）：首页每个数字 = 当前账号按点进去页面默认条件查询得到的总条数。
 不另写一套条件，列表的权限、数据范围、状态规则改动时首页自动跟随。
 """
+import asyncio
 import inspect
 
 from fastapi import HTTPException
@@ -101,3 +102,32 @@ async def archive_fee_pending_total(identity, db):
     if scoped is None:
         return 0
     return await _list_total(list_pending_archive_settlements, page=1, page_size=1, identity=scoped, db=db)
+
+
+# 同时计数的上限：每张卡片占用一个独立只读连接，限制并发避免多人同时打开控制台时耗尽连接池。
+PARALLEL_COUNT_LIMIT = 4
+
+
+async def gather_counts(db, jobs):
+    """并行计算多张卡片（每张独立会话、只读）；非 PostgreSQL（测试用 SQLite）按顺序在当前会话计算。
+
+    jobs: {卡片名: async 函数(db) -> int}。各计数互不依赖，结果与逐个计算相同。
+    """
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    bind = db.bind
+    if bind is None or bind.dialect.name != "postgresql":
+        return {name: await job(db) for name, job in jobs.items()}
+    sessions = async_sessionmaker(bind, expire_on_commit=False, class_=AsyncSession)
+    limit = asyncio.Semaphore(PARALLEL_COUNT_LIMIT)
+
+    async def run(job):
+        async with limit, sessions() as session:
+            try:
+                return await job(session)
+            finally:
+                await session.rollback()
+
+    names = list(jobs)
+    values = await asyncio.gather(*(run(jobs[name]) for name in names))
+    return dict(zip(names, values))

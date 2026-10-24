@@ -22,7 +22,7 @@ from app.core.dashboard_finance_read_model_migration import (
 from app.core.dashboard_revision import MIGRATION_REVISION as DASHBOARD_REVISION
 from app.core.dashboard_revision_migration import upgrade_dashboard_revision, validate_dashboard_revision
 from app.core.finance_query_revision import (
-    MIGRATION_REVISION as FINANCE_QUERY_REVISION,
+    MIGRATION_REVISION as FINANCE_QUERY_REVISION, REINSTALL_REVISION as FINANCE_QUERY_REINSTALL_REVISION,
     upgrade_finance_query_revision,
 )
 from app.core.hz_allocation_read_model_migration import (
@@ -184,6 +184,8 @@ def _run_versioned_schema_migrations(
         ("mcp_access_tokens_v1", _apply_mcp_access_tokens),
         ("mcp_access_tokens_write_v1", _apply_mcp_token_write),
         ("customer_list_indexes_v1", _apply_customer_list_indexes),
+        # 放在所有建表修订之后：给此前新建的表补财务查询修订触发器，恢复财务查询缓存。
+        (FINANCE_QUERY_REINSTALL_REVISION, _apply_finance_query_revision),
     )
     for revision, migration in revisions:
         if connection.execute(
