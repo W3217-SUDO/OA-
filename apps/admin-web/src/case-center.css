@@ -161,7 +161,9 @@
 .case-doc-child .case-doc-caret{display:none}
 .case-doc-icon{flex:0 0 16px;color:#e8b834;font-size:16px}
 .case-doc-folder-open .case-doc-icon{color:#e2aa20}
-.case-doc-ai-space{font-weight:600;color:color-mix(in srgb, #087f5b var(--oa-ink), #fff);background:var(--oa-fill)}.case-doc-ai-space .case-doc-icon{color:color-mix(in srgb, #08a56d var(--oa-ink), #fff)}
+/* 文档目录只高亮当前选中的一项（主题色浅底 + 主题色文字 + 左侧色条）；案件智能体文件夹平时只用机器人图标区分，不再常亮成“像被选中”。 */
+.case-doc-ai-space .case-doc-icon{color:var(--oa-primary)}
+.case-doc-folder.case-doc-active,.case-doc-child.case-doc-active{color:var(--oa-primary-ink);font-weight:600;background:var(--oa-primary-tint);box-shadow:inset 3px 0 0 var(--oa-primary)}
 .case-doc-folder>span:last-child,.case-doc-child>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* 案件智能体抽屉的工作台视觉层次。 */
