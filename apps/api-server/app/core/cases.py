@@ -39,7 +39,7 @@ def _hearing_dict(item: HearingSchedule, case_record: BusinessRecord) -> dict:
 def _dashboard_case_hearing(case_record: BusinessRecord, today: date, cutoff: date) -> dict | None:
     """Project the legacy case court fields into the dashboard schedule."""
     from app.core.formatters import (
-        _case_hearing_datetime,
+        _case_hearing_datetime, _dashboard_text,
     )
     data = case_record.data or {}
     candidates: list[tuple[str, str, object, object]] = [
@@ -79,6 +79,9 @@ def _dashboard_case_hearing(case_record: BusinessRecord, today: date, cutoff: da
             "assistant": str(data.get("assistant") or ""),
             "hearing_type": hearing_type,
             "courtroom": str(courtroom or ""),
+            # 工作台排期里顺带显示案件阶段和对方当事人。
+            "stage": str(data.get("case_phase_name") or case_record.status or ""),
+            "opponent": _dashboard_text(data.get("opponent")),
         }
     return None
 

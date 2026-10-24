@@ -6,7 +6,7 @@ from app.core.constants import _CASE_HEARING_LEVELS, CASE_EVENT_TIME_ZONE
 from app.core.cases import _dashboard_case_hearing, _dashboard_latest_case_row
 from app.core.contracts import _contract_person_values
 from app.core.crm import _dashboard_customer_for_case
-from app.core.formatters import _normalized_customer_name, _user_display_map
+from app.core.formatters import _dashboard_text, _normalized_customer_name, _user_display_map
 from app.core.system import _dashboard_people, _record_person_usernames
 from app.core.dashboard import dashboard_scope
 from app.core.record_json_text_query import projected_record_condition, record_json_text_projection
@@ -75,7 +75,7 @@ async def dashboard_cases(identity, db):
     hearing_conditions = await company_hearing_conditions(identity, db)
     hearing_projection, hearing_data = record_json_text_projection(db, hearing_keys)
     hearing_fields = (*hearing_keys, "hearing_time", "next_hearing_time", "hearing_lawyer",
-                      "handling_lawyers", "assistant", "court", "courtroom",
+                      "handling_lawyers", "assistant", "court", "courtroom", "case_phase_name", "opponent",
                       "first_instance_court", "second_instance_court",
                       *(f"{prefix}_court_{key}" for prefix, _ in _CASE_HEARING_LEVELS
                         for key in ("name", "courtroom")))
@@ -103,7 +103,8 @@ async def dashboard_cases(identity, db):
         if item.case_record_id in projected_hearings:
             continue
         case = case_map[item.case_record_id]; data = case.data or {}
-        hearings.append({"case_record_id": case.id, "weekday": "星期" + "一二三四五六日"[item.hearing_date.weekday()], "date": str(item.hearing_date), "time": item.hearing_time, "court": item.court, "case_no": case.serial_no, "client": case.customer, "lawyer": item.hearing_lawyer or data.get("hearing_lawyer", ""), "agent": ",".join(data.get("handling_lawyers", [])), "assistant": data.get("assistant", ""), "hearing_type": item.hearing_type, "courtroom": item.courtroom})
+        hearings.append({"case_record_id": case.id, "weekday": "星期" + "一二三四五六日"[item.hearing_date.weekday()], "date": str(item.hearing_date), "time": item.hearing_time, "court": item.court, "case_no": case.serial_no, "client": case.customer, "lawyer": item.hearing_lawyer or data.get("hearing_lawyer", ""), "agent": ",".join(data.get("handling_lawyers", [])), "assistant": data.get("assistant", ""), "hearing_type": item.hearing_type, "courtroom": item.courtroom,
+                         "stage": str(data.get("case_phase_name") or case.status or ""), "opponent": _dashboard_text(data.get("opponent"))})
     hearings.sort(key=lambda item: (item["date"], item["time"], item["case_no"]))
     hearings = hearings[:13]
     customer_ids: set[int] = set()

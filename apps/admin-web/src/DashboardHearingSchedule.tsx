@@ -3,7 +3,6 @@ import { Button, Empty } from "antd";
 import { RightOutlined } from "@ant-design/icons";
 import AgentAvatar from "./personal-agent/AgentAvatar";
 import dayjs from "dayjs";
-import DashboardPersonCell from "./DashboardPersonCell";
 import { hearingPrompt } from "./dashboardPrompts";
 
 type Hearing = Record<string, string>;
@@ -61,29 +60,38 @@ export default function DashboardHearingSchedule({ hearings, loading, status, ca
             <ul className="wb-day-list">
               {day.items.map((item) => (
                 <li className="wb-hearing" key={`${item.case_no}-${item.time}`}>
-                  <div className="wb-hearing-main">
+                  {/* 第一行：时间、法院（完整显示）和“交给智能体”；下面整行宽度给案件信息，开庭/经办/助理排在一行。 */}
+                  <div className="wb-hearing-top">
                     <span className="wb-hearing-time">{item.time}</span>
-                    <div className="wb-hearing-body">
-                      <b title={item.court}>{item.court || "法院待定"}</b>
-                      <span className="wb-hearing-case">
-                        {/* 关联案号与客户只在当前账号确实能进入详情时才是链接。 */}
-                        {canOpenCase
-                          ? <Button type="link" size="small" onClick={() => onOpenCase(item.case_no)}>{item.case_no}</Button>
-                          : <span>{item.case_no}</span>}
-                        {item.client && (canOpenCustomer
-                          ? <Button type="link" size="small" onClick={() => onOpenCustomer(item.client)}>{item.client}</Button>
-                          : <span>{item.client}</span>)}
-                      </span>
-                      <span className="wb-hearing-people">
-                        <span><label>开庭</label><DashboardPersonCell value={item.lawyer} /></span>
-                        <span><label>经办</label><DashboardPersonCell value={item.agent} /></span>
-                        <span><label>助理</label><DashboardPersonCell value={item.assistant} /></span>
-                      </span>
-                    </div>
+                    <b className="wb-hearing-court">{item.court || "法院待定"}</b>
+                    <button type="button" className="wb-ask" title="交给智能体" aria-label="交给智能体" onClick={() => canOpenCase ? onOpenHearingAgent(item.case_no) : onAsk(hearingPrompt(item))}>
+                      <AgentAvatar size={15} />智能体
+                    </button>
                   </div>
-                  <button type="button" className="wb-ask" onClick={() => canOpenCase ? onOpenHearingAgent(item.case_no) : onAsk(hearingPrompt(item))}>
-                    <AgentAvatar size={15} />交给智能体
-                  </button>
+                  <div className="wb-hearing-detail">
+                    <span className="wb-hearing-case">
+                      {/* 关联案号与客户只在当前账号确实能进入详情时才是链接。 */}
+                      {canOpenCase
+                        ? <Button type="link" size="small" onClick={() => onOpenCase(item.case_no)}>{item.case_no}</Button>
+                        : <span>{item.case_no}</span>}
+                      {item.client && (canOpenCustomer
+                        ? <Button type="link" size="small" onClick={() => onOpenCustomer(item.client)}>{item.client}</Button>
+                        : <span>{item.client}</span>)}
+                    </span>
+                    {(item.hearing_type || item.courtroom || item.stage) && (
+                      <span className="wb-hearing-meta">
+                        {item.hearing_type && <span className="wb-hearing-type">{item.hearing_type}</span>}
+                        {item.courtroom && <span>{item.courtroom}</span>}
+                        {item.stage && <span><label>阶段</label>{item.stage}</span>}
+                      </span>
+                    )}
+                    {item.opponent && <span className="wb-hearing-opponent"><label>对方</label>{item.opponent}</span>}
+                    <span className="wb-hearing-people">
+                      <span><label>开庭</label>{item.lawyer || "—"}</span>
+                      <span><label>经办</label>{item.agent || "—"}</span>
+                      <span><label>助理</label>{item.assistant || "—"}</span>
+                    </span>
+                  </div>
                 </li>
               ))}
             </ul>

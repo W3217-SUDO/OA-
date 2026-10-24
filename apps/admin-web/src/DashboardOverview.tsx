@@ -79,10 +79,23 @@ export default function DashboardOverview({ showHead = true, greeting, name, bri
           </div>
           {caseStatus}
           {!casesLoading && !casesError && !cases?.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无案件" />}
+          {/* 与原系统“最新案件”同样的字段，全部显示：宽屏逐列；卡片较窄时原告/被告合成一列、开庭/经办/助理合成一列（带小标签），信息不减少。人名全部列出，不截断。 */}
           {!!cases?.length && <div className="wb-overview-case-list">
             <table className="wb-overview-cases">
-              <caption className="wb-visually-hidden">最新案件的案号、当事人、案件阶段和创建日期</caption>
-              <thead><tr><th scope="col">案号</th><th scope="col">当事人</th><th scope="col">案件阶段</th><th scope="col">创建日期</th></tr></thead>
+              <caption className="wb-visually-hidden">最新案件的案号、阶段、原告、被告、案源日期、客户管理人、开庭律师、经办律师和律师助理</caption>
+              <thead><tr>
+                <th scope="col" className="case-col-no">案号</th>
+                <th scope="col" className="case-col-stage">阶段</th>
+                <th scope="col" className="case-wide">原告</th>
+                <th scope="col" className="case-wide">被告</th>
+                <th scope="col" className="case-narrow">原告 / 被告</th>
+                <th scope="col" className="case-col-date">案源日期</th>
+                <th scope="col" className="case-col-person">客户管理人</th>
+                <th scope="col" className="case-wide case-col-person">开庭律师</th>
+                <th scope="col" className="case-wide case-col-person">经办律师</th>
+                <th scope="col" className="case-wide case-col-person">律师助理</th>
+                <th scope="col" className="case-narrow case-col-team">承办律师</th>
+              </tr></thead>
               <tbody>{cases.map((item) => (
                 <tr key={item.case_no}>
                   <td className="wb-overview-case-number">
@@ -90,9 +103,23 @@ export default function DashboardOverview({ showHead = true, greeting, name, bri
                       ? <button type="button" onClick={() => onOpenCase(item.case_no)}>{item.case_no}</button>
                       : <span>{item.case_no}</span>}
                   </td>
-                  <td className="wb-overview-parties"><span title={item.plaintiff}>{item.plaintiff}</span><span title={item.defendant}>{item.defendant}</span></td>
-                  <td><span className="wb-overview-stage">{item.stage}</span></td>
-                  <td className="wb-overview-case-date"><time>{item.date}</time></td>
+                  <td className="wb-overview-case-stage"><span className="wb-overview-stage">{item.stage || "—"}</span></td>
+                  <td className="case-wide">{item.plaintiff || "—"}</td>
+                  <td className="case-wide">{item.defendant || "—"}</td>
+                  <td className="case-narrow wb-overview-parties">
+                    <span><i>原告</i>{item.plaintiff || "—"}</span>
+                    <span><i>被告</i>{item.defendant || "—"}</span>
+                  </td>
+                  <td className="wb-overview-case-date"><time>{item.date || "—"}</time></td>
+                  <td className="wb-overview-case-manager">{item.manager || "—"}</td>
+                  <td className="case-wide">{item.lawyer || "—"}</td>
+                  <td className="case-wide">{item.agent || "—"}</td>
+                  <td className="case-wide">{item.assistant || "—"}</td>
+                  <td className="case-narrow wb-overview-team">
+                    <span><i>开庭</i>{item.lawyer || "—"}</span>
+                    <span><i>经办</i>{item.agent || "—"}</span>
+                    <span><i>助理</i>{item.assistant || "—"}</span>
+                  </td>
                 </tr>
               ))}</tbody>
             </table>

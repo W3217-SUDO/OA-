@@ -43,9 +43,8 @@ button.wb-todo-entry:active{background:color-mix(in srgb, #dcece3 var(--oa-tint)
 .wb-overview-case-list{min-width:0}
 .wb-overview-cases{width:100%;border-collapse:collapse;table-layout:fixed;background:var(--oa-surface);text-align:left;font-size:13px}
 .wb-overview-cases th{padding:10px 12px;background:var(--oa-fill);color:var(--wb-slate);font-size:12px;font-weight:500}
-.wb-overview-cases th:first-child{width:130px;border-radius:7px 0 0 7px}
-.wb-overview-cases th:nth-child(3){width:116px}
-.wb-overview-cases th:last-child{width:110px;border-radius:0 7px 7px 0}
+.wb-overview-cases th:first-child{border-radius:7px 0 0 7px}
+.wb-overview-cases th:last-child{border-radius:0 7px 7px 0}
 .wb-overview-cases td{padding:8px 12px;border-bottom:1px solid var(--overview-rule);vertical-align:middle;overflow-wrap:anywhere}
 .wb-overview-cases tbody tr:hover{background:var(--overview-surface)}
 .wb-overview-case-number button{display:inline-flex;align-items:center;min-height:44px;max-width:100%;padding:0;border:0;background:none;color:var(--wb-jade);font:inherit;font-weight:500;text-align:left;cursor:pointer}
@@ -70,7 +69,6 @@ button.wb-todo-entry:active{background:color-mix(in srgb, #dcece3 var(--oa-tint)
   .wb-overview-cases td{min-width:0;padding:0;border:0}
   .wb-overview-parties>span{overflow:visible;white-space:normal;overflow-wrap:anywhere}
   .wb-overview-case-number{grid-column:1;grid-row:1}
-  .wb-overview-cases td:nth-child(3){grid-column:2;grid-row:1;align-self:center;justify-self:end;min-width:0}
   .wb-overview-parties{grid-column:1/-1;grid-row:2;padding-bottom:6px!important}
   .wb-overview-case-date{grid-column:1/-1;grid-row:3}
 }
@@ -283,7 +281,6 @@ button.wb-todo-entry:active{background:var(--oa-fill)}
   .wb-metric-text span{padding-right:22px}
   .wb-metric-text strong{font-size:16px}
 }
-.wb-overview-cases th:first-child{width:156px}
 .wb-overview-case-number button{white-space:nowrap}
 
 /* 2026-10 提醒区：律所办公风格，统一用主题色（跟随“偏好设置”里的主题色），不做多彩；
@@ -361,4 +358,59 @@ button.wb-todo-entry:active{background:var(--oa-fill)}
 }
 @media (prefers-reduced-motion:reduce){
   .wb-focus-bell.is-ringing .anticon,.wb-focus-chip.is-urgent,.wb-metrics .wb-metric.is-urgent{animation:none}
+}
+
+/* 最新案件：与原系统同样的九项（案号、阶段、原告、被告、案源日期、客户管理人、开庭律师、经办律师、律师助理）。
+   卡片够宽（≥1000px）时逐列显示；较窄时原告/被告、开庭/经办/助理各合成一列并带小标签；手机上按卡片排。人名全部显示，不截断。 */
+.wb-overview-case-list{container-type:inline-size}
+.wb-overview-cases .case-narrow{display:none}
+.wb-overview-cases th,.wb-overview-cases td{padding-inline:10px}
+.wb-overview-cases td{font-size:12.5px;line-height:1.5}
+.wb-overview-cases th.case-col-no{width:140px}
+.wb-overview-cases th.case-col-stage{width:100px}
+.wb-overview-cases th.case-col-date{width:96px}
+.wb-overview-cases th.case-col-person{width:86px}
+.wb-overview-case-manager{color:var(--wb-ink)}
+.wb-overview-parties>span,.wb-overview-team>span{display:block;overflow:visible;white-space:normal;line-height:1.55}
+.wb-overview-parties>span+span{font-size:12.5px}
+.wb-overview-parties i,.wb-overview-team i{margin-right:6px;color:var(--oa-text-3);font-size:11px;font-style:normal}
+@container (max-width:999px){
+  .wb-overview-cases .case-wide{display:none}
+  .wb-overview-cases .case-narrow{display:table-cell}
+  .wb-overview-cases th.case-col-no{width:122px}
+  .wb-overview-cases th.case-col-stage{width:100px}
+  .wb-overview-cases th.case-col-date{width:88px}
+  .wb-overview-cases th.case-col-person{width:88px}
+  .wb-overview-cases th.case-col-team{width:170px}
+  /* 开庭/经办/助理在同一格里接着排，放不下再换行，行高不被撑成三行。 */
+  .wb-overview-team>span{display:inline-block;margin-right:10px}
+}
+@media(max-width:720px){
+  .wb-overview-cases tr{grid-template-columns:minmax(0,1fr) auto}
+  .wb-overview-cases .case-narrow{display:block}
+  .wb-overview-case-number{grid-column:1;grid-row:1}
+  .wb-overview-case-stage{grid-column:2;grid-row:1;align-self:center;justify-self:end;min-width:0}
+  .wb-overview-parties{grid-column:1/-1;grid-row:2}
+  .wb-overview-case-date{grid-column:1;grid-row:3}
+  .wb-overview-case-manager{grid-column:2;grid-row:3;justify-self:end}
+  .wb-overview-case-manager::before{content:"客户管理人 ";color:var(--oa-text-3);font-size:11px}
+  .wb-overview-team{grid-column:1/-1;grid-row:4;padding-top:4px!important}
+  .wb-overview-team>span{display:inline;margin-right:12px}
+}
+
+/* 开庭排期：时间、法院和“交给智能体”占第一行，下面整行显示案号/客户、开庭类型/法庭/阶段、对方当事人，开庭/经办/助理排在一行。 */
+.wb-docket .wb-hearing{display:block;padding:10px 0}
+.wb-hearing-top{display:flex;align-items:flex-start;gap:8px;min-width:0}
+.wb-hearing-court{flex:1;min-width:0;color:var(--oa-text);font-size:13px;font-weight:600;line-height:20px;overflow-wrap:anywhere}
+.wb-hearing-top .wb-ask{gap:4px;margin:-2px -6px 0 0;padding:4px 6px}
+.wb-hearing-detail{display:flex;flex-direction:column;gap:3px;min-width:0;margin-top:3px;padding-left:55px}
+.wb-hearing-detail .wb-hearing-case{display:flex;flex-wrap:wrap;gap:0 10px}
+.wb-hearing-detail .wb-hearing-case .ant-btn{height:auto;padding:0;font-size:12.5px;text-align:left;white-space:normal}
+.wb-hearing-meta,.wb-hearing-opponent,.wb-docket .wb-hearing-people{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 12px;color:var(--oa-text-2);font-size:11.5px;line-height:1.6}
+.wb-hearing-opponent{display:block;overflow-wrap:anywhere}
+.wb-hearing-detail label{margin-right:4px;color:var(--oa-text-3)}
+.wb-docket .wb-hearing-people>span{display:inline;color:var(--oa-text)}
+.wb-hearing-type{padding:0 6px;border-radius:4px;background:var(--oa-primary-tint);color:var(--oa-primary-ink);font-weight:500}
+@media(max-width:720px){
+  .wb-hearing-detail{padding-left:0}
 }

@@ -497,6 +497,8 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
                     "hearing_lawyer": "开庭律师",
                     "handling_lawyers": ["经办律师"],
                     "assistant": "律师助理",
+                    "case_phase_name": "再审待开庭",
+                    "opponent": ["CODEX-826-R2-对方甲", "CODEX-826-R2-对方乙"],
                 },
             )
             db.add(case)
@@ -517,6 +519,11 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(matching[0]["lawyer"], "开庭律师")
         self.assertEqual(matching[0]["agent"], "经办律师")
         self.assertEqual(matching[0]["assistant"], "律师助理")
+        # 工作台排期带出开庭类型、法庭、案件阶段和对方当事人。
+        self.assertEqual(matching[0]["hearing_type"], "再审开庭")
+        self.assertEqual(matching[0]["courtroom"], "第二法庭")
+        self.assertEqual(matching[0]["stage"], "再审待开庭")
+        self.assertEqual(matching[0]["opponent"], "CODEX-826-R2-对方甲、CODEX-826-R2-对方乙")
 
 
 class DashboardFinanceReadModelContractTest(unittest.IsolatedAsyncioTestCase):
