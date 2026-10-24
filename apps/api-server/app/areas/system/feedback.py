@@ -18,17 +18,27 @@ from app.models import BusinessRecord, FileAttachment, Notification, User, Workf
 router = APIRouter()
 
 FEEDBACK_TZ = ZoneInfo("Asia/Shanghai")
-FEEDBACK_STATUSES = {"待处理", "处理中", "待补充", "待验证", "已处理", "已解决"}
+# 状态只有三个（用户要求，2026-10-24）：管理员/处理人处理完发给提交人验证，提交人验证通过即已解决，没解决就重新打开。
+FEEDBACK_STATUSES = ("待处理", "待验证", "已解决")
+# 旧状态读出时按新流程归类，不改库里的历史数据：处理中/待补充仍算待处理，已处理等提交人验证。
+LEGACY_STATUS = {"处理中": "待处理", "待补充": "待处理", "已处理": "待验证"}
 HANDLER_ACTIONS = {
-    "开始处理": ({"待处理"}, "处理中"),
-    "请求补充": ({"待处理", "处理中", "待验证"}, "待补充"),
-    "提交修复": ({"处理中"}, "待验证"),
-    "标记已处理": ({"待处理", "处理中"}, "已处理"),
+    "处理完成，请验证": ({"待处理"}, "待验证"),
 }
 REPORTER_ACTIONS = {
-    "确认解决": ({"待验证", "已处理"}, "已解决"),
-    "重新打开": ({"待验证", "已处理", "已解决"}, "待处理"),
+    "验证通过": ({"待验证"}, "已解决"),
+    "未解决，重新打开": ({"待验证", "已解决"}, "待处理"),
 }
+COMMENT_REQUIRED_ACTIONS = {"未解决，重新打开"}
+
+
+def _status(value: str | None) -> str:
+    return LEGACY_STATUS.get(value or "", value or "")
+
+
+def _stored_statuses(status: str) -> set[str]:
+    """筛选某个新状态时，连同归到它名下的旧状态一起查。"""
+    return {status, *(old for old, new in LEGACY_STATUS.items() if new == status)}
 
 
 FEEDBACK_ATTACHMENT_CATEGORIES = ("问题反馈截图", "问题反馈附件")
@@ -84,9 +94,9 @@ async def _get_feedback(db: AsyncSession, feedback_id: int, identity: dict, *, l
 def _available_actions(record: BusinessRecord, identity: dict) -> list[str]:
     actions = []
     if _can_handle(record, identity):
-        actions.extend(action for action, (states, _) in HANDLER_ACTIONS.items() if record.status in states)
+        actions.extend(action for action, (states, _) in HANDLER_ACTIONS.items() if _status(record.status) in states)
     if record.owner == identity["username"]:
-        actions.extend(action for action, (states, _) in REPORTER_ACTIONS.items() if record.status in states)
+        actions.extend(action for action, (states, _) in REPORTER_ACTIONS.items() if _status(record.status) in states)
     return actions
 
 
@@ -103,14 +113,14 @@ async def _notify_participants(
             source_key=f"feedback-{record.id}-{event_id}-{recipient}", source_type="feedback",
             source_id=record.id, sender=actor, recipient=recipient,
             notification_type="系统通知", title=f"问题反馈 {record.serial_no}：{action}",
-            content=f"{record.title}｜当前状态：{record.status}", level="info",
+            content=f"{record.title}｜当前状态：{_status(record.status)}", level="info",
         ))
 
 
 def _serialize_feedback(record: BusinessRecord, owner_name: str = "", assignee_name: str = "", has_screenshot: bool = False) -> dict:
     return {
         "id": record.id, "serial_no": record.serial_no, "description": record.description,
-        "status": record.status, "owner": record.owner, "owner_display_name": owner_name,
+        "status": _status(record.status), "owner": record.owner, "owner_display_name": owner_name,
         "assignee": _assignee(record), "assignee_display_name": assignee_name,
         "page": (record.data or {}).get("page", ""), "route": (record.data or {}).get("route", ""),
         "controls": (record.data or {}).get("controls", []),
@@ -243,7 +253,9 @@ async def feedback_status_counts(
     rows = (await db.execute(select(BusinessRecord.status, func.count()).where(*conditions)
                              .group_by(BusinessRecord.status))).all()
     counts = {status: 0 for status in FEEDBACK_STATUSES}
-    counts.update({status: count for status, count in rows if status in FEEDBACK_STATUSES})
+    for stored, count in rows:
+        if _status(stored) in counts:
+            counts[_status(stored)] += count
     return {"total": sum(counts.values()), "counts": counts}
 
 
@@ -264,7 +276,7 @@ async def list_feedback(
             BusinessRecord.data["assignee"].as_string() == identity["username"],
         ))
     if status:
-        conditions.append(BusinessRecord.status == status)
+        conditions.append(BusinessRecord.status.in_(_stored_statuses(status)))
     conditions.extend(_created_between(date_from, date_to))
     owner_user = aliased(User)
     assignee_user = aliased(User)
@@ -329,8 +341,8 @@ async def get_feedback(feedback_id: int, identity: dict = Depends(current_identi
             "content_type": item.content_type, "is_image": item.category == "问题反馈截图",
         } for item in files],
         "events": [{
-            "id": event.id, "action": event.action, "from_status": event.from_status,
-            "to_status": event.to_status, "operator": event.operator,
+            "id": event.id, "action": event.action, "from_status": _status(event.from_status),
+            "to_status": _status(event.to_status), "operator": event.operator,
             "operator_display_name": names.get(event.operator, ""), "comment": event.comment,
             "created_at": event.created_at, "has_screenshot": str(event.id) in screenshot_event_ids,
         } for event in events],
@@ -349,13 +361,11 @@ async def add_feedback_message(
     record = await _get_feedback(db, feedback_id, identity, lock=True)
     stored_path = None
     try:
-        prior_status = record.status
-        if record.owner == identity["username"] and prior_status == "待补充":
-            record.status = "待处理"
+        current = _status(record.status)
         record.updated_at = func.now()
         event = WorkflowEvent(
-            record_id=record.id, action="补充信息" if prior_status == "待补充" and record.owner == identity["username"] else "回复",
-            from_status=prior_status, to_status=record.status, operator=identity["username"], comment=content,
+            record_id=record.id, action="回复",
+            from_status=current, to_status=current, operator=identity["username"], comment=content,
         )
         db.add(event)
         await db.flush()
@@ -387,12 +397,12 @@ async def transition_feedback(
     if definition is None:
         raise HTTPException(403, "无权执行此操作")
     allowed_statuses, next_status = definition
-    if record.status not in allowed_statuses:
+    previous_status = _status(record.status)
+    if previous_status not in allowed_statuses:
         raise HTTPException(409, "反馈状态已变化，请刷新后重试")
     comment = body.comment.strip()
-    if action in {"请求补充", "提交修复", "重新打开"} and len(comment) < 5:
-        raise HTTPException(422, "请填写至少 5 字的处理说明")
-    previous_status = record.status
+    if action in COMMENT_REQUIRED_ACTIONS and not comment:
+        raise HTTPException(422, "请写明哪里还没解决")
     record.status = next_status
     record.updated_at = func.now()
     event = WorkflowEvent(
@@ -424,7 +434,7 @@ async def assign_feedback(
     record.data = {**(record.data or {}), "assignee": username}
     record.updated_at = func.now()
     event = WorkflowEvent(
-        record_id=record.id, action="指派处理人", from_status=record.status, to_status=record.status,
+        record_id=record.id, action="指派处理人", from_status=_status(record.status), to_status=_status(record.status),
         operator=identity["username"], comment=f"{old_assignee or '未指派'} → {user.display_name}（{username}）",
     )
     db.add(event)

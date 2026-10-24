@@ -25,9 +25,10 @@ type Props = {
   navKey?: number;
   onChanged?: () => void;
 };
-const statuses = ["待处理", "处理中", "待补充", "待验证", "已处理", "已解决"];
+// 处理流程：待处理 →（处理人处理完）待验证 →（提交人验证通过）已解决；没解决可重新打开回到待处理。
+const statuses = ["待处理", "待验证", "已解决"];
 const statusColors: Record<string, string> = {
-  待处理: "default", 处理中: "processing", 待补充: "warning", 待验证: "cyan", 已处理: "green", 已解决: "success",
+  待处理: "warning", 待验证: "processing", 已解决: "success",
 };
 
 export default function FeedbackManager({ sourceRoute, pageControls, openPages, menuPages, onNavigate, center = false, view, onViewChange, navKey = 0, onChanged }: Props) {

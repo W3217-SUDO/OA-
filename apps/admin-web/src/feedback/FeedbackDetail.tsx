@@ -11,9 +11,10 @@ import "./feedback.css";
 type Props = { feedbackId: number; onBack: () => void; onNavigate: (route: string) => void };
 type PersonOption = { username: string; label: string };
 
-const requiresComment = new Set(["请求补充", "提交修复", "重新打开"]);
+const requiresComment = new Set(["未解决，重新打开"]);
+const primaryActions = new Set(["处理完成，请验证", "验证通过"]);
 const statusColors: Record<string, string> = {
-  待处理: "default", 处理中: "processing", 待补充: "warning", 待验证: "cyan", 已处理: "green", 已解决: "success",
+  待处理: "warning", 待验证: "processing", 已解决: "success",
 };
 
 export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props) {
@@ -82,8 +83,8 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
     void perform("messages", body, "回复已发送");
   };
   const transition = (action: string) => {
-    if (requiresComment.has(action) && comment.trim().length < 5) {
-      message.warning("请先填写至少 5 字的处理说明");
+    if (requiresComment.has(action) && !comment.trim()) {
+      message.warning("请在上面写明哪里还没解决");
       return;
     }
     void perform("transitions", { action, comment: comment.trim() }, "状态已更新");
@@ -140,18 +141,22 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
         {event.has_screenshot && <FeedbackEventImage feedbackId={feedbackId} eventId={event.id} />}
       </div>,
     }))} />
+    {feedback.available_actions.includes("验证通过") && <Alert type="info" showIcon style={{ maxWidth: 850, marginBottom: 12 }}
+      title="处理人已处理完成，请验证问题是否已解决：解决了点“验证通过”，没解决写明情况后点“未解决，重新打开”。" />}
+    {feedback.available_actions.includes("处理完成，请验证") && <Alert type="info" showIcon style={{ maxWidth: 850, marginBottom: 12 }}
+      title="处理完成后点“处理完成，请验证”，会通知提交人验证；可以先在下面写处理说明。" />}
     <Input.TextArea value={comment} rows={4} maxLength={2000} showCount aria-label="回复或处理说明"
-      placeholder="回复或填写处理说明" onChange={(event) => setComment(event.target.value)}
+      placeholder="回复或填写处理说明（随状态操作一起提交）" onChange={(event) => setComment(event.target.value)}
       style={{ maxWidth: 850, marginBottom: 12 }} />
     <div style={{ marginBottom: 12 }}>
       <input ref={screenshotInput} type="file" accept="image/png,image/jpeg,image/webp"
         aria-label="补充截图" onChange={(event) => setScreenshot(event.target.files?.[0] || null)} />
     </div>
     <div><Space wrap>
-      <Button type="primary" disabled={busy || !comment.trim()} loading={busy} onClick={reply}>发送回复</Button>
       {feedback.available_actions.map((action) => <Button key={action}
-        type={["标记已处理", "确认解决"].includes(action) ? "primary" : "default"} disabled={busy}
+        type={primaryActions.has(action) ? "primary" : "default"} danger={action === "未解决，重新打开"} disabled={busy}
         onClick={() => transition(action)}>{action}</Button>)}
+      <Button disabled={busy || !comment.trim()} loading={busy} onClick={reply}>发送回复</Button>
     </Space></div>
   </section>;
 }
