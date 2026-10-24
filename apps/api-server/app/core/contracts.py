@@ -193,7 +193,7 @@ async def _contract_customer_record_dict(
         }
         data["approval_capabilities"] = approval_capabilities
         result["approval_capabilities"] = approval_capabilities
-    if record.module == "task" and data.get("investigation_record_id"):
+    if record.module in INVESTIGATION_CHILD_MODULES and data.get("investigation_record_id"):
         try:
             investigation_id = int(data.get("investigation_record_id") or 0)
         except (TypeError, ValueError):
@@ -205,12 +205,13 @@ async def _contract_customer_record_dict(
         )
         if investigation and investigation.module == "investigation":
             investigation_data = investigation.data or {}
-            for key in ("right_type", "region", "authorized_from", "authorized_to", "source_owner", "assigner", "assigned_by"):
+            inherited_keys = ("right_type", "region", "authorized_from", "authorized_to", "source_owner", "assigner", "assigned_by", "business_owner")
+            for key in inherited_keys if record.module == "task" else ("business_owner",):
                 if not data.get(key) and investigation_data.get(key):
                     data[key] = investigation_data[key]
             data.setdefault("investigation_no", investigation.serial_no)
     usernames = [record.owner]
-    for key in ("source_person", "customer_source", "submitted_by", "current_approver", "customer_manager", "reviewer", "customer_reviewer", "investigator", "investigation_assistant", "handler", "source_owner", "assigner", "assigned_by"):
+    for key in ("source_person", "customer_source", "submitted_by", "current_approver", "customer_manager", "reviewer", "customer_reviewer", "investigator", "investigation_assistant", "handler", "source_owner", "assigner", "assigned_by", "business_owner"):
         usernames.extend(_contract_person_values(data.get(key)))
     usernames.extend(_contract_person_values(data.get("customer_managers")))
     usernames.extend(_contract_person_values(data.get("contact_accounts") or data.get("contact")))
@@ -223,6 +224,11 @@ async def _contract_customer_record_dict(
     for key in ("source_person", "customer_source", "submitted_by", "current_approver", "investigator", "investigation_assistant", "handler", "source_owner", "assigner", "assigned_by"):
         if key in data:
             data[f"{key}_display_name"] = _contract_person_display_name(data.get(key), names_by_username)
+    # 调查、调查任务、线索的“案源人”是旧系统调查的 BusinessOwner（存在 business_owner，任务和线索继承所属调查）；
+    # 迁移数据的 source_owner 存的是委托人客户编号（旧 Indicter），不能当人名显示。
+    if record.module in ("investigation", *INVESTIGATION_CHILD_MODULES) and data.get("business_owner"):
+        data["business_owner_display_name"] = _contract_person_display_name(data["business_owner"], names_by_username)
+        data["source_owner_display_name"] = data["business_owner_display_name"]
     managers = _contract_person_values(data.get("customer_managers") or data.get("customer_manager"))
     if managers:
         manager_names = [_contract_person_display_name(value, names_by_username) for value in managers]
@@ -257,6 +263,9 @@ async def _contract_customer_record_dict(
     return result
 
 
+INVESTIGATION_CHILD_MODULES = ("task", "clue")
+
+
 async def _contract_customer_record_dicts(
     records: list[BusinessRecord], allowed_fields: set[str] | None, db: AsyncSession,
     identity: dict | None = None,
@@ -272,7 +281,7 @@ async def _contract_customer_record_dicts(
     )
     investigation_ids: set[int] = set()
     for record in records:
-        if record.module != "task":
+        if record.module not in INVESTIGATION_CHILD_MODULES:
             continue
         try:
             investigation_id = int((record.data or {}).get("investigation_record_id") or 0)
@@ -297,9 +306,9 @@ async def _contract_customer_record_dicts(
     for record in records:
         usernames.add(str(record.owner or "").lower())
         data = record.data or {}
-        investigation = investigations_by_id.get(int(data.get("investigation_record_id") or 0)) if record.module == "task" and str(data.get("investigation_record_id") or "").isdigit() else None
+        investigation = investigations_by_id.get(int(data.get("investigation_record_id") or 0)) if record.module in INVESTIGATION_CHILD_MODULES and str(data.get("investigation_record_id") or "").isdigit() else None
         inherited_data = investigation.data or {} if investigation else {}
-        for key in person_keys:
+        for key in (*person_keys, "business_owner"):
             usernames.update(value.lower() for value in _contract_person_values(data.get(key) or inherited_data.get(key)))
         usernames.update(value.lower() for value in _contract_person_values(data.get("customer_managers")))
         usernames.update(value.lower() for value in _contract_person_values(data.get("contact_accounts") or data.get("contact")))
