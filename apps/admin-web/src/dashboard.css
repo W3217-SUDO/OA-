@@ -366,10 +366,12 @@ button.wb-todo-entry:active{background:var(--oa-fill)}
 .wb-overview-cases .case-narrow{display:none}
 .wb-overview-cases th,.wb-overview-cases td{padding-inline:10px}
 .wb-overview-cases td{font-size:12.5px;line-height:1.5}
-.wb-overview-cases th.case-col-no{width:140px}
-.wb-overview-cases th.case-col-stage{width:100px}
-.wb-overview-cases th.case-col-date{width:96px}
-.wb-overview-cases th.case-col-person{width:86px}
+/* 宽屏九列按比例分宽度，多出来的空间平均分给各列，不再全堆在原告、被告两列里留出大片空白。 */
+.wb-overview-cases th.case-col-no{width:12%}
+.wb-overview-cases th.case-col-stage{width:10%}
+.wb-overview-cases th.case-col-party{width:15%}
+.wb-overview-cases th.case-col-date{width:9%}
+.wb-overview-cases th.case-col-person{width:9.75%}
 .wb-overview-case-manager{color:var(--wb-ink)}
 .wb-overview-parties>span,.wb-overview-team>span{display:block;overflow:visible;white-space:normal;line-height:1.55}
 .wb-overview-parties>span+span{font-size:12.5px}

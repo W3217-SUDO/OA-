@@ -86,8 +86,8 @@ export default function DashboardOverview({ showHead = true, greeting, name, bri
               <thead><tr>
                 <th scope="col" className="case-col-no">案号</th>
                 <th scope="col" className="case-col-stage">阶段</th>
-                <th scope="col" className="case-wide">原告</th>
-                <th scope="col" className="case-wide">被告</th>
+                <th scope="col" className="case-wide case-col-party">原告</th>
+                <th scope="col" className="case-wide case-col-party">被告</th>
                 <th scope="col" className="case-narrow">原告 / 被告</th>
                 <th scope="col" className="case-col-date">案源日期</th>
                 <th scope="col" className="case-col-person">客户管理人</th>
