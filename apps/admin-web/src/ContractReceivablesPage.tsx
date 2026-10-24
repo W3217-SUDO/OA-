@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button, Card, DatePicker, Form, Input, InputNumber, message, Modal, Select, Space } from "antd";
 import Table from "./components/ResizableTable";
+import type { FitStackGroup, FitStackSpec, FitStackState } from "./components/ResizableTable";
+import { columnIds, layoutTotalCells, takeTotalsStack } from "./components/stackedTotals";
 import dayjs from "dayjs";
 import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
@@ -68,6 +70,12 @@ export const receivableDetailAmountFilters: Record<string, ReceivableDetailAmoun
   unCashedCaseNonOfficeFeeAmount: "agency-due",
 };
 export const receivablesDetailSummaryKeys = ["official_paid", "official_received", "official_unreceived", "official_loss", "agency_total", "agency_received", "agency_due"];
+// 应收明细一屏放不下时，官费四项、代理费三项各叠放在一个单元格里（数据不减少）。
+const RECEIVABLE_DETAIL_FIT_STACK: FitStackGroup[] = [
+  { title: <span>合同号<br />合同名称</span>, keys: ["contract_no", "contract_title"] },
+  { title: "官费", keys: ["official_paid", "official_received", "official_unreceived", "official_loss"], labels: ["支付", "到账", "未到", "亏损"] },
+  { title: "代理费", keys: ["agency_total", "agency_received", "agency_due"], labels: ["总额", "到账", "待收"] },
+];
 const detailAmount = (value: number | null) => value === null ? null : Number(value || 0);
 const receivableDetailAmounts = (detail: Receivable) => ({
   official_paid: detail.fee_category === "official" ? detailAmount(detail.paid_amount) : 0,
@@ -239,14 +247,20 @@ export default function ContractReceivablesPage({ initialView, dashboardQueue = 
   const detailSummary = useMemo(() => calculateReceivablesDetailTotals(detailRows, contractById), [detailRows, contractById]);
   const listSummary = useMemo(() => calculateReceivablesListTotals(visibleContracts), [visibleContracts]);
   const detailMoney = (value: unknown) => detailAmountVisible ? money(value) : "—";
-  const renderDetailSummaryRow = (totals: Record<string, number | null>, visible = true) => visible ? <tr className="contract-detail-summary-row"><td /><td /><td />{receivablesDetailSummaryKeys.map((key) => <td key={key} style={{ textAlign: "right" }}><strong>{detailMoney(totals[key])}</strong></td>)}{Array.from({ length: 7 }, (_, index) => <td key={index} />)}</tr> : null;
-  const renderReceivablesListSummaryRow = (totals: Record<string, number>, visible = true) => visible ? <tr className="contract-list-summary-row"><td /><td /><td />
+  // 合计行按明细表的列（及一屏放不下时的叠放布局）排列，金额始终在对应表头下方。
+  const renderDetailSummaryRow = (totals: Record<string, number | null>, visible = true, stack?: FitStackSpec) => {
+    if (!visible) return null;
+    const ids = columnIds(detailColumns);
+    return <tr className="contract-detail-summary-row"><td />{layoutTotalCells(ids, stack, (index) => receivablesDetailSummaryKeys.includes(ids[index]) ? <strong>{detailMoney(totals[ids[index]])}</strong> : null).map((cell) => <td key={cell.key} style={{ textAlign: "right" }}>{cell.content}</td>)}</tr>;
+  };
+  // trailing 是金额后面的空列数（勾选列 + 2 个信息列 + 7 个金额之后的列），合计行要补满到表格最后一列。
+  const renderReceivablesListSummaryRow = (totals: Record<string, number>, visible = true, trailing = 4) => visible ? <tr className="contract-list-summary-row"><td /><td /><td />
     <td>{money(totals.official_paid)}</td><td>{money(totals.official_received)}</td>
     <td><Button type="link" onClick={() => openReceivableDetail({}, "official-unreceived")}>{money(totals.official_unreceived)}</Button></td>
     <td><Button type="link" onClick={() => openReceivableDetail({}, "official-loss")}>{money(totals.official_loss)}</Button></td>
     <td>{money(totals.agency_total)}</td><td>{money(totals.agency_received)}</td>
     <td><Button type="link" onClick={() => openReceivableDetail({}, "agency-due")}>{money(totals.agency_due)}</Button></td>
-    {Array.from({ length: 4 }, (_, index) => <td key={index} />)}</tr> : null;
+    {Array.from({ length: trailing }, (_, index) => <td key={index} />)}</tr> : null;
 
   const openCreateReceivable = () => {
     receivableForm.resetFields();
@@ -348,10 +362,10 @@ export default function ContractReceivablesPage({ initialView, dashboardQueue = 
       </Form.Item>
     </Form>
     {detailView ? (
-      <><Table<Receivable> className="contract-original-table" rowKey="id" loading={loading} size="small" rowSelection={{}} columns={detailColumns} components={{ header: { wrapper: ({ children, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) => <thead {...props}>{children}{renderDetailSummaryRow(detailSummary, shouldRenderReceivablesDetailSummary(detailRows.length))}</thead> } }} dataSource={detailRows} locale={{ emptyText: "没有查询到符合条件的记录" }} scroll={{ x: 1900 }} pagination={{ current: detailPage, pageSize: detailPageSize, showSizeChanger: true, pageSizeOptions: receivablesDetailPageSizes, showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (page, pageSize) => { setDetailPage(page); setDetailPageSize(pageSize); }, showTotal: (total) => `共 ${total} 条` }} summary={() => <Table.Summary>{renderDetailSummaryRow(detailSummary, shouldRenderReceivablesDetailSummary(detailRows.length))}</Table.Summary>} />
+      <><Table<Receivable> className="contract-original-table" rowKey="id" loading={loading} size="small" rowSelection={{}} columns={detailColumns} fitStack={RECEIVABLE_DETAIL_FIT_STACK} fitStackAware={{ header: true, summary: true }} components={{ header: { wrapper: ({ children, ...wrapperProps }: React.HTMLAttributes<HTMLTableSectionElement>) => { const [stack, props] = takeTotalsStack(wrapperProps); return <thead {...props}>{children}{renderDetailSummaryRow(detailSummary, shouldRenderReceivablesDetailSummary(detailRows.length), stack)}</thead>; } } }} dataSource={detailRows} locale={{ emptyText: "没有查询到符合条件的记录" }} scroll={{ x: 1900 }} pagination={{ current: detailPage, pageSize: detailPageSize, showSizeChanger: true, pageSizeOptions: receivablesDetailPageSizes, showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (page, pageSize) => { setDetailPage(page); setDetailPageSize(pageSize); }, showTotal: (total) => `共 ${total} 条` }} summary={(_rows: readonly Receivable[], fit?: FitStackState) => <Table.Summary>{renderDetailSummaryRow(detailSummary, shouldRenderReceivablesDetailSummary(detailRows.length), fit?.groups)}</Table.Summary>} />
       {shouldShowReceivablesDetailSinglePageJumper(detailRows.length, detailPageSize) && <Space style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}><InputNumber size="small" min={1} max={1} value={1} controls={false} readOnly aria-label="页码"/><Button size="small" onClick={() => setDetailPage(1)}>GO</Button></Space>}</>
     ) : (
-      <>{visibleContracts.length > 0 && <table className="contract-list-summary-top"><tbody>{renderReceivablesListSummaryRow(listSummary, true)}</tbody></table>}<Table<Contract> className="contract-original-table" rowKey="id" loading={loading} size="small" rowSelection={{}} columns={shouldUseMyReceivablesPagination(initialView) ? [...listColumns, { title: "", key: "legacy-empty-operation", width: 80 }] : listColumns} dataSource={visibleContracts} locale={{ emptyText: "没有查询到符合条件的记录" }} scroll={{ x: 1750 }} pagination={{ ...(shouldUseMyReceivablesPagination(initialView) ? { current: listPage, pageSize: listPageSize, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (page, pageSize) => { setListPage(page); setListPageSize(pageSize); } } : { pageSize: 15 }), showTotal: (total) => `共 ${total} 条` }} summary={() => <Table.Summary>{renderReceivablesListSummaryRow(listSummary, visibleContracts.length > 0)}</Table.Summary>} />
+      <>{visibleContracts.length > 0 && <table className="contract-list-summary-top"><tbody>{renderReceivablesListSummaryRow(listSummary, true)}</tbody></table>}<Table<Contract> className="contract-original-table" rowKey="id" loading={loading} size="small" rowSelection={{}} columns={shouldUseMyReceivablesPagination(initialView) ? [...listColumns, { title: "", key: "legacy-empty-operation", width: 80 }] : listColumns} dataSource={visibleContracts} locale={{ emptyText: "没有查询到符合条件的记录" }} scroll={{ x: 1750 }} pagination={{ ...(shouldUseMyReceivablesPagination(initialView) ? { current: listPage, pageSize: listPageSize, showSizeChanger: true, pageSizeOptions: [10, 15, 20, 50, 100, 200], showQuickJumper: { goButton: <Button size="small">GO</Button> }, onChange: (page, pageSize) => { setListPage(page); setListPageSize(pageSize); } } : { pageSize: 15 }), showTotal: (total) => `共 ${total} 条` }} summary={() => <Table.Summary>{renderReceivablesListSummaryRow(listSummary, visibleContracts.length > 0, listColumns.length + (shouldUseMyReceivablesPagination(initialView) ? 1 : 0) - 9)}</Table.Summary>} />
       {shouldShowMyReceivablesSinglePageJumper(initialView, visibleContracts.length, listPageSize) && <Space style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}><InputNumber size="small" min={1} max={1} value={1} controls={false} readOnly aria-label="页码"/><Button size="small" onClick={() => setListPage(1)}>GO</Button></Space>}</>
     )}
     <div className="contract-bottom-actions">{shouldShowReceivableCreateAction(detailView) && <Button type="primary" onClick={openCreateReceivable}>新增应收计划</Button>}<Button onClick={exportExcel}>导出Excel</Button></div>

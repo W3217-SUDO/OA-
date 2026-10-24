@@ -7,6 +7,7 @@ import DashboardHearingSchedule from "./DashboardHearingSchedule";
 import DashboardMetricTiles from "./DashboardMetricTiles";
 import DashboardRejectionReminder from "./DashboardRejectionReminder";
 import DashboardOverview from "./DashboardOverview";
+import DashboardGreeting from "./DashboardGreeting";
 import { useDashboardData, type DashboardData, type DashboardRejection, type DashboardSection } from "./dashboardData";
 import { rejectionsPrompt, todayHearingsPrompt } from "./dashboardPrompts";
 import { rememberDashboardFeeQuery } from "./dashboardFeeNavigation.mjs";
@@ -206,9 +207,19 @@ export default function Dashboard({
       onAsk={askAgent}
     />
   );
+  const refreshAll = () => { retry("todos"); retry("cases"); retry("rejections"); retry("metrics"); };
+  const greeting = greetingByHour(now.hour());
+  const displayName = workspace.status?.identity?.display_name;
   return (
     <div className={`reference-dashboard workbench${showEmbeddedConversation ? " is-conversation" : ""}`}>
       <div className="wb-shell">
+        {/* 桌面端问候语单独占一行，概况卡片只放待办和案件；手机端仍放在概况头部。 */}
+        {!isNarrowViewport && (
+          <header className="wb-hero">
+            <DashboardGreeting greeting={greeting} name={displayName} briefing={briefing} />
+            <Button className="wb-hero-refresh" onClick={refreshAll} aria-label="刷新工作台">刷新</Button>
+          </header>
+        )}
         {metrics}
         <div className="wb-grid">
           <div className="wb-main">
@@ -223,8 +234,9 @@ export default function Dashboard({
               onFocusHandled={onAssistantFocusHandled}
               onReturnOverview={() => onViewChange("overview")}
             /> : <DashboardOverview
-              greeting={greetingByHour(now.hour())}
-              name={workspace.status?.identity?.display_name}
+              showHead={isNarrowViewport}
+              greeting={greeting}
+              name={displayName}
               briefing={briefing}
               todos={data.todos}
               cases={data.latest_cases}
@@ -238,7 +250,7 @@ export default function Dashboard({
               canOpenCase={canOpenCase}
               onNavigate={onNavigate}
               onOpenCase={(caseNo) => void openDashboardDetail("case", caseNo)}
-              onRefresh={() => { retry("todos"); retry("cases"); retry("rejections"); retry("metrics"); }}
+              onRefresh={refreshAll}
             />}
           </div>
           <div className="wb-side">

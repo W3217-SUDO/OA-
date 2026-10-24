@@ -18,7 +18,7 @@
   justify-content: center;
   gap: 12px;
   padding: 32px 0;
-  color: #666;
+  color: var(--oa-text-2);
 }
 
 .refund-log-timeline {
@@ -28,7 +28,7 @@
 .refund-log-month {
   position: relative;
   padding: 0 0 20px 24px;
-  border-left: 2px solid #e6e6e6;
+  border-left: 2px solid var(--oa-border);
 }
 
 .refund-log-month:last-child {
@@ -43,13 +43,13 @@
   height: 12px;
   border: 2px solid #9b9b9b;
   border-radius: 50%;
-  background: #fff;
+  background: var(--oa-surface);
   content: "";
 }
 
 .refund-log-month h3 {
   margin: 0 0 16px;
-  color: #555;
+  color: var(--oa-text-2);
   font-size: 16px;
   font-weight: 500;
 }
@@ -60,13 +60,13 @@
 
 .refund-log-date {
   margin-bottom: 5px;
-  color: #777;
+  color: var(--oa-text-2);
   font-size: 12px;
 }
 
 .refund-log-content {
   margin: 0;
-  color: #444;
+  color: var(--oa-text-2);
   line-height: 1.7;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

@@ -68,7 +68,7 @@ export function IprContactsPanel({ caseContacts, contactOpen, contactCustomer, c
         okText="保存联系人"
         width={860}
       >
-        <p style={{ color: "#666" }}>
+        <p style={{ color: "var(--oa-text-2)" }}>
           同一客户联系人可以同时承担文书联系人和技术联系人两种角色；已失效联系人不可再选择。
         </p>
         <Table

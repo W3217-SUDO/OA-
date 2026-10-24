@@ -269,8 +269,10 @@ export function CustomerList({ initialView, rows, total, page, pageSize, custome
       },
     },
   ];
+  // 合计行前 11 格（勾选列 + 10 列）合并，两个金额各占一格，最后一格补满剩下的列。
+  const totalTrailingSpan = Math.max(1, columns.length + 1 - 13);
 
-  const showFooter = !["customer-recycle", "customer-dept", "customer-dept-recycle", "customer-company", "customer-company-recycle", "customer-public", "customer-shared", "customer-recent-contact", "customer-recent-update"].includes(initialView) || rows.length > 0;
+  const showFooter =!["customer-recycle", "customer-dept", "customer-dept-recycle", "customer-company", "customer-company-recycle", "customer-public", "customer-shared", "customer-recent-contact", "customer-recent-update"].includes(initialView) || rows.length > 0;
 
   return (
     <Card
@@ -349,7 +351,7 @@ export function CustomerList({ initialView, rows, total, page, pageSize, custome
                   <td colSpan={11} />
                   <td className="ant-table-cell customer-amount-cell">{amount(listSummary.agency_fee_due)}</td>
                   <td className="ant-table-cell customer-amount-cell">{amount(listSummary.official_fee_unreceived)}</td>
-                  <td />
+                  <td colSpan={totalTrailingSpan} />
                 </tr>
                 {children}
               </tbody>;
@@ -366,7 +368,7 @@ export function CustomerList({ initialView, rows, total, page, pageSize, custome
               <Table.Summary.Cell index={12} align="center">
                 {amount(isOriginalCustomerList ? listSummary.official_fee_unreceived : data.reduce((sum, row) => sum + (row.data.official_fee_unreceived || 0), 0))}
               </Table.Summary.Cell>
-              <Table.Summary.Cell index={13} />
+              <Table.Summary.Cell index={13} colSpan={totalTrailingSpan} />
             </Table.Summary.Row>
           </Table.Summary>
         )}

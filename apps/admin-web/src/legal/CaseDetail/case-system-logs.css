@@ -6,8 +6,8 @@
 @media (max-width: 768px) {
   .case-system-logs-table { display: none; }
   .case-system-logs-cards { display: block; }
-  .case-system-log-card { padding: 12px 0; border-bottom: 1px solid #e8e8e8; min-width: 0; overflow-wrap: anywhere; }
-  .case-system-log-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 8px; color: #666; }
+  .case-system-log-card { padding: 12px 0; border-bottom: 1px solid var(--oa-border); min-width: 0; overflow-wrap: anywhere; }
+  .case-system-log-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 8px; color: var(--oa-text-2); }
   .case-system-log-card .ant-btn { min-height: 44px; min-width: 44px; }
   .case-system-logs .ant-pagination-item,
   .case-system-logs .ant-pagination-prev,

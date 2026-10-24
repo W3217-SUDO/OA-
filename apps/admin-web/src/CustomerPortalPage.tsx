@@ -61,7 +61,7 @@ export default function CustomerPortalPage() {
     }
   };
   if (!data) return (
-    <div style={{ minHeight: "100vh", background: "#f3f5f7", padding: "10vh 16px" }}>
+    <div style={{ minHeight: "100vh", background: "var(--oa-fill)", padding: "10vh 16px" }}>
       <Card title="申浩客户服务端" style={{ maxWidth: 460, margin: "0 auto" }}>
         <Alert type="info" showIcon message={activating ? "首次激活请使用管理员安全交付的一次性激活码设置密码。" : "签约客户可查看合同、案件进展并下载已共享文档。"} style={{ marginBottom: 20 }} />
         {activating ? <Form layout="vertical" onFinish={activate}>
@@ -81,7 +81,7 @@ export default function CustomerPortalPage() {
     </div>
   );
   return (
-    <div style={{ minHeight: "100vh", background: "#f3f5f7", padding: 24 }}>
+    <div style={{ minHeight: "100vh", background: "var(--oa-fill)", padding: 24 }}>
       <Card style={{ maxWidth: 1200, margin: "0 auto" }}>
         <Space style={{ width: "100%", justifyContent: "space-between" }}>
           <div><Typography.Title level={3}>{data.customer.name}</Typography.Title><Tag color="green">{data.customer.level || "签约客户"}</Tag> 客户编号：{data.customer.serial_no}</div>

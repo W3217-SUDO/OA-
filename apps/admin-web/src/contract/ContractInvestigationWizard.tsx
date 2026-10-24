@@ -224,7 +224,7 @@ export function ContractInvestigationWizard({
           )}
           {wizardStep === 2 && (
             <div style={{ textAlign: "center", padding: "32px 0" }}>
-              <CheckOutlined style={{ color: "#00a870", fontSize: 48 }} />
+              <CheckOutlined style={{ color: "var(--oa-primary)", fontSize: 48 }} />
               <h3>调查任务分配完成</h3>
               <p>
                 {createdInvestigation?.serial_no}｜{createdInvestigation?.title}

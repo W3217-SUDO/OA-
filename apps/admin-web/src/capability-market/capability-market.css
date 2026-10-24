@@ -1,4 +1,4 @@
-.capability-market { min-width: 0; width: 100%; padding: 16px; background: #fff; color: #24292f; }
+.capability-market { min-width: 0; width: 100%; padding: 16px; background: var(--oa-surface); color: var(--oa-text); }
 .capability-market-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .capability-market-header > .ant-tabs { min-width: 270px; }
 .capability-market-header .ant-tabs-nav { margin-bottom: 0; }
@@ -6,44 +6,44 @@
 .capability-market-search > .ant-input-affix-wrapper { width: 260px; max-width: 100%; }
 .capability-market-section-heading { display: flex; align-items: center; gap: 16px; margin: 24px 0 8px; }
 .capability-market-section-heading h2 { font-size: 18px; margin: 0; }
-.capability-market-section-heading > span:last-child { margin-left: auto; color: #57606a; font-size: 13px; }
+.capability-market-section-heading > span:last-child { margin-left: auto; color: var(--oa-text-2); font-size: 13px; }
 .capability-market-scenarios { margin-top: 24px; }
 .capability-market-scenarios h2 { font-size: 18px; margin: 0 0 12px; }
 .capability-market-scenario-rail { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: 8px; }
-.capability-market-scenario-rail article { flex: 0 0 220px; min-width: 0; border: 1px solid #d8dee4; border-radius: 8px; padding: 12px; scroll-snap-align: start; }
-.capability-market-scenario-rail h3 { font-size: 14px; margin: 0 0 8px; color: #087e6a; }
+.capability-market-scenario-rail article { flex: 0 0 220px; min-width: 0; border: 1px solid var(--oa-border); border-radius: 8px; padding: 12px; scroll-snap-align: start; }
+.capability-market-scenario-rail h3 { font-size: 14px; margin: 0 0 8px; color: color-mix(in srgb, #087e6a var(--oa-ink), #fff); }
 .capability-market-scenario-rail .ant-btn { display: block; width: 100%; text-align: left; white-space: normal; height: auto; min-height: 32px; overflow-wrap: anywhere; }
 .capability-market-categories .ant-tabs-nav { margin-bottom: 16px; }
 .capability-market-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap: 16px; }
-.capability-market-card { border: 1px solid #d8dee4; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; min-width: 0; }
+.capability-market-card { border: 1px solid var(--oa-border); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; min-width: 0; }
 .capability-market-card-heading { display: flex; gap: 12px; align-items: center; min-height: 44px; }
 .capability-market-card-heading > div { min-width: 0; }
 .capability-market-card-heading img { border-radius: 50%; object-fit: cover; flex-shrink: 0; }
 .capability-market-card h3 { font-size: 15px; margin: 0 0 4px; line-height: 1.5; overflow-wrap: anywhere; }
-.capability-market-card small { color: #57606a; font-size: 12px; }
-.capability-market-icon { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; background: #e8f4f1; color: #087e6a; border-radius: 8px; font-size: 22px; }
+.capability-market-card small { color: var(--oa-text-2); font-size: 12px; }
+.capability-market-icon { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; background: var(--oa-fill); color: color-mix(in srgb, #087e6a var(--oa-ink), #fff); border-radius: 8px; font-size: 22px; }
 .capability-market-card > p { font-size: 13px; line-height: 1.7; margin: 16px 0; overflow-wrap: anywhere; flex: 1; }
 .capability-market-tags { display: flex; gap: 4px; flex-wrap: wrap; margin: 8px 0; }
 .capability-market-tags .ant-tag { margin: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .capability-market-pagination { margin-top: 24px; display: flex; justify-content: center; }
 .capability-market-card footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; }
-.capability-market-card footer > span { color: #57606a; font-size: 12px; }
+.capability-market-card footer > span { color: var(--oa-text-2); font-size: 12px; }
 .capability-market-detail .ant-drawer-body { min-width: 0; padding-bottom: max(24px, env(safe-area-inset-bottom)); }
 .capability-market-detail .ant-drawer-content { max-height: 100dvh; }
 .capability-market-detail .ant-alert { margin: 16px 0; }
 .capability-market-detail .ant-drawer-body > p, .capability-market-detail .ant-alert { overflow-wrap: anywhere; }
-.capability-market-detail pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: 13px; line-height: 1.65; background: #f6f8fa; padding: 12px; border-radius: 4px; }
+.capability-market-detail pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: 13px; line-height: 1.65; background: var(--oa-fill); padding: 12px; border-radius: 4px; }
 .capability-market-detail details { margin-top: 20px; }
 .capability-market-detail summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
 .capability-market-detail li { overflow-wrap: anywhere; }
 .capability-market-detail-actions { display: flex; justify-content: flex-end; gap: 8px; padding-bottom: env(safe-area-inset-bottom); flex-wrap: wrap; }
 .capability-market-detail-actions .ant-btn { max-width: 100%; white-space: normal; height: auto; overflow-wrap: anywhere; }
-.capability-market-tool-list article { padding: 12px 0; border-bottom: 1px solid #d8dee4; overflow-wrap: anywhere; }
+.capability-market-tool-list article { padding: 12px 0; border-bottom: 1px solid var(--oa-border); overflow-wrap: anywhere; }
 .capability-market-tool-list h3 { font-size: 14px; margin: 0; }
 .capability-market-tool-list p { font-size: 13px; }
 .connector-config-panel { min-width: 0; margin-top: 16px; }
 .connector-config-state { display: flex; flex-wrap: wrap; gap: 4px; }
-.connector-config-link-section { margin: 16px 0; padding: 12px 0; border-top: 1px solid #d8dee4; border-bottom: 1px solid #d8dee4; }
+.connector-config-link-section { margin: 16px 0; padding: 12px 0; border-top: 1px solid var(--oa-border); border-bottom: 1px solid var(--oa-border); }
 .connector-config-link-section h4 { margin: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
 .connector-config-link-section .connector-config-links { margin: 12px 0 0; }
 .connector-config-links, .connector-config-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0; }
@@ -63,7 +63,7 @@
 .connector-config-website-field > .ant-btn { flex: 0 0 44px; width: 44px; height: 44px; }
 .connector-config-panel .ant-input, .connector-config-panel .ant-input-affix-wrapper, .connector-config-panel .ant-select { max-width: 100%; min-width: 0; }
 .connector-config-panel textarea { font-family: monospace; overflow-wrap: anywhere; }
-.connector-config-checked { color: #57606a; font-size: 12px; overflow-wrap: anywhere; }
+.connector-config-checked { color: var(--oa-text-2); font-size: 12px; overflow-wrap: anywhere; }
 @media (max-width: 767px) {
   .connector-config-links { flex-direction: column; }
   .connector-config-links .ant-btn { min-height: 44px; padding: 8px 12px; }

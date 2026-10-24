@@ -11,6 +11,7 @@ import {
   Tag,
 } from "antd";
 import Table from "../components/ResizableTable";
+import type { FitStackGroup } from "../components/ResizableTable";
 import type { FormInstance, TablePaginationConfig } from "antd";
 import type { SorterResult } from "antd/es/table/interface";
 import type {
@@ -31,6 +32,12 @@ import {
   visiblePersonName,
 } from "./constants";
 
+
+// 一屏放不下时，原告/被告、发起人/负责人各叠放在一个单元格里（数据不减少）。
+const TASK_FIT_STACK: FitStackGroup[] = [
+  { title: <span>原告<br />被告</span>, keys: ["plaintiff", "defendant"] },
+  { title: <span>发起人<br />负责人</span>, keys: ["initiator", "owner"] },
+];
 export interface TaskListProps {
   isUnread: boolean;
   isCreated: boolean;
@@ -199,6 +206,7 @@ export default function TaskList(props: TaskListProps) {
         size="small"
         bordered
         columns={columns}
+        fitStack={TASK_FIT_STACK}
         dataSource={filteredTasks}
         tableLayout="fixed"
         scroll={{ x: isUnread ? 1270 : 1900 }}

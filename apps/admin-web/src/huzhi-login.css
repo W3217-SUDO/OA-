@@ -1,9 +1,9 @@
 .login-page.login-page-huzhi {
   --huzhi-ink: #285bb4;
   --huzhi-ink-hover: #1e4d9f;
-  --huzhi-text: #202a38;
-  --huzhi-muted: #718094;
-  --huzhi-border: #e2e9f2;
+  --huzhi-text: var(--oa-text);
+  --huzhi-muted: var(--oa-text-3);
+  --huzhi-border: var(--oa-border);
   box-sizing: border-box;
   display: block;
   width: 100%;
@@ -11,7 +11,7 @@
   min-height: 0;
   padding: 0;
   overflow-y: auto;
-  background: #fff;
+  background: var(--oa-surface);
   font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
@@ -37,7 +37,9 @@
   justify-content: center;
   min-width: 0;
   padding: 64px clamp(48px, 6vw, 112px);
-  background: #fff;
+  background:
+    radial-gradient(520px 360px at 100% 0%, var(--oa-accent-soft), transparent 70%),
+    var(--oa-surface);
 }
 
 .huzhi-login-form {
@@ -96,12 +98,12 @@
   padding-inline: 15px;
   border-color: var(--huzhi-border);
   border-radius: 7px;
-  background: #f5f8fc;
+  background: var(--oa-fill);
   box-shadow: none;
 }
 
 .login-page-huzhi .login-card .ant-input-affix-wrapper:hover {
-  border-color: #9ab8e2;
+  border-color: var(--oa-border-strong);
 }
 
 .login-page-huzhi .login-card .ant-input-affix-wrapper-focused {
@@ -111,7 +113,7 @@
 
 .login-page-huzhi .login-card .ant-input-prefix {
   margin-inline-end: 10px;
-  color: #73849a;
+  color: var(--oa-text-3);
 }
 
 .login-page-huzhi .login-card .login-submit-button {
@@ -122,6 +124,7 @@
   background: var(--huzhi-ink);
   font-size: 15px;
   font-weight: 600;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--huzhi-ink) 86%, #fff), var(--huzhi-ink));
   box-shadow: 0 8px 20px rgba(40, 91, 180, 0.13);
 }
 
@@ -163,7 +166,7 @@
 
 .huzhi-login-footer {
   margin-top: 48px;
-  color: #8b95a2;
+  color: var(--oa-text-3);
   font-size: 12px;
   letter-spacing: 0.04em;
 }
@@ -269,4 +272,14 @@
   .login-page-huzhi .login-card .ant-input-affix-wrapper {
     transition: border-color 180ms ease, background-color 180ms ease, color 180ms ease, box-shadow 180ms ease;
   }
+}
+
+:root[data-theme="dark"] .huzhi-login-logo {
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: #fff;
+  mix-blend-mode: normal;
+}
+:root[data-theme="dark"] .huzhi-login-visual {
+  filter: brightness(0.72) saturate(0.9);
 }

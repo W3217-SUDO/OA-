@@ -131,7 +131,7 @@ export function SystemCacheManagement({
                 <Popconfirm title="确认清空此缓存？" onConfirm={() => onClearCache(row)}>
                   <Button type="link" disabled={cacheActionPending} danger icon={<ClearOutlined />}>清空</Button>
                 </Popconfirm>
-              ) : <span style={{ color: "#8c8c8c" }}>未启用缓存</span>
+              ) : <span style={{ color: "var(--oa-text-3)" }}>未启用缓存</span>
             ),
           },
         ]}

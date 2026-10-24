@@ -16,6 +16,7 @@ import {
   Tooltip,
 } from "antd";
 import Table from "../components/ResizableTable";
+import type { FitStackGroup } from "../components/ResizableTable";
 import {
   DownloadOutlined,
   PaperClipOutlined,
@@ -103,6 +104,14 @@ const clueStatusesByRoute: Record<string, string[]> = {
 };
 
 const internalClueAuditTabs = new Set(["clue-audit-pending", "clue-audit-customer", "clue-audit-refused", "clue-audit-collect", "clue-audit-collected"]);
+
+// 线索列表一屏放不下时，把时间、店铺、人员、公证仓储各叠放在一个单元格里（数据不减少）。
+const CLUE_FIT_STACK: FitStackGroup[] = [
+  { title: "时间", keys: ["调查时间", "取证时间"], labels: ["调查", "取证"] },
+  { title: <span>店铺名称<br />店铺Id</span>, keys: ["店铺名称", "店铺Id"] },
+  { title: <span>案源人<br />客户管理人</span>, keys: ["案源人", "客户管理人"] },
+  { title: <span>公证书号<br />仓库</span>, keys: ["公证书号", "仓库"] },
+];
 
 export default function InvestigationCenterPage({
   initialTab,
@@ -3272,6 +3281,7 @@ export default function InvestigationCenterPage({
               loading={loading}
               size="small"
               columns={columns}
+              fitStack={CLUE_FIT_STACK}
               dataSource={visibleRows}
               rowSelection={
                 !isFileQuery

@@ -1,4 +1,4 @@
 .skill-runtime-status { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; margin-block: 8px; min-width: 0; max-width: 100%; }
 .skill-runtime-status .ant-tag { margin: 0; white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
-.skill-runtime-description { flex: 1 1 100%; min-width: 0; color: #59666a; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.skill-runtime-description { flex: 1 1 100%; min-width: 0; color: var(--oa-text-2); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
 .skill-runtime-description p { margin: 4px 0 0; }

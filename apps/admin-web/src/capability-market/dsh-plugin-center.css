@@ -1,29 +1,29 @@
-.dsh-plugin-center { --plugin-line: #dce7e1; --plugin-muted: #56675f; min-width: 0; padding: 24px; background: #fff; border: 1px solid var(--plugin-line); border-radius: 8px; }
+.dsh-plugin-center { --plugin-line: var(--oa-border); --plugin-muted: var(--oa-text-2); min-width: 0; padding: 24px; background: var(--oa-surface); border: 1px solid var(--plugin-line); border-radius: 8px; }
 .dsh-plugin-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 20px; }
-.dsh-plugin-eyebrow { color: #137654; font-size: 11px; font-weight: 600; letter-spacing: 1.5px; }
-.dsh-plugin-heading h2 { display: flex; align-items: center; gap: 10px; margin: 6px 0; font-size: 22px; color: #173b2d; }
+.dsh-plugin-eyebrow { color: color-mix(in srgb, #137654 var(--oa-ink), #fff); font-size: 11px; font-weight: 600; letter-spacing: 1.5px; }
+.dsh-plugin-heading h2 { display: flex; align-items: center; gap: 10px; margin: 6px 0; font-size: 22px; color: color-mix(in srgb, #173b2d var(--oa-ink), #fff); }
 .dsh-plugin-center p { color: var(--plugin-muted); margin: 6px 0 12px; line-height: 1.7; }
-.dsh-plugin-center h3 { color: #213c30; font-size: 16px; margin: 0 0 8px; }
+.dsh-plugin-center h3 { color: color-mix(in srgb, #213c30 var(--oa-ink), #fff); font-size: 16px; margin: 0 0 8px; }
 .dsh-plugin-center > .ant-alert { margin-bottom: 16px; }
-.dsh-plugin-install { padding: 20px; background: #f1f7f3; border: 1px solid #d6e9dd; border-radius: 6px; }
+.dsh-plugin-install { padding: 20px; background: var(--oa-fill); border: 1px solid color-mix(in srgb, #d6e9dd var(--oa-tint), var(--oa-surface)); border-radius: 6px; }
 .dsh-plugin-install-row { display: flex; align-items: flex-start; gap: 12px; }
 .dsh-plugin-install-row .ant-form-item { flex: 1; min-width: 0; margin-bottom: 12px; }
 .dsh-plugin-install-row > .ant-btn { flex: 0 0 auto; margin-top: 30px; }
 .dsh-plugin-center .ant-input { min-height: 44px; }
-.dsh-plugin-center details summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: #3f6654; }
+.dsh-plugin-center details summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: color-mix(in srgb, #3f6654 var(--oa-ink), #fff); }
 .dsh-plugin-center details .ant-form-item { margin: 8px 0 0; }
 .dsh-plugin-list-heading { margin-top: 26px; }
-.dsh-plugin-list-heading h3 span { color: #667b6f; font-size: 13px; padding-left: 8px; }
+.dsh-plugin-list-heading h3 span { color: color-mix(in srgb, #667b6f var(--oa-ink), #fff); font-size: 13px; padding-left: 8px; }
 .dsh-plugin-list article { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 0; border-top: 1px solid var(--plugin-line); }
 .dsh-plugin-info { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .dsh-plugin-title { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .dsh-plugin-title > span:not(.ant-tag), .dsh-plugin-info small { color: var(--plugin-muted); }
-.dsh-plugin-center .dsh-plugin-failure { color: #b42318; }
+.dsh-plugin-center .dsh-plugin-failure { color: color-mix(in srgb, #b42318 var(--oa-ink), #fff); }
 .dsh-plugin-center .ant-switch { min-height: 44px; min-width: 64px; }
 .dsh-plugin-center .ant-switch .ant-switch-handle { top: 13px; }
 .dsh-plugin-error { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; max-height: 240px; overflow: auto; margin: 0; }
 .dsh-plugin-center .ant-btn { min-height: 44px; }
-.dsh-plugin-community { margin-top: 20px; padding: 20px; background: #f7faf8; border: 1px solid var(--plugin-line); border-radius: 6px; }
+.dsh-plugin-community { margin-top: 20px; padding: 20px; background: var(--oa-fill); border: 1px solid var(--plugin-line); border-radius: 6px; }
 .dsh-plugin-community-links { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
 .dsh-plugin-community-links .ant-btn { max-width: 100%; height: auto; white-space: normal; overflow-wrap: anywhere; text-align: left; }
 .dsh-plugin-community-links .ant-btn-icon { flex-shrink: 0; }

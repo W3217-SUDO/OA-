@@ -7,7 +7,7 @@
 .investigation-region-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
 .investigation-region-toolbar > span { flex: 1 1 140px; }
 .investigation-region-groups { max-height: 55vh; overflow: auto; overscroll-behavior: contain; }
-.investigation-region-group { display: grid; grid-template-columns: 116px minmax(0, 1fr); gap: 8px; padding: 8px 0; border-top: 1px solid #e5e9ee; }
+.investigation-region-group { display: grid; grid-template-columns: 116px minmax(0, 1fr); gap: 8px; padding: 8px 0; border-top: 1px solid var(--oa-border); }
 .investigation-region-group .ant-checkbox-wrapper { min-height: 44px; margin-inline-start: 0; align-items: center; overflow-wrap: anywhere; }
 .investigation-region-group .ant-checkbox-group { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 8px; }
 .investigation-region-modal .ant-modal-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }

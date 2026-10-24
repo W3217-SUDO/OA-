@@ -11,6 +11,8 @@ Tooltip,
 Tag,message
 } from "antd";
 import Table from "../components/ResizableTable";
+import type { FitStackGroup, FitStackState } from "../components/ResizableTable";
+import { columnIds, layoutTotalCells } from "../components/stackedTotals";
 import dayjs from "dayjs";
 import type { Key } from "react";
 import { ListFilterBar } from "../components/common/ListFilterBar";
@@ -137,6 +139,17 @@ export function ContractList({
       </Tooltip>
     );
   };
+
+  // 一屏放不下 24 列时，把相关列叠放在同一单元格里显示（数据不减少）；屏幕够宽时仍逐列显示。
+  const contractFitStack: FitStackGroup[] = [
+    { title: <span>合同号<br />合同名称</span>, keys: ["serial_no", "title"] },
+    { title: <span>合同主体<br />合同状态</span>, keys: ["body", "status"] },
+    { title: <span>客户编号<br />客户名称</span>, keys: ["customerNo", "customer"] },
+    { title: "官费", keys: ["official_paid", "official_received", "official_unreceived", "official_loss"], labels: ["支付", "到账", "未到", "亏损"] },
+    { title: "代理费", keys: ["agency_total", "agency_received", "agency_due"], labels: ["总额", "到账", "待收"] },
+    { title: "其他金额", keys: ["other_total", "other_paid", "other_due"], labels: ["金额", "已付", "待付"] },
+    { title: "发票", keys: ["invoice_opened", "invoice_should", "invoice_excess"], labels: ["已开", "应开", "高开"] },
+  ];
 
   const moneyColumn = (title: string, key: (typeof moneyKeys)[number]) => ({
     title: (
@@ -512,6 +525,7 @@ export function ContractList({
         size="small"
         loading={loading}
         columns={isArchiveView ? archiveColumns : isAuditView ? auditColumns : columns}
+        fitStack={isArchiveView || isAuditView ? undefined : contractFitStack}
         dataSource={rows}
         rowSelection={{
           selectedRowKeys,
@@ -531,23 +545,33 @@ export function ContractList({
           showTotal: (total) => `共有${total}条`,
           onChange: onPageChange,
         }}
+        fitStackAware={{ summary: true }}
         summary={
           isArchiveView || isAuditView
             ? undefined
-            : () => (
-                <Table.Summary>
-                  <Table.Summary.Row className="contract-total-row">
-                    <Table.Summary.Cell index={0} colSpan={6}>
-                      本页合计
-                    </Table.Summary.Cell>
-                    {moneyKeys.map((key, index) => (
-                      <Table.Summary.Cell key={key} index={index + 6} align="right">
-                        {amount(totals[key])}
+            : (_data: readonly unknown[], fit?: FitStackState) => {
+                // 合计行按表格当前的叠放布局排列：勾选列和金额前的信息列合并成“本页合计”，金额合计与表头一一对应。
+                const ids = columnIds(columns);
+                const cells = layoutTotalCells(ids, fit?.groups, (index) => {
+                  const key = moneyKeys.find((item) => item === ids[index]);
+                  return key ? amount(totals[key]) : null;
+                });
+                const firstAmount = Math.max(0, cells.findIndex((cell) => cell.content !== null));
+                return (
+                  <Table.Summary>
+                    <Table.Summary.Row className="contract-total-row">
+                      <Table.Summary.Cell index={0} colSpan={firstAmount + 1}>
+                        本页合计
                       </Table.Summary.Cell>
-                    ))}
-                  </Table.Summary.Row>
-                </Table.Summary>
-              )
+                      {cells.slice(firstAmount).map((cell, position) => (
+                        <Table.Summary.Cell key={cell.key} index={firstAmount + 1 + position} align="right">
+                          {cell.content}
+                        </Table.Summary.Cell>
+                      ))}
+                    </Table.Summary.Row>
+                  </Table.Summary>
+                );
+              }
         }
       />
       {isArchiveView && (

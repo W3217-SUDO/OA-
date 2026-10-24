@@ -260,7 +260,7 @@ export function IprAnnualFeesPanel({ iprSectionErrors, annualFees, annualFeesPag
           <Form.Item name="notes" label="说明">
             <Input.TextArea rows={3} maxLength={1000} />
           </Form.Item>
-          <div style={{ color: "#666" }}>
+          <div style={{ color: "var(--oa-text-2)" }}>
             填写提醒日期后，系统会为这笔年费同步“缴纳年费”提醒；提醒日期不得晚于缴费期限。
           </div>
         </Form>

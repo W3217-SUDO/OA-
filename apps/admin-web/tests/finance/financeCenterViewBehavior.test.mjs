@@ -49,6 +49,7 @@ function loadFinanceModule(name, dependencies = {}, globals = {}) {
         return loadFinanceModule(new URL(`${specifier}.ts`, sourceUrl).href);
       }
       if (specifier === "./settlementIdentity") return loadFinanceModule("settlementIdentity.ts");
+      if (specifier === "../components/stackedTotals") return loadFinanceModule("../components/stackedTotals.tsx");
       return require(specifier);
     },
     ...globals,

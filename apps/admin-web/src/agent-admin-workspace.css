@@ -2,13 +2,13 @@
 .agent-scope-admin > [hidden] { display: none; }
 .agent-scope-admin .ant-tabs-tab, .agent-scope-admin .ant-btn, .agent-admin-definition .ant-btn, .agent-admin-definition .ant-drawer-close { min-width: 44px; min-height: 44px; }
 .agent-scope-admin .ant-btn { max-width: 100%; height: auto; white-space: normal; }
-.agent-admin-note { color: #59666a; margin: 0 0 12px; }
-.agent-admin-skill-list { border-top: 1px solid #e5e9ea; }
-.agent-admin-skill-list article { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid #e5e9ea; min-width: 0; }
+.agent-admin-note { color: var(--oa-text-2); margin: 0 0 12px; }
+.agent-admin-skill-list { border-top: 1px solid var(--oa-border); }
+.agent-admin-skill-list article { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--oa-border); min-width: 0; }
 .agent-admin-skill-main { min-width: 0; flex: 1; overflow-wrap: anywhere; }
-.agent-admin-skill-main > span { color: #59666a; font-size: 13px; }
+.agent-admin-skill-main > span { color: var(--oa-text-2); font-size: 13px; }
 .agent-admin-skill-main p { margin: 6px 0 4px; }
-.agent-admin-skill-main small { color: #59666a; }
+.agent-admin-skill-main small { color: var(--oa-text-2); }
 .agent-admin-skill-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .agent-admin-definition pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .agent-admin-definition p { overflow-wrap: anywhere; }

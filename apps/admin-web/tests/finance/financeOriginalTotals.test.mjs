@@ -35,6 +35,7 @@ function nodes(element) {
 
 const totals = load("FinanceOriginalTotals.tsx", {
   "../components/ResizableTable": Table,
+  "../components/stackedTotals": load("../components/stackedTotals.tsx", {}),
   "./constants": { paymentQueryPageTotal },
 });
 

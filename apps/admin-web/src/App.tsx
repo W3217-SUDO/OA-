@@ -27,6 +27,8 @@ import {
   Tabs,
   Tooltip,
 } from "antd";
+import ThemeModeSwitch, { ThemeSettingsButton } from "./theme/ThemeModeSwitch";
+import { useThemeMode } from "./theme/ThemeModeProvider";
 import {
   BankOutlined,
   DashboardOutlined,
@@ -1278,8 +1280,6 @@ export default function App() {
     if (touchIcon) touchIcon.href = siteBrand.icon;
     const manifest = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
     if (manifest) manifest.href = siteBrand.manifest;
-    const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-    if (themeColor) themeColor.content = "#183c36";
   }, [siteBrand]);
   const [loggedIn, setLoggedIn] = useState(
     Boolean(localStorage.getItem("access_token")),
@@ -1348,6 +1348,7 @@ export default function App() {
   useEffect(() => {
     if (permissionsReady && active !== requestedRoute) setActive(active);
   }, [active, requestedRoute, permissionsReady]);
+  const { sidebar: sidebarStyle } = useThemeMode();
   const sidebarCollapsed = isNarrowViewport
     ? !mobileSidebarOpen
     : isDesktopAiWorkspace ? !aiSystemNavigationOpen : collapsed && !sidebarHoverExpanded;
@@ -1803,7 +1804,13 @@ export default function App() {
             }
           }}
         >
-          {collapsed ? siteBrand.compactName : siteBrand.navigationName}
+          <span className="logo-mark" aria-hidden="true">{siteBrand.compactName.slice(0, 1)}</span>
+          {!collapsed && (
+            <span className="logo-text">
+              <b>{siteBrand.navigationName}</b>
+              <small>{siteBrand.subtitle}</small>
+            </span>
+          )}
         </div>
         <Button
           className="sidebar-toggle"
@@ -1931,6 +1938,8 @@ export default function App() {
               }}
             />
           </Tooltip>
+          <ThemeModeSwitch />
+          <ThemeSettingsButton />
           <Dropdown
             menu={{
               items: [
@@ -1975,6 +1984,7 @@ export default function App() {
           </Dropdown>
         </Space>
         <Space className="mobile-top-actions">
+          <ThemeModeSwitch />
           <NotificationCenter onNavigate={navigate} grantedMenuKeys={grantedMenuKeys} />
           <Badge count={taskUnreadCount} size="small" overflowCount={99}>
             <Button
@@ -2029,7 +2039,7 @@ export default function App() {
           <Menu
             mode="inline"
             inlineIndent={16}
-            theme="dark"
+            theme={sidebarStyle === "dark" ? "dark" : "light"}
             items={sidebarReloadableItems}
             selectedKeys={[active]}
             openKeys={openMenuKeys}
@@ -2067,6 +2077,7 @@ export default function App() {
               ))}
             </div>
           )}
+          {!isNarrowViewport && <BugFeedback onOpen={() => { rememberFeedbackSource(active); navigate(FEEDBACK_ROUTE); }} />}
         </Sider>
         {isNarrowViewport && mobileSidebarOpen && (
           <button
@@ -2146,7 +2157,6 @@ export default function App() {
           <span>我的</span>
         </button>
       </nav>
-      <BugFeedback onOpen={() => { rememberFeedbackSource(active); navigate(FEEDBACK_ROUTE); }} />
     </Layout>
   );
 }

@@ -1,6 +1,7 @@
 import {useEffect, useMemo, useState, type Key} from 'react'
 import {Button, Card, DatePicker, Descriptions, Dropdown, Empty, Form, Input, message, Modal, Select, Space, Tag, Timeline, Tree} from 'antd'
 import Table from "./components/ResizableTable";
+import type { FitStackGroup } from "./components/ResizableTable";
 import type {MenuProps, TableColumnsType, TreeDataNode} from 'antd'
 import {EllipsisOutlined} from '@ant-design/icons'
 import dayjs, {type Dayjs} from 'dayjs'
@@ -24,6 +25,13 @@ const evidenceStatuses=['未入库','已入库','已出库','已重新入库','�
 const statusColor:Record<string,string>={未入库:'default',已入库:'green',已出库:'orange',已重新入库:'cyan',已销毁:'red'}
 const statusOf=(row:Item)=>String(row.data?.evidence_status||({在库:'已入库',借出:'已出库',归还中:'已出库',报废:'已销毁'} as Record<string,string>)[row.status]||'未入库')
 const personDisplayName=(value:unknown)=>String(value||'').trim()||'姓名待维护'
+
+// 仓库面板较窄，一屏放不下时把编号类、公证类、人员日期类各叠放在一个单元格里（数据不减少）。
+const WAREHOUSE_FIT_STACK: FitStackGroup[] = [
+  { title: <span>线索编号<br />案件编号</span>, keys: ['clueNo', 'caseNo'] },
+  { title: <span>公证书号<br />公证处</span>, keys: ['notary', 'notaryOffice'] },
+  { title: <span>调查员<br />取证日期</span>, keys: ['investigator', 'date'] },
+]
 
 export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=>void}){
   const [allRows,setAllRows]=useState<Item[]>([])
@@ -140,7 +148,7 @@ export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=
           <Button onClick={()=>openEditor()}>登记证物</Button>
         </Space>
       </div>
-      <Table rowKey="id" size="small" loading={loading} columns={columns} dataSource={allRows} locale={{emptyText:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有查询到符合条件的记录 。"/>}} pagination={{current:page,pageSize,total,showSizeChanger:true,pageSizeOptions:['10','15','20','50','100','200'],showQuickJumper:true,showTotal:count=>`共 ${count} 条`,onChange:(nextPage,nextPageSize)=>{setPage(nextPage);setPageSize(nextPageSize);void load(nextPage,nextPageSize)}}} scroll={{x:1500}}/>
+      <Table rowKey="id" size="small" loading={loading} columns={columns} fitStack={WAREHOUSE_FIT_STACK} dataSource={allRows} locale={{emptyText:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有查询到符合条件的记录 。"/>}} pagination={{current:page,pageSize,total,showSizeChanger:true,pageSizeOptions:['10','15','20','50','100','200'],showQuickJumper:true,showTotal:count=>`共 ${count} 条`,onChange:(nextPage,nextPageSize)=>{setPage(nextPage);setPageSize(nextPageSize);void load(nextPage,nextPageSize)}}} scroll={{x:1500}}/>
       </section>
     </div>
 

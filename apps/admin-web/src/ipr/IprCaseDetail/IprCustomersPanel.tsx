@@ -114,7 +114,7 @@ export function IprCustomersPanel({
         okText="保存关联"
         width={760}
       >
-        <p style={{ color: "#666" }}>
+        <p style={{ color: "var(--oa-text-2)" }}>
           案件可以关联多个客户；必须在已选客户中指定一个主客户，主客户会同步用于案件概览及后续关联流程。
         </p>
         <Table

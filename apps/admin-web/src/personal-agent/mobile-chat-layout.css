@@ -32,7 +32,7 @@
     min-height: 0;
     padding: 0;
     overflow: hidden;
-    background: #fff;
+    background: var(--oa-surface);
     scrollbar-gutter: auto;
   }
 

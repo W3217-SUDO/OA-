@@ -125,7 +125,7 @@ export function IprRemindersPanel({ detail, iprSectionErrors, iprCaseEvents, rem
             },
           ]}
         />
-        <div style={{ marginTop: 8, color: "#777" }}>
+        <div style={{ marginTop: 8, color: "var(--oa-text-2)" }}>
           不监控类型：
           {reminderEventTypes
             .filter((item) => suppressedIds.includes(item.id))
@@ -215,7 +215,7 @@ export function IprRemindersPanel({ detail, iprSectionErrors, iprCaseEvents, rem
         onOk={onSaveSuppressions}
         okText="保存设置"
       >
-        <p style={{ color: "#777" }}>
+        <p style={{ color: "var(--oa-text-2)" }}>
           已勾选的类型不会参与后续自动提醒生成；手工新增提醒不受此设置影响。
         </p>
         <Checkbox.Group

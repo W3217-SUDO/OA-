@@ -77,7 +77,7 @@ export function IprLawFirmsPanel({
         okText="保存关联"
         width={760}
       >
-        <p style={{ color: "#666" }}>
+        <p style={{ color: "var(--oa-text-2)" }}>
           仅显示启用的律所；保存时会以当前勾选结果替换本案件的协作律所。
         </p>
         <Table

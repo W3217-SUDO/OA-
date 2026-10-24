@@ -51,6 +51,7 @@ TreeSelect,
 Upload
 } from "antd";
 import Table from "../components/ResizableTable";
+import type { FitStackGroup } from "../components/ResizableTable";
 import dayjs from "dayjs";
 import type { Key } from "react";
 import { useEffect,useMemo,useRef,useState } from "react";
@@ -268,6 +269,14 @@ buildCasePhaseItems,
 buildCasePhaseItemsFromCounts,CasePhasePickerTree,getCaseDocumentMoveCategoryOptions,getCasePhaseDefinitions,getCompanyArbitrationColumnSchema,getCompanyArbitrationQueryFields,getCompanyCriminalColumnSchema,getCompanyCriminalQueryFields,getCompanyScheduleCourtLevels,getCompanySchedulePageSizeOptions,getCompanyScheduleQueryFields,
 getLegacyCaseDetailMoreOperationLabels,getLegacyCaseDetailPrimaryOperationLabels,getLegacyCaseDocumentGenerationItems,getLegacyGroupedCaseColumnSchema,isCivilCaseType,isCompanyCaseListRoute,isMyCaseListRoute,isNormalCaseBasicType,scopeCasesByListRoute,shouldShowCaseListActions,shouldShowCompanyScheduleActions,shouldShowCompanyScheduleSinglePageJumper,shouldUseCompanyArbitrationColumns,shouldUseCompanyArbitrationQueryFields,shouldUseCompanyCriminalQueryFields,shouldUseCompanySchedulePagination,shouldUseCompanyScheduleQueryFields
 } from "./constants";
+
+
+// 归档列表一屏放不下时，原告/被告、提交人/提交日期、审核人/审核日期各叠放在一个单元格里（数据不减少）。
+const CASE_ARCHIVE_FIT_STACK: FitStackGroup[] = [
+  { title: <span>原告<br />被告</span>, keys: ["plaintiff", "defendant"] },
+  { title: <span>提交人<br />提交日期</span>, keys: ["submitter", "submitted"] },
+  { title: <span>审核人<br />审核日期</span>, keys: ["reviewer", "reviewed"] },
+];
 
 export default function CaseCenterPage({
   initialView,
@@ -2004,11 +2013,11 @@ export default function CaseCenterPage({
       size="small"
       title={label}
       style={{ marginBottom: 12 }}
-      extra={<span style={{ color: "#8c8c8c", fontSize: 12 }}>按本案独立维护</span>}
+      extra={<span style={{ color: "var(--oa-text-3)", fontSize: 12 }}>按本案独立维护</span>}
     >
       <Form.List name={fieldName}>
         {(fields, { add, remove }) => <>
-          {fields.map((field) => <Card key={field.key} size="small" style={{ marginBottom: 10, background: "#fafafa" }}>
+          {fields.map((field) => <Card key={field.key} size="small" style={{ marginBottom: 10, background: "var(--oa-fill)" }}>
             <div className="form-grid">
               <Form.Item {...field} name={[field.name, "name"]} label="姓名" rules={[{ required: true, whitespace: true, message: "请输入代理人姓名" }]}><Input maxLength={256} /></Form.Item>
               <Form.Item {...field} name={[field.name, "law_firm"]} label="律所"><Input maxLength={256} /></Form.Item>
@@ -3070,7 +3079,7 @@ export default function CaseCenterPage({
         </ListFilterBar>
         {archiveList.error && <Alert type="error" showIcon title={archiveList.error} action={<Button onClick={()=>void archiveList.reload()}>重试</Button>} />}
         <div className="case-archive-table-viewport" ref={archiveTableScroll.containerRef} style={{minHeight:archiveTableScroll.minHeight}}>
-          <Table className="case-original-table" rowKey="id" size="small" loading={archiveList.loading} locale={{emptyText:archiveList.loading?"归档案件加载中…":archiveList.error||"暂无符合条件的案件"}} columns={originalArchiveColumns} dataSource={originalArchiveRows} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:archiveCaseTableScrollX,y:archiveTableScroll.scrollY}} pagination={{...getCaseArchivePagination(initialView),current:archiveList.page,pageSize:archiveList.pageSize,total:archiveList.total,onChange:(page:number,pageSize:number)=>{setSelectedCaseKeys([]);void archiveList.search(undefined,pageSize!==archiveList.pageSize?1:page,pageSize);}}} />
+          <Table className="case-original-table" rowKey="id" size="small" loading={archiveList.loading} locale={{emptyText:archiveList.loading?"归档案件加载中…":archiveList.error||"暂无符合条件的案件"}} columns={originalArchiveColumns} fitStack={CASE_ARCHIVE_FIT_STACK} dataSource={originalArchiveRows} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} scroll={{x:archiveCaseTableScrollX,y:archiveTableScroll.scrollY}} pagination={{...getCaseArchivePagination(initialView),current:archiveList.page,pageSize:archiveList.pageSize,total:archiveList.total,onChange:(page:number,pageSize:number)=>{setSelectedCaseKeys([]);void archiveList.search(undefined,pageSize!==archiveList.pageSize?1:page,pageSize);}}} />
         </div>
         <div className="case-bottom-actions"><Space wrap>
           <Button loading={archiveExporting} onClick={()=>void exportArchiveManifest(false,"csv")}>导出全部（CSV）</Button>
@@ -4263,8 +4272,8 @@ export default function CaseCenterPage({
             <span>第 {attachmentPreview.page || 1} / {attachmentPreview.pageCount || 1} 页</span>
             <Button disabled={attachmentPreviewLoading || (attachmentPreview.page || 1) >= (attachmentPreview.pageCount || 1)} onClick={() => void loadAttachmentPdfPage((attachmentPreview.page || 1) + 1)}>下一页</Button>
           </div>
-          <div style={{ height: "66vh", overflow: "auto", background: "#f0f2f5", padding: 12, textAlign: "center" }}>
-            <img src={attachmentPreview.url} alt={`${attachmentPreview.name} 第 ${attachmentPreview.page || 1} 页`} style={{ display: "inline-block", maxWidth: "100%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,.18)" }} />
+          <div style={{ height: "66vh", overflow: "auto", background: "var(--oa-fill)", padding: 12, textAlign: "center" }}>
+            <img src={attachmentPreview.url} alt={`${attachmentPreview.name} 第 ${attachmentPreview.page || 1} 页`} style={{ display: "inline-block", maxWidth: "100%", background: "var(--oa-surface)", boxShadow: "0 1px 4px rgba(0,0,0,.18)" }} />
           </div>
         </div>} />
 

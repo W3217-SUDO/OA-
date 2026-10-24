@@ -1,14 +1,14 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { ConfigProvider } from 'antd'
-import zhCN from 'antd/locale/zh_CN'
 import App from './App'
+import { ThemeModeProvider } from './theme/ThemeModeProvider'
 import './styles.css'
 import './dashboard.css'
 import './huzhi-login.css'
+import './theme/theme.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><ConfigProvider locale={zhCN} theme={{token:{colorPrimary:'#00a65a',borderRadius:2,fontSize:13,zIndexPopupBase:1300}}}><App/></ConfigProvider></React.StrictMode>
+  <React.StrictMode><ThemeModeProvider><App/></ThemeModeProvider></React.StrictMode>
 )
 
 if ('serviceWorker' in navigator) {

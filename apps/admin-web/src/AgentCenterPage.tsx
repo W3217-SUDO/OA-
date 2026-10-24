@@ -365,7 +365,7 @@ export default function AgentCenterPage({ onOpenPersonalAgent, onOpenCaseAgentFo
         <Tag>客户</Tag><Tag>合同</Tag><Tag>案件</Tag><Tag>线索</Tag><Tag>调查</Tag><Tag>财务</Tag>
       </Space>
     </header>
-    <div style={{ padding: "6px 14px", borderBottom: "1px solid #dce2e8", background: "#fff" }}><AgentToolRequests /></div>
+    <div style={{ padding: "6px 14px", borderBottom: "1px solid #dce2e8", background: "var(--oa-surface)" }}><AgentToolRequests /></div>
     <SkillManager open={skillManagerOpen} onClose={() => setSkillManagerOpen(false)} mode="manage" scope="personal" skills={catalogSkills} refresh={refreshSkillCatalog} onSelect={setSkillId} />
     <div className="agent-center-layout">
       <aside className="agent-space-list">

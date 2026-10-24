@@ -160,7 +160,7 @@ export function UploadModal({
           >
             <Button icon={<UploadOutlined />}>选择文件（最大 20MB）</Button>
           </Upload>
-          {file && <div style={{ marginTop: 8, color: "#666" }}>{file.name}</div>}
+          {file && <div style={{ marginTop: 8, color: "var(--oa-text-2)" }}>{file.name}</div>}
         </Form.Item>
         <Form.Item label="备注" name="remark">
           <Input.TextArea rows={2} />

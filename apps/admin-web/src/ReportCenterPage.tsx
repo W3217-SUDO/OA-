@@ -408,7 +408,7 @@ function StaffRoiReport() {
   return (
     <div className="report-page">
       <div className="report-page-heading">员工业绩ROI统计</div>
-      <div style={{ marginBottom: 16, color: "#666" }}>业绩按到账回款依员工提成比例分摊；成本为提成实际付款；ROI=业绩÷成本×100%，成本为0时不计算。</div>
+      <div style={{ marginBottom: 16, color: "var(--oa-text-2)" }}>业绩按到账回款依员工提成比例分摊；成本为提成实际付款；ROI=业绩÷成本×100%，成本为0时不计算。</div>
       <Form form={form} className="report-filter" onFinish={load}>
         <Form.Item label="统计时间" name="dateRange">
           <DatePicker.RangePicker />

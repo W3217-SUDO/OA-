@@ -14,8 +14,8 @@ const docxPreviewStyle: React.CSSProperties = {
   maxHeight: "70vh",
   overflow: "auto",
   padding: "16px",
-  background: "#eef0f3",
-  border: "1px solid #dfe2e7",
+  background: "var(--oa-fill)",
+  border: "1px solid var(--oa-border)",
 };
 
 function DocxPreview({ attachment }: { attachment: PreviewAttachment & { blob?: Blob; url?: string; text?: string } }) {
@@ -70,12 +70,12 @@ function DocxPreview({ attachment }: { attachment: PreviewAttachment & { blob?: 
 
   return (
     <div style={docxPreviewStyle}>
-      {loading && <div style={{ padding: 24, textAlign: "center", color: "#86909c" }}>正在还原 Word 模板版式...</div>}
+      {loading && <div style={{ padding: 24, textAlign: "center", color: "var(--oa-text-3)" }}>正在还原 Word 模板版式...</div>}
       {error && <>
-      <div style={{ ...docxPreviewStyle, background: "#fff7e8", borderColor: "#ffd591", color: "#d46b08", marginBottom: 12 }}>
+      <div style={{ ...docxPreviewStyle, background: "color-mix(in srgb, #fff7e8 var(--oa-tint), var(--oa-surface))", borderColor: "color-mix(in srgb, #ffd591 var(--oa-tint), var(--oa-surface))", color: "var(--oa-warning)", marginBottom: 12 }}>
         Word 模板版式渲染失败：{error}。以下为纯文本内容，请通过下载查看原文件：
       </div>
-      <pre style={{ maxHeight: "60vh", overflow: "auto", margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "inherit", lineHeight: 1.7, padding: "16px", background: "#fff", border: "1px solid #dfe2e7" }}>{attachment.text}</pre>
+      <pre style={{ maxHeight: "60vh", overflow: "auto", margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "inherit", lineHeight: 1.7, padding: "16px", background: "var(--oa-surface)", border: "1px solid var(--oa-border)" }}>{attachment.text}</pre>
       </>}
       <div ref={containerRef} style={{ display: error ? "none" : undefined }} />
     </div>
@@ -124,25 +124,25 @@ function XlsxPreview({ attachment }: { attachment: PreviewAttachment & { blob?: 
     return () => { cancelled = true; };
   }, [attachment.url, attachment.blob]);
 
-  if (loading) return <div style={{ padding: 40, textAlign: "center", color: "#86909c" }}>正在渲染 Excel 表格...</div>;
+  if (loading) return <div style={{ padding: 40, textAlign: "center", color: "var(--oa-text-3)" }}>正在渲染 Excel 表格...</div>;
   if (error) return (
     <div>
-      <div style={{ padding: "16px 20px", background: "#fff7e8", border: "1px solid #ffd591", color: "#d46b08", borderRadius: 4, marginBottom: 12 }}>
+      <div style={{ padding: "16px 20px", background: "color-mix(in srgb, #fff7e8 var(--oa-tint), var(--oa-surface))", border: "1px solid color-mix(in srgb, #ffd591 var(--oa-tint), var(--oa-surface))", color: "var(--oa-warning)", borderRadius: 4, marginBottom: 12 }}>
         渲染 Excel 表格失败：{error}，以下为纯文本预览：
       </div>
-      <pre style={{ maxHeight: "60vh", overflow: "auto", margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "inherit", lineHeight: 1.7, padding: "16px", background: "#fff", border: "1px solid #dfe2e7" }}>{attachment.text}</pre>
+      <pre style={{ maxHeight: "60vh", overflow: "auto", margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "inherit", lineHeight: 1.7, padding: "16px", background: "var(--oa-surface)", border: "1px solid var(--oa-border)" }}>{attachment.text}</pre>
     </div>
   );
 
   if (!sheets.length) {
-    return <div style={{ padding: 40, textAlign: "center", color: "#86909c" }}>（该 Excel 文件没有可显示的工作表）</div>;
+    return <div style={{ padding: 40, textAlign: "center", color: "var(--oa-text-3)" }}>（该 Excel 文件没有可显示的工作表）</div>;
   }
 
   const tabItems = sheets.map((sheet, idx) => ({
     key: String(idx),
     label: sheet.name,
     children: (
-      <div style={{ overflow: "auto", maxHeight: "62vh", border: "1px solid #dfe2e7", borderTop: 0 }}>
+      <div style={{ overflow: "auto", maxHeight: "62vh", border: "1px solid var(--oa-border)", borderTop: 0 }}>
         <div
           dangerouslySetInnerHTML={{ __html: sheet.html.replace(/<table/, '<table style="border-collapse:collapse;width:100%;font-size:12px"') }}
           style={{ padding: 0 }}
@@ -156,7 +156,7 @@ function XlsxPreview({ attachment }: { attachment: PreviewAttachment & { blob?: 
       items={tabItems}
       defaultActiveKey="0"
       size="small"
-      style={{ background: "#fff" }}
+      style={{ background: "var(--oa-surface)" }}
     />
   );
 }

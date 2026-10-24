@@ -1,16 +1,16 @@
-:is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-card{display:flex;flex:1 1 auto;flex-direction:column;min-width:0;min-height:120px;max-height:65%;border:1px solid #cfd8e1;border-radius:8px;background:#fff;overflow:hidden;letter-spacing:0}
-:is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-heading{display:flex;flex:none;align-items:center;justify-content:space-between;gap:8px;padding:6px 12px;border-bottom:1px solid #e5e9ed}
+:is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-card{display:flex;flex:1 1 auto;flex-direction:column;min-width:0;min-height:120px;max-height:65%;border:1px solid color-mix(in srgb, #cfd8e1 var(--oa-tint), var(--oa-surface));border-radius:8px;background:var(--oa-surface);overflow:hidden;letter-spacing:0}
+:is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-heading{display:flex;flex:none;align-items:center;justify-content:space-between;gap:8px;padding:6px 12px;border-bottom:1px solid var(--oa-border)}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-heading strong{display:flex;align-items:center;gap:8px;min-width:0;font-size:14px;overflow-wrap:anywhere}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-body{display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0;padding:12px;overflow:auto;overscroll-behavior:contain}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-card .ant-form-item{min-width:0;margin-bottom:12px}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-card .ant-input,:is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-card .ant-input-affix-wrapper,:is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-card .ant-select{width:100%;min-width:0;min-height:44px;font-size:14px}
-:is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-card .ant-input-affix-wrapper .ant-input{min-height:30px}
+:is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-card .ant-input-affix-wrapper .ant-input{min-height:32px}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-card .ant-btn{flex:none;min-width:44px;min-height:44px;white-space:normal}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-import{display:flex;align-items:flex-start;gap:8px;min-width:0}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-import .ant-input-affix-wrapper{flex:1;min-width:0}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;min-width:0}
-:is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-actions>span{flex:1;min-width:140px;color:#5b6776;font-size:12px;overflow-wrap:anywhere}
+:is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-actions>span{flex:1;min-width:140px;color:var(--oa-text-2);font-size:12px;overflow-wrap:anywhere}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-result{display:flex;flex-direction:column;align-items:flex-start;gap:8px;min-width:0;overflow-wrap:anywhere}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-result>strong{font-size:14px}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-result .ant-tag{max-width:100%;white-space:normal;overflow-wrap:anywhere}
@@ -18,11 +18,11 @@
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-scope>span:last-child{flex:1;min-width:140px;overflow-wrap:anywhere}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-scope .ant-tag,:is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-item-title .ant-tag{flex:none;margin:0;white-space:normal;overflow-wrap:anywhere}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-item-title{display:flex;align-items:flex-start;flex-wrap:wrap;gap:4px 8px;min-width:0;overflow-wrap:anywhere}
-:is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-list-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid #e5e9ed;padding-top:8px;font-size:13px}
+:is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-list-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid var(--oa-border);padding-top:8px;font-size:13px}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-list{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-list>li{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;font-size:13px}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-list>li>div{display:flex;flex-direction:column;gap:4px;min-width:0;overflow-wrap:anywhere}
-:is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-list>li span{color:#5b6776;font-size:12px}
+:is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-list>li span{color:var(--oa-text-2);font-size:12px}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-list>li>.personal-mcp-row-actions{display:flex;flex:none;flex-direction:row;gap:4px}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-card .ant-alert{min-width:0;overflow-wrap:anywhere}
 @media(max-width:767px){

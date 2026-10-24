@@ -174,7 +174,7 @@ export function OfficialOutgoingDetail({
                   <div>
                     <b>{item.action}</b>
                     {item.from_status && <span>　{item.from_status} → {item.to_status}</span>}
-                    <div style={{ color: "#999", fontSize: 12 }}>
+                    <div style={{ color: "var(--oa-text-3)", fontSize: 12 }}>
                       {personDisplayName(item.operator_display_name)} ·{" "}
                       {new Date(item.created_at).toLocaleString("zh-CN")}
                     </div>

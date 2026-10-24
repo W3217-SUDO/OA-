@@ -2,11 +2,11 @@
 .assistant .mcp-connection-turn .assistant-bubble{min-width:0;overflow-wrap:anywhere}
 .mcp-connection-turn p{margin:0 0 12px}
 .mcp-connection-turn dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 16px;margin:0 0 16px}
-.mcp-connection-turn dt,.mcp-connection-turn small,.mcp-connection-turn-actions>span{color:#667085}
+.mcp-connection-turn dt,.mcp-connection-turn small,.mcp-connection-turn-actions>span{color:var(--oa-text-2)}
 .mcp-connection-turn dd{min-width:0;margin:0;overflow-wrap:anywhere}
 .mcp-connection-secure-input{display:flex;flex-direction:column;gap:8px;max-width:460px;margin-bottom:16px}
 .mcp-connection-secure-input .ant-input-affix-wrapper{min-height:44px}
 .mcp-connection-turn-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .mcp-connection-turn-actions .ant-btn{min-width:88px;min-height:44px}
-.mcp-connection-turn .mcp-connection-error{color:#b42318}
+.mcp-connection-turn .mcp-connection-error{color:color-mix(in srgb, #b42318 var(--oa-ink), #fff)}
 @media(max-width:767px){.mcp-connection-turn dl{grid-template-columns:minmax(0,1fr);gap:4px}.mcp-connection-turn dd{margin-bottom:8px}.mcp-connection-secure-input{max-width:none}.mcp-connection-turn-actions>span{flex-basis:100%}.mcp-connection-secure-input input{font-size:16px}}

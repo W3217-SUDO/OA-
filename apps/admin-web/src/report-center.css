@@ -1,6 +1,6 @@
 .report-page {
-  min-height: calc(100vh - 96px);
-  color: #333;
+  min-height:100%;
+  color: var(--oa-text);
   font-size: 12px;
 }
 
@@ -10,9 +10,9 @@
   justify-content: space-between;
   height: 40px;
   padding: 0 13px;
-  border: 1px solid #e4e7e9;
-  border-top: 2px solid #00a65a;
-  background: #fff;
+  border: 1px solid var(--oa-border);
+  border-top: 2px solid var(--oa-primary);
+  background: var(--oa-surface);
   font-size: 14px;
   font-weight: 600;
   line-height: 38px;
@@ -20,15 +20,15 @@
 
 .report-page-heading .ant-btn {
   border-radius: 2px;
-  background: #00a65a;
-  font-size: 12px;
+  background: var(--oa-primary);
+  font-size: 13px;
 }
 
 .report-large-screen {
-  min-height: calc(100vh - 96px);
+  min-height:100%;
   padding: 18px 22px 24px;
-  color: #16323a;
-  background: #edf4f3;
+  color: color-mix(in srgb, #16323a var(--oa-ink), #fff);
+  background: var(--oa-fill);
 }
 
 .large-screen-header {
@@ -38,12 +38,12 @@
   gap: 20px;
   margin-bottom: 16px;
   padding: 0 2px 13px;
-  border-bottom: 3px solid #00a65a;
+  border-bottom: 3px solid var(--oa-primary);
 }
 
 .large-screen-header p {
   margin: 0 0 3px;
-  color: #5f777d;
+  color: color-mix(in srgb, #5f777d var(--oa-ink), #fff);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: .15em;
@@ -51,7 +51,7 @@
 
 .large-screen-header h1 {
   margin: 0;
-  color: #173d45;
+  color: color-mix(in srgb, #173d45 var(--oa-ink), #fff);
   font-size: 25px;
   letter-spacing: .03em;
 }
@@ -64,7 +64,7 @@
 }
 
 .large-screen-actions .ant-btn-primary {
-  background: #00a65a;
+  background: var(--oa-primary);
 }
 
 .large-screen-content { min-width: 0; }
@@ -77,8 +77,8 @@
 
 .large-screen-kpis article,
 .large-screen-card {
-  border: 1px solid #dce8e5;
-  background: #fff;
+  border: 1px solid var(--oa-border);
+  background: var(--oa-surface);
   box-shadow: 0 4px 14px rgba(27, 75, 70, .05);
 }
 
@@ -107,8 +107,8 @@
 .large-screen-kpis article:nth-child(6)::after { border-color: rgba(138, 116, 232, .1); }
 
 .large-screen-kpis span,
-.large-screen-kpis em { display: block; color: #63787d; font-size: 12px; font-style: normal; }
-.large-screen-kpis strong { display: block; margin: 8px 0 4px; color: #173d45; font-size: 24px; letter-spacing: -.02em; }
+.large-screen-kpis em { display: block; color: color-mix(in srgb, #63787d var(--oa-ink), #fff); font-size: 12px; font-style: normal; }
+.large-screen-kpis strong { display: block; margin: 8px 0 4px; color: color-mix(in srgb, #173d45 var(--oa-ink), #fff); font-size: 24px; letter-spacing: -.02em; }
 .large-screen-kpis em { font-size: 11px; }
 
 .large-screen-grid {
@@ -119,16 +119,16 @@
 }
 
 .large-screen-card { min-height: 326px; }
-.large-screen-card h2 { margin: 0; padding: 12px 15px; border-bottom: 1px solid #e4eceb; color: #2b5058; font-size: 14px; }
+.large-screen-card h2 { margin: 0; padding: 12px 15px; border-bottom: 1px solid var(--oa-border); color: color-mix(in srgb, #2b5058 var(--oa-ink), #fff); font-size: 14px; }
 .large-screen-card h2 small { margin-left: 7px; color: #84979a; font-size: 11px; font-weight: 400; }
 .large-screen-chart { height: 274px; padding: 6px 6px 2px; }
 .large-screen-chart .recharts-default-legend { font-size: 12px; }
 .large-screen-empty { display: grid; height: 100%; place-content: center; }
-.large-screen-empty .ant-empty-description { color: #718689; font-size: 12px; }
+.large-screen-empty .ant-empty-description { color: color-mix(in srgb, #718689 var(--oa-ink), #fff); font-size: 12px; }
 .trend-card { grid-column: 1 / -1; }
 .large-screen-alert { margin: 20px 0; }
-.large-screen-updated { margin: 12px 2px 0; color: #7c9094; font-size: 11px; text-align: right; }
-.large-screen-legacy-note { margin: 0 0 12px; color: #5d7479; font-size: 12px; }
+.large-screen-updated { margin: 12px 2px 0; color: color-mix(in srgb, #7c9094 var(--oa-ink), #fff); font-size: 11px; text-align: right; }
+.large-screen-legacy-note { margin: 0 0 12px; color: color-mix(in srgb, #5d7479 var(--oa-ink), #fff); font-size: 12px; }
 
 @media (max-width: 1100px) {
   .large-screen-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -148,9 +148,9 @@
   gap: 2px 0;
   min-height: 137px;
   padding: 2px 8px 7px;
-  border: 1px solid #e4e7e9;
+  border: 1px solid var(--oa-border);
   border-top: 0;
-  background: #fff;
+  background: var(--oa-surface);
 }
 
 .report-filter .ant-form-item {
@@ -158,6 +158,11 @@
   grid-template-columns: 77px minmax(0, 1fr);
   align-items: center;
   margin: 0;
+}
+
+/* antd 在标签和输入框外多包了一层 row，让它不参与布局，网格才能按“标签 | 输入框”两列排。 */
+.report-filter .ant-form-item > .ant-form-item-row {
+  display: contents;
 }
 
 .report-filter .report-filter-wide {
@@ -172,7 +177,7 @@
 
 .report-filter .ant-form-item-label > label {
   height: 24px;
-  color: #444;
+  color: var(--oa-text-2);
   font-size: 12px;
 }
 
@@ -183,22 +188,21 @@
 .report-filter .ant-input,
 .report-filter .ant-select-selector,
 .report-filter .ant-picker {
-  min-height: 24px !important;
-  height: 24px !important;
-  border-radius: 0 !important;
-  font-size: 12px;
+  min-height: 32px !important;
+  height: 32px !important;
+  font-size: 13px;
 }
 
 .report-filter .ant-select,
 .report-filter .ant-select-single,
 .report-filter .ant-select-single .ant-select-selector,
 .report-filter .ant-select-single .ant-select-selection-wrap {
-  min-height: 24px !important;
-  height: 24px !important;
+  min-height: 32px !important;
+  height: 32px !important;
 }
 
 .report-filter .ant-select-multiple .ant-select-selector {
-  min-height: 24px !important;
+  min-height: 32px !important;
   height: auto !important;
   padding-block: 0 !important;
 }
@@ -218,32 +222,31 @@
 }
 
 .report-filter-action .ant-btn {
-  height: 24px;
+  height: 32px;
   min-width: 50px;
-  border-radius: 0;
-  background: #00a65a;
-  font-size: 12px;
+  background: var(--oa-primary);
+  font-size: 13px;
 }
 
 .report-filter-action .ant-btn:hover {
-  background: #008d4c !important;
+  background: var(--oa-primary) !important;
 }
 
 .report-tabs {
   height: 31px;
   margin-top: 10px;
   padding-left: 0;
-  border: 1px solid #e4e7e9;
-  background: #fff;
+  border: 1px solid var(--oa-border);
+  background: var(--oa-surface);
 }
 
 .report-tab-active {
   display: inline-block;
   height: 30px;
   padding: 0 15px;
-  border: 1px solid #ddd;
-  border-bottom-color: #fff;
-  color: #333;
+  border: 1px solid var(--oa-border);
+  border-bottom-color: var(--oa-border);
+  color: var(--oa-text);
   font-size: 12px;
   line-height: 29px;
 }
@@ -258,8 +261,8 @@
 .report-chart-panel {
   min-width: 0;
   min-height: 328px;
-  border: 1px solid #ddd;
-  background: #fff;
+  border: 1px solid var(--oa-border);
+  background: var(--oa-surface);
 }
 
 .report-chart-title {
@@ -268,8 +271,8 @@
   justify-content: space-between;
   height: 36px;
   padding: 10px 15px;
-  border-bottom: 1px solid #ddd;
-  background: #f5f5f5;
+  border-bottom: 1px solid var(--oa-border);
+  background: var(--oa-fill);
   font-size: 12px;
   font-weight: 400;
   line-height: 15px;
@@ -277,12 +280,12 @@
 
 .report-chart-title > span:first-child::before {
   margin-right: 6px;
-  color: #333;
+  color: var(--oa-text);
   content: "▥";
 }
 
 .report-chart-unit {
-  color: #333;
+  color: var(--oa-text);
   font-size: 12px;
   font-weight: 400;
 }
@@ -301,7 +304,8 @@
 }
 
 .report-page-no-filter .report-chart-grid {
-  margin-top: 16px;
+  margin-top: 10px;
+  row-gap: 14px;
 }
 
 .report-page-no-filter .report-chart-panel {
@@ -331,23 +335,23 @@
 }
 
 .report-customer-roi-filter .report-filter-action .ant-btn:not(:first-child) {
-  border-color: #d9d9d9;
-  background: #fff;
-  color: #333;
+  border-color: var(--oa-border);
+  background: var(--oa-surface);
+  color: var(--oa-text);
 }
 
 .report-roi-table-panel {
   margin-top: 10px;
-  border: 1px solid #e4e7e9;
-  background: #fff;
+  border: 1px solid var(--oa-border);
+  background: var(--oa-surface);
 }
 
 .report-roi-description {
   margin-top: 10px;
   padding: 7px 10px;
-  border: 1px solid #e4e7e9;
-  background: #f8fcf9;
-  color: #555;
+  border: 1px solid var(--oa-border);
+  background: var(--oa-fill);
+  color: var(--oa-text-2);
   font-size: 12px;
 }
 
@@ -362,8 +366,8 @@
 }
 
 .report-roi-table-panel .ant-table-thead > tr > th {
-  background: #f5f5f5;
-  color: #333;
+  background: var(--oa-fill);
+  color: var(--oa-text);
   font-size: 12px;
   font-weight: 500;
 }
@@ -374,7 +378,7 @@
 }
 
 .report-roi-table-panel .ant-table-summary > tr > td {
-  background: #fafafa;
+  background: var(--oa-fill);
   font-weight: 600;
 }
 
@@ -392,5 +396,43 @@
 
   .report-filter .report-filter-wide {
     width: auto;
+  }
+}
+
+/* 2026-10 一屏布局（桌面）：图表区占满筛选区之外的剩余高度，两行图表平分，不再用固定高度把页面撑出滚动条。 */
+@media (min-width: 1101px) {
+  .report-page:has(> :is(.ant-spin, .ant-spin-nested-loading) .report-chart-grid) {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+  .report-page > :is(.ant-spin, .ant-spin-nested-loading):has(.report-chart-grid) {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .report-page > :is(.ant-spin, .ant-spin-nested-loading) > .ant-spin-container:has(> .report-chart-grid) {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .report-page .ant-spin-container > .report-chart-grid {
+    flex: 1 1 auto;
+    min-height: 0;
+    grid-auto-rows: minmax(220px, 1fr);
+    margin-bottom: 4px;
+  }
+  .report-page .ant-spin-container > .report-chart-grid > .report-chart-panel {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+  }
+  .report-page .ant-spin-container > .report-chart-grid .report-chart-body {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 170px;
   }
 }

@@ -14,7 +14,7 @@
 /* Ant Design 的 sticky 横向滚动条固定在当前列表底部，长表无需回到底部拖动。 */
 .oa-resizable-table .ant-table-sticky-scroll {
   z-index: 3;
-  background: #fff;
+  background: var(--oa-surface);
 }
 
 .oa-resizable-table .ant-table-thead th.oa-resizable-header::after {
@@ -29,5 +29,88 @@
 }
 
 .oa-resizable-table .ant-table-thead th.oa-resizable-header:hover::after {
-  border-right-color: #00a65a;
+  border-right-color: var(--oa-primary);
+}
+
+/* 自适应收窄后的表格：文字折行显示（单元格内最多两行），不截断、不溢出到相邻列；金额日期等列宽已按整行预留。 */
+.oa-fit-table .ant-table-tbody .ant-table-cell,
+.oa-fit-table .ant-table-thead .ant-table-cell {
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: normal !important;
+}
+.oa-fit-table .ant-table-tbody .ant-table-cell :is(span, a, div, button, .ant-btn) {
+  white-space: normal !important;
+  text-overflow: clip !important;
+  overflow-wrap: anywhere;
+}
+.oa-fit-table .ant-table-tbody .ant-table-cell .ant-btn {
+  height: auto;
+  min-height: 22px;
+  max-width: 100%;
+  padding-block: 1px;
+  line-height: 1.4;
+  text-align: left;
+}
+.oa-fit-table .ant-table-tbody .ant-table-cell .ant-btn > span {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.oa-fit-table .ant-table-tbody td.ant-table-cell-ellipsis > .ant-table-cell-content,
+.oa-fit-table .ant-table-tbody td.ant-table-cell-ellipsis > span:only-child {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.oa-fit-table .ant-table-tbody .ant-table-cell .ant-space {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+/* 紧凑模式：只在正常间距放不下时启用。 */
+.oa-fit-dense .ant-table-thead > tr > th,
+.oa-fit-dense .ant-table-tbody > tr > td,
+.oa-fit-dense .ant-table-summary .ant-table-cell {
+  padding-inline: 4px !important;
+}
+/* 叠放列：一个单元格里分行显示原来的几列。 */
+.oa-stack-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.45;
+}
+.oa-stack-line {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 6px;
+}
+.oa-stack-cell.has-labels .oa-stack-line {
+  justify-content: space-between;
+}
+.oa-stack-label {
+  flex: none;
+  color: var(--oa-text-3);
+  font-size: 12px;
+}
+.oa-stack-value {
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+.oa-stack-cell:not(.has-labels) .oa-stack-line + .oa-stack-line .oa-stack-value {
+  color: var(--oa-text-2);
+}
+th.oa-stack-column {
+  line-height: 1.35;
+}
+.oa-fit-table .oa-stack-cell.has-labels .oa-stack-value.is-number {
+  white-space: nowrap !important;
+}
+/* 表格单元格里的文字链接按钮去掉大边距，操作列一行能放两枚。 */
+.oa-fit-table .ant-table-tbody .ant-table-cell .ant-btn.ant-btn-variant-link,
+.oa-fit-table .ant-table-tbody .ant-table-cell .ant-btn.ant-btn-variant-text {
+  padding-inline: 3px;
 }

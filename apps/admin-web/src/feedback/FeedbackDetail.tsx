@@ -168,7 +168,7 @@ export default function FeedbackDetail({ feedbackId, onBack }: Props) {
           <strong>{event.action}</strong>
           <span>{event.operator_display_name || event.operator}</span>
           {event.from_status !== event.to_status && <Tag color={statusColors[event.to_status] || "default"}>{event.to_status}</Tag>}
-          <span style={{ color: "#777" }}>{dayjs(event.created_at).format("YYYY-MM-DD HH:mm:ss")}</span>
+          <span style={{ color: "var(--oa-text-2)" }}>{dayjs(event.created_at).format("YYYY-MM-DD HH:mm:ss")}</span>
         </Space>
         {event.comment && <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", marginTop: 4 }}>{event.comment}</div>}
         {event.has_screenshot && <FeedbackEventImage feedbackId={feedbackId} eventId={event.id} />}

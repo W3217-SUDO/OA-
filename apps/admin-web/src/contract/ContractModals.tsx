@@ -829,8 +829,8 @@ export function InvestigationRegionPickerModal({ open, selectedRegions, expanded
                   style={{
                     margin: "8px 0 4px 24px",
                     padding: 8,
-                    background: "#fafafa",
-                    border: "1px solid #f0f0f0",
+                    background: "var(--oa-fill)",
+                    border: "1px solid var(--oa-border)",
                   }}
                 >
                   <Checkbox.Group

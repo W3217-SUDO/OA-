@@ -6,6 +6,8 @@ import {financeErrorDetail} from "./financeErrors";
 
 import {Alert, Button, Dropdown, Input, Space, message} from "antd";
 import Table from "../components/ResizableTable";
+import type { FitStackGroup, FitStackState } from "../components/ResizableTable";
+import { columnIds, layoutTotalCells, takeTotalsStack } from "../components/stackedTotals";
 import dayjs from "dayjs";
 
 import {FinanceOriginalQueryView, type FinanceOriginalQueryViewProps} from "./FinanceOriginalQueryView";
@@ -19,6 +21,52 @@ import type {ComponentProps} from "react";
 import {RefundCaseFeeOperationMenu, RefundCaseFeeMarkButton, type RefundCaseFeeOperationMenuProps, type RefundCaseFeeMarkButtonProps} from "./RefundCaseFeeActions";
 import {internalApprovalRoutes, paymentPackagePageSizeOptions, paymentQueryControlledPageSize, paymentQueryDefaultPageSize, paymentQueryPageSizeOptions, paymentQueryQuickJumper, paymentQueryShowsSinglePageGo} from "./constants";
 import type {ArchiveSettlementTarget, Fee, FinancePageMeta, FinanceAmountPageMeta, FinanceInternalQueueMeta, FinanceInvoicePageMeta, FinanceUnissuedPageMeta, FinanceSettlementPageMeta, FinanceFeeQueryMeta, OriginalFinanceRow, OriginalRouteConfig} from "./types";
+
+// 财务列表一屏放不下时，把相关的金额/日期/人员列叠放在一个单元格里（数据不减少）；屏幕够宽时仍逐列显示。
+// 合计行会跟着同样叠放（见 stackedTotals），未适配的合计行所在路由由 fitStackAware 阻止叠放。
+function incomingFitStack(columns: any[]): FitStackGroup[] | undefined {
+  const keyOf = (header: string) => {
+    const column = columns.find((item) => String(item.key).startsWith(`${header}-`) || (item.key === undefined && item.dataIndex === undefined && item.title === header));
+    return column ? (column.key ?? column.title) as string : undefined;
+  };
+  const group = (title: string, headers: string[], labels?: string[]): FitStackGroup | null => {
+    const keys = headers.map(keyOf);
+    return keys.every(Boolean) ? { title, keys: keys as string[], labels } : null;
+  };
+  // 不带行内标签的分组用两行表头说明上下两行各是什么。
+  const pair = (headers: [string, string]) => {
+    const item = group(headers.join("/"), headers);
+    return item && { ...item, title: <span>{headers[0]}<br />{headers[1]}</span> };
+  };
+  const groups = [
+    group("回款金额", ["回款金额", "已分金额", "未分金额"], ["回款", "已分", "未分"]),
+    group("已分费用", ["已分官费", "已分代理费", "已分其他费用"], ["官费", "代理费", "其他"]),
+    group("日期", ["申请日期", "截止日期"], ["申请", "截止"]),
+    group("人员", ["申请人", "客户管理人", "交款人"], ["申请", "管理", "交款"]),
+    group("开票金额", ["开票金额", "高开金额"], ["开票", "高开"]),
+    group("人员", ["申请人", "领票人"], ["申请", "领票"]),
+    group("开票", ["开票日期", "开票金额"], ["日期", "金额"]),
+    group("到账", ["到账时间", "到账金额", "到账单位"], ["时间", "金额", "单位"]),
+    group("到账", ["到账时间", "到账金额"], ["时间", "金额"]),
+    group("付款", ["付款时间", "付款金额"], ["时间", "金额"]),
+    group("日期", ["申请日期", "审核日期"], ["申请", "审核"]),
+    group("提成", ["基数", "参考提成", "实际提成"], ["基数", "参考", "实际"]),
+    group("结算", ["代理费结算金额", "扣归档费", "实际结算金额"], ["结算", "扣归档", "实际"]),
+    pair(["开票抬头", "发票号码"]),
+    pair(["助理", "开庭律师"]),
+    pair(["法院案号", "法院名称"]),
+    pair(["案件阶段", "付款状态"]),
+    pair(["客户名称", "客户管理人"]),
+  ].filter((item): item is FitStackGroup => Boolean(item));
+  // 同一列只进一个分组，先出现的分组优先。
+  const used = new Set<string>();
+  const distinct = groups.filter((item) => {
+    if (item.keys.some((key) => used.has(key))) return false;
+    item.keys.forEach((key) => used.add(key));
+    return true;
+  });
+  return distinct.length ? distinct : undefined;
+}
 
 export interface FinanceOriginalRoutesViewProps {
   originalQueryView: FinanceOriginalQueryViewProps;
@@ -230,6 +278,33 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
       typeof column.title === "string" ? column.title : "",
     );
   const settlementRouteRows = configuredRows as Fee[];
+  const originalColumnIds = columnIds(originalColumns);
+  const isIncomingTotalsRoute = ["finance-receipts-manage", "finance-receipts-claim", "finance-receipts-pending", "finance-receipts-allocated", "finance-receipts-query"].includes(initialView);
+  // 合计行已经按叠放布局排列的路由才允许叠放列；其余路由的合计行仍按原列位置排列，叠放会让合计错位，所以不叠放。
+  // 下面两个分支顺序与 components / summary 的判断顺序一致。
+  const totalsBodyBranch = isIncomingTotalsRoute ? "incoming"
+    : initialView === "finance-payment-query" && configuredRows.length ? "payment-query"
+    : isFeeQueryRoute && configuredRows.length ? "fee-query"
+    : isGeneralSettlementRoute && configuredRows.length ? "general-settlement"
+    : isArchiveSettlementActiveRoute && configuredRows.length ? "archive-settlement"
+    : activeRouteConfig?.source === "paymentPackages" ? "payment-packages"
+    : isInternalDetailRoute && configuredRows.length ? "internal-detail"
+    : isInvoiceUnissuedRoute && configuredRows.length ? "invoice-unissued"
+    : (isInvoiceMineRoute || isInvoicePendingRoute || isInvoiceCompanyRoute) && configuredRows.length ? "invoice"
+    : "none";
+  const totalsSummaryBranch = isInternalQueueRoute ? "internal-queue"
+    : initialView === "finance-payment-query" ? "payment-query"
+    : isFeeQueryRoute ? "fee-query"
+    : ["finance-internal-writeoff", "finance-internal-done"].includes(initialView) ? "payment-packages"
+    : isInternalDetailRoute ? "internal-detail"
+    : isInvoiceUnissuedRoute ? "invoice-unissued"
+    : isInvoiceMineRoute || isInvoicePendingRoute || isInvoiceCompanyRoute ? "invoice"
+    : ["finance-internal-refused", "finance-internal-void", "finance-internal-query"].includes(initialView) ? "internal-list"
+    : "none";
+  const fitStackAware = {
+    body: !["archive-settlement", "payment-packages", "internal-detail"].includes(totalsBodyBranch),
+    summary: !["payment-packages", "internal-detail", "internal-list"].includes(totalsSummaryBranch),
+  };
   if (isInternalQueueRoute && (!internalQueueMeta || !loadInternalQueue)) throw new Error("内部费用分页配置缺失");
   return (
     <>
@@ -297,6 +372,8 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                 tableLayout={initialView.startsWith("finance-internal") || isGeneralSettlementRoute || isFeeQueryRoute || isInvoiceUnissuedRoute || activeRouteConfig?.source === "incoming" ? "fixed" : undefined}
                 loading={loading}
                 columns={originalColumns}
+                fitStack={incomingFitStack(originalColumns)}
+                fitStackAware={fitStackAware}
                 dataSource={configuredRows}
                 expandable={
                   isGeneralSettlementRoute
@@ -365,7 +442,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                     ? { body: { wrapper: (props: ComponentProps<"tbody">) => <IncomingTotalsBody {...props} headers={originalHeaders} totals={incomingMeta.totals} /> } }
                   : initialView === "finance-payment-query" && configuredRows.length
                     ? { body: { wrapper: (props: ComponentProps<"tbody">) => (
-                      <PaymentQueryTotalBody {...props} rows={configuredRows} columnCount={paymentOriginalColumns.length} />
+                      <PaymentQueryTotalBody {...props} rows={configuredRows} columnCount={paymentOriginalColumns.length} columnIds={columnIds(paymentOriginalColumns)} />
                     ) } }
                   : isFeeQueryRoute && configuredRows.length
                     ? { body: { wrapper: (props: ComponentProps<"tbody">) => (
@@ -374,11 +451,14 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                   : isGeneralSettlementRoute && configuredRows.length
                     ? {
                         body: {
-                          wrapper: ({ children, ...bodyProps }: ComponentProps<"tbody">) => (
+                          wrapper: ({ children, ...wrapperProps }: ComponentProps<"tbody">) => {
+                            const [stack, bodyProps] = takeTotalsStack(wrapperProps);
+                            return (
                             <tbody {...bodyProps}>
                               <tr className="finance-settlement-grand-total">
                                 <td />
-                                {originalHeaders.map((header, index) => {
+                                {layoutTotalCells(originalColumnIds, stack, (index) => {
+                                  const header = originalHeaders[index];
                                   const keyByHeader: Record<string, string> = {
                                     回款金额: "receipt_amount",
                                     已分金额: "allocated_amount",
@@ -404,18 +484,15 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                                       "扣归档费",
                                       "实际结算金额",
                                     ].includes(header);
-                                  return (
-                                    <td key={`${header}-${index}`}>
-                                      {totalKey && !hidePaymentTotal && !hideRejectedTotal
-                                        ? generalSettlementMeta.totals[totalKey] == null ? "—" : Number(generalSettlementMeta.totals[totalKey]).toFixed(2)
-                                        : null}
-                                    </td>
-                                  );
-                                })}
+                                  return totalKey && !hidePaymentTotal && !hideRejectedTotal
+                                    ? generalSettlementMeta.totals[totalKey] == null ? "—" : Number(generalSettlementMeta.totals[totalKey]).toFixed(2)
+                                    : null;
+                                }).map((cell) => <td key={cell.key}>{cell.content}</td>)}
                               </tr>
                               {children}
                             </tbody>
-                          ),
+                            );
+                          },
                         },
                       }
                     : isArchiveSettlementActiveRoute && configuredRows.length
@@ -471,14 +548,15 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                     : isInvoiceUnissuedRoute && configuredRows.length
                       ? {
                           body: {
-                            wrapper: ({ children, ...bodyProps }: ComponentProps<"tbody">) => (
+                            wrapper: ({ children, ...wrapperProps }: ComponentProps<"tbody">) => {
+                              const [stack, bodyProps] = takeTotalsStack(wrapperProps);
+                              return (
                               <tbody {...bodyProps}>
                                 <tr className="finance-invoice-unissued-grand-total">
                                   <td />
-                                  {originalHeaders.map(
-                                    (header, index) => (
-                                      <td key={`${header}-${index}`}>
-                                        {header === "金额"
+                                  {layoutTotalCells(originalColumnIds, stack, (index) => {
+                                    const header = originalHeaders[index];
+                                    return header === "金额"
                                           ? invoiceUnissuedMeta.totalAmount.toFixed(2)
                                           : header === "开票金额"
                                             ? invoiceUnissuedMeta.totalInvoiceAmount.toFixed(2)
@@ -486,27 +564,27 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                                               ? invoiceUnissuedMeta.totalCashedAmount.toFixed(2)
                                               : header === "付款金额"
                                                 ? invoiceUnissuedMeta.totalPaidAmount.toFixed(2)
-                                                : null}
-                                      </td>
-                                    ),
-                                  )}
+                                                : null;
+                                  }).map((cell) => <td key={cell.key}>{cell.content}</td>)}
                                 </tr>
                                 {children}
                               </tbody>
-                            ),
+                              );
+                            },
                           },
                         }
                     : (isInvoiceMineRoute || isInvoicePendingRoute || isInvoiceCompanyRoute) && configuredRows.length
                       ? {
                           body: {
-                            wrapper: ({ children, ...bodyProps }: ComponentProps<"tbody">) => (
+                            wrapper: ({ children, ...wrapperProps }: ComponentProps<"tbody">) => {
+                              const [stack, bodyProps] = takeTotalsStack(wrapperProps);
+                              return (
                               <tbody {...bodyProps}>
                                 <tr className="finance-invoice-grand-total">
                                   <td />
-                                  {originalHeaders.map(
-                                    (header, index) => (
-                                      <td key={`${header}-${index}`}>
-                                        {header === "开票金额"
+                                  {layoutTotalCells(originalColumnIds, stack, (index) => {
+                                    const header = originalHeaders[index];
+                                    return header === "开票金额"
                                           ? isInvoicePendingRoute
                                             ? invoicePendingMeta.totalAmount
                                             : isInvoiceCompanyRoute
@@ -518,27 +596,26 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                                               : isInvoiceCompanyRoute
                                                 ? invoiceCompanyMeta.totalExtraAmount
                                                 : invoiceMineMeta.totalExtraAmount
-                                            : null}
-                                      </td>
-                                    ),
-                                  )}
+                                            : null;
+                                  }).map((cell) => <td key={cell.key}>{cell.content}</td>)}
                                 </tr>
                                 {children}
                               </tbody>
-                            ),
+                              );
+                            },
                           },
                         }
                     : undefined
                 }
                 summary={
                   isInternalQueueRoute
-                    ? () => !loading && !internalQueueError && internalQueueMeta!.total > 0
-                      ? <InternalQueueSummary meta={internalQueueMeta!} headers={originalHeaders} selectable={Boolean(activeRouteConfig?.selectable)} />
+                    ? (_pageData: readonly OriginalFinanceRow[], fit?: FitStackState) => !loading && !internalQueueError && internalQueueMeta!.total > 0
+                      ? <InternalQueueSummary meta={internalQueueMeta!} headers={originalHeaders} selectable={Boolean(activeRouteConfig?.selectable)} stack={fit?.groups} />
                       : null
                     : initialView === "finance-payment-query"
-                    ? (pageData) => <PaymentQueryPageSummary rows={pageData} columnCount={paymentOriginalColumns.length} />
+                    ? (pageData: readonly OriginalFinanceRow[], fit?: FitStackState) => <PaymentQueryPageSummary rows={pageData} columnCount={paymentOriginalColumns.length} columnIds={columnIds(paymentOriginalColumns)} stack={fit?.groups} />
                     : isFeeQueryRoute
-                    ? (pageData) => <FeeQueryPageSummary rows={pageData} headers={originalHeaders} />
+                    ? (pageData: readonly OriginalFinanceRow[], fit?: FitStackState) => <FeeQueryPageSummary rows={pageData} headers={originalHeaders} stack={fit?.groups} />
                     : [
                           "finance-internal-writeoff",
                           "finance-internal-done",
@@ -571,17 +648,13 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                               </Table.Summary.Row>
                             ) : null
                       : isInvoiceUnissuedRoute
-                        ? (pageData) =>
+                        ? (pageData: readonly OriginalFinanceRow[], fit?: FitStackState) =>
                             pageData.length ? (
                               <Table.Summary.Row className="finance-invoice-unissued-page-total">
                                 <Table.Summary.Cell index={0} />
-                                {originalHeaders.map(
-                                  (header, index) => (
-                                    <Table.Summary.Cell
-                                      key={`${header}-${index}`}
-                                      index={index + 1}
-                                    >
-                                      {header === "金额"
+                                {layoutTotalCells(originalColumnIds, fit?.groups, (index) => {
+                                  const header = originalHeaders[index];
+                                  return header === "金额"
                                         ? pageData.reduce(
                                             (sum, row) =>
                                               sum + Number(row.data?.amount || 0),
@@ -605,24 +678,18 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                                                     sum + Number(row.data?.paid_amount || 0),
                                                   0,
                                                 ).toFixed(2)
-                                              : null}
-                                    </Table.Summary.Cell>
-                                  ),
-                                )}
+                                              : null;
+                                }).map((cell, position) => <Table.Summary.Cell key={cell.key} index={position + 1}>{cell.content}</Table.Summary.Cell>)}
                               </Table.Summary.Row>
                             ) : null
                       : isInvoiceMineRoute || isInvoicePendingRoute || isInvoiceCompanyRoute
-                        ? (pageData) =>
+                        ? (pageData: readonly OriginalFinanceRow[], fit?: FitStackState) =>
                             pageData.length ? (
                               <Table.Summary.Row className="finance-invoice-page-total">
                                 <Table.Summary.Cell index={0} />
-                                {originalHeaders.map(
-                                  (header, index) => (
-                                    <Table.Summary.Cell
-                                      key={`${header}-${index}`}
-                                      index={index + 1}
-                                    >
-                                      {header === "开票金额"
+                                {layoutTotalCells(originalColumnIds, fit?.groups, (index) => {
+                                  const header = originalHeaders[index];
+                                  return header === "开票金额"
                                         ? pageData
                                             .filter((row) =>
                                               isInvoicePendingRoute ||
@@ -648,10 +715,8 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                                                   ),
                                                 0,
                                               )
-                                          : null}
-                                    </Table.Summary.Cell>
-                                  ),
-                                )}
+                                          : null;
+                                }).map((cell, position) => <Table.Summary.Cell key={cell.key} index={position + 1}>{cell.content}</Table.Summary.Cell>)}
                               </Table.Summary.Row>
                             ) : null
                       : [

@@ -163,7 +163,7 @@ export function DocumentDetail({
                         　{x.from_status} → {x.to_status}
                       </span>
                     )}
-                    <div style={{ color: "#999", fontSize: 12 }}>
+                    <div style={{ color: "var(--oa-text-3)", fontSize: 12 }}>
                       {personDisplayName(x.operator_display_name)} ·{" "}
                       {new Date(x.created_at).toLocaleString("zh-CN")}
                     </div>

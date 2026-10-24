@@ -286,7 +286,7 @@ export function IprFilesPanel({
           >
             <DatePicker style={{ width: "100%" }} />
           </Form.Item>
-          <div style={{ marginBottom: 16, color: "#666" }}>
+          <div style={{ marginBottom: 16, color: "var(--oa-text-2)" }}>
             待转文属性由管理员配置的文件类型决定，上传人不能自行绕过。
           </div>
           <Form.Item label="案件文档" required>

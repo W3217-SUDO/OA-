@@ -316,7 +316,7 @@ export function IprBatchOperations({
               style={{
                 marginTop: -14,
                 marginBottom: 12,
-                color: "#666",
+                color: "var(--oa-text-2)",
               }}
             >
               已选择{batchSelectedKinds.join("、")}
@@ -372,7 +372,7 @@ export function IprBatchOperations({
         onOk={onSaveBatchMaintenance}
         okText="确认维护"
       >
-        <p style={{ color: "#666" }}>
+        <p style={{ color: "var(--oa-text-2)" }}>
           仅会更新填写的字段；系统会在写入前校验全部目标案件均为当前账号可维护的在办案件，任一案件不符合时不会修改任何案件。
         </p>
         <Form form={iprMaintenanceForm} layout="vertical">

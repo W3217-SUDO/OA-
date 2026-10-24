@@ -1,11 +1,11 @@
 .global-mcp-workspace { min-width: 0; }
 .global-mcp-workspace-header, .global-mcp-workspace-list article { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .global-mcp-workspace-header h2 { margin: 0 0 4px; font-size: 16px; }
-.global-mcp-workspace-header p { margin: 0; color: #59666a; overflow-wrap: anywhere; }
+.global-mcp-workspace-header p { margin: 0; color: var(--oa-text-2); overflow-wrap: anywhere; }
 .global-mcp-workspace-actions, .global-mcp-workspace-row-actions, .global-mcp-workspace-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .global-mcp-workspace-summary { flex: 1; overflow-wrap: anywhere; }
-.global-mcp-workspace-list { margin-top: 16px; border-top: 1px solid #e5e9ea; }
-.global-mcp-workspace-list article { min-width: 0; padding: 12px 0; border-bottom: 1px solid #e5e9ea; }
+.global-mcp-workspace-list { margin-top: 16px; border-top: 1px solid var(--oa-border); }
+.global-mcp-workspace-list article { min-width: 0; padding: 12px 0; border-bottom: 1px solid var(--oa-border); }
 .global-mcp-workspace .ant-alert { margin: 12px 0; }
 .global-mcp-workspace .ant-btn, .global-mcp-workspace-drawer .ant-btn, .global-mcp-workspace-drawer .ant-drawer-close { min-width: 44px; min-height: 44px; height: auto; white-space: normal; }
 .global-mcp-workspace-drawer .ant-drawer-body { padding-bottom: max(24px, env(safe-area-inset-bottom)); }

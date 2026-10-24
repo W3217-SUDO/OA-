@@ -33,6 +33,7 @@ const todoIcons: Record<string, ReactNode> = {
 };
 
 type Props = {
+  showHead?: boolean;
   greeting: string;
   name?: string;
   briefing: ReactNode;
@@ -51,7 +52,7 @@ type Props = {
   onRefresh: () => void;
 };
 
-export default function DashboardOverview({ greeting, name, briefing, todos, cases, todoStatus, caseStatus, todosLoading, casesLoading, todosError, casesError, canNavigate, canOpenCase, onNavigate, onOpenCase, onRefresh }: Props) {
+export default function DashboardOverview({ showHead = true, greeting, name, briefing, todos, cases, todoStatus, caseStatus, todosLoading, casesLoading, todosError, casesError, canNavigate, canOpenCase, onNavigate, onOpenCase, onRefresh }: Props) {
   const items = (todos || []).flatMap((row) => [
     { label: String(row[0]), count: row[1] },
     { label: String(row[3]), count: row[4] },
@@ -64,12 +65,12 @@ export default function DashboardOverview({ greeting, name, briefing, todos, cas
   };
   return (
     <section className="wb-overview" aria-label="工作概况">
-      <header className="wb-overview-head">
+      {showHead && <header className="wb-overview-head">
         <DashboardGreeting greeting={greeting} name={name} briefing={briefing} />
         <Tooltip title="刷新工作概况">
           <Button type="text" icon={<ReloadOutlined />} aria-label="刷新工作概况" onClick={onRefresh} />
         </Tooltip>
-      </header>
+      </header>}
       <div className="wb-overview-body">
         <section className="wb-overview-section" aria-label="我的待办">
           <div className="wb-overview-section-head">

@@ -11,19 +11,19 @@
 }
 
 .assistant-context-item.is-failed {
-  border-color: #ffccc7;
-  background: #fff2f0;
+  border-color: color-mix(in srgb, #ffccc7 var(--oa-tint), var(--oa-surface));
+  background: var(--oa-fill);
 }
 
 .assistant-context-status {
   flex: none;
-  color: #1677ff;
+  color: color-mix(in srgb, #1677ff var(--oa-ink), #fff);
   font-size: 12px;
   white-space: nowrap;
 }
 
 .assistant-context-item.is-failed .assistant-context-status {
-  color: #cf1322;
+  color: color-mix(in srgb, #cf1322 var(--oa-ink), #fff);
 }
 
 @media (max-width: 991px) {
