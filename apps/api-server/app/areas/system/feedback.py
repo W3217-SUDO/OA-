@@ -28,6 +28,9 @@ REPORTER_ACTIONS = {
 }
 
 
+FEEDBACK_ATTACHMENT_CATEGORIES = ("问题反馈截图", "问题反馈附件")
+
+
 class FeedbackTransition(BaseModel):
     action: str
     comment: str = Field(default="", max_length=2000)
@@ -96,7 +99,8 @@ def _serialize_feedback(record: BusinessRecord, owner_name: str = "", assignee_n
         "id": record.id, "serial_no": record.serial_no, "description": record.description,
         "status": record.status, "owner": record.owner, "owner_display_name": owner_name,
         "assignee": _assignee(record), "assignee_display_name": assignee_name,
-        "page": (record.data or {}).get("page", ""), "has_screenshot": has_screenshot,
+        "page": (record.data or {}).get("page", ""), "route": (record.data or {}).get("route", ""),
+        "has_screenshot": has_screenshot,
         "created_at": record.created_at, "updated_at": record.updated_at,
     }
 
@@ -119,6 +123,25 @@ async def _read_screenshot(screenshot: UploadFile | None) -> tuple[bytes, str]:
     return content, suffix
 
 
+FEEDBACK_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+FEEDBACK_FILE_SUFFIXES = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt", ".log", ".zip", ".mp4", ".mov"}
+FEEDBACK_MAX_FILES = 10
+
+
+async def _read_feedback_file(upload: UploadFile) -> tuple[bytes, str, str]:
+    """返回 (内容, 后缀, 分类)；图片按截图校验，其余按附件白名单和 20MB 上限。"""
+    suffix = Path(upload.filename or "").suffix.lower()
+    if suffix in FEEDBACK_IMAGE_SUFFIXES:
+        content, suffix = await _read_screenshot(upload)
+        return content, suffix, "问题反馈截图"
+    if suffix not in FEEDBACK_FILE_SUFFIXES:
+        raise HTTPException(422, f"不支持的附件类型：{upload.filename}")
+    content = await upload.read(20 * 1024 * 1024 + 1)
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(413, f"附件不能超过 20MB：{upload.filename}")
+    return content, suffix, "问题反馈附件"
+
+
 def _save_screenshot(
     db: AsyncSession, record_id: int, screenshot: UploadFile, content: bytes, suffix: str,
     username: str, category: str, event_id: int | None = None,
@@ -138,21 +161,28 @@ def _save_screenshot(
 
 @router.post(f"{settings.api_prefix}/feedback")
 async def create_feedback(
-    description: str = Form(...), page: str = Form(""), screenshot: UploadFile | None = File(None),
+    description: str = Form(...), page: str = Form(""), route: str = Form(""),
+    screenshot: UploadFile | None = File(None), files: list[UploadFile] = File(default=[]),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     description = description.strip()
     if not 5 <= len(description) <= 2000:
         raise HTTPException(422, "问题描述需填写 5 到 2000 字")
-    if len(page) > 500:
+    if len(page) > 500 or len(route) > 300:
         raise HTTPException(422, "页面地址过长")
-    content, suffix = await _read_screenshot(screenshot)
-    stored_path = None
+    uploads = ([screenshot] if screenshot else []) + [item for item in files if item.filename]
+    if len(uploads) > FEEDBACK_MAX_FILES:
+        raise HTTPException(422, f"截图和附件合计最多 {FEEDBACK_MAX_FILES} 个")
+    contents = [(upload, *await _read_feedback_file(upload)) for upload in uploads]
+    stored_paths: list[Path] = []
     try:
+        data = {"page": page.strip()}
+        if route.strip():
+            data["route"] = route.strip()
         record = BusinessRecord(
             module="bug_feedback", serial_no=f"BUG{uuid4().hex[:20].upper()}",
             title=description[:100], customer="", status="待处理", owner=identity["username"],
-            description=description, data={"page": page.strip()},
+            description=description, data=data,
         )
         db.add(record)
         await db.flush()
@@ -162,16 +192,16 @@ async def create_feedback(
         )
         db.add(event)
         await db.flush()
-        if screenshot:
-            stored_path = _save_screenshot(
-                db, record.id, screenshot, content, suffix, identity["username"], "问题反馈截图",
-            )
+        for upload, content, suffix, category in contents:
+            stored_paths.append(_save_screenshot(
+                db, record.id, upload, content, suffix, identity["username"], category,
+            ))
         await _notify_participants(db, record, identity["username"], "新反馈", event.id)
         await db.commit()
         return {"id": record.id, "serial_no": record.serial_no}
     except Exception:
         await db.rollback()
-        if stored_path:
+        for stored_path in stored_paths:
             stored_path.unlink(missing_ok=True)
         raise
 
@@ -211,7 +241,7 @@ async def list_feedback(
     total = await db.scalar(select(func.count()).select_from(joins).where(*conditions))
     has_screenshot = select(FileAttachment.id).where(
         FileAttachment.record_id == BusinessRecord.id,
-        FileAttachment.category == "问题反馈截图",
+        FileAttachment.category.in_(FEEDBACK_ATTACHMENT_CATEGORIES),
     ).exists()
     records = (await db.execute(select(BusinessRecord, owner_user.display_name, assignee_user.display_name, has_screenshot)
     .select_from(joins).where(*conditions).order_by(
@@ -240,6 +270,9 @@ async def get_feedback(feedback_id: int, identity: dict = Depends(current_identi
         FileAttachment.record_id == record.id, FileAttachment.category == "问题反馈补充截图",
     ))).all()
     screenshot_event_ids = {attachment.remark for attachment in screenshots}
+    files = (await db.scalars(select(FileAttachment).where(
+        FileAttachment.record_id == record.id, FileAttachment.category.in_(FEEDBACK_ATTACHMENT_CATEGORIES),
+    ).order_by(FileAttachment.id))).all()
     missing_names = {event.operator for event in events} - names.keys()
     if missing_names:
         authors = (await db.scalars(select(User).where(User.username.in_(missing_names)))).all()
@@ -247,6 +280,10 @@ async def get_feedback(feedback_id: int, identity: dict = Depends(current_identi
     return {
         **_serialize_feedback(record, names.get(record.owner, ""), names.get(_assignee(record), ""), has_screenshot),
         "can_assign": _is_admin(identity), "available_actions": _available_actions(record, identity),
+        "attachments": [{
+            "id": item.id, "name": item.original_name, "size": item.size,
+            "content_type": item.content_type, "is_image": item.category == "问题反馈截图",
+        } for item in files],
         "events": [{
             "id": event.id, "action": event.action, "from_status": event.from_status,
             "to_status": event.to_status, "operator": event.operator,
@@ -357,7 +394,8 @@ async def assign_feedback(
 async def feedback_screenshot(feedback_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     await _get_feedback(db, feedback_id, identity)
     attachment = await db.scalar(select(FileAttachment).where(
-        FileAttachment.record_id == feedback_id, FileAttachment.category == "问题反馈截图"))
+        FileAttachment.record_id == feedback_id, FileAttachment.category == "问题反馈截图",
+    ).order_by(FileAttachment.id).limit(1))
     from app.core.storage import ensure_attachment_local
     path = (await ensure_attachment_local(attachment) or Path(str(attachment.path))) if attachment else None
     if not path or not path.is_file():
@@ -378,4 +416,20 @@ async def feedback_event_screenshot(
     path = (await ensure_attachment_local(attachment) or Path(str(attachment.path))) if attachment else None
     if not path or not path.is_file():
         raise HTTPException(404, "补充截图不存在")
+    return FileResponse(path, media_type=attachment.content_type, filename=attachment.original_name)
+
+
+@router.get(f"{settings.api_prefix}/feedback/{{feedback_id}}/attachments/{{attachment_id}}")
+async def feedback_attachment(
+    feedback_id: int, attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    await _get_feedback(db, feedback_id, identity)
+    attachment = await db.scalar(select(FileAttachment).where(
+        FileAttachment.id == attachment_id, FileAttachment.record_id == feedback_id,
+        FileAttachment.category.in_(FEEDBACK_ATTACHMENT_CATEGORIES),
+    ))
+    from app.core.storage import ensure_attachment_local
+    path = (await ensure_attachment_local(attachment) or Path(str(attachment.path))) if attachment else None
+    if not path or not path.is_file():
+        raise HTTPException(404, "附件不存在")
     return FileResponse(path, media_type=attachment.content_type, filename=attachment.original_name)

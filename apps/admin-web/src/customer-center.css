@@ -221,38 +221,55 @@
 }
 .customer-create-page > .ant-card-head .ant-card-head-title { padding: 8px 0; font-size: 15px; font-weight: 500; }
 .customer-create-page > .ant-card-body { padding: 0 12px; }
+/* 新建/编辑客户：表格式分组表单。每格高度随内容（输入框 32px + 上下 6px），标签列按最长标签留宽，避免截断和叠压。 */
+.customer-create-form { padding-top: 8px; }
 .customer-create-form section {
-  margin-bottom: -1px;
+  margin-bottom: 10px;
+  overflow: hidden;
   border: 1px solid var(--oa-border);
+  border-radius: var(--oa-radius-sm, 6px);
 }
 .customer-create-form section h3 {
   margin: 0;
   display: flex;
   align-items: center;
-  height: 20px;
-  padding: 0 8px;
+  height: 32px;
+  padding: 0 12px;
   color: var(--oa-text);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   background: var(--oa-fill);
   border-bottom: 1px solid var(--oa-border);
 }
-.customer-create-grid { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 0; padding: 0; }
-.customer-control-grid { grid-template-columns: repeat(5, minmax(155px, 1fr)); }
-.customer-create-form .ant-form-item { height: 25px; min-height: 25px; margin: 0; padding: 0 6px; border-right: 1px solid var(--oa-border); border-bottom: 1px solid var(--oa-border); }
-.customer-create-form .customer-person-multi-field {
-  height: auto;
-  min-height: 25px;
-  align-self: stretch;
+.customer-create-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 0;
+  margin: 0 -1px -1px 0;
+  padding: 0;
 }
-.customer-create-form .customer-control-grid .customer-person-multi-field {
-  grid-column: span 2;
+.customer-create-form .ant-form-item {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 46px;
+  margin: 0;
+  padding: 6px 12px;
+  border-right: 1px solid var(--oa-border);
+  border-bottom: 1px solid var(--oa-border);
 }
-.customer-create-form .ant-form-item-row { flex-wrap: nowrap; }
-.customer-create-form .ant-form-item-control-input { min-height: 23px; }
-.customer-create-form .ant-form-item-label { flex: 0 0 88px; padding: 0 6px 0 0; }
+.customer-create-form .ant-form-item > .ant-row { width: 100%; }
+/* 跨列规则保证每组排满：wide 在任何列数都占两格；fill 只在四列时占两格补齐；联系人账号在三列时独占一行。 */
+.customer-create-form .customer-field-wide,
+.customer-create-form .customer-field-fill { grid-column: span 2; }
+.customer-create-form .ant-form-item-row { flex-wrap: nowrap; align-items: center; }
+.customer-create-form .ant-form-item-control { min-width: 0; }
+.customer-create-form .ant-form-item-control-input { min-height: 32px; }
+.customer-create-form .ant-form-item-label { flex: 0 0 84px; padding: 0 8px 0 0; white-space: nowrap; }
+.customer-create-form .customer-long-label .ant-form-item-label { flex-basis: 112px; }
 .customer-create-form .customer-credit-code-field .ant-form-item-label { flex-basis: 132px; }
-.customer-create-form .ant-form-item-label > label { height: 23px; font-size: 12px; }
+.customer-create-form .ant-form-item-label > label { height: 32px; color: var(--oa-text-2); font-size: 13px; }
+.customer-create-form .ant-form-item-explain { font-size: 12px; line-height: 18px; }
 .customer-create-form .ant-input,
 .customer-create-form .ant-select-selector { min-height: 32px !important; height: 32px !important; font-size: 13px; }
 .customer-create-form .customer-person-multi-field .ant-select-selector {
@@ -346,12 +363,17 @@
 .customer-contact-drawer-table .ant-table-thead > tr > :nth-child(10),
 .customer-contact-drawer-table .ant-table-tbody > tr > :nth-child(10) { width: 120px; }
 
+@media (max-width: 1440px) {
+  .customer-create-grid { grid-template-columns: repeat(3, minmax(240px, 1fr)); }
+  .customer-create-form .customer-field-fill { grid-column: auto; }
+  .customer-create-form .customer-control-grid .customer-field-wide { grid-column: 1 / -1; }
+}
+
 @media (max-width: 1100px) {
   .customer-query { grid-template-columns: auto 1fr auto 140px; }
   .customer-query > :nth-child(5), .customer-query > :nth-child(6) { display: none; }
   .customer-bottom-actions { margin-top: 8px; }
   .customer-create-grid { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
-  .customer-control-grid { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
   .customer-view-fields-four, .customer-view-fields-five { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 

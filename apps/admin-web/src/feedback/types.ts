@@ -8,6 +8,7 @@ export type FeedbackRecord = {
   assignee: string;
   assignee_display_name: string;
   page: string;
+  route: string;
   created_at: string;
   updated_at: string;
   has_screenshot: boolean;
@@ -25,7 +26,16 @@ export type FeedbackEvent = {
   has_screenshot: boolean;
 };
 
+export type FeedbackAttachment = {
+  id: number;
+  name: string;
+  size: number;
+  content_type: string;
+  is_image: boolean;
+};
+
 export type FeedbackDetails = FeedbackRecord & {
+  attachments: FeedbackAttachment[];
   events: FeedbackEvent[];
   can_assign: boolean;
   available_actions: string[];

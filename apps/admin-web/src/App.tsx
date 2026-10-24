@@ -742,6 +742,13 @@ function flattenMenu(items: NavItem[]): NavItem[] {
   return items.flatMap((item) => [item, ...flattenMenu(item.children || [])]);
 }
 
+// 问题反馈的页面选项：只列可打开的菜单叶子，名称带上级路径方便区分同名页面。
+function feedbackMenuPages(items: NavItem[], parents: string[] = []): { key: string; label: string }[] {
+  return items.flatMap((item) => item.children?.length
+    ? feedbackMenuPages(item.children, [...parents, item.label])
+    : item.link_url || item.disabled || item.key === FEEDBACK_ROUTE ? [] : [{ key: item.key, label: [...parents, item.label].join(" / ") }]);
+}
+
 function filterMenuByGrantedKeys(items: NavItem[], grantedKeys: Set<string>, includePersonalAgent = false): NavItem[] {
   return items.flatMap((item) => {
     const children = filterMenuByGrantedKeys(item.children || [], grantedKeys, includePersonalAgent);
@@ -1695,7 +1702,11 @@ export default function App() {
         onOpenCaseAgentFolder={(caseId, serialNo) => navigate(`case-detail-${caseId}-${encodeURIComponent(serialNo)}-ai-space`)}
       />
     ) : route === FEEDBACK_ROUTE ? (
-      <FeedbackPage onNavigate={navigate} />
+      <FeedbackPage onNavigate={navigate} menuPages={feedbackMenuPages(sideMenuItems)}
+        resolvePageLabel={(key) => resolveWorkspacePageLabel(key, effectiveMenuItems, personalAgentName)}
+        openPages={visibleOpenPages.filter((item) => item.key !== FEEDBACK_ROUTE).map((item) => ({
+          key: item.key, label: resolveWorkspacePageLabel(item.key, effectiveMenuItems, personalAgentName),
+        }))} />
     ) : route.startsWith("seal-") ? (
       <SealCenterPage initialView={active} onNavigate={navigate} />
     ) : route.startsWith("party-") ? (

@@ -6,16 +6,21 @@ import dayjs from "dayjs";
 import { api } from "../api";
 import FeedbackDetail from "./FeedbackDetail";
 import FeedbackForm from "./FeedbackForm";
-import { consumeFeedbackTarget } from "./navigation";
+import { consumeFeedbackTarget, type FeedbackPageOption } from "./navigation";
 import type { FeedbackPage, FeedbackRecord } from "./types";
 
-type Props = { sourcePage: string };
+type Props = {
+  sourceRoute: string;
+  openPages: FeedbackPageOption[];
+  menuPages: FeedbackPageOption[];
+  onNavigate: (route: string) => void;
+};
 const statuses = ["待处理", "处理中", "待补充", "待验证", "已处理", "已解决"];
 const statusColors: Record<string, string> = {
   待处理: "default", 处理中: "processing", 待补充: "warning", 待验证: "cyan", 已处理: "green", 已解决: "success",
 };
 
-export default function FeedbackManager({ sourcePage }: Props) {
+export default function FeedbackManager({ sourceRoute, openPages, menuPages, onNavigate }: Props) {
   const [rows, setRows] = useState<FeedbackRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -27,7 +32,8 @@ export default function FeedbackManager({ sourcePage }: Props) {
   const [pageSize, setPageSize] = useState(20);
   const [reload, setReload] = useState(0);
   const [viewingId, setViewingId] = useState<number | null>(null);
-  const [creating, setCreating] = useState(false);
+  // 从侧栏“问题反馈”进来时直接进入填写；从通知打开指定反馈时由 openTarget 切回详情。
+  const [creating, setCreating] = useState(Boolean(sourceRoute));
   const listVisible = !viewingId && !creating;
 
   useEffect(() => {
@@ -70,11 +76,11 @@ export default function FeedbackManager({ sourcePage }: Props) {
     { title: "处理人", width: 105, ellipsis: true, render: (_, row) => row.assignee_display_name || row.assignee || "未指派" },
     { title: "最近更新", width: 160, render: (_, row) => dayjs(row.updated_at || row.created_at).format("YYYY-MM-DD HH:mm") },
     { title: "提交页面", dataIndex: "page", width: 180, ellipsis: true },
-    { title: "截图", width: 65, render: (_, row) => row.has_screenshot ? "有" : "无" },
+    { title: "截图/附件", width: 85, render: (_, row) => row.has_screenshot ? "有" : "无" },
   ];
 
-  if (viewingId) return <FeedbackDetail feedbackId={viewingId} onBack={() => { setViewingId(null); setReload((current) => current + 1); }} />;
-  if (creating) return <FeedbackForm sourcePage={sourcePage} onCancel={() => setCreating(false)}
+  if (viewingId) return <FeedbackDetail feedbackId={viewingId} onNavigate={onNavigate} onBack={() => { setViewingId(null); setReload((current) => current + 1); }} />;
+  if (creating) return <FeedbackForm sourceRoute={sourceRoute} openPages={openPages} menuPages={menuPages} onCancel={() => setCreating(false)}
     onSubmitted={(id) => { setCreating(false); setViewingId(id); }} />;
 
   return <section aria-label="问题反馈列表">
@@ -91,7 +97,7 @@ export default function FeedbackManager({ sourcePage }: Props) {
       </Space>
       {error ? <Alert type="error" showIcon title={error} /> : <Table<FeedbackRecord>
         rowKey="id" size="small" tableLayout="fixed" columns={columns} dataSource={rows}
-        loading={loading} scroll={{ x: 1210 }} pagination={{
+        loading={loading} scroll={{ x: 1230 }} pagination={{
           current: page, pageSize, total, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100],
           showTotal: (count) => `共 ${count} 条`,
           onChange: (nextPage, nextSize) => { setPage(nextPage); setPageSize(nextSize); },

@@ -405,8 +405,11 @@ body {
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+  /* 滚动容器自身不留上下内边距：吸顶表头按内边距内缘定位，留了内边距滚动时行内容会从表头上方漏出来。和查询区的间距由外边距提供。 */
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
 }
-/* 分页条固定在结果区底部：表格内容比结果区高时也始终看得见、点得到。 */
+/* 分页条固定在结果区底部：表格内容比结果区高时也始终看得见、点得到；上沿加分隔线，滚到一半的行被它干净地挡住。 */
 .page-workbench .ant-table-pagination {
   position: sticky;
   z-index: 3;
@@ -414,11 +417,22 @@ body {
   margin: 0;
   padding: 10px 0 6px;
   background: var(--oa-surface);
+  border-top: 1px solid var(--oa-border);
+  box-shadow: 0 -6px 8px -6px rgba(15, 23, 42, 0.12);
 }
 .page-workbench > .ant-card > .ant-card-body > .ant-table-wrapper .ant-table-thead > tr > th {
   position: sticky;
   z-index: 2;
   top: 0;
+}
+/* 表格上边框画在会滚走的容器上，表头吸顶后补一条上边线和下沿阴影，和下面滚动的行分开。 */
+.page-workbench > .ant-card > .ant-card-body > .ant-table-wrapper .ant-table-header.ant-table-sticky-holder,
+.page-workbench > .ant-card > .ant-card-body > .ant-table-wrapper .ant-table-thead > tr > th {
+  box-shadow: inset 0 1px 0 var(--oa-border);
+}
+.page-workbench > .ant-card > .ant-card-body > .ant-table-wrapper .ant-table-header.ant-table-sticky-holder {
+  z-index: 3;
+  filter: drop-shadow(0 2px 2px rgba(15, 23, 42, 0.08));
 }
 .page-head {
   height: 64px;

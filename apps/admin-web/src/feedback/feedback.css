@@ -1,0 +1,58 @@
+/* 问题反馈表单：只用基础主题变量，避免钉钉旧内核不认识 color-mix。 */
+.feedback-form { position: relative; max-width: 920px; }
+.feedback-section { margin-bottom: 22px; }
+.feedback-section-title { display: flex; align-items: baseline; gap: 4px; margin-bottom: 10px; font-weight: 600; color: var(--oa-text); }
+.feedback-required { color: var(--oa-danger, #ff4d4f); }
+.feedback-hint { margin-left: 8px; font-size: 12px; font-weight: 400; color: var(--oa-text-3, #8c8c8c); }
+.feedback-actions .feedback-hint { margin-left: 4px; }
+.feedback-error { margin-top: 4px; font-size: 12px; color: var(--oa-danger, #ff4d4f); }
+
+.feedback-page-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.feedback-page-chips .feedback-page-chip {
+  margin: 0; padding: 4px 12px; border: 1px solid var(--oa-border, #d9d9d9); border-radius: 16px;
+  font-size: 13px; line-height: 20px;
+}
+.feedback-page-chips .feedback-page-chip:not(.ant-tag-checkable-checked) { background: var(--oa-surface, #fff); }
+.feedback-page-chips .feedback-page-chip.ant-tag-checkable-checked { border-color: var(--oa-primary); }
+.feedback-chip-badge { margin-left: 6px; padding: 0 5px; border-radius: 8px; font-size: 11px; background: rgba(0, 0, 0, 0.08); }
+.feedback-page-chip.ant-tag-checkable-checked .feedback-chip-badge { background: rgba(255, 255, 255, 0.25); }
+
+.feedback-dropzone {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 22px 16px;
+  border: 1px dashed var(--oa-border-strong, #bfbfbf); border-radius: var(--oa-radius, 8px);
+  background: var(--oa-fill, #fafafa); color: var(--oa-text-2, #595959); text-align: center; cursor: pointer;
+  transition: border-color 0.2s;
+}
+.feedback-dropzone:hover, .feedback-dropzone:focus-visible { border-color: var(--oa-primary); outline: none; }
+.feedback-dropzone .feedback-hint { margin-left: 0; }
+.feedback-dropzone-icon { font-size: 30px; color: var(--oa-primary); }
+.feedback-dropzone kbd {
+  padding: 0 5px; border: 1px solid var(--oa-border, #d9d9d9); border-bottom-width: 2px; border-radius: 4px;
+  font-family: inherit; font-size: 12px; background: var(--oa-surface, #fff);
+}
+
+.feedback-files { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; margin-top: 12px; }
+.feedback-file {
+  position: relative; overflow: hidden; border: 1px solid var(--oa-border, #d9d9d9);
+  border-radius: var(--oa-radius-sm, 6px); background: var(--oa-surface, #fff);
+}
+.feedback-file img, .feedback-file-icon { display: block; width: 100%; height: 92px; object-fit: cover; background: var(--oa-fill, #fafafa); }
+.feedback-file-icon { display: flex; align-items: center; justify-content: center; font-size: 30px; color: var(--oa-text-3, #8c8c8c); }
+.feedback-file-name { padding: 4px 8px 0; overflow: hidden; font-size: 12px; white-space: nowrap; text-overflow: ellipsis; color: var(--oa-text); }
+.feedback-file-size { padding: 0 8px 6px; font-size: 11px; color: var(--oa-text-3, #8c8c8c); }
+.feedback-file-remove {
+  position: absolute; top: 4px; right: 4px; display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 11px; cursor: pointer;
+}
+
+.feedback-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+
+.feedback-drop-mask {
+  position: fixed; inset: 0; z-index: 2000; border: 3px dashed var(--oa-primary); display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: rgba(255, 255, 255, 0.85); font-size: 20px; color: var(--oa-primary); pointer-events: none;
+}
+:root[data-theme="dark"] .feedback-drop-mask { background: rgba(20, 20, 20, 0.85); }
+
+.feedback-attachments { display: flex; flex-wrap: wrap; gap: 10px; }
+.feedback-attachments .ant-image img { width: 120px; height: 90px; object-fit: cover; border-radius: 4px; border: 1px solid var(--oa-border, #d9d9d9); }

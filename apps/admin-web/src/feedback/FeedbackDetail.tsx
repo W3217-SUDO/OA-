@@ -1,12 +1,14 @@
 import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Button, Descriptions, Image, Input, message, Space, Spin, Tag, Timeline } from "antd";
+import { Alert, Button, Descriptions, Input, message, Space, Spin, Tag, Timeline } from "antd";
 import dayjs from "dayjs";
 import { api } from "../api";
 import type { FeedbackDetails } from "./types";
 import FeedbackEventImage from "./FeedbackEventImage";
+import FeedbackAttachments from "./FeedbackAttachments";
+import "./feedback.css";
 
-type Props = { feedbackId: number; onBack: () => void };
+type Props = { feedbackId: number; onBack: () => void; onNavigate: (route: string) => void };
 type PersonOption = { username: string; label: string };
 
 const requiresComment = new Set(["请求补充", "提交修复", "重新打开"]);
@@ -14,7 +16,7 @@ const statusColors: Record<string, string> = {
   待处理: "default", 处理中: "processing", 待补充: "warning", 待验证: "cyan", 已处理: "green", 已解决: "success",
 };
 
-export default function FeedbackDetail({ feedbackId, onBack }: Props) {
+export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props) {
   const [feedback, setFeedback] = useState<FeedbackDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -24,9 +26,6 @@ export default function FeedbackDetail({ feedbackId, onBack }: Props) {
   const screenshotInput = useRef<HTMLInputElement>(null);
   const [people, setPeople] = useState<PersonOption[]>([]);
   const [assignee, setAssignee] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
-  const [imageError, setImageError] = useState("");
-  const [loadingImage, setLoadingImage] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -54,37 +53,6 @@ export default function FeedbackDetail({ feedbackId, onBack }: Props) {
     });
     return () => { cancelled = true; };
   }, [feedback?.can_assign]);
-
-  useEffect(() => {
-    setImageUrl("");
-    setImageError("");
-    if (!feedback?.has_screenshot) return;
-    const controller = new AbortController();
-    let objectUrl = "";
-    setLoadingImage(true);
-    void api.get<Blob>(`/feedback/${feedbackId}/screenshot`, {
-      responseType: "blob", signal: controller.signal,
-    }).then(({ data }) => {
-      if (controller.signal.aborted) return;
-      objectUrl = URL.createObjectURL(data);
-      setImageUrl(objectUrl);
-    }).catch(async (failure: any) => {
-      if (controller.signal.aborted) return;
-      let detail = failure?.response?.data?.detail;
-      if (failure?.response?.data instanceof Blob) {
-        const text = await failure.response.data.text();
-        try { detail = JSON.parse(text).detail; }
-        catch { detail = text; }
-      }
-      if (!controller.signal.aborted) setImageError(typeof detail === "string" && detail ? detail : "截图加载失败");
-    }).finally(() => {
-      if (!controller.signal.aborted) setLoadingImage(false);
-    });
-    return () => {
-      controller.abort();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [feedbackId, feedback?.has_screenshot]);
 
   const perform = async (path: string, body: object, success: string, method: "post" | "put" = "post") => {
     setBusy(true);
@@ -141,18 +109,14 @@ export default function FeedbackDetail({ feedbackId, onBack }: Props) {
       { key: "owner", label: "提交人", children: feedback.owner_display_name || feedback.owner },
       { key: "assignee", label: "处理人", children: feedback.assignee_display_name || feedback.assignee || "未指派" },
       { key: "date", label: "提交时间", children: dayjs(feedback.created_at).format("YYYY-MM-DD HH:mm:ss") },
-      { key: "page", label: "提交页面", span: 2, children: <span style={{ overflowWrap: "anywhere" }}>{feedback.page || "—"}</span> },
+      { key: "page", label: "问题页面", span: 2, children: <Space wrap size={4}>
+        <span style={{ overflowWrap: "anywhere" }}>{feedback.page || "—"}</span>
+        {feedback.route && <Button type="link" size="small" onClick={() => onNavigate(feedback.route)}>前往该页面</Button>}
+      </Space> },
       { key: "description", label: "问题描述", span: 2,
         children: <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{feedback.description}</div> },
     ]} />
-    {feedback.has_screenshot && <div style={{ marginTop: 16 }}>
-      <div style={{ marginBottom: 8 }}>反馈截图</div>
-      {loadingImage && <Spin />}
-      {imageError && <Alert type="error" showIcon title={imageError} />}
-      {imageUrl && !imageError && <Image src={imageUrl} alt="用户提交的问题截图"
-        style={{ maxWidth: "100%", maxHeight: 400, objectFit: "contain" }}
-        onError={() => setImageError("截图无法显示，请重新打开详情重试")} />}
-    </div>}
+    <FeedbackAttachments feedbackId={feedbackId} attachments={feedback.attachments || []} />
     {feedback.can_assign && <Space wrap style={{ marginTop: 20 }}>
       <KeywordPersonSelect showSearch value={assignee || undefined} placeholder="选择处理人" aria-label="选择处理人"
         style={{ minWidth: 240 }} optionFilterProp="label"

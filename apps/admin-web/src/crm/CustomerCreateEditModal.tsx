@@ -255,7 +255,7 @@ export function CustomerCreateEditModal({ open, editing, customerTypeOptions, di
             ) : organizationType ? (
               <Form.Item className="customer-credit-code-field" label="统一社会信用代码" name="credit_code" rules={[{ required: true, message: "请输入统一社会信用代码" }, { pattern: /^[0-9A-Za-z]{18}$/, message: "请输入18位统一社会信用代码" }]}><Input maxLength={18} /></Form.Item>
             ) : null}
-            <Form.Item label="注册地址" name="registered_address" rules={customerRegistrationAddressRules}><Input /></Form.Item>
+            <Form.Item className="customer-field-wide" label="注册地址" name="registered_address" rules={customerRegistrationAddressRules}><Input /></Form.Item>
             <Form.Item label="邮编" name="postal_code" rules={customerPostalCodeRules}><Input /></Form.Item>
             <Form.Item label="客户简称" name="short_name"><Input /></Form.Item>
             <Form.Item label="电话" name="phone"><Input /></Form.Item>
@@ -266,14 +266,14 @@ export function CustomerCreateEditModal({ open, editing, customerTypeOptions, di
           <h3>法人信息</h3>
           <div className="customer-create-grid">
             <Form.Item label="法人姓名" name="legal_representative"><Input /></Form.Item>
-            <Form.Item label="身份证号" name="legal_agent_id_no"><Input /></Form.Item>
+            <Form.Item className="customer-field-fill" label="身份证号" name="legal_agent_id_no"><Input /></Form.Item>
             <Form.Item label="职务" name="legal_agent_title"><Input /></Form.Item>
           </div>
         </section>
         <section>
           <h3>开票信息</h3>
           <div className="customer-create-grid">
-            <Form.Item label="开票地址" name="invoice_address"><Input /></Form.Item>
+            <Form.Item className="customer-field-fill" label="开票地址" name="invoice_address"><Input /></Form.Item>
             <Form.Item label="开户行" name="bank_name"><Input /></Form.Item>
             <Form.Item label="帐号" name="bank_account"><Input /></Form.Item>
           </div>
@@ -291,11 +291,11 @@ export function CustomerCreateEditModal({ open, editing, customerTypeOptions, di
             <Form.Item label="客户等级" name="level">
               <Select options={["签约客户", "立案客户", "高级客户", "中级客户", "低级客户"].map(value => ({ value, label: value }))} />
             </Form.Item>
-            <Form.Item label="上海市资助信息" name="is_assisted">
+            <Form.Item className="customer-long-label" label="上海市资助信息" name="is_assisted">
               <Select options={["是", "否"].map(value => ({ value, label: value }))} />
             </Form.Item>
             <Form.Item
-              className="customer-person-multi-field"
+              className="customer-person-multi-field customer-long-label"
               label="客户管理人"
               name="customer_managers"
               getValueFromEvent={(selected: string[]) => prioritizeNewCustomerManagers(
@@ -306,7 +306,7 @@ export function CustomerCreateEditModal({ open, editing, customerTypeOptions, di
             >
               <KeywordPersonSelect mode="multiple" options={directoryOptions} />
             </Form.Item>
-            <Form.Item className="customer-person-multi-field" label="客户联系人账号" name="contact">
+            <Form.Item className="customer-person-multi-field customer-field-wide customer-long-label" label="客户联系人账号" name="contact">
               <KeywordPersonSelect mode="multiple" options={customerContactOptions} filterOption={matchesDirectoryOption} placeholder="输入姓名或账号，选择客户账号" />
             </Form.Item>
           </div>
