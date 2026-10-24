@@ -1566,6 +1566,8 @@ export default function App() {
         sessionStorage.removeItem(CONTRACT_CUSTOMER_ROUTE_SOURCE_KEY);
       }
     }
+    // 不论从侧栏按钮、页签还是其他入口进入问题反馈，都在离开当前页前记下来源页和页面上的按钮。
+    if (normalizedRoute === FEEDBACK_ROUTE && active !== FEEDBACK_ROUTE) rememberFeedbackSource(active);
     if (normalizedRoute === active) {
       // 全局搜索每次提交都要重新读取关键词并查询，不能依赖切换案件菜单触发。
       if (normalizedRoute === "case-global-search") setWorkspaceReloadKey((value) => value + 1);
@@ -2093,7 +2095,7 @@ export default function App() {
               ))}
             </div>
           )}
-          {!isNarrowViewport && <BugFeedback onOpen={() => { rememberFeedbackSource(active); navigate(FEEDBACK_ROUTE); }} />}
+          {!isNarrowViewport && <BugFeedback onOpen={() => navigate(FEEDBACK_ROUTE)} />}
         </Sider>
         {isNarrowViewport && mobileSidebarOpen && (
           <button

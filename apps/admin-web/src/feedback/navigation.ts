@@ -16,8 +16,12 @@ function collectPageControls(): string[] {
     if (element.closest("tbody, li, [role=row], [role=listitem], .ant-list-item, .ant-timeline-item, .ant-pagination, .ant-select-dropdown, .ant-picker-dropdown")) return;
     if (element.closest("[aria-hidden=true]") || !element.getClientRects().length) return;
     const text = (element.innerText || element.getAttribute("aria-label") || element.title || "")
-      .replace(/\s+/g, "").replace(/[（(]\d+[)）]/g, "").replace(/\d+(?:\.\d+)?(?:件|元|条|个|项)?/g, "").trim();
-    if (text && text.length <= 20 && !names.includes(text)) names.push(text);
+      .replace(/\s+/g, "").replace(/[（(]\d+[)）]/g, "").replace(/\d+(?:\.\d+)?(?:件|元|条|个|项)?/g, "")
+      // 去掉数字后留下的空括号（如“等待公证书【】”）。
+      .replace(/[【\[（(]\s*[】\]）)]/g, "").trim();
+    // 只有符号的按钮（如折叠箭头“‹”）不是页面功能。
+    if (!/[\u4e00-\u9fa5A-Za-z]/.test(text)) return;
+    if (text.length <= 20 && !names.includes(text)) names.push(text);
   });
   return names.slice(0, MAX_CONTROLS);
 }
