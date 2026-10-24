@@ -84,6 +84,10 @@ def allowed_path(relative: str) -> None:
 def frontend_inputs(frontend: Path) -> dict[str, str]:
     files = []
     files.append(frontend / "scripts/build-production.mjs")
+    # 构建期旧内核样式回退插件同样决定产物内容，与 build-production.mjs 的输入清单保持一致。
+    plugin = frontend / "scripts/legacy-webview-css.mjs"
+    if plugin.exists():
+        files.append(plugin)
     for directory in ("src", "public"):
         base = frontend / directory
         if base.exists():
