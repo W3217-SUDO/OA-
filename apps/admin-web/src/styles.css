@@ -114,6 +114,15 @@ body {
   flex: 0 0 50px;
   padding: 0 10px;
 }
+/* 智能体中心不显示主侧栏（左边换成它自己的浅色栏），品牌区不再沿用侧栏底色，否则左上角会孤零零一块深色；改成和顶栏一体。 */
+.app-shell.is-desktop-ai-workspace:not(.is-system-navigation-open) .logo {
+  color: var(--oa-header-fg);
+  background: transparent;
+  border-right-color: transparent;
+}
+.app-shell.is-desktop-ai-workspace:not(.is-system-navigation-open) .logo-text small {
+  color: var(--oa-header-fg);
+}
 .sidebar-toggle.ant-btn {
   width: 32px;
   height: 32px;
