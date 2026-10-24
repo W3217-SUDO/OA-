@@ -142,12 +142,12 @@
   .trend-card { grid-column: auto; }
 }
 
+/* 筛选区铺满整行：列数按宽度自适应，输入框拉伸，不在右侧留空。 */
 .report-filter {
   display: grid;
-  grid-template-columns: 265px 235px 255px;
-  gap: 2px 0;
-  min-height: 137px;
-  padding: 2px 8px 7px;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 6px 14px;
+  padding: 8px 14px 10px;
   border: 1px solid var(--oa-border);
   border-top: 0;
   background: var(--oa-surface);
@@ -167,7 +167,6 @@
 
 .report-filter .report-filter-wide {
   grid-column: 1 / -1;
-  width: 739px;
 }
 
 .report-filter .ant-form-item-label {
@@ -215,9 +214,12 @@
   width: 100%;
 }
 
+/* 按钮接在最后一个筛选项后面（占两格），最后一行放不下时才另起一行。 */
 .report-filter-action {
-  grid-column: 1 / -1;
-  padding-top: 4px;
+  grid-column: span 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding-left: 77px;
 }
 
@@ -382,20 +384,15 @@
   font-weight: 600;
 }
 
-@media (max-width: 1200px) {
-  .report-filter {
-    grid-template-columns: 265px 235px minmax(230px, 255px);
-  }
-}
-
 @media (max-width: 780px) {
   .report-filter,
   .report-chart-grid {
     grid-template-columns: 1fr;
   }
 
-  .report-filter .report-filter-wide {
-    width: auto;
+  .report-filter .report-filter-wide,
+  .report-filter-action {
+    grid-column: 1 / -1;
   }
 }
 

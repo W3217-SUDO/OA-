@@ -2157,3 +2157,23 @@
   padding: 6px 8px 6px 68px;
   border-bottom: 1px solid var(--oa-border);
 }
+
+/* 筛选区铺满整行：各页原先按原系统像素固定了列宽（宽屏右侧空出一大块），这里统一成按宽度自适应列数，标签对齐、输入框拉伸填满。 */
+.finance-original-panel .finance-original-query-grid.finance-original-query-grid {
+  width: auto;
+  max-width: none;
+  height: auto;
+  min-height: 0;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  grid-template-rows: none;
+  grid-auto-rows: auto;
+  gap: 6px 14px;
+}
+.finance-original-panel .finance-original-query-grid > .finance-original-field.finance-original-field {
+  grid-template-columns: 80px minmax(0, 1fr);
+}
+/* 少数六七个字的标签（如“归档费支付日期”）折成两行，不压到输入框上。 */
+.finance-original-panel .finance-original-query-grid > .finance-original-field > span:first-child {
+  white-space: normal;
+  line-height: 1.25;
+}
