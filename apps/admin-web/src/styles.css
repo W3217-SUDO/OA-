@@ -224,6 +224,10 @@ body {
   background: var(--oa-sidebar-hover);
   color: var(--oa-sidebar-text-strong);
 }
+/* 管理员的“问题处理中心”紧跟在问题反馈下面。 */
+.bug-feedback-trigger.bug-feedback-center.ant-btn {
+  margin-top: -8px;
+}
 .sidebar.ant-layout-sider-collapsed .bug-feedback-trigger.ant-btn {
   width: 34px;
   margin-inline: auto;

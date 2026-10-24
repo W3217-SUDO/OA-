@@ -67,7 +67,7 @@ import requestDingTalkAuthCode from "dingtalk-jsapi/api/runtime/permission/reque
 import { getENV as getDingTalkEnvironment } from "dingtalk-jsapi/lib/env";
 import NotificationCenter from "./NotificationCenter";
 import BugFeedback from "./BugFeedback";
-import { FEEDBACK_ROUTE, FEEDBACK_SOURCE_CONTROLS_KEY, FEEDBACK_SOURCE_PAGE_KEY, FEEDBACK_SOURCE_ROUTE_KEY, rememberFeedbackSource, rememberPageControls } from "./feedback/navigation";
+import { FEEDBACK_CENTER_ROUTE, FEEDBACK_ROUTE, FEEDBACK_SOURCE_CONTROLS_KEY, FEEDBACK_SOURCE_PAGE_KEY, FEEDBACK_SOURCE_ROUTE_KEY, rememberFeedbackSource, rememberPageControls } from "./feedback/navigation";
 import GlobalSearch from "./GlobalSearch";
 import {
   CONTRACT_DETAIL_TARGET_EVENT,
@@ -175,6 +175,7 @@ const UserCenterPage = lazyWithVersionRecovery("user", () => import("./UserCente
 const MessageCenterPage = lazyWithVersionRecovery("message", () => import("./MessageCenterPage"));
 const CommunicationLogPage = lazyWithVersionRecovery("communication", () => import("./CommunicationLogPage"));
 const FeedbackPage = lazyWithVersionRecovery("feedback", () => import("./feedback/FeedbackPage"));
+const FeedbackCenterPage = lazyWithVersionRecovery("feedback-center", () => import("./feedback/FeedbackCenterPage"));
 const CustomerPortalPage = lazyWithVersionRecovery("customer-portal", () => import("./CustomerPortalPage"));
 
 const { Header, Sider, Content } = Layout;
@@ -958,6 +959,7 @@ function replaceWithRootRoute() {
 }
 const routePageLabels: Record<string, string> = {
   [FEEDBACK_ROUTE]: "问题反馈",
+  [FEEDBACK_CENTER_ROUTE]: "问题处理中心",
   "task-my-accepted": "我接受的任务",
   "task-my-created": "我发起的任务",
   "task-my-collaborating": "我协作的任务",
@@ -1713,6 +1715,8 @@ export default function App() {
         onOpenPersonalAgent={openPersonalAgent}
         onOpenCaseAgentFolder={(caseId, serialNo) => navigate(`case-detail-${caseId}-${encodeURIComponent(serialNo)}-ai-space`)}
       />
+    ) : route === FEEDBACK_CENTER_ROUTE ? (
+      <FeedbackCenterPage onNavigate={navigate} />
     ) : route === FEEDBACK_ROUTE ? (
       <FeedbackPage onNavigate={navigate} menuPages={feedbackMenuPages(sideMenuItems)}
         resolvePageLabel={(key) => resolveWorkspacePageLabel(key, effectiveMenuItems, personalAgentName)}
@@ -2101,7 +2105,8 @@ export default function App() {
               ))}
             </div>
           )}
-          {!isNarrowViewport && <BugFeedback onOpen={() => navigate(FEEDBACK_ROUTE)} />}
+          {!isNarrowViewport && <BugFeedback onOpen={() => navigate(FEEDBACK_ROUTE)}
+            onOpenCenter={permissionAdministrator ? () => navigate(FEEDBACK_CENTER_ROUTE) : undefined} />}
         </Sider>
         {isNarrowViewport && mobileSidebarOpen && (
           <button

@@ -42,6 +42,11 @@ export type FeedbackDetails = FeedbackRecord & {
   available_actions: string[];
 };
 
+export type FeedbackStatusCounts = {
+  total: number;
+  counts: Record<string, number>;
+};
+
 export type FeedbackPage = {
   items: FeedbackRecord[];
   total: number;

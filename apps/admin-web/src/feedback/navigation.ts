@@ -1,4 +1,6 @@
 export const FEEDBACK_ROUTE = "feedback";
+// 问题处理中心：管理员查看和处理全部用户反馈（不在菜单授权里，只有管理员能进）。
+export const FEEDBACK_CENTER_ROUTE = "feedback-center";
 export const FEEDBACK_SOURCE_PAGE_KEY = "sunhold:feedback-source-page";
 export const FEEDBACK_SOURCE_ROUTE_KEY = "sunhold:feedback-source-route";
 // 按页面记下的按钮清单 { route: 按钮名[] }，退出登录时随其他会话导航数据一起清掉。

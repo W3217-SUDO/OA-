@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Input, Select, Space, Tag } from "antd";
+import { Alert, Button, Input, Segmented, Select, Space, Tag } from "antd";
 import Table from "../components/ResizableTable";
 import type { TableColumnsType } from "antd";
 import dayjs from "dayjs";
@@ -7,7 +7,7 @@ import { api } from "../api";
 import FeedbackDetail from "./FeedbackDetail";
 import FeedbackForm from "./FeedbackForm";
 import { consumeFeedbackTarget, type FeedbackPageOption } from "./navigation";
-import type { FeedbackPage, FeedbackRecord } from "./types";
+import type { FeedbackPage, FeedbackRecord, FeedbackStatusCounts } from "./types";
 
 type Props = {
   sourceRoute: string;
@@ -15,13 +15,15 @@ type Props = {
   openPages: FeedbackPageOption[];
   menuPages: FeedbackPageOption[];
   onNavigate: (route: string) => void;
+  /** 问题处理中心：只看和处理，不在这里提交；状态改成带数量的页签，多一列“涉及按钮”。 */
+  center?: boolean;
 };
 const statuses = ["待处理", "处理中", "待补充", "待验证", "已处理", "已解决"];
 const statusColors: Record<string, string> = {
   待处理: "default", 处理中: "processing", 待补充: "warning", 待验证: "cyan", 已处理: "green", 已解决: "success",
 };
 
-export default function FeedbackManager({ sourceRoute, pageControls, openPages, menuPages, onNavigate }: Props) {
+export default function FeedbackManager({ sourceRoute, pageControls, openPages, menuPages, onNavigate, center = false }: Props) {
   const [rows, setRows] = useState<FeedbackRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -34,7 +36,8 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
   const [reload, setReload] = useState(0);
   const [viewingId, setViewingId] = useState<number | null>(null);
   // 从侧栏“问题反馈”进来时直接进入填写；从通知打开指定反馈时由 openTarget 切回详情。
-  const [creating, setCreating] = useState(Boolean(sourceRoute));
+  const [creating, setCreating] = useState(!center && Boolean(sourceRoute));
+  const [statusCounts, setStatusCounts] = useState<FeedbackStatusCounts | null>(null);
   const listVisible = !viewingId && !creating;
 
   useEffect(() => {
@@ -67,6 +70,16 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
     return () => controller.abort();
   }, [listVisible, page, pageSize, query, status, reload]);
 
+  // 状态页签上的数量随列表一起刷新（处理完回到列表也会更新）。
+  useEffect(() => {
+    if (!center || !listVisible) return;
+    let cancelled = false;
+    void api.get<FeedbackStatusCounts>("/feedback/status-counts").then(({ data }) => {
+      if (!cancelled) setStatusCounts(data);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [center, listVisible, reload]);
+
   const columns: TableColumnsType<FeedbackRecord> = [
     { title: "编号", dataIndex: "serial_no", width: 215, ellipsis: true,
       render: (value, row) => <Button type="link" size="small" onClick={() => setViewingId(row.id)}>{value}</Button> },
@@ -77,6 +90,8 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
     { title: "处理人", width: 105, ellipsis: true, render: (_, row) => row.assignee_display_name || row.assignee || "未指派" },
     { title: "最近更新", width: 160, render: (_, row) => dayjs(row.updated_at || row.created_at).format("YYYY-MM-DD HH:mm") },
     { title: "提交页面", dataIndex: "page", width: 180, ellipsis: true },
+    ...(center ? [{ title: "涉及按钮", key: "controls", width: 160, ellipsis: true,
+      render: (_: unknown, row: FeedbackRecord) => row.controls?.length ? row.controls.join("、") : "—" }] : []),
     { title: "截图/附件", width: 85, render: (_, row) => row.has_screenshot ? "有" : "无" },
   ];
 
@@ -90,15 +105,19 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
           aria-label="搜索问题反馈" style={{ width: 320 }} enterButton="查询"
           onChange={(event) => setKeyword(event.target.value)}
           onSearch={(value) => { setQuery(value.trim()); setPage(1); setReload((current) => current + 1); }} />
-        <Select aria-label="筛选反馈状态" value={status} style={{ width: 130 }} options={[
+        {!center && <Select aria-label="筛选反馈状态" value={status} style={{ width: 130 }} options={[
           { value: "", label: "全部状态" }, ...statuses.map((value) => ({ value, label: value })),
-        ]} onChange={(value) => { setStatus(value); setPage(1); }} />
+        ]} onChange={(value) => { setStatus(value); setPage(1); }} />}
         <Button onClick={() => setReload((current) => current + 1)} loading={loading}>刷新</Button>
-        <Button type="primary" onClick={() => setCreating(true)}>提交反馈</Button>
+        {!center && <Button type="primary" onClick={() => setCreating(true)}>提交反馈</Button>}
       </Space>
+      {center && <Segmented aria-label="按状态筛选反馈" style={{ marginBottom: 12 }} value={status}
+        onChange={(value) => { setStatus(String(value)); setPage(1); }}
+        options={[{ value: "", label: `全部 ${statusCounts?.total ?? ""}` },
+          ...statuses.map((value) => ({ value, label: `${value} ${statusCounts?.counts[value] ?? ""}` }))]} />}
       {error ? <Alert type="error" showIcon title={error} /> : <Table<FeedbackRecord>
         rowKey="id" size="small" tableLayout="fixed" columns={columns} dataSource={rows}
-        loading={loading} scroll={{ x: 1230 }} pagination={{
+        loading={loading} scroll={{ x: center ? 1390 : 1230 }} pagination={{
           current: page, pageSize, total, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100],
           showTotal: (count) => `共 ${count} 条`,
           onChange: (nextPage, nextSize) => { setPage(nextPage); setPageSize(nextSize); },
