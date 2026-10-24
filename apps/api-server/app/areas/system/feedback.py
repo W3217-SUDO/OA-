@@ -100,6 +100,7 @@ def _serialize_feedback(record: BusinessRecord, owner_name: str = "", assignee_n
         "status": record.status, "owner": record.owner, "owner_display_name": owner_name,
         "assignee": _assignee(record), "assignee_display_name": assignee_name,
         "page": (record.data or {}).get("page", ""), "route": (record.data or {}).get("route", ""),
+        "controls": (record.data or {}).get("controls", []),
         "has_screenshot": has_screenshot,
         "created_at": record.created_at, "updated_at": record.updated_at,
     }
@@ -161,7 +162,7 @@ def _save_screenshot(
 
 @router.post(f"{settings.api_prefix}/feedback")
 async def create_feedback(
-    description: str = Form(...), page: str = Form(""), route: str = Form(""),
+    description: str = Form(...), page: str = Form(""), route: str = Form(""), controls: str = Form(""),
     screenshot: UploadFile | None = File(None), files: list[UploadFile] = File(default=[]),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
@@ -170,6 +171,9 @@ async def create_feedback(
         raise HTTPException(422, "问题描述需填写 5 到 2000 字")
     if len(page) > 500 or len(route) > 300:
         raise HTTPException(422, "页面地址过长")
+    if len(controls) > 1000:
+        raise HTTPException(422, "选择的按钮过多")
+    control_names = list(dict.fromkeys(name.strip() for name in controls.split("、") if name.strip()))
     uploads = ([screenshot] if screenshot else []) + [item for item in files if item.filename]
     if len(uploads) > FEEDBACK_MAX_FILES:
         raise HTTPException(422, f"截图和附件合计最多 {FEEDBACK_MAX_FILES} 个")
@@ -179,6 +183,8 @@ async def create_feedback(
         data = {"page": page.strip()}
         if route.strip():
             data["route"] = route.strip()
+        if control_names:
+            data["controls"] = control_names
         record = BusinessRecord(
             module="bug_feedback", serial_no=f"BUG{uuid4().hex[:20].upper()}",
             title=description[:100], customer="", status="待处理", owner=identity["username"],

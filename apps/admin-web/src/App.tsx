@@ -67,7 +67,7 @@ import requestDingTalkAuthCode from "dingtalk-jsapi/api/runtime/permission/reque
 import { getENV as getDingTalkEnvironment } from "dingtalk-jsapi/lib/env";
 import NotificationCenter from "./NotificationCenter";
 import BugFeedback from "./BugFeedback";
-import { FEEDBACK_ROUTE, FEEDBACK_SOURCE_PAGE_KEY, FEEDBACK_SOURCE_ROUTE_KEY, rememberFeedbackSource } from "./feedback/navigation";
+import { FEEDBACK_ROUTE, FEEDBACK_SOURCE_CONTROLS_KEY, FEEDBACK_SOURCE_PAGE_KEY, FEEDBACK_SOURCE_ROUTE_KEY, rememberFeedbackSource } from "./feedback/navigation";
 import GlobalSearch from "./GlobalSearch";
 import {
   CONTRACT_DETAIL_TARGET_EVENT,
@@ -932,6 +932,7 @@ type OpenPage = { key: string; label: string };
 const businessNavigationSessionKeys = [
   FEEDBACK_SOURCE_PAGE_KEY,
   FEEDBACK_SOURCE_ROUTE_KEY,
+  FEEDBACK_SOURCE_CONTROLS_KEY,
   "sunhold:case-detail-context",
   "sunhold:contract-detail-context",
   "sunhold:customer-detail-context",
@@ -1639,6 +1640,7 @@ export default function App() {
         onSuccess={(user) => {
           sessionStorage.removeItem(FEEDBACK_SOURCE_PAGE_KEY);
           sessionStorage.removeItem(FEEDBACK_SOURCE_ROUTE_KEY);
+          sessionStorage.removeItem(FEEDBACK_SOURCE_CONTROLS_KEY);
           setSessionUser(user);
           setPermissionsReady(false);
           setPermissionLoadError("");

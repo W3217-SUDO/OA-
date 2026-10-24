@@ -9,6 +9,7 @@ export type FeedbackRecord = {
   assignee_display_name: string;
   page: string;
   route: string;
+  controls: string[];
   created_at: string;
   updated_at: string;
   has_screenshot: boolean;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Input, message, Select, Space, Tag } from "antd";
+import { Button, Input, message, Space, Tag } from "antd";
 import { CloseOutlined, FileOutlined, InboxOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "../api";
@@ -9,6 +9,7 @@ import "./feedback.css";
 
 type Props = {
   sourceRoute: string;
+  sourceControls: string[];
   openPages: FeedbackPageOption[];
   menuPages: FeedbackPageOption[];
   onCancel: () => void;
@@ -37,10 +38,11 @@ function FilePreview({ file, onRemove }: { file: File; onRemove: () => void }) {
   </div>;
 }
 
-export default function FeedbackForm({ sourceRoute, openPages, menuPages, onCancel, onSubmitted }: Props) {
+export default function FeedbackForm({ sourceRoute, sourceControls, openPages, menuPages, onCancel, onSubmitted }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [description, setDescription] = useState("");
   const [pageKeys, setPageKeys] = useState<string[]>(sourceRoute ? [sourceRoute] : []);
+  const [controls, setControls] = useState<string[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
   const [draftReady, setDraftReady] = useState(false);
@@ -60,6 +62,8 @@ export default function FeedbackForm({ sourceRoute, openPages, menuPages, onCanc
     const keys = [sourceRoute, ...openPages.map((page) => page.key), ...pageKeys].filter(Boolean);
     return [...new Set(keys)].map((key) => ({ key, label: labels.get(key) || key }));
   }, [sourceRoute, openPages, pageKeys, labels]);
+  // 按钮清单是点“问题反馈”那一刻从来源页读出来的，只有勾选了来源页时才出现。
+  const showControls = Boolean(sourceRoute) && pageKeys.includes(sourceRoute) && sourceControls.length > 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -67,7 +71,10 @@ export default function FeedbackForm({ sourceRoute, openPages, menuPages, onCanc
       if (cancelled) return;
       if (draft) {
         setDescription(draft.description);
-        if (draft.pageKeys.length) setPageKeys(draft.pageKeys);
+        if (draft.sourceRoute === sourceRoute && draft.pageKeys.length) {
+          setPageKeys(draft.pageKeys);
+          setControls(draft.controls.filter((name) => sourceControls.includes(name)));
+        }
         setFiles(draft.files);
         setSavedAt(draft.savedAt);
         message.info("已恢复上次未提交的反馈草稿");
@@ -75,16 +82,16 @@ export default function FeedbackForm({ sourceRoute, openPages, menuPages, onCanc
       setDraftReady(true);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [sourceRoute, sourceControls]);
 
   useEffect(() => {
     if (!draftReady || submitting) return;
     const timer = window.setTimeout(() => {
       if (!description.trim() && !files.length) { void clearFeedbackDraft(); setSavedAt(null); return; }
-      void saveFeedbackDraft({ description, pageKeys, files }).then(setSavedAt);
+      void saveFeedbackDraft({ description, pageKeys, controls, sourceRoute, files }).then(setSavedAt);
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [description, pageKeys, files, draftReady, submitting]);
+  }, [description, pageKeys, controls, sourceRoute, files, draftReady, submitting]);
 
   const addFiles = useCallback((incoming: File[]) => {
     const accepted: File[] = [];
@@ -161,6 +168,7 @@ export default function FeedbackForm({ sourceRoute, openPages, menuPages, onCanc
     body.append("description", text);
     body.append("page", pageKeys.map((key) => labels.get(key) || key).join("、"));
     body.append("route", pageKeys[0]);
+    if (showControls && controls.length) body.append("controls", controls.join("、"));
     files.forEach((file) => body.append("files", file, file.name));
     setSubmitting(true);
     try {
@@ -182,6 +190,7 @@ export default function FeedbackForm({ sourceRoute, openPages, menuPages, onCanc
     setDescription("");
     setFiles([]);
     setPageKeys(sourceRoute ? [sourceRoute] : []);
+    setControls([]);
     setSavedAt(null);
   };
 
@@ -197,11 +206,18 @@ export default function FeedbackForm({ sourceRoute, openPages, menuPages, onCanc
           {page.label}{page.key === sourceRoute && <span className="feedback-chip-badge">来源页</span>}
         </Tag.CheckableTag>)}
       </div>
-      <Select showSearch allowClear placeholder="找不到？搜索其他菜单页面" aria-label="搜索其他页面" value={null}
-        style={{ width: 320, maxWidth: "100%" }} optionFilterProp="label"
-        options={menuPages.filter((page) => !pageKeys.includes(page.key)).map((page) => ({ value: page.key, label: page.label }))}
-        onChange={(key) => { if (key) setPageKeys((current) => [...current, key]); }} />
     </section>
+
+    {showControls && <section className="feedback-section">
+      <div className="feedback-section-title">问题出在哪个按钮<span className="feedback-hint">来源页上的按钮，可多选；不涉及可不选</span></div>
+      <div className="feedback-page-chips">
+        {sourceControls.map((name) => <Tag.CheckableTag key={name} checked={controls.includes(name)}
+          className="feedback-page-chip feedback-control-chip"
+          onChange={() => setControls((current) => current.includes(name) ? current.filter((item) => item !== name) : [...current, name])}>
+          {name}
+        </Tag.CheckableTag>)}
+      </div>
+    </section>}
 
     <section className="feedback-section">
       <div className="feedback-section-title"><span className="feedback-required">*</span>问题描述</div>

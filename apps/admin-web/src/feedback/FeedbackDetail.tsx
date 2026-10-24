@@ -113,6 +113,8 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
         <span style={{ overflowWrap: "anywhere" }}>{feedback.page || "—"}</span>
         {feedback.route && <Button type="link" size="small" onClick={() => onNavigate(feedback.route)}>前往该页面</Button>}
       </Space> },
+      ...(feedback.controls?.length ? [{ key: "controls", label: "涉及按钮", span: 2,
+        children: <Space wrap size={4}>{feedback.controls.map((name) => <Tag key={name}>{name}</Tag>)}</Space> }] : []),
       { key: "description", label: "问题描述", span: 2,
         children: <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{feedback.description}</div> },
     ]} />
