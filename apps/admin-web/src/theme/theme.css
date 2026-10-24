@@ -16,6 +16,16 @@
   --oa-primary-ink: color-mix(in srgb, color-mix(in srgb, var(--oa-primary) 76%, #000) var(--oa-ink), #fff);
   --oa-primary-tint: color-mix(in srgb, var(--oa-primary) 10%, var(--oa-surface));
   --oa-primary-line: color-mix(in srgb, var(--oa-primary) 28%, var(--oa-surface));
+  --oa-primary-light: color-mix(in srgb, var(--oa-primary) 62%, #fff);
+  --oa-primary-glow: color-mix(in srgb, var(--oa-primary) 45%, transparent);
+  /* 智能体头像的几种颜色，由主题色推出。 */
+  --oa-agent-body: color-mix(in srgb, var(--oa-primary) 82%, #fff);
+  --oa-agent-dark: color-mix(in srgb, var(--oa-primary) 70%, #000);
+  --oa-agent-face: color-mix(in srgb, var(--oa-primary) 6%, #fff);
+  --oa-agent-ink: color-mix(in srgb, var(--oa-primary) 22%, #10151a);
+  /* 提示类浅底（组件内联样式用；内联样式里不能直接写 color-mix，钉钉手机内核不认识）。 */
+  --oa-warning-tint: color-mix(in srgb, #fff7e8 var(--oa-tint), var(--oa-surface));
+  --oa-warning-line: color-mix(in srgb, #ffd591 var(--oa-tint), var(--oa-surface));
   --oa-bg: #ecf0f5;
   --oa-surface: #ffffff;
   --oa-surface-raised: #ffffff;
@@ -669,12 +679,18 @@ body > div > .ant-modal-root .ant-modal:not(.ant-modal-confirm) .ant-modal-body 
   flex-wrap: wrap;
   row-gap: 8px;
 }
+/* 标题至少留约 7 个字宽：按钮放不下时整组换到下一行，而不是把标题挤成“全...”。 */
 .ant-card .ant-card-head-title {
-  min-width: 0;
+  min-width: min(100%, 7.5em);
 }
 .ant-card .ant-card-extra {
   max-width: 100%;
   margin-inline-start: auto;
+}
+@media (max-width: 720px) {
+  .ant-card .ant-card-head {
+    padding-block: 8px;
+  }
 }
 .ant-card .ant-card-extra > .ant-space,
 .ant-card .ant-card-extra > div:only-child:not(.ant-space) {

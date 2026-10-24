@@ -24,7 +24,15 @@ CONTRACT_SEAL_READY_STATUSES,
 amount,
 moneyKeys,
 } from "./constants";
+import { useMobileFilterToggle } from "../components/common/MobileFilterToggle";
 import type { Contract,ContractWorkflowCapabilities } from "./types";
+
+// 新系统保存的签订日期可能带时分秒（ISO 格式），列表只显示日期。
+const signedDate = (value: unknown) => {
+  if (!value) return "—";
+  const date = dayjs(String(value));
+  return date.isValid() ? date.format("YYYY-MM-DD") : String(value);
+};
 
 interface ContractListProps {
   initialView: string;
@@ -124,6 +132,7 @@ export function ContractList({
   onExportExcel,
   onExportCsv,
 }: ContractListProps) {
+  const mobileFilter = useMobileFilterToggle();
   const textCell = (value: string) => {
     const text = displayContractStatus(value);
     return value === "已拒绝" || value === "已驳回" ? <Tag color="error">{text}</Tag> : text;
@@ -212,7 +221,7 @@ export function ContractList({
       title: "签订日期",
       key: "signedAt",
       width: 108,
-      render: (_: unknown, r: Contract) => (r.data as any).signed_at || "—",
+      render: (_: unknown, r: Contract) => signedDate((r.data as any).signed_at),
     },
     {
       title: "客户编号",
@@ -352,7 +361,7 @@ export function ContractList({
       title: "签订日期",
       key: "signedAt",
       width: 105,
-      render: (_: unknown, r: Contract) => r.data.signed_at || "—",
+      render: (_: unknown, r: Contract) => signedDate(r.data.signed_at),
     },
     {
       title: "客户编号",
@@ -441,7 +450,8 @@ export function ContractList({
 
   return (
     <Card className="panel contract-original-panel" title="合同查询">
-      <ListFilterBar form={queryForm} className="contract-query" onFinish={onQuery}>
+      {mobileFilter.toggle}
+      <ListFilterBar form={queryForm} className={`contract-query ${mobileFilter.className}`} onFinish={onQuery}>
         <Form.Item label="合同编号" name="serial_no">
           <Input placeholder="合同编号" />
         </Form.Item>

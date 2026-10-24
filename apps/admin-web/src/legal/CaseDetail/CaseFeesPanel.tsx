@@ -69,7 +69,7 @@ export const CaseFeesPanel = ({
   if (scope === "firm") {
     return (
       <div className="case-legacy-tab-panel case-firm-fees-panel">
-        <Table rowKey="id" className="case-firm-fees-table" resizable={false} sticky loading={loading} size="small" bordered tableLayout="fixed" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} dataSource={feeRows} locale={{emptyText:renderCaseFeeEmptyState?.("律所")}} rowSelection={{columnWidth:"4%",selectedRowKeys:selectedFeeKeys,onChange:setSelectedFeeKeys,onCell:()=>({className:"case-firm-fee-selection","data-label":"选择"})}} columns={firmCaseFeeColumns}/>
+        <Table rowKey="id" className="case-firm-fees-table" resizable={false} sticky mobileCards={false} loading={loading} size="small" bordered tableLayout="fixed" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} dataSource={feeRows} locale={{emptyText:renderCaseFeeEmptyState?.("律所")}} rowSelection={{columnWidth:"4%",selectedRowKeys:selectedFeeKeys,onChange:setSelectedFeeKeys,onCell:()=>({className:"case-firm-fee-selection","data-label":"选择"})}} columns={firmCaseFeeColumns}/>
         {feeRows.length>0&&<Space className="case-legacy-bottom-actions">
           {counselDetailCapabilities.can_create_finance&&<Dropdown trigger={["click"]} menu={{items:[{key:"官费",label:"新增官费"},{key:"第三方费用",label:"新增第三方费用"},{key:"代理费",label:"新增代理费"},{key:"其他费用",label:"新增其他费用"},{key:"commission",label:"新建提成(选择费用)"}],onClick:({key})=>key === "commission" ? void openCaseCommission?.() : openCaseFeeBySubtype?.("律所",key)}}><Button>新增案件费用</Button></Dropdown>}
           {hasExternalOperations&&<Dropdown trigger={["click"]} menu={{items:[

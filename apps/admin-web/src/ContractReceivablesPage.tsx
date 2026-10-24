@@ -10,6 +10,7 @@ import { rememberContractDetailTarget } from "./contractDetailNavigation";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { resolveDetailRelation } from "./detailRelationResolver";
 import { formatRequiredDate } from "./formSafety";
+import { useMobileFilterToggle } from "./components/common/MobileFilterToggle";
 import "./contract-center.css";
 
 type Receivable = {
@@ -130,6 +131,7 @@ const readReceivableDetailContext = (): ReceivableDetailContext | null => {
 };
 
 export default function ContractReceivablesPage({ initialView, dashboardQueue = "", onNavigate }: { initialView: string; dashboardQueue?: string; onNavigate?: (route: string) => void }) {
+  const mobileFilter = useMobileFilterToggle();
   const [receivables, setReceivables] = useState<Receivable[]>([]);
   const [detailAmountVisible, setDetailAmountVisible] = useState(false);
   const [contracts, setContracts] = useState<Contract[]>([]);
@@ -349,7 +351,8 @@ export default function ContractReceivablesPage({ initialView, dashboardQueue = 
   };
 
   return <Card className="panel contract-original-panel" title={dashboardQueue ? "未到官费" : detailView ? "应收账款明细" : "应收账款统计"}>
-    <Form form={form} className="contract-query" onFinish={setQuery}>
+    {mobileFilter.toggle}
+    <Form form={form} className={`contract-query ${mobileFilter.className}`} onFinish={setQuery}>
       <Form.Item label="合同主体" name="contract_body"><Select allowClear placeholder="请选择" options={["律所", "平台"].map((value) => ({ value, label: value }))} /></Form.Item>
       <Form.Item label="合同编号" name="contract_no"><Input placeholder="合同编号" /></Form.Item>
       <Form.Item label="合同日期" name="contract_date"><DatePicker.RangePicker /></Form.Item>

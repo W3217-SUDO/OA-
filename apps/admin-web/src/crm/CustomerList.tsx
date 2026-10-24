@@ -269,8 +269,11 @@ export function CustomerList({ initialView, rows, total, page, pageSize, custome
       },
     },
   ];
-  // 合计行前 11 格（勾选列 + 10 列）合并，两个金额各占一格，最后一格补满剩下的列。
-  const totalTrailingSpan = Math.max(1, columns.length + 1 - 13);
+  // 合计行：勾选列和“代理费待收金额”之前的列合并成一格，两个金额对准各自的列，最后一格补满剩下的列。
+  // （原先固定合并 11 格，金额落在“民事案件数量/知识产权案件数量”下面，错了两列。）
+  const agencyFeeIndex = Math.max(0, columns.findIndex((column) => column.key === "agencyFee"));
+  const totalLeadingSpan = agencyFeeIndex + 1;
+  const totalTrailingSpan = Math.max(1, columns.length - agencyFeeIndex - 2);
 
   const showFooter =!["customer-recycle", "customer-dept", "customer-dept-recycle", "customer-company", "customer-company-recycle", "customer-public", "customer-shared", "customer-recent-contact", "customer-recent-update"].includes(initialView) || rows.length > 0;
 
@@ -348,7 +351,7 @@ export function CustomerList({ initialView, rows, total, page, pageSize, custome
               const { children, ...rest } = props;
               return <tbody {...rest}>
                 <tr className="customer-total-row customer-total-row-top">
-                  <td colSpan={11} />
+                  <td colSpan={totalLeadingSpan} />
                   <td className="ant-table-cell customer-amount-cell">{amount(listSummary.agency_fee_due)}</td>
                   <td className="ant-table-cell customer-amount-cell">{amount(listSummary.official_fee_unreceived)}</td>
                   <td colSpan={totalTrailingSpan} />
@@ -361,14 +364,14 @@ export function CustomerList({ initialView, rows, total, page, pageSize, custome
         summary={["customer-recycle", "customer-dept", "customer-dept-recycle", "customer-company", "customer-company-recycle", "customer-public", "customer-shared", "customer-recent-contact", "customer-recent-update"].includes(initialView) && rows.length === 0 ? undefined : (data) => (
           <Table.Summary>
             <Table.Summary.Row className="customer-total-row">
-              <Table.Summary.Cell index={0} colSpan={11} />
-              <Table.Summary.Cell index={11} align="center">
+              <Table.Summary.Cell index={0} colSpan={totalLeadingSpan} />
+              <Table.Summary.Cell index={totalLeadingSpan} align="center">
                 {amount(isOriginalCustomerList ? listSummary.agency_fee_due : data.reduce((sum, row) => sum + (row.data.agency_fee_due || 0), 0))}
               </Table.Summary.Cell>
-              <Table.Summary.Cell index={12} align="center">
+              <Table.Summary.Cell index={totalLeadingSpan + 1} align="center">
                 {amount(isOriginalCustomerList ? listSummary.official_fee_unreceived : data.reduce((sum, row) => sum + (row.data.official_fee_unreceived || 0), 0))}
               </Table.Summary.Cell>
-              <Table.Summary.Cell index={13} colSpan={totalTrailingSpan} />
+              <Table.Summary.Cell index={totalLeadingSpan + 2} colSpan={totalTrailingSpan} />
             </Table.Summary.Row>
           </Table.Summary>
         )}

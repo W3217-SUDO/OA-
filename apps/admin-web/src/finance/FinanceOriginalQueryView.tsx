@@ -1,6 +1,7 @@
 import type { ReactNode, RefObject } from "react";
 import { Button } from "antd";
 import { PlusOutlined, ReloadOutlined, UploadOutlined } from "@ant-design/icons";
+import { useMobileFilterToggle } from "../components/common/MobileFilterToggle";
 import type { ContractPaymentSourceState, OriginalRouteConfig } from "./types";
 
 export interface FinanceOriginalQueryViewProps {
@@ -28,6 +29,7 @@ export function FinanceOriginalQueryView({
   onRefresh, originalQuery, paymentPackageMeta, onLoadPaymentPackages,
   onOpenPaymentPackageEditor,
 }: FinanceOriginalQueryViewProps) {
+  const mobileFilter = useMobileFilterToggle();
   const refreshRoutes = [
     "finance-payment-mine", "finance-internal-mine", "finance-payment-audit",
     "finance-payment-waiting", "finance-payment-writeoff",
@@ -47,7 +49,8 @@ export function FinanceOriginalQueryView({
       />
       <div className="finance-original-title"><h5>{title}</h5></div>
       {sourceNotice}
-      <div className="finance-original-query-grid">{fields}</div>
+      {mobileFilter.toggle}
+      <div className={`finance-original-query-grid ${mobileFilter.className}`}>{fields}</div>
       <div className="finance-original-query-actions">
         <Button type="primary" disabled={contractPaymentSource.active} onClick={onSubmit}>
           查询

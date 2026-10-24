@@ -19,6 +19,7 @@ import Table from "./components/ResizableTable";import {
 } from "recharts";
 import { api } from "./api";
 import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./customerDetailNavigation";
+import { useMobileFilterToggle } from "./components/common/MobileFilterToggle";
 import "./report-center.css";
 
 type ChartResult = { title: string; unit: ChartSpec["unit"]; items: { name: string; value: number | null }[] };
@@ -173,11 +174,14 @@ PAGE_SPECS["reports-customer-roi"] = {
 
 function Filters({ kind, options, onQuery }: { kind: "brand" | "lawyer"; options: Analytics["filter_options"]; onQuery: (values: ReportFilterValues) => void }) {
   const [form] = Form.useForm();
+  const mobileFilter = useMobileFilterToggle();
 
   return (
+    <>
+    {mobileFilter.toggle}
     <Form
       form={form}
-      className="report-filter"
+      className={`report-filter ${mobileFilter.className}`}
       initialValues={{ customer: [], courtLawyer: [], groupMode: "按律师分组统计" }}
       onFinish={onQuery}
     >
@@ -221,6 +225,7 @@ function Filters({ kind, options, onQuery }: { kind: "brand" | "lawyer"; options
         <Button onClick={()=>{form.resetFields(); onQuery({})}}>重置</Button>
       </div>
     </Form>
+    </>
   );
 }
 

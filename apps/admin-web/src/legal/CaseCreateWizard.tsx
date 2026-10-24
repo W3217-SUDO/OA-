@@ -115,6 +115,7 @@ export const CaseCreateWizard = ({
     <div className="case-create-route-page" data-flow-token={createFlowToken}>
       <Steps
         className="case-create-steps"
+        responsive={false}
         current={createStep}
         items={isCounselCreate
           ? [{ title: "基本信息" }, { title: "当事人信息" }]

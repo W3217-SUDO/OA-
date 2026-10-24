@@ -35,6 +35,8 @@ function loadFinanceModule(name, dependencies = {}, globals = {}) {
     antd: ui,
     "@ant-design/icons": { PlusOutlined: () => null, ReloadOutlined: () => null, UploadOutlined: () => null },
     "../components/ResizableTable": Table,
+    // 手机筛选开关只是外观，测试里直接调用组件函数（不经 React 渲染），用不带状态的替身。
+    "../components/common/MobileFilterToggle": { useMobileFilterToggle: () => ({ open: false, toggle: null, className: "", fieldsClassName: "" }) },
     "../financeRefundHelpers.mjs": { refundPageSizeOptions: [15, 30], refundStatusOptions: ["全部", "待审批"] },
     ...dependencies,
   };

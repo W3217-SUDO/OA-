@@ -93,6 +93,7 @@ import { SealFileListModal } from "./SealFileListModal";
 import { SealPreviewModal } from "./SealPreviewModal";
 import { ensureSealSuccess, postSeal, patchSeal, deleteSeal, postSealBlob } from "./sealRequests";
 import { useSealSourceAttachments } from "./useSealSourceAttachments";
+import { useMobileFilterToggle } from "../components/common/MobileFilterToggle";
 export default function SealCenterPage({
   initialView,
   onNavigate,
@@ -198,6 +199,7 @@ export default function SealCenterPage({
     row: SealRow;
   } | null>(null);
   const [batchStampOpen, setBatchStampOpen] = useState(false);
+  const mobileFilter = useMobileFilterToggle();
   const [createForm] = Form.useForm();
   const [assetForm] = Form.useForm();
   const [actionForm] = Form.useForm();
@@ -1948,8 +1950,9 @@ export default function SealCenterPage({
         className="panel seal-original-panel"
         title={tab === "assets" ? "印章资产管理" : "用印申请列表"}
       >
+        {tab !== "assets" && mobileFilter.toggle}
         {tab !== "assets" && (
-          <Form form={queryForm} className="seal-query" onFinish={setQuery}>
+          <Form form={queryForm} className={`seal-query ${mobileFilter.className}`} onFinish={setQuery}>
             <Form.Item label="申请编号" name="serial_no">
               <Input />
             </Form.Item>

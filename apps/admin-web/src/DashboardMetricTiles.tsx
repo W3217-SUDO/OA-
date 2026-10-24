@@ -69,7 +69,11 @@ export default function DashboardMetricTiles({ metrics, status, onOpen }: Props)
     ...orderDashboardMetrics(metrics.filter((metric) => !known.has(metric.key)))
       .map((metric, index) => ({ key: metric.key, label: metric.label, metric, tone: (DASHBOARD_METRIC_ORDER.length + index) % 8 })),
   ];
-  const pending = metrics.reduce((total, metric) => total + (Number(metric.value) || 0), 0);
+  // 指标值带单位（如“356件”），只累计按“件”计的数量；金额不计入待办件数。
+  const pending = metrics.reduce((total, metric) => {
+    const value = splitValue(metric.value);
+    return value.unit === "件" ? total + (Number(value.number.replace(/,/g, "")) || 0) : total;
+  }, 0);
   return (
     <section className={`wb-metrics${collapsed ? " is-collapsed" : ""}`} aria-label="案件与费用提醒">
       <div className="wb-metric-bar">

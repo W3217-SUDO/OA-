@@ -26,6 +26,7 @@ import type { ColumnsType } from "antd/es/table";
 import type { FormInstance } from "antd";
 import type { Key } from "react";
 import dayjs from "dayjs";
+import { useMobileFilterToggle } from "../components/common/MobileFilterToggle";
 import type {
   Attachment,
   LegacyHistoricalAttachment,
@@ -620,10 +621,14 @@ export function OutgoingSearchForm({
   onSearch,
   onReset,
 }: OutgoingSearchFormProps) {
+  const mobileFilter = useMobileFilterToggle();
   return (
+    <>
+    {mobileFilter.toggle}
     <Form
       form={form}
       layout="inline"
+      className={`document-outgoing-query ${mobileFilter.className}`}
       onFinish={onSearch}
       style={{ padding: "0 0 12px", rowGap: 8 }}
     >
@@ -668,6 +673,7 @@ export function OutgoingSearchForm({
         </Space>
       </Form.Item>
     </Form>
+    </>
   );
 }
 

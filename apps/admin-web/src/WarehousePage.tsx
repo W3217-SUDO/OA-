@@ -12,6 +12,7 @@ import {formatRequiredDate} from './formSafety'
 import {rememberInvestigationDetailTarget} from './investigationDetailNavigation'
 import {consumeBusinessRecordDetailTarget} from './businessRecordDetailNavigation'
 import {resolveDetailRelation} from './detailRelationResolver'
+import {useMobileFilterToggle} from './components/common/MobileFilterToggle'
 import './warehouse.css'
 
 type EvidenceData=Record<string, string|number>
@@ -34,6 +35,7 @@ const WAREHOUSE_FIT_STACK: FitStackGroup[] = [
 ]
 
 export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=>void}){
+  const mobileFilter=useMobileFilterToggle()
   const [allRows,setAllRows]=useState<Item[]>([])
   const [catalog,setCatalog]=useState<WarehouseCatalogItem[]>([])
   const [loading,setLoading]=useState(false)
@@ -133,7 +135,8 @@ export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=
       </aside>
       <section className="warehouse-list-panel">
       <div className="warehouse-list-title"><span>货物列表</span></div>
-      <div className="warehouse-query">
+      {mobileFilter.toggle}
+      <div className={`warehouse-query ${mobileFilter.fieldsClassName}`}>
         <label><span>仓库</span><Select value={warehouseId} onChange={value=>{setWarehouseId(value);setStorageLocationId(undefined)}} allowClear options={catalog.map(value=>({value:value.id,label:value.name,disabled:!value.is_active}))}/></label>
         <label><span>库位</span><Select value={storageLocationId} onChange={setStorageLocationId} allowClear options={(catalog.find(item=>item.id===warehouseId)?.locations||[]).map(value=>({value:value.id,label:value.name,disabled:!value.is_active}))}/></label>
         <label><span>权利人</span><Input value={rightsHolder} onChange={e=>setRightsHolder(e.target.value)} allowClear/></label>
@@ -143,7 +146,7 @@ export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=
         <label><span>调查员</span><Input value={investigator} onChange={e=>setInvestigator(e.target.value)} allowClear/></label>
         <label><span>公证书号</span><Input value={notaryNo} onChange={e=>setNotaryNo(e.target.value)} allowClear/></label>
         <label className="warehouse-date"><span>取证日期</span><DatePicker.RangePicker value={dates} onChange={value=>setDates(value as [Dayjs|null,Dayjs|null]|null)}/></label>
-        <Space>
+        <Space className="oa-filter-keep">
           <Button type="primary" onClick={()=>{setPage(1);void load(1,pageSize)}}>查询</Button>
           <Button onClick={()=>openEditor()}>登记证物</Button>
         </Space>

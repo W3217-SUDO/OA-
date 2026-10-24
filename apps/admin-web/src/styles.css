@@ -802,7 +802,7 @@ body {
 .login-page {
   min-height: 100vh;
   background:
-    radial-gradient(900px 600px at 80% 0%, color-mix(in srgb, var(--oa-primary) 22%, transparent), transparent 60%),
+    radial-gradient(900px 600px at 80% 0%, var(--oa-primary-soft-2), transparent 60%),
     var(--oa-bg);
   display: flex;
   flex-direction: column;
@@ -863,6 +863,11 @@ body {
   }
   .app-shell {
     background: var(--oa-fill);
+  }
+  /* 底部导航是固定定位，不占位置；外壳给它留出高度，页面最后一行才不会压在导航下面。 */
+  .app-shell:not(.is-chat-workspace) {
+    box-sizing: border-box;
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
   }
   .topbar {
     position: relative;
@@ -930,14 +935,15 @@ body {
     gap: 0;
   }
   .mobile-top-actions .ant-btn {
-    width: 38px;
+    width: 34px;
     height: 40px;
     padding: 0;
   }
   .sidebar.ant-layout-sider {
     position: fixed !important;
     top: 56px;
-    bottom: 64px;
+    /* 底部导航高度含手机手势条留白，菜单要停在它上面，不能叠到导航下面。 */
+    bottom: calc(64px + env(safe-area-inset-bottom));
     left: 0;
     z-index: 1150;
     height: auto;
@@ -952,7 +958,7 @@ body {
   }
   .mobile-sidebar-mask {
     position: fixed;
-    inset: 56px 0 64px;
+    inset: 56px 0 calc(64px + env(safe-area-inset-bottom));
     z-index: 1100;
     display: block;
     padding: 0;
@@ -1009,10 +1015,15 @@ body {
   .page-workbench:has(> .ant-card > .ant-card-body > .ant-table-wrapper) {
     overflow-y: auto;
   }
+  /* 手机整页滚动：列表卡片按内容撑高，不能被压缩到一屏高，否则内容会溢出盖住下面的卡片。 */
   .page-workbench > .ant-card:has(> .ant-card-body > .ant-table-wrapper) {
+    flex: 0 0 auto;
     height: auto;
     min-height: 100%;
     overflow: visible;
+  }
+  .page-workbench .ant-table-pagination {
+    position: static;
   }
   .page-workbench > .ant-card:has(> .ant-card-body > .ant-table-wrapper) > .ant-card-body {
     overflow: visible;
@@ -1243,5 +1254,67 @@ body {
   }
   .login-brand b {
     font-size: 32px;
+  }
+}
+
+/* 手机筛选区开关（useMobileFilterToggle）：默认收起，点开后再显示整块筛选表单；桌面不显示开关。 */
+.oa-filter-toggle {
+  display: none;
+}
+@media (max-width: 720px) {
+  .oa-filter-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 44px;
+    margin: 0 0 10px;
+    padding: 0 14px;
+    border: 1px solid var(--oa-border);
+    border-radius: 12px;
+    background: var(--oa-surface);
+    color: var(--oa-text);
+    font: inherit;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .oa-filter-toggle > .anticon {
+    color: var(--oa-primary);
+  }
+  .oa-filter-toggle-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    color: var(--oa-primary);
+    font-size: 13px;
+  }
+  .oa-filter-toggle-state .anticon {
+    font-size: 11px;
+    transition: transform 0.2s ease;
+  }
+  .oa-filter-toggle[aria-expanded="true"] .oa-filter-toggle-state .anticon {
+    transform: rotate(180deg);
+  }
+  .oa-filter-collapsible:not(.is-open),
+  .oa-filter-fields:not(.is-open) > :not(.oa-filter-keep) {
+    display: none !important;
+  }
+  /* 只剩操作按钮时去掉筛选区的底色和边框，按钮在开关下面横排一行。 */
+  .oa-filter-fields:not(.is-open) {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-height: 0 !important;
+    margin-bottom: 10px;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+  .oa-filter-fields:not(.is-open) > .oa-filter-keep {
+    width: auto;
+    min-width: 40px;
+    margin: 0;
   }
 }

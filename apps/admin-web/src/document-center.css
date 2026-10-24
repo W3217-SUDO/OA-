@@ -12,9 +12,46 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+/* 手机上 6 个统计排成 3 列小卡片，不再一项占一整行。 */
 @media (max-width: 720px) {
   .document-stats {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .document-stats .ant-card-body {
+    padding: 10px 12px;
+  }
+  .document-stats .ant-statistic-title {
+    margin-bottom: 2px;
+    font-size: 12px;
+  }
+  .document-stats .ant-statistic-content {
+    font-size: 20px;
+  }
+  /* 正式发文筛选：标签固定宽度、输入框占满一行，不再按桌面的固定宽度参差排列。 */
+  .document-outgoing-query.ant-form-inline {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .document-outgoing-query .ant-form-item {
+    margin-inline-end: 0;
+  }
+  .document-outgoing-query .ant-form-item-row {
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+  .document-outgoing-query .ant-form-item-label {
+    flex: 0 0 5.6em;
+    text-align: left;
+    white-space: nowrap;
+  }
+  .document-outgoing-query .ant-form-item-control {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .document-outgoing-query :is(.ant-input-affix-wrapper, .ant-select, .ant-picker) {
+    width: 100% !important;
   }
 }
 

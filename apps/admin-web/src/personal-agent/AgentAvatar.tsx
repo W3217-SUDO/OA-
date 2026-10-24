@@ -3,13 +3,14 @@ type Props = {
   className?: string;
 };
 
-// 形象的主体颜色取当前主题色，切换主题（经典绿、藏青、紫罗兰……）时头像跟着变；天线小球和腮红保持原色。
-const BODY = { fill: "color-mix(in srgb, var(--oa-primary) 82%, #fff)" };
-const DARK = { fill: "color-mix(in srgb, var(--oa-primary) 70%, #000)" };
-const DARK_STROKE = { stroke: "color-mix(in srgb, var(--oa-primary) 70%, #000)" };
-const FACE = { fill: "color-mix(in srgb, var(--oa-primary) 6%, #fff)" };
-const INK = { fill: "color-mix(in srgb, var(--oa-primary) 22%, #10151a)" };
-const INK_STROKE = { stroke: "color-mix(in srgb, var(--oa-primary) 22%, #10151a)" };
+// 形象的主体颜色取当前主题色（theme.css 里的 --oa-agent-* 变量），切换主题时头像跟着变；天线小球和腮红保持原色。
+// 不在内联样式里写 color-mix：钉钉手机内核不认识，会整块变黑；旧内核上这些变量由主题模块按当前主题色算好写入。
+const BODY = { fill: "var(--oa-agent-body)" };
+const DARK = { fill: "var(--oa-agent-dark)" };
+const DARK_STROKE = { stroke: "var(--oa-agent-dark)" };
+const FACE = { fill: "var(--oa-agent-face)" };
+const INK = { fill: "var(--oa-agent-ink)" };
+const INK_STROKE = { stroke: "var(--oa-agent-ink)" };
 
 // 工作台智能体的卡通形象：圆脑袋、大眼睛、腮红和小天线。纯色填充，同一页面里多次出现也不会互相影响，且不参与无障碍朗读。
 export default function AgentAvatar({ size = 32, className }: Props) {

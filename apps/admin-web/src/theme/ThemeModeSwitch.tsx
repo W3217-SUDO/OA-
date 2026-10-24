@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button, Drawer, Segmented, Tooltip } from "antd";
-import { CheckOutlined, MoonOutlined, SettingOutlined, SunOutlined } from "@ant-design/icons";
+import { BgColorsOutlined, CheckOutlined, MoonOutlined, SettingOutlined, SunOutlined } from "@ant-design/icons";
 import { THEME_PRESETS, THEME_SCHEMES, useThemeMode, type HeaderStyle, type SidebarStyle, type ThemeMode } from "./ThemeModeProvider";
 
 const MODE_OPTIONS: { value: ThemeMode; label: string }[] = [
@@ -32,19 +32,20 @@ export default function ThemeModeSwitch({ className }: { className?: string }) {
   );
 }
 
-export function ThemeSettingsButton() {
+// compact：手机顶栏用调色板图标，抽屉宽度不超过屏幕的 88%。
+export function ThemeSettingsButton({ compact = false }: { compact?: boolean }) {
   const { mode, preset, sidebar, header, setMode, setPreset, setSidebar, setHeader, applyScheme } = useThemeMode();
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Tooltip title="偏好设置">
-        <Button type="text" aria-label="偏好设置" icon={<SettingOutlined />} onClick={() => setOpen(true)} />
+      <Tooltip title={compact ? "主题与外观" : "偏好设置"}>
+        <Button type="text" aria-label={compact ? "主题与外观" : "偏好设置"} icon={compact ? <BgColorsOutlined /> : <SettingOutlined />} onClick={() => setOpen(true)} />
       </Tooltip>
       <Drawer
         title="偏好设置"
         open={open}
         onClose={() => setOpen(false)}
-        size={340}
+        size={compact ? "min(340px, 88vw)" : 340}
         rootClassName="theme-settings-drawer"
       >
         <section className="theme-settings-section">

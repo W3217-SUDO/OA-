@@ -28,6 +28,7 @@ import {
   Tooltip,
 } from "antd";
 import ThemeModeSwitch, { ThemeSettingsButton } from "./theme/ThemeModeSwitch";
+import AgentAvatar from "./personal-agent/AgentAvatar";
 import { useThemeMode } from "./theme/ThemeModeProvider";
 import {
   BankOutlined,
@@ -652,7 +653,8 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
         const menuTypeId = Number(item.menu_type_id ?? item.menu_type ?? item.MenuTypeId ?? 0);
         return {
           key: item.key,
-          label: item.label,
+          // 旧数据里首页菜单名是“控制台”，页面标题、底部导航都叫“工作台”，统一显示为工作台。
+          label: item.key === "dashboard" ? "工作台" : item.label,
           disabled: item.key.startsWith("legacy-menu-") && !linkUrl,
           link_url: linkUrl || undefined,
           menu_type_id: menuTypeId || undefined,
@@ -1995,6 +1997,7 @@ export default function App() {
           </Dropdown>
         </Space>
         <Space className="mobile-top-actions">
+          <ThemeSettingsButton compact />
           <ThemeModeSwitch />
           <NotificationCenter onNavigate={navigate} grantedMenuKeys={grantedMenuKeys} />
           <Badge count={taskUnreadCount} size="small" overflowCount={99}>
@@ -2146,8 +2149,9 @@ export default function App() {
           aria-label="智能体中心"
           onClick={openPersonalAgent}
         >
-          <img className="mobile-ai-logo" src="/assets/ai-assistant-logo.png" alt="" width={32} height={32} />
-          <span>Ai</span>
+          {/* 跟随主题色的智能体形象（图片是固定颜色，换主题不会变）。 */}
+          <span className="mobile-ai-logo" aria-hidden="true"><AgentAvatar size={30} /></span>
+          <span>智能体中心</span>
         </button>
         <button
           type="button"

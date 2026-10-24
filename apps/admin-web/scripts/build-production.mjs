@@ -21,6 +21,7 @@ function sourceHashes() {
     ...collectFiles(path.join(frontend, 'src'), 'src'),
     ...collectFiles(path.join(frontend, 'public'), 'public'),
     'scripts/build-production.mjs',
+    'scripts/legacy-webview-css.mjs',
     ...readdirSync(frontend).filter((name) =>
       /^(package(?:-lock)?\.json|index\.html|tsconfig.*\.json|vite\.config\.ts)$/.test(name)),
   ].sort();

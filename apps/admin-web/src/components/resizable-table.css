@@ -114,3 +114,246 @@ th.oa-stack-column {
 .oa-fit-table .ant-table-tbody .ant-table-cell .ant-btn.ant-btn-variant-text {
   padding-inline: 3px;
 }
+
+/* 手机卡片模式（≤720px）：表头隐藏，每一行是一张卡片——第一列作标题，其余“字段名 值”逐行排，“操作”按钮在底部，勾选框在右上角。
+   合计行也排成卡片（字段名由表格组件按表头补上）。 */
+@media (max-width: 720px) {
+  /* 卡片列表按内容撑高、整页滚动：桌面“表格在卡片内部滚动”的定高布局在手机卡片模式下取消，
+     否则卡片会被裁掉，只能看到第一张。 */
+  .page-workbench:has(.oa-mobile-cards) {
+    overflow-y: auto !important;
+  }
+  .page-workbench:has(.oa-mobile-cards) :is(.ant-card, .ant-card-body, .ant-tabs, .ant-tabs-content-holder, .ant-tabs-content, .ant-tabs-tabpane) {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .oa-mobile-cards.oa-mobile-cards {
+    flex: none !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .oa-mobile-cards .ant-table-thead,
+  .oa-mobile-cards colgroup,
+  .oa-mobile-cards .ant-table-header,
+  .oa-mobile-cards .ant-table-measure-row {
+    display: none !important;
+  }
+  /* 页面给宽表设的最小宽度（如员工列表 1590px）在卡片里不适用，卡片宽度跟随屏幕。 */
+  .oa-mobile-cards.oa-mobile-cards :is(.ant-table, .ant-table-container, .ant-table-content, .ant-table-body) {
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    max-height: none !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+  .oa-mobile-cards .ant-table-container::before,
+  .oa-mobile-cards .ant-table-container::after {
+    display: none;
+  }
+  .oa-mobile-cards table,
+  .oa-mobile-cards .ant-table-tbody,
+  .oa-mobile-cards .ant-table-summary,
+  .oa-mobile-cards tfoot {
+    display: block;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  .oa-mobile-cards .ant-table-tbody > tr.ant-table-row,
+  .oa-mobile-cards tr.oa-mc-total {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0 0 10px;
+    padding: 12px 14px;
+    border: 1px solid var(--oa-border);
+    border-radius: 12px;
+    background: var(--oa-surface) !important;
+    box-shadow: var(--oa-shadow-xs);
+  }
+  .oa-mobile-cards tr.oa-mc-total {
+    background: var(--oa-primary-tint) !important;
+    border-color: var(--oa-primary-line);
+  }
+  .oa-mobile-cards .ant-table-tbody > tr.ant-table-row-selected {
+    border-color: var(--oa-primary);
+    box-shadow: 0 0 0 1px var(--oa-primary);
+  }
+  /* 类名写两遍：各业务页样式表也用 !important 给单元格设了内边距和边框，卡片规则要压过它们。 */
+  .oa-mobile-cards.oa-mobile-cards .ant-table-tbody > tr > td,
+  .oa-mobile-cards.oa-mobile-cards tr.oa-mc-total > td {
+    position: static !important;
+    display: flex;
+    height: auto !important;
+    min-height: 0 !important;
+    align-items: baseline;
+    gap: 10px;
+    width: auto !important;
+    min-width: 0;
+    max-width: none !important;
+    padding: 3px 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    color: var(--oa-text);
+    font-size: 13px;
+    line-height: 1.55;
+    text-align: left !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    box-shadow: none !important;
+  }
+  .oa-mobile-cards .ant-table-tbody > tr > td > *,
+  .oa-mobile-cards tr.oa-mc-total > td > * {
+    min-width: 0;
+  }
+  .oa-mobile-cards.oa-mobile-cards .ant-table-cell-ellipsis,
+  .oa-mobile-cards.oa-mobile-cards .ant-table-cell-ellipsis * {
+    overflow: visible !important;
+    white-space: normal !important;
+    text-overflow: clip !important;
+  }
+  .oa-mobile-cards .oa-mc-value {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .oa-mobile-cards.oa-mobile-cards td.oa-mc-title :is(button, a):not(.ant-btn) {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  /* 标题格里有多段时（如编号 + 阶段 + 状态），只有第一段做标题，其余是副标题。 */
+  .oa-mobile-cards td.oa-mc-title .oa-mc-value > :not(:first-child) {
+    margin-top: 2px;
+    color: var(--oa-text-2);
+    font-size: 13px;
+    font-weight: 400;
+  }
+  /* 桌面为了单行显示给段落、文字设了不换行和省略号，卡片里完整显示。 */
+  .oa-mobile-cards.oa-mobile-cards .oa-mc-value :is(p, span) {
+    max-width: 100%;
+    overflow: visible !important;
+    white-space: normal !important;
+    text-overflow: clip !important;
+  }
+  /* 页面自写的单元格链接（固定行高、居中、单行省略）在卡片里改成左对齐、完整换行。 */
+  .oa-mobile-cards.oa-mobile-cards .ant-table-tbody > tr > td :is(button, a):not(.ant-btn),
+  .oa-mobile-cards.oa-mobile-cards .ant-table-tbody > tr > td :is(button, a):not(.ant-btn) > span {
+    height: auto;
+    overflow: visible;
+    text-align: left;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .oa-mobile-cards td[data-label]::before {
+    content: attr(data-label);
+    flex: 0 0 7.5em;
+    max-width: 7.5em;
+    color: var(--oa-text-3);
+    font-size: 12px;
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+  }
+  .oa-mobile-cards td[data-label=""]::before {
+    display: none;
+  }
+  /* 合计行里没有内容的格子不占行。 */
+  .oa-mobile-cards tr.oa-mc-total > td:empty {
+    display: none;
+  }
+  .oa-mobile-cards.oa-mobile-cards .ant-table-tbody > tr > td.oa-mc-title {
+    order: -1;
+    padding: 0 30px 6px 0 !important;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .oa-mobile-cards .ant-table-tbody > tr > td.oa-mc-title::before {
+    display: none;
+  }
+  .oa-mobile-cards .ant-table-tbody > tr > td.oa-mc-title .ant-btn-link {
+    height: auto;
+    padding: 0;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .oa-mobile-cards.oa-mobile-cards .ant-table-tbody > tr > td.ant-table-selection-column {
+    position: absolute !important;
+    top: 10px;
+    right: 10px;
+    width: auto !important;
+    padding: 0 !important;
+  }
+  .oa-mobile-cards .ant-table-tbody > tr > td.ant-table-selection-column::before {
+    display: none;
+  }
+  .oa-mobile-cards.oa-mobile-cards .ant-table-tbody > tr > td.oa-mc-actions {
+    order: 99;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+    padding-top: 10px !important;
+    border-top: 1px dashed var(--oa-border) !important;
+  }
+  .oa-mobile-cards .ant-table-tbody > tr > td.oa-mc-actions::before {
+    display: none;
+  }
+  .oa-mobile-cards td.oa-mc-actions .ant-space,
+  .oa-mobile-cards td.oa-mc-actions > div {
+    flex-wrap: wrap;
+    gap: 6px !important;
+  }
+  .oa-mobile-cards td.oa-mc-actions .ant-btn {
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--oa-border);
+    border-radius: 8px;
+    background: var(--oa-surface);
+  }
+  /* 单元格里的链接/文字按钮靠左排、可换行，不居中。 */
+  .oa-mobile-cards .ant-table-tbody > tr > td .ant-btn-link,
+  .oa-mobile-cards .ant-table-tbody > tr > td .ant-btn-text {
+    justify-content: flex-start;
+    max-width: 100%;
+    height: auto;
+    min-height: 0;
+    text-align: left;
+    white-space: normal;
+  }
+  .oa-mobile-cards .ant-table-tbody > tr > td:not(.oa-mc-actions) .ant-btn-link {
+    padding: 0;
+  }
+  /* 底部操作按钮统一成同高的描边按钮；只有图标的按钮保持方形。 */
+  .oa-mobile-cards .ant-table-tbody > tr > td.oa-mc-actions .ant-btn {
+    justify-content: center;
+    min-width: 36px;
+    height: 32px;
+    min-height: 32px;
+    padding: 0 12px;
+  }
+  .oa-mobile-cards .ant-table-tbody > tr > td.oa-mc-actions .ant-btn-icon-only {
+    width: 36px;
+    padding: 0;
+  }
+  .oa-mobile-cards .ant-table-tbody > tr > td.oa-mc-index {
+    display: none;
+  }
+  .oa-mobile-cards .ant-table-expanded-row > td {
+    display: block;
+  }
+  .oa-mobile-cards.oa-mobile-cards .ant-table-placeholder > td {
+    display: block;
+    padding: 24px 0 !important;
+  }
+  .oa-mobile-cards .ant-table-placeholder > td::before {
+    display: none;
+  }
+  .oa-mobile-cards .ant-table-pagination.ant-pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: 8px;
+    margin: 12px 0 4px;
+  }
+}

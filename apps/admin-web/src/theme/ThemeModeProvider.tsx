@@ -104,7 +104,7 @@ function presetColor(presetKey: string, resolved: ResolvedTheme) {
   return preset[resolved];
 }
 
-function mixHex(color: string, base: string, weight: number) {
+export function mixHex(color: string, base: string, weight: number) {
   const parse = (hex: string) => [1, 3, 5].map((index) => parseInt(hex.slice(index, index + 2), 16));
   const a = parse(color);
   const b = parse(base);
@@ -294,6 +294,39 @@ function runThemeTransition(apply: () => void, origin?: { x: number; y: number }
   window.setTimeout(() => delete root.dataset.themeSwitching, 650);
 }
 
+// 钉钉 Android 内置浏览器是 Chrome 100 内核，不支持 color-mix()。样式表里由主题色推出的变量在旧内核上只有
+// 按默认主题算好的静态回退，这里按当前主题色和白天/夜间直接算出色值写到 <html> 上，切换主题色时一起变。
+const supportsColorMix = typeof CSS !== "undefined" && typeof CSS.supports === "function"
+  && CSS.supports("color", "color-mix(in srgb, red 50%, blue)");
+
+function alphaHex(color: string, alpha: number) {
+  const [red, green, blue] = [1, 3, 5].map((index) => parseInt(color.slice(index, index + 2), 16));
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+const LEGACY_LOGO_BG = "--oa-logo-bg";
+
+function legacyThemeTokens(resolved: ResolvedTheme, primary: string): Record<string, string> {
+  const surface = neutral[resolved].surface;
+  const dark = resolved === "dark";
+  return {
+    "--oa-primary-hover": mixHex(primary, "#ffffff", dark ? 0.85 : 0.86),
+    "--oa-primary-active": mixHex(primary, "#000000", dark ? 0.85 : 0.86),
+    "--oa-primary-soft": mixHex(primary, surface, dark ? 0.16 : 0.08),
+    "--oa-primary-soft-2": alphaHex(primary, dark ? 0.26 : 0.16),
+    "--oa-accent-soft": alphaHex(primary, dark ? 0.12 : 0.08),
+    "--oa-primary-ink": mixHex(mixHex(primary, "#000000", 0.76), "#ffffff", dark ? 0.42 : 1),
+    "--oa-primary-tint": mixHex(primary, surface, 0.1),
+    "--oa-primary-line": mixHex(primary, surface, 0.28),
+    "--oa-primary-light": mixHex(primary, "#ffffff", 0.62),
+    "--oa-primary-glow": alphaHex(primary, 0.45),
+    "--oa-agent-body": mixHex(primary, "#ffffff", 0.82),
+    "--oa-agent-dark": mixHex(primary, "#000000", 0.7),
+    "--oa-agent-face": mixHex(primary, "#ffffff", 0.06),
+    "--oa-agent-ink": mixHex(primary, "#10151a", 0.22),
+  };
+}
+
 function applyDocumentTheme(resolved: ResolvedTheme, primary: string, sidebar: SidebarStyle, header: HeaderStyle) {
   const root = document.documentElement;
   root.dataset.theme = resolved;
@@ -301,6 +334,12 @@ function applyDocumentTheme(resolved: ResolvedTheme, primary: string, sidebar: S
   root.dataset.header = header;
   root.style.colorScheme = resolved;
   root.style.setProperty("--oa-primary", primary);
+  if (!supportsColorMix) {
+    Object.entries(legacyThemeTokens(resolved, primary)).forEach(([name, value]) => root.style.setProperty(name, value));
+    // 主题色顶栏（白天）的品牌区比顶栏深一档；其他组合由样式表按侧栏取色，不写内联值。
+    if (resolved === "light" && header === "primary") root.style.setProperty(LEGACY_LOGO_BG, mixHex(primary, "#000000", 0.85));
+    else root.style.removeProperty(LEGACY_LOGO_BG);
+  }
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
   if (meta) meta.content = resolved === "light" && header === "primary" ? primary : neutral[resolved].surface;
 }
@@ -320,13 +359,17 @@ export function ThemeModeProvider({ children }: { children: ReactNode }) {
 
   // 首帧同步，避免 CSS 变量先按默认渲染再闪成用户偏好。
   const root = document.documentElement;
+  // 切换白天/夜间时 data-theme 会先被过渡动画改掉，所以另记一份已应用的组合，保证旧内核上的推导色也跟着重算。
+  const appliedKey = `${resolved}|${primary}|${prefs.sidebar}|${prefs.header}`;
   if (
     root.dataset.theme !== resolved
     || root.dataset.sidebar !== prefs.sidebar
     || root.dataset.header !== prefs.header
     || root.style.getPropertyValue("--oa-primary") !== primary
+    || root.dataset.themeApplied !== appliedKey
   ) {
     applyDocumentTheme(resolved, primary, prefs.sidebar, prefs.header);
+    root.dataset.themeApplied = appliedKey;
   }
 
   const switchResolved = useCallback((nextResolved: ResolvedTheme, origin?: { x: number; y: number }) => {

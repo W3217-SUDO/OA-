@@ -27,10 +27,11 @@
 }
 
 .mobile-bottom-nav .mobile-ai-logo {
+  display: grid;
   flex: none;
   width: 32px;
   height: 32px;
-  object-fit: contain;
+  place-items: center;
 }
 
 .ai-chat-page > .assistant {

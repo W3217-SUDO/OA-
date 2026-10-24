@@ -12,6 +12,7 @@ import type { FormInstance } from "antd";
 import type { Key } from "react";
 import type { ReceiptRow, Attachment } from "./types";
 import { personDisplayName } from "./constants";
+import { useMobileFilterToggle } from "../components/common/MobileFilterToggle";
 
 interface DocumentReceiptPanelProps {
   tab: string;
@@ -68,6 +69,7 @@ const receiptMoreActionItems = [
 
 export function DocumentReceiptPanel({ tab, loading, receiptForm, searchedReceipts, selectedReceiptKeys, selectedFormalReceipts, receiptAttachment, onSelectionChange, onSearch, onShowReceipt, onPreviewReceiptFile, onOpenCaseDetail, onOpenUpload, onDeleteSelected, onOpenReceiptDateEditor, onOpenCaseLinker, onUpdateProcessStatus, onExport, onMoreAction }: DocumentReceiptPanelProps) {
   const isOfficial = tab === "official";
+  const mobileFilter = useMobileFilterToggle();
 
   const officialColumns = [
     {
@@ -251,7 +253,8 @@ export function DocumentReceiptPanel({ tab, loading, receiptForm, searchedReceip
 
   return (
     <Card className="panel receipt-original-panel" title={title}>
-      <Form form={receiptForm} className="receipt-query-form" onFinish={onSearch}>
+      {mobileFilter.toggle}
+      <Form form={receiptForm} className={`receipt-query-form ${mobileFilter.fieldsClassName}`} onFinish={onSearch}>
         {isOfficial ? (
           <div className="receipt-filter-grid official">
             <Form.Item label="案件编号" name="case_no">
@@ -318,7 +321,7 @@ export function DocumentReceiptPanel({ tab, loading, receiptForm, searchedReceip
             </Form.Item>
           </div>
         )}
-        <div className="receipt-query-actions">
+        <div className="receipt-query-actions oa-filter-keep">
           <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>
             查询
           </Button>

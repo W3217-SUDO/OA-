@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { isValidElement, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Table as AntTable } from "antd";
 import type { TableColumnsType, TableProps } from "antd";
 import "./resizable-table.css";
@@ -24,7 +24,93 @@ type ResizableTableProps<RecordType extends object> = Omit<TableProps<RecordType
   fitStack?: FitStackGroup[];
   fitStackAware?: FitStackAware;
   summary?: (data: readonly RecordType[], fit?: FitStackState) => ReactNode;
+  // 手机上把每一行排成一张卡片（字段名：值）。已有自己手机卡片样式的表传 false。
+  mobileCards?: boolean;
 };
+
+// 手机卡片模式的屏幕宽度上限，与各页面手机样式的断点一致。
+const MOBILE_CARD_QUERY = "(max-width: 720px)";
+
+// 表头可能是带换行的元素（如“官费<br/>支付金额”），取出其中的文字作卡片里的字段名。
+function titleText(title: unknown): string {
+  if (title === null || title === undefined || typeof title === "boolean") return "";
+  if (typeof title === "string" || typeof title === "number") return String(title).trim();
+  if (Array.isArray(title)) return title.map(titleText).filter(Boolean).join(" ").trim();
+  if (typeof title === "object" && "props" in (title as object)) {
+    return titleText((title as { props?: { children?: unknown } }).props?.children);
+  }
+  return "";
+}
+
+const ACTION_TITLE = /操作/;
+const ACTION_KEY = /^(action|actions|operation|operations|op|ops)$/i;
+// 序号列在卡片里没有意义，不拿它当卡片标题。
+const INDEX_TITLE = /^(序号|序|#|No\.?)$/i;
+const INDEX_KEY = /^(index|idx|seq|serial|row_?no|rownum)$/i;
+
+// 叶子列的字段名（分组表头加上组名），顺序与表格实际渲染的列一致。
+function leafLabels<RecordType extends object>(columns: TableColumnsType<RecordType>, prefix = ""): string[] {
+  return columns.flatMap((column) => {
+    if (column === AntTable.SELECTION_COLUMN || column === AntTable.EXPAND_COLUMN) return [""];
+    const text = typeof column.title === "function" ? "" : titleText(column.title);
+    if ("children" in column && column.children?.length) return leafLabels(column.children, text ? `${prefix}${text} ` : prefix);
+    return [`${prefix}${text}`.trim()];
+  });
+}
+
+// 不少接口把日期时间原样返回成 ISO 字符串（如 2026-08-12T00:00:00），卡片里改成日期或日期加时分。
+const ISO_DATE_TIME = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/;
+function readableDateTime(text: string): string {
+  const match = ISO_DATE_TIME.exec(text.trim());
+  if (!match) return text;
+  const [, date, hour, minute, zone] = match;
+  if (zone) {
+    const local = new Date(text.trim());
+    if (Number.isNaN(local.getTime())) return text;
+    const pad = (value: number) => String(value).padStart(2, "0");
+    const localDate = `${local.getFullYear()}-${pad(local.getMonth() + 1)}-${pad(local.getDate())}`;
+    const localTime = `${pad(local.getHours())}:${pad(local.getMinutes())}`;
+    return localTime === "00:00" ? localDate : `${localDate} ${localTime}`;
+  }
+  return hour === "00" && minute === "00" ? date : `${date} ${hour}:${minute}`;
+}
+
+// 手机卡片：每个数据列的单元格带上字段名；第一列作为卡片标题，“操作”列排在卡片底部。
+function mobileCardColumns<RecordType extends object>(columns: TableColumnsType<RecordType>): TableColumnsType<RecordType> {
+  let titleAssigned = false;
+  const decorate = (items: TableColumnsType<RecordType>, prefix: string): TableColumnsType<RecordType> => items.map((column) => {
+    if (column === AntTable.SELECTION_COLUMN || column === AntTable.EXPAND_COLUMN) return column;
+    const text = typeof column.title === "function" ? "" : titleText(column.title);
+    if ("children" in column && column.children?.length) {
+      return { ...column, children: decorate(column.children, text ? `${prefix}${text} ` : prefix) };
+    }
+    const label = `${prefix}${text}`.trim();
+    const isAction = ACTION_TITLE.test(text) || ACTION_KEY.test(String(column.key ?? ""));
+    const isIndex = INDEX_TITLE.test(text) || INDEX_KEY.test(String(column.key ?? ""));
+    const role = isAction ? "oa-mc-actions" : isIndex ? "oa-mc-index" : !titleAssigned ? "oa-mc-title" : "";
+    if (role === "oa-mc-title") titleAssigned = true;
+    const originalCell = column.onCell;
+    const originalRender = column.render;
+    return {
+      ...column,
+      render: (value: unknown, record: RecordType, index: number) => {
+        const output = originalRender ? originalRender(value, record, index) : (value as ReactNode);
+        const content = typeof output === "string" ? readableDateTime(output) : output;
+        // 操作列的按钮直接排在卡片底部；其余格子把内容包成一块，多段内容在值这一栏里上下排，不再挤成一行。
+        if (role === "oa-mc-actions") return content;
+        if (content && typeof content === "object" && !isValidElement(content) && !Array.isArray(content) && "children" in content) {
+          return { ...content, children: <div className="oa-mc-value">{content.children}</div> };
+        }
+        return <div className="oa-mc-value">{content as ReactNode}</div>;
+      },
+      onCell: (record: RecordType, index?: number) => {
+        const cell = (originalCell?.(record, index) || {}) as Record<string, unknown> & { className?: string };
+        return { ...cell, "data-label": label, className: [cell.className, role].filter(Boolean).join(" ") } as never;
+      },
+    };
+  });
+  return decorate(columns, "");
+}
 
 // 列的标识：优先 key，其次 dataIndex，都没有时用文字表头。
 function columnId(column: object): string {
@@ -390,7 +476,18 @@ function storedWidths(key: string): Record<string, number> {
   return Object.fromEntries(Object.entries(value).filter(([, width]) => typeof width === "number" && Number.isFinite(width) && width >= MIN_COLUMN_WIDTH && width <= 2000));
 }
 
-function ResizableTable<RecordType extends object>({ columns, className, resizable = true, fitStack, fitStackAware, summary, ...props }: ResizableTableProps<RecordType>) {
+function ResizableTable<RecordType extends object>({ columns, className, resizable = true, fitStack, fitStackAware, summary, mobileCards = true, ...props }: ResizableTableProps<RecordType>) {
+  const [mobileViewport, setMobileViewport] = useState(() => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(MOBILE_CARD_QUERY).matches);
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia(MOBILE_CARD_QUERY);
+    const update = () => setMobileViewport(query.matches);
+    update();
+    query.addEventListener?.("change", update);
+    return () => query.removeEventListener?.("change", update);
+  }, []);
+  // 已有自己手机排版的表（案件列表、案件费用等）传 mobileCards={false}，不套用通用卡片。
+  const cardMode = mobileCards && mobileViewport;
   const stackBlocked = (Boolean(summary) && !fitStackAware?.summary)
     || (Boolean(props.components?.header) && !fitStackAware?.header)
     || (Boolean(props.components?.body) && !fitStackAware?.body);
@@ -511,6 +608,8 @@ function ResizableTable<RecordType extends object>({ columns, className, resizab
 
   const userResized = resizable && Object.keys(widths).length > 0;
   const fit = useMemo(() => {
+    // 手机卡片模式不按列宽排，不需要自适应列宽。
+    if (cardMode) return null;
     // 没设横向滚动宽度的表格按列宽之和判断是否超出。
     const declaredX = props.scroll?.x === undefined && resizedColumns ? leafDeclaredTotal(resizedColumns) : props.scroll?.x;
     if (userResized || !resizedColumns || typeof declaredX !== "number" || !declaredX || availableWidth <= 0) {
@@ -565,7 +664,7 @@ function ResizableTable<RecordType extends object>({ columns, className, resizab
     }
     recordFit({ className, usable, declaredTotal, minTotal: denseLeaves.reduce((sum, leaf) => sum + leaf.min, 0), leaves: describe(denseLeaves) });
     return null;
-  }, [userResized, resizedColumns, allowedStack, props.scroll?.x, props.scroll?.y, props.rowSelection, props.expandable, props.dataSource, availableWidth, renderedStats]);
+  }, [cardMode, userResized, resizedColumns, allowedStack, props.scroll?.x, props.scroll?.y, props.rowSelection, props.expandable, props.dataSource, availableWidth, renderedStats]);
   const fitLayout = useRef<(number | number[])[] | undefined>(undefined);
   fitLayout.current = fit?.layout;
 
@@ -586,10 +685,30 @@ function ResizableTable<RecordType extends object>({ columns, className, resizab
     return () => cancel(frame);
   }, [userResized, props.dataSource, resizedColumns, props.scroll?.x]);
 
-  const scroll = userResized && typeof props.scroll?.x === "number"
+  const scroll = cardMode ? undefined : userResized && typeof props.scroll?.x === "number"
     ? { ...props.scroll, x: "max-content" as const }
     : fit ? { ...props.scroll, x: fit.x } : props.scroll;
-  const sticky = props.sticky ?? (scroll?.x !== undefined ? { offsetScroll: 0 } : undefined);
+  const sticky = cardMode ? undefined : props.sticky ?? (scroll?.x !== undefined ? { offsetScroll: 0 } : undefined);
+  const cardColumns = useMemo(() => (cardMode && resizedColumns ? mobileCardColumns(resizedColumns) : undefined), [cardMode, resizedColumns]);
+  // 合计行等自定义行没有字段名：按表头位置补上，卡片里才知道每个数字是什么。
+  useEffect(() => {
+    if (!cardMode) return;
+    const element = tableRef.current?.nativeElement;
+    if (!element || !resizedColumns) return;
+    // 勾选列、展开列在最前面（按 antd 的默认位置），后面是各叶子列。
+    const leading = (props.rowSelection ? 1 : 0) + (props.expandable && props.expandable.showExpandColumn !== false && (props.expandable.expandedRowRender || props.expandable.rowExpandable) ? 1 : 0);
+    const headers = [...Array.from({ length: leading }, () => ""), ...leafLabels(resizedColumns)];
+    element.querySelectorAll<HTMLTableRowElement>(".ant-table-tbody > tr, .ant-table-summary tr, tfoot > tr").forEach((row) => {
+      if (row.classList.contains("ant-table-row") || row.classList.contains("ant-table-measure-row") || row.classList.contains("ant-table-placeholder") || row.classList.contains("ant-table-expanded-row")) return;
+      row.classList.add("oa-mc-total");
+      let position = 0;
+      [...row.children].forEach((cell) => {
+        const span = Math.max(1, (cell as HTMLTableCellElement).colSpan || 1);
+        if (span === 1 && !cell.hasAttribute("data-label") && headers[position]) cell.setAttribute("data-label", headers[position]);
+        position += span;
+      });
+    });
+  });
   // 列被叠放时，把叠放分组告诉自定义表头/表体（例如合计行），让它们按同样的方式合并单元格。
   const stackGroups: FitStackSpec = useMemo(
     () => (fit?.groups ? fit.groups.map((group) => ({ keys: group.keys, labels: group.labels })) : []),
@@ -613,7 +732,7 @@ function ResizableTable<RecordType extends object>({ columns, className, resizab
     : props.locale;
   const stackedNow = Boolean(fit?.stacked);
   const tableSummary = summary ? (data: readonly RecordType[]) => summary(data, { stacked: stackedNow, groups: stackGroups }) : undefined;
-  return <AntTable<RecordType> {...props} summary={tableSummary} components={components as TableProps<RecordType>["components"]} ref={tableRef as never} locale={locale} scroll={scroll} sticky={sticky} className={[className, resizable ? "oa-resizable-table" : "", fit ? "oa-fit-table" : "", fit?.dense ? "oa-fit-dense" : ""].filter(Boolean).join(" ")} columns={fit ? fit.columns : resizedColumns} />;
+  return <AntTable<RecordType> {...props} summary={tableSummary} components={components as TableProps<RecordType>["components"]} ref={tableRef as never} locale={locale} scroll={scroll} sticky={sticky} className={[className, resizable ? "oa-resizable-table" : "", fit ? "oa-fit-table" : "", fit?.dense ? "oa-fit-dense" : "", cardMode ? "oa-mobile-cards" : ""].filter(Boolean).join(" ")} columns={cardColumns ?? (fit ? fit.columns : resizedColumns)} />;
 }
 
 const Table = Object.assign(ResizableTable, {

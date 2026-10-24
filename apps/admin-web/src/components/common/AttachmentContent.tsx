@@ -72,7 +72,7 @@ function DocxPreview({ attachment }: { attachment: PreviewAttachment & { blob?: 
     <div style={docxPreviewStyle}>
       {loading && <div style={{ padding: 24, textAlign: "center", color: "var(--oa-text-3)" }}>正在还原 Word 模板版式...</div>}
       {error && <>
-      <div style={{ ...docxPreviewStyle, background: "color-mix(in srgb, #fff7e8 var(--oa-tint), var(--oa-surface))", borderColor: "color-mix(in srgb, #ffd591 var(--oa-tint), var(--oa-surface))", color: "var(--oa-warning)", marginBottom: 12 }}>
+      <div style={{ ...docxPreviewStyle, background: "var(--oa-warning-tint)", borderColor: "var(--oa-warning-line)", color: "var(--oa-warning)", marginBottom: 12 }}>
         Word 模板版式渲染失败：{error}。以下为纯文本内容，请通过下载查看原文件：
       </div>
       <pre style={{ maxHeight: "60vh", overflow: "auto", margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "inherit", lineHeight: 1.7, padding: "16px", background: "var(--oa-surface)", border: "1px solid var(--oa-border)" }}>{attachment.text}</pre>
@@ -127,7 +127,7 @@ function XlsxPreview({ attachment }: { attachment: PreviewAttachment & { blob?: 
   if (loading) return <div style={{ padding: 40, textAlign: "center", color: "var(--oa-text-3)" }}>正在渲染 Excel 表格...</div>;
   if (error) return (
     <div>
-      <div style={{ padding: "16px 20px", background: "color-mix(in srgb, #fff7e8 var(--oa-tint), var(--oa-surface))", border: "1px solid color-mix(in srgb, #ffd591 var(--oa-tint), var(--oa-surface))", color: "var(--oa-warning)", borderRadius: 4, marginBottom: 12 }}>
+      <div style={{ padding: "16px 20px", background: "var(--oa-warning-tint)", border: "1px solid var(--oa-warning-line)", color: "var(--oa-warning)", borderRadius: 4, marginBottom: 12 }}>
         渲染 Excel 表格失败：{error}，以下为纯文本预览：
       </div>
       <pre style={{ maxHeight: "60vh", overflow: "auto", margin: 0, whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "inherit", lineHeight: 1.7, padding: "16px", background: "var(--oa-surface)", border: "1px solid var(--oa-border)" }}>{attachment.text}</pre>

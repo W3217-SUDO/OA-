@@ -83,6 +83,7 @@ import ClueAuditSidePanel from "./ClueAuditSidePanel";
 import EditRecordModal from "./EditRecordModal";
 import AssignInvestigatorModal from "./AssignInvestigatorModal";
 import FeeApplicationModal from "./FeeApplicationModal";
+import { useMobileFilterToggle } from "../components/common/MobileFilterToggle";
 
 const clueStatusesByRoute: Record<string, string[]> = {
   "clue-my-draft": ["草稿"],
@@ -138,6 +139,7 @@ export default function InvestigationCenterPage({
     { value: string }[]
   >([]);
   const [casePeopleOptions, setCasePeopleOptions] = useState<PersonOption[]>([]);
+  const mobileFilter = useMobileFilterToggle();
   const [warehouseCatalog, setWarehouseCatalog] = useState<WarehouseCatalogItem[]>([]);
   const [collectionStorageLoading, setCollectionStorageLoading] = useState(false);
   const [collectionStorageError, setCollectionStorageError] = useState("");
@@ -3241,9 +3243,10 @@ export default function InvestigationCenterPage({
           </div>
         ) : (
           <>
+            {mobileFilter.toggle}
             <Form
               key={initialTab}
-              className="investigation-query"
+              className={`investigation-query ${mobileFilter.className}`}
               onValuesChange={(_, all) => setListQuery(all)}
             >
               {isFileQuery ? fileQueryFilters : filters}

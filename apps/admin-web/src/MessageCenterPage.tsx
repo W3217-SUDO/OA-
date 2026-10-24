@@ -7,6 +7,7 @@ import type {Key} from 'react'
 import {DeleteOutlined, MailOutlined, PlusOutlined} from '@ant-design/icons'
 import type {Dayjs} from 'dayjs'
 import {api} from './api'
+import {useMobileFilterToggle} from './components/common/MobileFilterToggle'
 import './message-center.css'
 
 type Notice={id:number;sender:string;sender_display_name?:string;recipient:string;recipient_display_name?:string;notification_type:string;title:string;content:string;level:string;is_read:boolean;read_at:string|null;created_at:string}
@@ -22,6 +23,7 @@ const tabItems=[
 ]
 
 export default function MessageCenterPage(){
+  const mobileFilter=useMobileFilterToggle()
   const [view,setView]=useState('all')
   const [rows,setRows]=useState<Notice[]>([])
   const [loading,setLoading]=useState(false)
@@ -101,12 +103,13 @@ export default function MessageCenterPage(){
       <Tabs activeKey={view} onChange={setView} items={tabItems}/>
       <section className="message-list-panel">
         <div className="message-list-title">消息列表</div>
-        <div className="message-filters">
+        {mobileFilter.toggle}
+        <div className={`message-filters ${mobileFilter.fieldsClassName}`}>
           <label><span>消息时间</span><DatePicker.RangePicker value={dates} onChange={value=>setDates(value as [Dayjs|null,Dayjs|null]|null)}/></label>
           <label><span>发送人</span><Input value={sender} onChange={event=>setSender(event.target.value)} allowClear/></label>
           <label><span>消息关键字</span><Input value={keyword} onChange={event=>setKeyword(event.target.value)} onPressEnter={load} allowClear placeholder="消息内容"/></label>
           <label><span>消息类型</span><Select value={type} onChange={setType} options={[{value:'',label:'全部'},{value:'系统通知',label:'系统通知'},{value:'用户通知',label:'用户通知'}]}/></label>
-          <Button type="primary" onClick={load}>查询</Button><Button type="primary" icon={<PlusOutlined/>} onClick={()=>setComposeOpen(true)}>发送消息</Button>
+          <Button className="oa-filter-keep" type="primary" onClick={load}>查询</Button><Button className="oa-filter-keep" type="primary" icon={<PlusOutlined/>} onClick={()=>setComposeOpen(true)}>发送消息</Button>
         </div>
         <Table rowKey="id" size="small" loading={loading} rowSelection={{selectedRowKeys:selectedKeys,onChange:setSelectedKeys,columnWidth:42}} columns={columns} dataSource={rows} locale={{emptyText:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据"/>}} pagination={{current:page,pageSize,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showQuickJumper:{goButton:'GO'},showTotal:total=>`共 ${total} 条`,onChange:(nextPage,nextPageSize)=>{setPage(nextPage);setPageSize(nextPageSize)}}} scroll={{x:1120}}/>
         <div className="message-table-actions">{view!=='sent'&&<><Button disabled={!selectedKeys.length} onClick={markSelectedRead}>标记已读</Button><Button onClick={markAllRead}>全部标记已读</Button></>}<Popconfirm title="确认删除选中的消息？" onConfirm={()=>deleteMessages(selectedKeys)}><Button danger disabled={!selectedKeys.length}>删除选中</Button></Popconfirm></div>

@@ -52,7 +52,7 @@
 .contract-query .ant-btn { height: 32px !important; font-size: 13px; }
 .contract-query .ant-picker { width: 100%; }
 .contract-query-submit { grid-column: 1 / -1; padding-left: 78px; }
-.contract-query-submit .ant-btn { min-width: 50px; background: #149ec5; }
+.contract-query-submit .ant-btn { min-width: 50px; }
 
 .contract-original-table { min-width: 0; margin-top: 2px; }
 .contract-original-table .ant-table { color: var(--oa-text); font-size: 12px; }

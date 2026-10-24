@@ -108,6 +108,7 @@ getCaseUnarchiveReviewValidationError
 } from "../caseWorkflowFrontendParity.mjs";
 import { AttachmentPreviewContent } from "../components/common/AttachmentContent";
 import { ListFilterBar } from "../components/common/ListFilterBar";
+import { useMobileFilterToggle } from "../components/common/MobileFilterToggle";
 import { rememberContractDetailTarget } from "../contractDetailNavigation";
 import { consumeCustomerRelationTarget } from "../customerRelationNavigation";
 import {
@@ -713,6 +714,7 @@ export default function CaseCenterPage({
   const [casePartyCreateForm] = Form.useForm();
   const [caseHearingLawyerForm] = Form.useForm();
   const [caseQueryForm] = Form.useForm();
+  const mobileFilter = useMobileFilterToggle();
   const [refundCompleteForm] = Form.useForm();
   const [courtRefundFee, setCourtRefundFee] = useState<CaseRow | null>(null);
   const [reminderForm] = Form.useForm();
@@ -2591,7 +2593,8 @@ export default function CaseCenterPage({
     } : {}),
     onCell: (row: CaseRow, index?: number) => {
       const cell = column.onCell?.(row, index);
-      return { ...cell, className: [cell?.className, "case-list-cell"].filter(Boolean).join(" "), "data-label": column.title as string };
+      const head = column.key === "base" || column.key === "serial_no" || ("dataIndex" in column && column.dataIndex === "serial_no");
+      return { ...cell, className: [cell?.className, "case-list-cell", head && "case-list-head"].filter(Boolean).join(" "), "data-label": column.title as string };
     },
     onHeaderCell: (...args: Parameters<NonNullable<typeof column.onHeaderCell>>) => {
       const cell = column.onHeaderCell?.(...args);
@@ -3049,9 +3052,10 @@ export default function CaseCenterPage({
           </Space>
         </div>}
         {specialMode==="invoice"&&invoiceBatch.error&&<Alert type="error" showIcon title={invoiceBatch.error} action={<Button disabled={invoiceBatch.loading||!invoiceBatch.attachmentIds.length} onClick={()=>void loadCaseInvoiceBatch()}>重试查询</Button>}/>}
-        {specialMode!=="invoice"&&specialMode!=="stage"&&<ListFilterBar form={caseQueryForm} className={`case-special-query${specialMode === "schedule" ? " case-schedule-query" : ""}`} onFinish={values=>{setCaseQuery(values);setSelectedCaseKeys([]);setCompanySchedulePage(1);if(specialCaseList.active)void specialCaseList.search(values,1,specialCaseList.pageSize);else if(specialMode==="receipt")void receiptList.search(values,1,receiptList.pageSize);}}>
+        {specialMode!=="invoice"&&specialMode!=="stage"&&mobileFilter.toggle}
+        {specialMode!=="invoice"&&specialMode!=="stage"&&<ListFilterBar form={caseQueryForm} className={`case-special-query${specialMode === "schedule" ? " case-schedule-query" : ""} ${mobileFilter.fieldsClassName}`} onFinish={values=>{setCaseQuery(values);setSelectedCaseKeys([]);setCompanySchedulePage(1);if(specialCaseList.active)void specialCaseList.search(values,1,specialCaseList.pageSize);else if(specialMode==="receipt")void receiptList.search(values,1,receiptList.pageSize);}}>
           {(specialFilters[specialMode]||[]).map(([key,label,type,placeholder])=><Form.Item key={key} name={key} label={label}>{type==="date"?<DatePicker.RangePicker allowEmpty={specialMode === "schedule" ? [true,true] : undefined} placeholder={placeholder!==undefined?[placeholder,placeholder]:undefined}/>:type==="select"?<Select allowClear placeholder={placeholder} options={["民事争议","刑事案件","行政案件及国家赔偿","法律顾问","仲裁"].map(value=>({value,label:value}))}/>:<Input placeholder={placeholder}/>}</Form.Item>)}
-          <Form.Item className="case-special-query-actions"><Space><Button type="primary" htmlType="submit">查询</Button>{specialMode==="receipt"&&receiptList.canUpload&&<Button type="primary" onClick={()=>{const rows=receiptRows.filter(row=>selectedCaseKeySet.has(String(row.id)));if(!rows.length)return message.warning("请选择费用记录");if(new Set(rows.map(row=>row.customer)).size>1)return message.warning("批量上传的费用必须属于同一客户");setReceiptUploadRows(rows);}}>批量上传</Button>}<Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});setSelectedCaseKeys([]);setCompanySchedulePage(1);if(specialCaseList.active)void specialCaseList.search({},1,specialCaseList.pageSize);else if(specialMode==="receipt")void receiptList.search({},1,receiptList.pageSize);}}>{["unclaimed","refund","receipt"].includes(specialMode)?"清空":"重置"}</Button></Space></Form.Item>
+          <Form.Item className="case-special-query-actions oa-filter-keep"><Space><Button type="primary" htmlType="submit">查询</Button>{specialMode==="receipt"&&receiptList.canUpload&&<Button type="primary" onClick={()=>{const rows=receiptRows.filter(row=>selectedCaseKeySet.has(String(row.id)));if(!rows.length)return message.warning("请选择费用记录");if(new Set(rows.map(row=>row.customer)).size>1)return message.warning("批量上传的费用必须属于同一客户");setReceiptUploadRows(rows);}}>批量上传</Button>}<Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});setSelectedCaseKeys([]);setCompanySchedulePage(1);if(specialCaseList.active)void specialCaseList.search({},1,specialCaseList.pageSize);else if(specialMode==="receipt")void receiptList.search({},1,receiptList.pageSize);}}>{["unclaimed","refund","receipt"].includes(specialMode)?"清空":"重置"}</Button></Space></Form.Item>
         </ListFilterBar>}
         {specialMode==="stage"&&<div className="case-stage-query"><DatePicker picker="month" defaultValue={dayjs()}/><Button type="primary" onClick={()=>void stageStatistics.load()}>查询</Button><Button onClick={exportStageStatistics}>导出统计</Button></div>}
         {specialMode==="stage"&&stageStatistics.error&&<Alert type="error" showIcon message={stageStatistics.error}/>}
@@ -3071,11 +3075,12 @@ export default function CaseCenterPage({
           {specialMode==="unclaimed"&&<Button onClick={()=>selectedSpecialRow?openCaseTasks(selectedSpecialRow):message.warning("请先选择案件")}>更多操作</Button>}
         </Space></div>}
       </Card> : originalArchiveMode ? <Card className="panel case-original-panel case-archive-panel" title={archiveDone?"已审核":archiveRefused?"已拒绝":"待审核"}>
-        <ListFilterBar form={caseQueryForm} className="case-archive-query" layout="inline" onFinish={values=>{setCaseQuery(values);setSelectedCaseKeys([]);void archiveList.search(values,1,archiveList.pageSize);}}>
+        {mobileFilter.toggle}
+        <ListFilterBar form={caseQueryForm} className={`case-archive-query ${mobileFilter.fieldsClassName}`} layout="inline" onFinish={values=>{setCaseQuery(values);setSelectedCaseKeys([]);void archiveList.search(values,1,archiveList.pageSize);}}>
           <Form.Item label="原告/申请人/公诉机关" name="plaintiff"><Input /></Form.Item><Form.Item label="案号" name="serial_no"><Input /></Form.Item><Form.Item label="律师助理" name="assistant"><Input /></Form.Item><Form.Item label="法院/机构" name="court"><Input /></Form.Item>
           <Form.Item label="被告/被申请人" name="defendant"><Input /></Form.Item><Form.Item label="公证书号" name="notary_no"><Input /></Form.Item><Form.Item label="开庭律师" name="hearing_lawyer"><Input /></Form.Item><Form.Item label={archiveDone||archiveRefused?"审核时间":"开庭时间"} name="review_range"><DatePicker.RangePicker /></Form.Item>
           <Form.Item label="第三人/受害人" name="third_party"><Input /></Form.Item><Form.Item label="经办律师" name="handling_lawyer"><Input /></Form.Item><Form.Item label="提交人" name="submitter"><Input /></Form.Item><Form.Item label="提交时间" name="submit_range"><DatePicker.RangePicker /></Form.Item>
-          <Form.Item className="case-archive-query-actions"><Space><Button type="primary" htmlType="submit" loading={archiveList.loading}>查询</Button><Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});setSelectedCaseKeys([]);void archiveList.search({},1,archiveList.pageSize);}}>重置</Button></Space></Form.Item>
+          <Form.Item className="case-archive-query-actions oa-filter-keep"><Space><Button type="primary" htmlType="submit" loading={archiveList.loading}>查询</Button><Button onClick={()=>{caseQueryForm.resetFields();setCaseQuery({});setSelectedCaseKeys([]);void archiveList.search({},1,archiveList.pageSize);}}>重置</Button></Space></Form.Item>
         </ListFilterBar>
         {archiveList.error && <Alert type="error" showIcon title={archiveList.error} action={<Button onClick={()=>void archiveList.reload()}>重试</Button>} />}
         <div className="case-archive-table-viewport" ref={archiveTableScroll.containerRef} style={{minHeight:archiveTableScroll.minHeight}}>
@@ -3156,7 +3161,7 @@ export default function CaseCenterPage({
           </ListFilterBar>
           <input ref={caseUploadRef} hidden type="file" onChange={event=>uploadCaseFile(event.target.files?.[0])}/>
           <div className="case-list-table-viewport" ref={ordinaryTableScroll.containerRef} style={{ minHeight: ordinaryTableScroll.minHeight }}>
-          <Table className="case-original-table" rowKey="id" size="small" loading={counselListMode ? loading : ordinaryLoading} locale={counselListMode ? undefined : { emptyText: ordinaryLoading ? "案件加载中…" : ordinaryLoadError || "暂无案件" }} columns={responsiveOriginalListColumns} dataSource={counselListMode?counselCases:originalCases} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} sticky={isPhoneViewport ? false : undefined} scroll={isPhoneViewport ? undefined : {x:counselListMode?counselCaseTableScrollX:shouldUseCompanyCriminalQueryFields(initialView)?companyCriminalCaseTableScrollX:originalCaseTableScrollX,y:ordinaryTableScroll.scrollY}} pagination={counselListMode?{current:counselPage,pageSize:counselPageSize,total:counselTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}:{current:originalPage,pageSize:originalPageSize||legacyCaseListDefaults.pageSize,total:ordinaryTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}} onChange={(pagination,_filters,sorter:any)=>{const nextQuery={...caseQuery,sort_order:sorter?.order==="ascend"?"case_no_asc":sorter?.order==="descend"?"case_no_desc":"updated_desc"};setCaseQuery(nextQuery);if(!counselListMode){const nextPage=pagination.current||1;const nextPageSize=pagination.pageSize||originalPageSize;setOriginalPage(nextPage);setOriginalPageSize(nextPageSize);sessionStorage.setItem("sunhold:case-list-return", JSON.stringify({route:initialView,page:nextPage,pageSize:nextPageSize,query:nextQuery}));void loadOrdinaryCases(nextQuery,nextPage,nextPageSize);return;}void loadCounselCases(nextQuery,pagination.current||1,pagination.pageSize||counselPageSize);}}/>
+          <Table className="case-original-table" mobileCards={false} rowKey="id" size="small" loading={counselListMode ? loading : ordinaryLoading} locale={counselListMode ? undefined : { emptyText: ordinaryLoading ? "案件加载中…" : ordinaryLoadError || "暂无案件" }} columns={responsiveOriginalListColumns} dataSource={counselListMode?counselCases:originalCases} rowSelection={{selectedRowKeys:selectedCaseKeys,onChange:setSelectedCaseKeys}} sticky={isPhoneViewport ? false : undefined} scroll={isPhoneViewport ? undefined : {x:counselListMode?counselCaseTableScrollX:shouldUseCompanyCriminalQueryFields(initialView)?companyCriminalCaseTableScrollX:originalCaseTableScrollX,y:ordinaryTableScroll.scrollY}} pagination={counselListMode?{current:counselPage,pageSize:counselPageSize,total:counselTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}:{current:originalPage,pageSize:originalPageSize||legacyCaseListDefaults.pageSize,total:ordinaryTotal,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showTotal:total=>`共有${total}条`}} onChange={(pagination,_filters,sorter:any)=>{const nextQuery={...caseQuery,sort_order:sorter?.order==="ascend"?"case_no_asc":sorter?.order==="descend"?"case_no_desc":"updated_desc"};setCaseQuery(nextQuery);if(!counselListMode){const nextPage=pagination.current||1;const nextPageSize=pagination.pageSize||originalPageSize;setOriginalPage(nextPage);setOriginalPageSize(nextPageSize);sessionStorage.setItem("sunhold:case-list-return", JSON.stringify({route:initialView,page:nextPage,pageSize:nextPageSize,query:nextQuery}));void loadOrdinaryCases(nextQuery,nextPage,nextPageSize);return;}void loadCounselCases(nextQuery,pagination.current||1,pagination.pageSize||counselPageSize);}}/>
           </div>
           {shouldShowCaseListActions(initialView)&&<div className={`case-bottom-actions case-mine-list-actions${isCompanyCaseListRoute(initialView) ? " case-company-list-actions" : ""}`}><Space size={5} wrap>
             <Dropdown
