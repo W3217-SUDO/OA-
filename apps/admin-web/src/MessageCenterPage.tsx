@@ -109,11 +109,11 @@ export default function MessageCenterPage(){
           <label><span>发送人</span><Input value={sender} onChange={event=>setSender(event.target.value)} allowClear/></label>
           <label><span>消息关键字</span><Input value={keyword} onChange={event=>setKeyword(event.target.value)} onPressEnter={load} allowClear placeholder="消息内容"/></label>
           <label><span>消息类型</span><Select value={type} onChange={setType} options={[{value:'',label:'全部'},{value:'系统通知',label:'系统通知'},{value:'用户通知',label:'用户通知'}]}/></label>
-          <Button className="oa-filter-keep" type="primary" onClick={load}>查询</Button><Button className="oa-filter-keep" type="primary" icon={<PlusOutlined/>} onClick={()=>setComposeOpen(true)}>发送消息</Button>
+          <Button className="oa-filter-keep" type="primary" onClick={load}>查询</Button><Button className="oa-filter-keep" onClick={() => { setDates(null); setSender(""); setKeyword(""); setType(""); void load(); }}>重置</Button><Button className="oa-filter-keep" type="primary" icon={<PlusOutlined/>} onClick={()=>setComposeOpen(true)}>发送消息</Button>
         </div>
-        <Table rowKey="id" size="small" loading={loading} rowSelection={{selectedRowKeys:selectedKeys,onChange:setSelectedKeys,columnWidth:42}} columns={columns} dataSource={rows} locale={{emptyText:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据"/>}} pagination={{current:page,pageSize,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showQuickJumper:{goButton:'GO'},showTotal:total=>`共 ${total} 条`,onChange:(nextPage,nextPageSize)=>{setPage(nextPage);setPageSize(nextPageSize)}}} scroll={{x:1120}}/>
+        {/* 批量操作放在表格上方的工具条里，不再用负边距压到分页那一行（会被分页挡住）。 */}
         <div className="message-table-actions">{view!=='sent'&&<><Button disabled={!selectedKeys.length} onClick={markSelectedRead}>标记已读</Button><Button onClick={markAllRead}>全部标记已读</Button></>}<Popconfirm title="确认删除选中的消息？" onConfirm={()=>deleteMessages(selectedKeys)}><Button danger disabled={!selectedKeys.length}>删除选中</Button></Popconfirm></div>
-        <Button onClick={() => { setDates(null); setSender(""); setKeyword(""); setType(""); void load(); }}>重置</Button>
+        <Table rowKey="id" size="small" loading={loading} rowSelection={{selectedRowKeys:selectedKeys,onChange:setSelectedKeys,columnWidth:42}} columns={columns} dataSource={rows} locale={{emptyText:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据"/>}} pagination={{current:page,pageSize,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showQuickJumper:{goButton:'GO'},showTotal:total=>`共 ${total} 条`,onChange:(nextPage,nextPageSize)=>{setPage(nextPage);setPageSize(nextPageSize)}}} scroll={{x:1120}}/>
       </section>
     </Card>
     <Drawer open={Boolean(selected)} width={520} title={<Space><MailOutlined/>{selected?.title}</Space>} onClose={()=>setSelected(null)}>
