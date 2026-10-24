@@ -304,8 +304,13 @@ async def list_records(
     total = await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions))
     result = list((await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.updated_at.desc()).offset((page - 1) * page_size).limit(page_size))).all())
     allowed_fields = await _allowed_field_keys(identity, db)
+    items = await _contract_customer_record_dicts(result, allowed_fields, db, identity)
+    if module == "contract" and page_size <= 500:
+        # 合同列表按页实时汇总官费/代理费/其他/发票金额；导出等整表读取另有自己的金额口径，不在这里算。
+        from app.areas.contract.list_amounts import attach_contract_list_amounts
+        items = await attach_contract_list_amounts(items, identity, db, allowed_fields)
     return {
-        "items": await _contract_customer_record_dicts(result, allowed_fields, db, identity),
+        "items": items,
         "total": total or 0,
         "page": page,
         "page_size": page_size,

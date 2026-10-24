@@ -58,6 +58,9 @@ async def list_receivable_contracts(
     items = await contract_export_rows(identity, db, action="查看", scope=scope, serial_no=contract_no,
         customer=customer, contract_body=contract_body, case_no=case_no, source_person=source_person,
         signed_at_start=signed_at_start, signed_at_end=signed_at_end)
+    from app.areas.contract.list_amounts import attach_contract_list_amounts
+    from app.core.system import _allowed_field_keys
+    items = await attach_contract_list_amounts(items, identity, db, await _allowed_field_keys(identity, db))
     return {"items": items, "total": len(items)}
 
 

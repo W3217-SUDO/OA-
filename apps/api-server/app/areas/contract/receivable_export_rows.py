@@ -12,8 +12,12 @@ from app.core.invoice_sources import is_external_case_fee
 from app.core.permissions import _record_scope_conditions
 
 
-async def receivable_export_rows(contracts, identity, db, *, case_ids=None):
-    """费用只出现一次；未生成费用的合同标的保留为独立应收义务。"""
+async def receivable_export_rows(contracts, identity, db, *, case_ids=None, fees_by_case=False):
+    """费用只出现一次；未生成费用的合同标的保留为独立应收义务。
+
+    fees_by_case：按已找到案件的 case_id/case_record_id/case_no（有表达式索引）取费用，供合同列表按页汇总；
+    没有案件的费用在下面本来就会跳过，结果相同，只是不用在八万条费用上逐条解析合同字段。
+    """
     by_contract_id = {row["id"]: row for row in contracts}
     by_contract_no = {row["serial_no"]: row for row in contracts}
     if not contracts:
@@ -39,10 +43,16 @@ async def receivable_export_rows(contracts, identity, db, *, case_ids=None):
     objects_by_relation = defaultdict(list)
     for item in objects:
         objects_by_relation[(item.contract_record_id, item.case_record_id)].append(item)
-    fees = list((await db.scalars(select(BusinessRecord).where(
+    if fees_by_case:
+        fee_relation = or_(
+            BusinessRecord.data["case_id"].as_integer().in_(by_case_id),
+            BusinessRecord.data["case_record_id"].as_integer().in_(by_case_id),
+            BusinessRecord.data["case_no"].as_string().in_([no for no in by_case_no if no]),
+        ) if by_case_id else None
+    fees = [] if fees_by_case and fee_relation is None else list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "finance",
         BusinessRecord.status.not_in({"已删除", "已撤回", *_INVALID_RECEIVABLE_FEE_STATUSES}),
-        or_(scalar_in_values(BusinessRecord.data["contract_id"].as_integer(), by_contract_id),
+        fee_relation if fees_by_case else or_(scalar_in_values(BusinessRecord.data["contract_id"].as_integer(), by_contract_id),
             scalar_in_values(BusinessRecord.data["contract_record_id"].as_integer(), by_contract_id),
             scalar_in_values(BusinessRecord.data["contract_no"].as_string(), by_contract_no),
             scalar_in_values(BusinessRecord.data["contract_object_id"].as_integer(), by_object_id)),

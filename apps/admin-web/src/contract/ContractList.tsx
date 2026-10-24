@@ -1,8 +1,10 @@
 import type { FormInstance } from "antd";
+import { DownOutlined } from "@ant-design/icons";
 import {
 Button,
 Card,
 DatePicker,
+Dropdown,
 Form,
 Input,
 Select,
@@ -160,6 +162,9 @@ export function ContractList({
     { title: "发票", keys: ["invoice_opened", "invoice_should", "invoice_excess"], labels: ["已开", "应开", "高开"] },
   ];
 
+  const formatContractMoney = (value: unknown) => value === null || value === undefined || value === ""
+    ? "—" : Number(value).toLocaleString("zh-CN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
   const moneyColumn = (title: string, key: (typeof moneyKeys)[number]) => ({
     title: (
       <span>
@@ -171,7 +176,8 @@ export function ContractList({
     key,
     width: 76,
     align: "right" as const,
-    render: (_: unknown, r: Contract) => String(r.data[key] ?? 0),
+    // 金额由后端按页汇总；无合同金额字段权限时为空，显示“—”。
+    render: (_: unknown, r: Contract) => formatContractMoney(r.data[key]),
   });
 
   const columns = [
@@ -277,51 +283,45 @@ export function ContractList({
       key: "operations",
       width: 150,
       fixed: "right" as const,
-      render: (_: unknown, r: Contract) => (
-        <Space size={0}>
-          {contractCapabilities(r).canEdit && (
-            <Button type="link" onClick={() => onEdit(r)}>
-              编辑合同
-            </Button>
-          )}
-          {CONTRACT_SEAL_READY_STATUSES.includes(r.status) && (
-            <Button type="link" onClick={() => onSeal(r)}>
-              合同用印
-            </Button>
-          )}
-          <Button type="link" onClick={() => onOpenAttachments(r)}>
-            合同附件
-          </Button>
-          <Button type="link" onClick={() => onOpenApprovalInfo(r)}>
-            审批信息
-          </Button>
-          <Button type="link" onClick={() => onOpenRelatedCase(r)}>
-            关联案件
-          </Button>
-          <Button
-            type="link"
-            disabled={!contractListActionPolicy(r.status).canCreateCase}
-            title={
-              contractListActionPolicy(r.status).canCreateCase
-                ? "以该合同和客户新建案件"
-                : "只能从审批中、审批通过或已完成的合同新建案件"
-            }
-            onClick={() => onCreateCase(r)}
-          >
-            新建案件
-          </Button>
-          {canOpenSubmitWizard(r) && contractCapabilities(r).canSubmit && (
-            <Button type="link" onClick={() => onSubmitWizard(r)}>
-              重新上传
-            </Button>
-          )}
-          {canOpenSubmitWizard(r) && contractCapabilities(r).canSubmit && (
-            <Button type="link" onClick={() => onSubmitWizard(r)}>
-              提交审批
-            </Button>
-          )}
-        </Space>
-      ),
+      // 只露出最常用的一个动作，其余收进“更多”：表格自适应把这列收到最窄时也排得下一行，行高不再被竖排的链接撑高。
+      render: (_: unknown, r: Contract) => {
+        const capabilities = contractCapabilities(r);
+        const canCreateCase = contractListActionPolicy(r.status).canCreateCase;
+        const canSubmit = canOpenSubmitWizard(r) && capabilities.canSubmit;
+        const actions = [
+          capabilities.canEdit && { key: "edit", label: "编辑合同", onClick: () => onEdit(r) },
+          canSubmit && { key: "submit", label: "提交审批", onClick: () => onSubmitWizard(r) },
+          CONTRACT_SEAL_READY_STATUSES.includes(r.status) && { key: "seal", label: "合同用印", onClick: () => onSeal(r) },
+          { key: "attachments", label: "合同附件", onClick: () => onOpenAttachments(r) },
+          { key: "approval", label: "审批信息", onClick: () => onOpenApprovalInfo(r) },
+          { key: "related-case", label: "关联案件", onClick: () => onOpenRelatedCase(r) },
+          { key: "create-case", label: "新建案件", onClick: () => onCreateCase(r), disabled: !canCreateCase,
+            title: canCreateCase ? "以该合同和客户新建案件" : "只能从审批中、审批通过或已完成的合同新建案件" },
+          canSubmit && { key: "reupload", label: "重新上传", onClick: () => onSubmitWizard(r) },
+        ].filter(Boolean) as { key: string; label: string; onClick: () => void; disabled?: boolean; title?: string }[];
+        const inline = actions.slice(0, 1);
+        const more = actions.slice(1);
+        return (
+          <Space size={0} wrap={false} className="contract-row-actions">
+            {inline.map((action) => (
+              <Button key={action.key} type="link" size="small" disabled={action.disabled} title={action.title} onClick={action.onClick}>
+                {action.label}
+              </Button>
+            ))}
+            {more.length > 0 && (
+              <Dropdown trigger={["click"]} menu={{
+                items: more.map((action) => ({
+                  key: action.key, disabled: action.disabled,
+                  label: <span title={action.title}>{action.label}</span>,
+                })),
+                onClick: ({ key }) => more.find((action) => action.key === key)?.onClick(),
+              }}>
+                <Button type="link" size="small">更多 <DownOutlined /></Button>
+              </Dropdown>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -564,7 +564,7 @@ export function ContractList({
                 const ids = columnIds(columns);
                 const cells = layoutTotalCells(ids, fit?.groups, (index) => {
                   const key = moneyKeys.find((item) => item === ids[index]);
-                  return key ? amount(totals[key]) : null;
+                  return key ? formatContractMoney(totals[key]) : null;
                 });
                 const firstAmount = Math.max(0, cells.findIndex((cell) => cell.content !== null));
                 return (

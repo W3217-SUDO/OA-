@@ -297,7 +297,7 @@ export default function ContractReceivablesPage({ initialView, dashboardQueue = 
     { title: "代理费待收金额", key: "agency_due", width: 110, align: "right" as const, render: (_: unknown, row: Contract) => <Button type="link" onClick={() => openReceivableDetail(row, "agency-due")}>{money(row.data.agency_due)}</Button> },
     { title: "案源人", key: "source", width: 90, render: (_: unknown, row: Contract) => personDisplayName(row.data.source_person_display_name || row.owner_display_name) },
     { title: "客户管理人", key: "manager", width: 100, render: (_: unknown, row: Contract) => peopleDisplayNames(row.data.customer_manager_display_names || row.data.customer_manager_display_name) },
-    { title: "签订日期", key: "signed_at", width: 105, render: (_: unknown, row: Contract) => row.data.signed_at || "—" },
+    { title: "签订日期", key: "signed_at", width: 105, render: (_: unknown, row: Contract) => String(row.data.signed_at || "").slice(0, 10) || "—" },
     { title: "客户名称", dataIndex: "customer", width: 190, ellipsis: true, render: (value: string) => <Button type="link" onClick={() => openCustomer(value)}>{value}</Button> },
   ];
   const detailColumns = [
