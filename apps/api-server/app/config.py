@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     query_prewarm_max_entries: int = Field(default=120, ge=1, le=2000)
     query_prewarm_idle_days: int = Field(default=4, ge=1, le=30)
     query_cache_max_payload_bytes: int = Field(default=4 * 1024 * 1024, ge=1024, le=64 * 1024 * 1024)
+    # 费用筛选事实按列压缩存放（全所约 5 万笔费用压缩后数 MB），单独设上限。
+    fee_facts_cache_max_payload_bytes: int = Field(default=24 * 1024 * 1024, ge=1024, le=128 * 1024 * 1024)
     secret_key: str = "replace-this-before-production"
     initial_admin_username: str = "admin"
     initial_admin_password: str = ""

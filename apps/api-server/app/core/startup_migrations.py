@@ -184,6 +184,8 @@ def _run_versioned_schema_migrations(
         ("mcp_access_tokens_v1", _apply_mcp_access_tokens),
         ("mcp_access_tokens_write_v1", _apply_mcp_token_write),
         ("customer_list_indexes_v1", _apply_customer_list_indexes),
+        # 只新增退费单编号表达式索引；其余 JSON 索引已存在时 IF NOT EXISTS 不做改动。
+        ("refund_record_link_index_v1", _apply_case_link_json_indexes),
         # 放在所有建表修订之后：给此前新建的表补财务查询修订触发器，恢复财务查询缓存。
         (FINANCE_QUERY_REINSTALL_REVISION, _apply_finance_query_revision),
     )

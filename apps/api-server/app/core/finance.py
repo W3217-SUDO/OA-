@@ -1430,7 +1430,11 @@ async def _invoice_case_fee_rows(
     summary_only: bool = False,
     source_records: dict[int, BusinessRecord] | None = None,
     defer_person_display: bool = False,
+    facts_only: bool = False,
+    with_facts: bool = False,
 ) -> list[dict]:
+    """facts_only 时不套用任何筛选条件，只返回每笔费用的筛选与合计事实；with_facts 时同样不筛选，
+    在每个完整行的 "_facts" 中附带同样的事实。两者都供缓存后由 invoice_fee_row_filter 在事实上筛选。"""
     from app.core.cases import (
         _case_party_values,
     )
@@ -1540,9 +1544,6 @@ async def _invoice_case_fee_rows(
         or_(BusinessRecord.data["purpose"].as_string().is_(None), BusinessRecord.data["purpose"].as_string() != "付款凭证"),
         *(scope_conditions if ids is None else []),
     )
-    visible_invoice_ids = set((await db.scalars(invoice_query.with_only_columns(BusinessRecord.id).where(
-        *scope_conditions,
-    ))).all()) if ids is not None and scope_conditions else None
     if summary_only:
         invoices = await read_record_projections(db, [invoice_query.whereclause], (
             "case_fee_ids", "case_fee_id", "case_no", "case_fee_allocations", "amount", "invoice_date", "invoice_no",
@@ -1552,6 +1553,13 @@ async def _invoice_case_fee_rows(
         invoices = list((await db.scalars(invoice_query.order_by(
             BusinessRecord.updated_at.desc(), BusinessRecord.id.desc(),
         ))).all())
+    # 可见发票 = 已读取的关联发票中同时满足记录范围的部分；只按已读取编号核对范围，不再整表重复做 JSON 关联扫描。
+    visible_invoice_ids = None
+    if ids is not None and scope_conditions:
+        loaded_invoice_ids = {invoice.id for invoice in invoices}
+        visible_invoice_ids = set((await db.scalars(select(BusinessRecord.id).where(
+            BusinessRecord.module == "invoice", _record_id_in(loaded_invoice_ids), *scope_conditions,
+        ))).all()) if loaded_invoice_ids else set()
     invoice_by_fee: dict[int, list[tuple[BusinessRecord, float]]] = {}
     fee_ids = {fee.id for fee in fees}
     fees_by_id = {item.id: item for item in fees}
@@ -1620,13 +1628,14 @@ async def _invoice_case_fee_rows(
     # record.  It therefore needs the linked transaction totals even when the
     # finance module's raw amount field is hidden for that role.
     show_amount = force_amount_projection or "finance.amount" in allowed_fields
-    selected_stages = {value.strip() for value in case_stages.split(",") if value.strip()}
-    selected_types = {value.strip() for value in fee_types.split(",") if value.strip()}
-    normalized_types = {"代理费" if value == "律师代理费" else "官方费用" if value == "官费" else value for value in selected_types}
-    selected_catalog_codes, selected_catalog_descendant_codes, selected_catalog_ids, selected_catalog_names, selected_catalog_base_types = await _fee_type_filter_values(selected_types, db)
-
-    def contains(value: object, needle: str) -> bool:
-        return not needle.strip() or needle.strip().casefold() in str(value or "").casefold()
+    row_passes = None if facts_only or with_facts else await invoice_fee_row_filter(
+        db, case_no=case_no, court_case_no=court_case_no, notary_no=notary_no,
+        invoice_amount_from=invoice_amount_from, invoice_amount_to=invoice_amount_to,
+        customer=customer, paid_organization=paid_organization, invoice_status=invoice_status,
+        invoice_from=invoice_from, invoice_to=invoice_to, hearing_lawyer=hearing_lawyer,
+        assistant=assistant, case_stages=case_stages, paid_from=paid_from, paid_to=paid_to,
+        fee_types=fee_types, payer_name=payer_name, cashed_from=cashed_from, cashed_to=cashed_to,
+    )
 
     rows: list[dict] = []
     for item in fees:
@@ -1659,10 +1668,6 @@ async def _invoice_case_fee_rows(
         has_active_application = bool(linked_invoices)
         display_status = "已开票" if has_issued_invoice else ("已申请" if has_active_application else "未开票")
         remaining_invoice_amount = round(max(fee_amount - invoiced_amount, 0), 2)
-        if invoice_status == "未开票" and remaining_invoice_amount <= 0.001:
-            continue
-        if invoice_status == "已开票" and not has_issued_invoice:
-            continue
         case_stage = str(data.get("case_stage") or case_data.get("case_stage") or (linked_case.status if linked_case else ""))
         assistant_name = str(data.get("assistant") or data.get("lawyer_assistant") or case_data.get("assistant") or case_data.get("lawyer_assistant") or "")
         hearing_name = str(data.get("hearing_lawyer") or case_data.get("hearing_lawyer") or case_data.get("court_lawyer") or "")
@@ -1673,53 +1678,41 @@ async def _invoice_case_fee_rows(
         display_payment_status = _finance_fee_payment_status(
             item, commission_lifecycle_statuses.get(item.id),
         )
-        if not contains(data.get("case_no") or (linked_case.serial_no if linked_case else ""), case_no):
+        facts = {
+            "id": item.id,
+            "case_no": str(data.get("case_no") or (linked_case.serial_no if linked_case else "") or ""),
+            "court_case_no": court_no, "certificate_no": certificate_no,
+            "invoiced_amount": invoiced_amount, "remaining_invoice_amount": remaining_invoice_amount,
+            "has_issued_invoice": has_issued_invoice, "invoice_status": display_status,
+            "invoice_date": invoice_date.isoformat() if invoice_date else "",
+            "customer": str(item.customer or (linked_case.customer if linked_case else "") or ""),
+            "paid_organization": paid_org, "hearing_lawyer": hearing_name, "assistant": assistant_name,
+            "case_stage": case_stage, "paid_date": paid_date.isoformat() if paid_date else "",
+            "fee_type_id": str(data.get("fee_type_id") or ""),
+            "fee_type_code": str(data.get("fee_type_code") or data.get("legacy_fee_type_code") or ""),
+            "fee_type_name": str(data.get("fee_type_name") or data.get("expense_subtype") or ""),
+            "base_fee_type": base_type, "display_fee_type": display_type,
+            "received_payer_name": received_payer, "cashed_date": cashed_date.isoformat() if cashed_date else "",
+        }
+        if facts_only:
+            from app.core.finance_batch_parity import is_internal_fee
+
+            # 费用查询自身的筛选与合计只读这些已按金额权限遮蔽的值，与完整行 data 中的同名字段一致。
+            masked = lambda value: value if show_amount else None  # noqa: E731
+            facts.update({
+                "is_internal": is_internal_fee({**data, "fee_type": base_type or display_type}),
+                "payment_status": display_payment_status,
+                "unpaid_official": _matches_unpaid_official_fee({
+                    "base_fee_type": base_type, "fee_type": display_type, "payment_status": display_payment_status,
+                    "amount": masked(fee_amount), "paid_amount": masked(paid_amount),
+                }),
+                "amount": masked(fee_amount), "refund_requested_amount": masked(refund_requested_amount),
+                "refunded_amount": masked(refunded_amount), "cashed_amount": masked(cashed_amount),
+                "paid_amount": masked(paid_amount),
+            })
+            rows.append(facts)
             continue
-        if not contains(court_no, court_case_no) or not contains(certificate_no, notary_no):
-            continue
-        if invoice_amount_from is not None and invoiced_amount < invoice_amount_from:
-            continue
-        if invoice_amount_to is not None and invoiced_amount > invoice_amount_to:
-            continue
-        if not contains(item.customer or (linked_case.customer if linked_case else ""), customer) or not contains(paid_org, paid_organization):
-            continue
-        if invoice_status == "已开票" and display_status != "已开票":
-            continue
-        if invoice_status not in {"", "未开票", "已开票"} and display_status != invoice_status:
-            continue
-        if invoice_from and (not invoice_date or invoice_date < invoice_from):
-            continue
-        if invoice_to and (not invoice_date or invoice_date > invoice_to):
-            continue
-        if not contains(hearing_name, hearing_lawyer) or not contains(assistant_name, assistant):
-            continue
-        if selected_stages and case_stage not in selected_stages:
-            continue
-        if paid_from and (not paid_date or paid_date < paid_from):
-            continue
-        if paid_to and (not paid_date or paid_date > paid_to):
-            continue
-        if selected_catalog_codes:
-            fee_type_id = str(data.get("fee_type_id") or "")
-            fee_type_code = str(data.get("fee_type_code") or data.get("legacy_fee_type_code") or "")
-            fee_type_name = str(data.get("fee_type_name") or data.get("expense_subtype") or "")
-            has_stable_identifier = bool(fee_type_code or fee_type_id.isdigit())
-            if (
-                fee_type_code not in selected_catalog_descendant_codes
-                and (not fee_type_id.isdigit() or int(fee_type_id) not in selected_catalog_ids)
-                and (has_stable_identifier or (
-                    fee_type_name not in selected_catalog_names if fee_type_name
-                    else base_type not in selected_catalog_base_types and display_type not in selected_catalog_names
-                ))
-            ):
-                continue
-        elif normalized_types and base_type not in normalized_types and display_type not in selected_types:
-            continue
-        if not contains(received_payer, payer_name):
-            continue
-        if cashed_from and (not cashed_date or cashed_date < cashed_from):
-            continue
-        if cashed_to and (not cashed_date or cashed_date > cashed_to):
+        if row_passes is not None and not row_passes(facts):
             continue
         result = _record_dict(item, allowed_fields)
         if item.id in commission_lifecycle_statuses:
@@ -1766,13 +1759,94 @@ async def _invoice_case_fee_rows(
             "contract_no": data.get("contract_no") or case_data.get("contract_no") or "",
         })
         result["data"] = result_data
+        if with_facts:
+            result["_facts"] = facts
         rows.append(result)
         if source_records is not None:
             source_records[item.id] = item
-    if not summary_only and not defer_person_display:
+    if not summary_only and not defer_person_display and not facts_only:
         from app.core.finance_person_projection import apply_finance_person_displays
         await apply_finance_person_displays(rows, db)
     return rows
+
+
+async def invoice_fee_row_filter(
+    db: AsyncSession, *, case_no: str = "", court_case_no: str = "", notary_no: str = "",
+    invoice_amount_from: float | None = None, invoice_amount_to: float | None = None,
+    customer: str = "", paid_organization: str = "", invoice_status: str = "",
+    invoice_from: date | None = None, invoice_to: date | None = None,
+    hearing_lawyer: str = "", assistant: str = "", case_stages: str = "",
+    paid_from: date | None = None, paid_to: date | None = None, fee_types: str = "",
+    payer_name: str = "", cashed_from: date | None = None, cashed_to: date | None = None,
+):
+    """费用列表的全部行级筛选条件；只读 facts（日期为 ISO 字符串），实时计算与缓存事实共用同一判定。"""
+    selected_stages = {value.strip() for value in case_stages.split(",") if value.strip()}
+    selected_types = {value.strip() for value in fee_types.split(",") if value.strip()}
+    normalized_types = {"代理费" if value == "律师代理费" else "官方费用" if value == "官费" else value for value in selected_types}
+    selected_catalog_codes, selected_catalog_descendant_codes, selected_catalog_ids, selected_catalog_names, selected_catalog_base_types = await _fee_type_filter_values(selected_types, db)
+    iso = lambda value: value.isoformat() if value else ""  # noqa: E731
+    invoice_from_text, invoice_to_text = iso(invoice_from), iso(invoice_to)
+    paid_from_text, paid_to_text = iso(paid_from), iso(paid_to)
+    cashed_from_text, cashed_to_text = iso(cashed_from), iso(cashed_to)
+
+    def contains(value: object, needle: str) -> bool:
+        return not needle.strip() or needle.strip().casefold() in str(value or "").casefold()
+
+    def passes(facts: dict) -> bool:
+        if invoice_status == "未开票" and facts["remaining_invoice_amount"] <= 0.001:
+            return False
+        if invoice_status == "已开票" and not facts["has_issued_invoice"]:
+            return False
+        if not contains(facts["case_no"], case_no):
+            return False
+        if not contains(facts["court_case_no"], court_case_no) or not contains(facts["certificate_no"], notary_no):
+            return False
+        if invoice_amount_from is not None and facts["invoiced_amount"] < invoice_amount_from:
+            return False
+        if invoice_amount_to is not None and facts["invoiced_amount"] > invoice_amount_to:
+            return False
+        if not contains(facts["customer"], customer) or not contains(facts["paid_organization"], paid_organization):
+            return False
+        if invoice_status == "已开票" and facts["invoice_status"] != "已开票":
+            return False
+        if invoice_status not in {"", "未开票", "已开票"} and facts["invoice_status"] != invoice_status:
+            return False
+        if invoice_from_text and (not facts["invoice_date"] or facts["invoice_date"] < invoice_from_text):
+            return False
+        if invoice_to_text and (not facts["invoice_date"] or facts["invoice_date"] > invoice_to_text):
+            return False
+        if not contains(facts["hearing_lawyer"], hearing_lawyer) or not contains(facts["assistant"], assistant):
+            return False
+        if selected_stages and facts["case_stage"] not in selected_stages:
+            return False
+        if paid_from_text and (not facts["paid_date"] or facts["paid_date"] < paid_from_text):
+            return False
+        if paid_to_text and (not facts["paid_date"] or facts["paid_date"] > paid_to_text):
+            return False
+        if selected_catalog_codes:
+            fee_type_id, fee_type_code, fee_type_name = facts["fee_type_id"], facts["fee_type_code"], facts["fee_type_name"]
+            has_stable_identifier = bool(fee_type_code or fee_type_id.isdigit())
+            if (
+                fee_type_code not in selected_catalog_descendant_codes
+                and (not fee_type_id.isdigit() or int(fee_type_id) not in selected_catalog_ids)
+                and (has_stable_identifier or (
+                    fee_type_name not in selected_catalog_names if fee_type_name
+                    else facts["base_fee_type"] not in selected_catalog_base_types
+                    and facts["display_fee_type"] not in selected_catalog_names
+                ))
+            ):
+                return False
+        elif normalized_types and facts["base_fee_type"] not in normalized_types and facts["display_fee_type"] not in selected_types:
+            return False
+        if not contains(facts["received_payer_name"], payer_name):
+            return False
+        if cashed_from_text and (not facts["cashed_date"] or facts["cashed_date"] < cashed_from_text):
+            return False
+        if cashed_to_text and (not facts["cashed_date"] or facts["cashed_date"] > cashed_to_text):
+            return False
+        return True
+
+    return passes
 
 
 LARGE_ID_SET = 500
@@ -1857,6 +1931,7 @@ async def _fee_query_rows(
     summary_only: bool = False,
     source_records: dict[int, BusinessRecord] | None = None,
     defer_person_display: bool = False,
+    with_facts: bool = False,
 ) -> list[dict]:
     if "_dashboard_fee_ids" in identity:
         scope_authorized_fee_ids = identity["_dashboard_fee_ids"]
@@ -1888,7 +1963,7 @@ async def _fee_query_rows(
         cashed_from=None, cashed_to=None, ids=ids, include_all_fee_types=True,
         scope_authorized_fee_ids=scope_authorized_fee_ids,
         summary_only=summary_only, source_records=source_records,
-        defer_person_display=defer_person_display,
+        defer_person_display=defer_person_display, with_facts=with_facts,
     )
     filtered: list[dict] = []
     for row in rows:
@@ -1989,9 +2064,34 @@ async def _refund_case_fee_rows(
     include_not_required: bool = False,
     defer_person_display: bool = False,
 ) -> list[dict]:
-    from app.core.legacy_sync import (
-        _legacy_case_fee_projection,
+    rows, records_by_id, show_amount = await _refund_case_fee_sources(
+        identity, db, ids=ids, defer_person_display=defer_person_display,
+        case_no=case_no, court_case_no=court_case_no, customer=customer,
+        paid_organization=paid_organization, paid_from=paid_from, paid_to=paid_to,
+        hearing_lawyer=hearing_lawyer, assistant=assistant, case_stages=case_stages, fee_types=fee_types,
     )
+    result: list[dict] = []
+    for row in rows:
+        data, requested, refunded, status_code, status_label = _refund_case_fee_projection(
+            row, records_by_id[int(row["id"])], show_amount,
+        )
+        if pending_only and requested <= refunded:
+            continue
+        if not include_not_required and status_code == "R100":
+            continue
+        if not refund_case_fee_row_passes(
+            data, requested, status_code, status_label, refund_status=refund_status, court_name=court_name,
+            refund_amount_from=refund_amount_from, refund_amount_to=refund_amount_to,
+        ):
+            continue
+        row["data"] = data
+        result.append(row)
+    result.sort(key=lambda row: (str((row.get("data") or {}).get("refund_status_started_at") or ""), int(row["id"])))
+    return result
+
+
+async def _refund_case_fee_sources(identity: dict, db: AsyncSession, *, ids: set[int] | None = None,
+                                   defer_person_display: bool = False, with_facts: bool = False, **filters):
     from app.core.system import (
         _allowed_field_keys,
     )
@@ -2002,14 +2102,9 @@ async def _refund_case_fee_rows(
     # 费用记录在查询阶段已读入内存；沿用同一批对象，避免对全部费用再整行读取一遍。
     source_records: dict[int, BusinessRecord] = {}
     rows = await _fee_query_rows(
-        identity, db, scope="company", case_no=case_no,
-        court_case_no=court_case_no, refund_amount_from=None,
-        refund_amount_to=None, customer=customer,
-        paid_organization=paid_organization, paid_from=paid_from,
-        paid_to=paid_to, hearing_lawyer=hearing_lawyer,
-        assistant=assistant, case_stages=case_stages, fee_types=fee_types,
+        identity, db, scope="company", refund_amount_from=None, refund_amount_to=None, **filters,
         ids=selected_ids, scope_authorized_fee_ids=authorized_ids,
-        source_records=source_records, defer_person_display=defer_person_display,
+        source_records=source_records, defer_person_display=defer_person_display, with_facts=with_facts,
     )
     from app.core.query_batches import _scalars_in_batches
     fee_ids = {int(row["id"]) for row in rows} - source_records.keys()
@@ -2022,48 +2117,71 @@ async def _refund_case_fee_rows(
     ) if fee_ids else []
     records_by_id = {**source_records, **{item.id: item for item in records}}
     show_amount = "finance.amount" in await _allowed_field_keys(identity, db)
-    result: list[dict] = []
+    return rows, records_by_id, show_amount
+
+
+def _refund_case_fee_projection(row: dict, item: BusinessRecord, show_amount: bool):
+    from app.core.legacy_sync import (
+        _legacy_case_fee_projection,
+    )
+    raw_data = _legacy_case_fee_projection(item.data or {})
+    data = dict(row.get("data") or {})
+    requested, refunded = legacy_refund_progress(raw_data, data)
+    status_code, status_label = _refund_case_fee_status(raw_data)
+    started_at = _refund_case_fee_started_at(raw_data, status_code) or str(item.created_at or "")
+    try:
+        progress_days = max((date.today() - date.fromisoformat(started_at[:10])).days, 0)
+    except (TypeError, ValueError):
+        progress_days = None
+    case_data = data.get("case_data") if isinstance(data.get("case_data"), dict) else {}
+    data.update({
+        "refund_requested_amount": requested if show_amount else None,
+        "refunded_amount": refunded if show_amount else None,
+        "refund_status": status_code,
+        "refund_status_label": status_label,
+        "refund_status_started_at": started_at,
+        "refund_progress_days": progress_days,
+        "plaintiff": data.get("plaintiff") or raw_data.get("plaintiff") or case_data.get("plaintiff") or row.get("customer") or "",
+        "opponent": data.get("opponent") or raw_data.get("opponent") or case_data.get("opponent") or "",
+        "court_name": data.get("court_name") or raw_data.get("court_name") or raw_data.get("court") or "",
+        "created_at": str(item.created_at or ""),
+    })
+    return data, requested, refunded, status_code, status_label
+
+
+def refund_case_fee_row_passes(data: dict, requested: float, status_code: str, status_label: str, *,
+                               refund_status: str = "", court_name: str = "",
+                               refund_amount_from: float | None = None, refund_amount_to: float | None = None) -> bool:
+    expected_status = str(refund_status or "").strip()
+    if expected_status and expected_status not in {status_code, status_label}:
+        return False
+    if court_name.strip() and court_name.strip().casefold() not in str(data.get("court_name") or "").casefold():
+        return False
+    if refund_amount_from is not None and requested < refund_amount_from:
+        return False
+    if refund_amount_to is not None and requested > refund_amount_to:
+        return False
+    return True
+
+
+async def _refund_case_fee_base(identity: dict, db: AsyncSession) -> list[dict]:
+    """待退费列表与筛选条件无关的部分：全部待退、非 R100 的行（已排序），附带筛选事实。"""
+    rows, records_by_id, show_amount = await _refund_case_fee_sources(
+        identity, db, defer_person_display=True, with_facts=True,
+    )
+    base: list[dict] = []
     for row in rows:
-        item = records_by_id[int(row["id"])]
-        raw_data = _legacy_case_fee_projection(item.data or {})
-        data = dict(row.get("data") or {})
-        requested, refunded = legacy_refund_progress(raw_data, data)
-        status_code, status_label = _refund_case_fee_status(raw_data)
-        started_at = _refund_case_fee_started_at(raw_data, status_code) or str(item.created_at or "")
-        try:
-            progress_days = max((date.today() - date.fromisoformat(started_at[:10])).days, 0)
-        except (TypeError, ValueError):
-            progress_days = None
-        case_data = data.get("case_data") if isinstance(data.get("case_data"), dict) else {}
-        data.update({
-            "refund_requested_amount": requested if show_amount else None,
-            "refunded_amount": refunded if show_amount else None,
-            "refund_status": status_code,
-            "refund_status_label": status_label,
-            "refund_status_started_at": started_at,
-            "refund_progress_days": progress_days,
-            "plaintiff": data.get("plaintiff") or raw_data.get("plaintiff") or case_data.get("plaintiff") or row.get("customer") or "",
-            "opponent": data.get("opponent") or raw_data.get("opponent") or case_data.get("opponent") or "",
-            "court_name": data.get("court_name") or raw_data.get("court_name") or raw_data.get("court") or "",
-            "created_at": str(item.created_at or ""),
-        })
-        if pending_only and requested <= refunded:
-            continue
-        if not include_not_required and status_code == "R100":
-            continue
-        expected_status = str(refund_status or "").strip()
-        if expected_status and expected_status not in {status_code, status_label}:
-            continue
-        if court_name.strip() and court_name.strip().casefold() not in str(data.get("court_name") or "").casefold():
-            continue
-        if refund_amount_from is not None and requested < refund_amount_from:
-            continue
-        if refund_amount_to is not None and requested > refund_amount_to:
+        facts = row.pop("_facts")
+        data, requested, refunded, status_code, status_label = _refund_case_fee_projection(
+            row, records_by_id[int(row["id"])], show_amount,
+        )
+        if requested <= refunded or status_code == "R100":
             continue
         row["data"] = data
-        result.append(row)
-    result.sort(key=lambda row: (str((row.get("data") or {}).get("refund_status_started_at") or ""), int(row["id"])))
-    return result
+        base.append({"row": row, "facts": facts, "requested": requested,
+                     "status_code": status_code, "status_label": status_label})
+    base.sort(key=lambda entry: (str(entry["row"]["data"].get("refund_status_started_at") or ""), int(entry["row"]["id"])))
+    return base
 
 
 async def _editable_refund_case_fees(ids: list[int], identity: dict, db: AsyncSession) -> list[BusinessRecord]:

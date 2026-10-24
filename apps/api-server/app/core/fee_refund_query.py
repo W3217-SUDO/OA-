@@ -1,5 +1,5 @@
 """退款归属和进度计算，供费用明细与控制台共用。"""
-from sqlalchemy import or_, select
+from sqlalchemy import literal_column, or_, select
 
 from app.models import BusinessRecord
 from app.core.finance_batch_parity import official_refund_progress
@@ -67,10 +67,12 @@ async def inactive_agency_refund_ids(refunds, db):
     refund_ids = {int(item.id) for item in refunds}
     if not refund_ids:
         return set()
+    # PostgreSQL 上键名写成字面量，才能命中 ix_business_records_data_refund_record_id 表达式索引。
+    key = literal_column("'refund_record_id'") if db.get_bind().dialect.name == "postgresql" else "refund_record_id"
     agency_fees = (await db.execute(
         select(BusinessRecord.status, BusinessRecord.deleted_at, BusinessRecord.data).where(
             BusinessRecord.module == "finance",
-            BusinessRecord.data["refund_record_id"].as_integer().in_(refund_ids),
+            BusinessRecord.data[key].as_integer().in_(refund_ids),
         ).execution_options(include_deleted=True)
     )).all()
     inactive: set[int] = set()

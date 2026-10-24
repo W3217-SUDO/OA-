@@ -482,15 +482,35 @@ async def query_refund_case_fees(
         raise HTTPException(status_code=422, detail="退费最小金额不能大于最大金额")
     if paid_from and paid_to and paid_from > paid_to:
         raise HTTPException(status_code=422, detail="付款开始日期不能晚于结束日期")
-    rows = await _refund_case_fee_rows(
-        identity, db, case_no=case_no, court_case_no=court_case_no,
-        court_name=court_name, paid_from=paid_from, paid_to=paid_to,
-        customer=customer, paid_organization=paid_organization,
-        refund_status=refund_status, refund_amount_from=refund_amount_from,
-        refund_amount_to=refund_amount_to, hearing_lawyer=hearing_lawyer,
-        assistant=assistant, case_stages=case_stages, fee_types=fee_types,
-        defer_person_display=True,
-    )
+    if "_dashboard_fee_ids" in identity:
+        rows = await _refund_case_fee_rows(
+            identity, db, case_no=case_no, court_case_no=court_case_no,
+            court_name=court_name, paid_from=paid_from, paid_to=paid_to,
+            customer=customer, paid_organization=paid_organization,
+            refund_status=refund_status, refund_amount_from=refund_amount_from,
+            refund_amount_to=refund_amount_to, hearing_lawyer=hearing_lawyer,
+            assistant=assistant, case_stages=case_stages, fee_types=fee_types,
+            defer_person_display=True,
+        )
+    else:
+        # 与筛选无关的待退费候选每个数据修订只算一次；筛选在缓存的事实上按原条件逐项判定。
+        from app.core.fee_list_facts import refund_pending_base
+        from app.core.finance import invoice_fee_row_filter, refund_case_fee_row_passes
+
+        base = await refund_pending_base(identity, db)
+        passes = await invoice_fee_row_filter(
+            db, case_no=case_no, court_case_no=court_case_no, customer=customer,
+            paid_organization=paid_organization, paid_from=paid_from, paid_to=paid_to,
+            hearing_lawyer=hearing_lawyer, assistant=assistant, case_stages=case_stages, fee_types=fee_types,
+        )
+        rows = [
+            entry["row"] for entry in base
+            if passes(entry["facts"]) and refund_case_fee_row_passes(
+                entry["row"]["data"], entry["requested"], entry["status_code"], entry["status_label"],
+                refund_status=refund_status, court_name=court_name,
+                refund_amount_from=refund_amount_from, refund_amount_to=refund_amount_to,
+            )
+        ]
     start = (page - 1) * page_size
     # 人员显示字段逐行独立且不参与筛选、排序和统计，只对当前页补齐。
     from app.core.finance_person_projection import apply_finance_person_displays
@@ -714,7 +734,26 @@ async def query_finance_fees(
     )
     # 先用轻量投影完成派生状态筛选和汇总，再只对当前页 ID 回读完整行。
     # 付款、开票、到账和退费条件仍由原有批量聚合逻辑计算，保证结果口径不变。
-    summary_rows = await _fee_query_rows(identity, db, **query_kwargs, summary_only=True)
+    if "_dashboard_fee_ids" in identity:
+        summary_rows = await _fee_query_rows(identity, db, **query_kwargs, summary_only=True)
+    else:
+        # 与筛选无关的费用事实每个数据修订只算一次；筛选在缓存的事实上按原条件逐项判定。
+        from app.core.fee_list_facts import fee_query_facts, fee_query_row_passes
+        from app.core.finance import invoice_fee_row_filter
+
+        facts = await fee_query_facts(identity, db, scope=scope)
+        passes = await invoice_fee_row_filter(
+            db, case_no=case_no, court_case_no=court_case_no, notary_no=notary_no,
+            customer=customer, paid_organization=paid_organization, paid_from=paid_from, paid_to=paid_to,
+            hearing_lawyer=hearing_lawyer, assistant=assistant, case_stages=case_stages, fee_types=fee_types,
+        )
+        summary_rows = [
+            {"id": row["id"], "data": row} for row in facts
+            if passes(row) and fee_query_row_passes(
+                row, external_only=external_only, refund_amount_from=refund_amount_from,
+                refund_amount_to=refund_amount_to, payment_status=payment_status, unpaid_official=unpaid_official,
+            )
+        ]
     amount_visible = "finance.amount" in await _allowed_field_keys(identity, db)
     totals = {
         key: round(sum(float((row.get("data") or {}).get(key) or 0) for row in summary_rows), 2) if amount_visible else None

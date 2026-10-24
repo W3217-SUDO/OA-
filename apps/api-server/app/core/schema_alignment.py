@@ -25,6 +25,8 @@ BUSINESS_RECORD_JSON_INDEXES = (
     ("ix_business_records_data_converted_case_id", "(CAST(data ->> 'converted_case_id' AS INTEGER))", "converted_case_id"),
     ("ix_business_records_data_case_no", "((data ->> 'case_no'))", None),
     ("ix_business_records_data_converted_case_no", "((data ->> 'converted_case_no'))", None),
+    # 待退费、费用查询每次都按退费单编号反查律师代理费（退费）；不建索引时要逐行解析全部业务记录的 JSON。
+    ("ix_business_records_data_refund_record_id", "(CAST(data ->> 'refund_record_id' AS INTEGER))", "refund_record_id"),
 )
 
 
