@@ -1,6 +1,8 @@
 """系统问题反馈与截图附件。"""
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
@@ -15,6 +17,7 @@ from app.models import BusinessRecord, FileAttachment, Notification, User, Workf
 
 router = APIRouter()
 
+FEEDBACK_TZ = ZoneInfo("Asia/Shanghai")
 FEEDBACK_STATUSES = {"待处理", "处理中", "待补充", "待验证", "已处理", "已解决"}
 HANDLER_ACTIONS = {
     "开始处理": ({"待处理"}, "处理中"),
@@ -38,6 +41,16 @@ class FeedbackTransition(BaseModel):
 
 class FeedbackAssignment(BaseModel):
     username: str = Field(min_length=1, max_length=64)
+
+
+def _created_between(date_from: date | None, date_to: date | None) -> list:
+    """按提交日期筛选，日期按北京时间整天算（含结束当天）。"""
+    conditions = []
+    if date_from:
+        conditions.append(BusinessRecord.created_at >= datetime.combine(date_from, time.min, FEEDBACK_TZ))
+    if date_to:
+        conditions.append(BusinessRecord.created_at < datetime.combine(date_to + timedelta(days=1), time.min, FEEDBACK_TZ))
+    return conditions
 
 
 def _is_admin(identity: dict) -> bool:
@@ -215,7 +228,8 @@ async def create_feedback(
 
 @router.get(f"{settings.api_prefix}/feedback/status-counts")
 async def feedback_status_counts(
-    mine: bool = Query(False), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    mine: bool = Query(False), date_from: date | None = Query(None), date_to: date | None = Query(None),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     """问题处理中心的状态页签计数；范围与列表一致（管理员看全部，其他人看自己提交或指派给自己的）。"""
     conditions = [BusinessRecord.module == "bug_feedback", BusinessRecord.deleted_at.is_(None)]
@@ -225,6 +239,7 @@ async def feedback_status_counts(
             BusinessRecord.owner == identity["username"],
             BusinessRecord.data["assignee"].as_string() == identity["username"],
         ))
+    conditions.extend(_created_between(date_from, date_to))
     rows = (await db.execute(select(BusinessRecord.status, func.count()).where(*conditions)
                              .group_by(BusinessRecord.status))).all()
     counts = {status: 0 for status in FEEDBACK_STATUSES}
@@ -236,6 +251,7 @@ async def feedback_status_counts(
 async def list_feedback(
     keyword: str = Query("", max_length=200), page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100), status: str = Query(""), mine: bool = Query(False),
+    date_from: date | None = Query(None), date_to: date | None = Query(None),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     if status and status not in FEEDBACK_STATUSES:
@@ -249,6 +265,7 @@ async def list_feedback(
         ))
     if status:
         conditions.append(BusinessRecord.status == status)
+    conditions.extend(_created_between(date_from, date_to))
     owner_user = aliased(User)
     assignee_user = aliased(User)
     joins = (

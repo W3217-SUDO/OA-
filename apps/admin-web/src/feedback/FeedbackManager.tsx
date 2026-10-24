@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Input, Segmented, Select, Space, Tag } from "antd";
+import { Alert, Button, DatePicker, Input, Segmented, Select, Space, Tag } from "antd";
+import type { Dayjs } from "dayjs";
 import Table from "../components/ResizableTable";
 import type { TableColumnsType } from "antd";
 import dayjs from "dayjs";
@@ -37,6 +38,13 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
   const [keyword, setKeyword] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
+  // 按提交日期筛选（含结束当天），后端按北京时间整天算。
+  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const dateParams = {
+    date_from: dateRange?.[0]?.format("YYYY-MM-DD") || undefined,
+    date_to: dateRange?.[1]?.format("YYYY-MM-DD") || undefined,
+  };
+  const dateKey = `${dateParams.date_from || ""}~${dateParams.date_to || ""}`;
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [reload, setReload] = useState(0);
@@ -70,7 +78,7 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
     setLoading(true);
     setError("");
     void api.get<FeedbackPage>("/feedback", {
-      params: { keyword: query, status, page, page_size: pageSize, mine: mine || undefined }, signal: controller.signal,
+      params: { keyword: query, status, page, page_size: pageSize, mine: mine || undefined, ...dateParams }, signal: controller.signal,
     }).then(({ data }) => {
       if (controller.signal.aborted) return;
       setRows(data.items);
@@ -82,17 +90,17 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
       if (!controller.signal.aborted) setLoading(false);
     });
     return () => controller.abort();
-  }, [listVisible, page, pageSize, query, status, reload, mine]);
+  }, [listVisible, page, pageSize, query, status, reload, mine, dateKey]);
 
   // 状态页签上的数量随列表一起刷新（处理完回到列表也会更新）。
   useEffect(() => {
     if (!center || !listVisible) return;
     let cancelled = false;
-    void api.get<FeedbackStatusCounts>("/feedback/status-counts").then(({ data }) => {
+    void api.get<FeedbackStatusCounts>("/feedback/status-counts", { params: dateParams }).then(({ data }) => {
       if (!cancelled) setStatusCounts(data);
     }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [center, listVisible, reload]);
+  }, [center, listVisible, reload, dateKey]);
 
   const columns: TableColumnsType<FeedbackRecord> = [
     { title: "编号", dataIndex: "serial_no", width: 215, ellipsis: true,
@@ -122,6 +130,9 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
         {!center && <Select aria-label="筛选反馈状态" value={status} style={{ width: 130 }} options={[
           { value: "", label: "全部状态" }, ...statuses.map((value) => ({ value, label: value })),
         ]} onChange={(value) => { setStatus(value); setPage(1); }} />}
+        <DatePicker.RangePicker aria-label="按提交日期筛选" value={dateRange} allowEmpty={[true, true]}
+          placeholder={["提交开始日期", "提交结束日期"]} style={{ width: 280 }}
+          onChange={(value) => { setDateRange(value as [Dayjs | null, Dayjs | null] | null); setPage(1); }} />
         <Button onClick={() => setReload((current) => current + 1)} loading={loading}>刷新</Button>
         {!center && !view && <Button type="primary" onClick={() => setCreating(true)}>提交反馈</Button>}
       </Space>
