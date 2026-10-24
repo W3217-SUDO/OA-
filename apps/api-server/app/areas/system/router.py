@@ -26,6 +26,7 @@ from app.models_shared import (
     UserPermissionOverrideUpdate,
 )
 from fastapi import APIRouter, Request
+from app.core import query_prewarm
 
 router = APIRouter()
 
@@ -1261,10 +1262,22 @@ async def dashboard_http(
     if section == "metrics":
         calculation = read_dashboard_metrics(identity, db)
     elif section in {"metrics_finance", "metrics_cases", "todos", "cases"}:
+        await query_prewarm.remember(db, "dashboard", section, identity, {})
         calculation = cached_dashboard_query(db, identity, section, lambda: dashboard(identity, db, section))
     else:
         calculation = dashboard(identity, db, section)
     return await run_dashboard_read(request, calculation)
+
+
+async def _replay_dashboard_section(section, identity, parameters, db):
+    from app.core.dashboard_metrics_cache import cached_dashboard_query
+
+    if parameters:
+        raise ValueError("控制台预热登记不应带参数")
+    await cached_dashboard_query(db, identity, section, lambda: dashboard(identity, db, section))
+
+
+query_prewarm.register("dashboard", _replay_dashboard_section)
 
 
 async def dashboard(

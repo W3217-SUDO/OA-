@@ -32,8 +32,9 @@ async def cached_query(db, identity, namespace, parameters, compute, *, snapshot
     """只包装最终响应；调用者不得捕获 ORM 依赖或包含写入、下载及动态签名操作。"""
     if not settings.cache_redis_url.strip():
         return await compute()
-    if ttl_seconds is not None and (type(ttl_seconds) is not int or not 1 <= ttl_seconds <= 300):
-        raise ValueError("共享查询缓存有效期必须为 1 至 300 秒")
+    if ttl_seconds is not None and (type(ttl_seconds) is not int
+                                    or not 1 <= ttl_seconds <= store.MAX_TTL_SECONDS):
+        raise ValueError("共享查询缓存有效期必须为 1 至 86400 秒")
     query_store = store if ttl_seconds is None else SimpleNamespace(
         read=store.read, acquire=store.acquire, unavailable=store.unavailable,
         publish=partial(store.publish, ttl_seconds=ttl_seconds),

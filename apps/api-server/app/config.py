@@ -28,10 +28,18 @@ class Settings(BaseSettings):
     cache_redis_url: str = ""
     cache_redis_max_connections: int = Field(default=16, ge=1, le=128)
     cache_redis_timeout_seconds: float = Field(default=1, gt=0, le=10)
-    dashboard_metrics_cache_ttl_seconds: int = Field(default=3600, ge=1, le=86400)
+    dashboard_metrics_cache_ttl_seconds: int = Field(default=86400, ge=1, le=86400)
     dashboard_metrics_cache_wait_seconds: float = Field(default=15, gt=0, le=60)
     dashboard_metrics_compute_timeout_seconds: float = Field(default=30, gt=0, le=120)
-    query_cache_ttl_seconds: int = Field(default=60, ge=1, le=300)
+    # 每次命中都核对数据修订号，有效期只决定清理时机；键含业务日期，跨日自然失效。
+    query_cache_ttl_seconds: int = Field(default=86400, ge=1, le=86400)
+    # Redis 为 noeviction：已用内存超过上限的该比例后不再写入新结果，避免写满后加锁失败。
+    query_cache_memory_ratio: float = Field(default=0.6, gt=0, le=0.9)
+    # 后台预热：数据修订或业务日期变化后，由主进程替最近用过的查询重新算好结果。
+    query_prewarm_enabled: bool = True
+    query_prewarm_interval_seconds: float = Field(default=15, gt=0, le=600)
+    query_prewarm_max_entries: int = Field(default=120, ge=1, le=2000)
+    query_prewarm_idle_days: int = Field(default=4, ge=1, le=30)
     query_cache_max_payload_bytes: int = Field(default=4 * 1024 * 1024, ge=1024, le=64 * 1024 * 1024)
     secret_key: str = "replace-this-before-production"
     initial_admin_username: str = "admin"

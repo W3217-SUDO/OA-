@@ -4,9 +4,11 @@ import json
 import logging
 import re
 from math import isfinite
+from time import monotonic
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
+from redis.exceptions import ResponseError
 from sqlalchemy.orm import DeclarativeBase
 from starlette.requests import Request
 from starlette.responses import Response
@@ -16,6 +18,9 @@ from app.core import dashboard_metrics_redis as shared
 
 
 logger = logging.getLogger(__name__)
+MAX_TTL_SECONDS = 86400
+_MEMORY_CHECK_SECONDS = 30
+_memory_state = {"checked_at": None, "allowed": True}
 
 
 def unavailable(detail="查询共享缓存暂不可用，请稍后重试"):
@@ -82,9 +87,27 @@ async def release(key, token):
 
 async def publish(key, token, snapshot, result, *, ttl_seconds=None):
     ttl = settings.query_cache_ttl_seconds if ttl_seconds is None else ttl_seconds
-    if type(ttl) is not int or not 1 <= ttl <= 300:
-        raise ValueError("共享查询缓存有效期必须为 1 至 300 秒")
+    if type(ttl) is not int or not 1 <= ttl <= MAX_TTL_SECONDS:
+        raise ValueError("共享查询缓存有效期必须为 1 至 86400 秒")
     await _publish(key, token, snapshot, result, ttl)
+
+
+async def _memory_allows_publish():
+    # Redis 不淘汰旧键，写满后连重算锁都无法获取；接近上限时只停写新结果，查询照常实时计算。
+    checked_at = _memory_state["checked_at"]
+    if checked_at is not None and monotonic() - checked_at < _MEMORY_CHECK_SECONDS:
+        return _memory_state["allowed"]
+    try:
+        info = await shared.client().info("memory")
+    except ResponseError:
+        allowed = True  # 账号无 INFO 权限时不阻断写入
+    else:
+        limit = int(info.get("maxmemory") or 0)
+        allowed = not limit or int(info.get("used_memory") or 0) < limit * settings.query_cache_memory_ratio
+    if not allowed and _memory_state["allowed"]:
+        logger.warning("Redis 已用内存超过 %.0f%%，暂停写入新的查询缓存结果", settings.query_cache_memory_ratio * 100)
+    _memory_state.update(checked_at=monotonic(), allowed=allowed)
+    return allowed
 
 
 async def _publish(key, token, snapshot, result, ttl):
@@ -99,6 +122,8 @@ async def _publish(key, token, snapshot, result, ttl):
     stored = await shared.client().get(marker)
     if (stored.decode() if isinstance(stored, bytes) else stored) == marker_value:
         logger.info("查询结果未进入共享缓存：同一数据修订下已判定超限；key=%s", key)
+        return
+    if not await _memory_allows_publish():
         return
     payload = await asyncio.to_thread(_encode, snapshot, result)
     if payload is None:

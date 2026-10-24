@@ -6,9 +6,12 @@ from inspect import iscoroutinefunction, signature
 
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
+from pydantic import TypeAdapter
 from sqlalchemy import select
 
 from app.config import settings
+from app.core import query_prewarm
+from app.core.query_cache_store import json_value
 from app.models import BusinessRecord
 
 
@@ -129,6 +132,25 @@ async def _financial_query_branch(path, values):
     return module in FINANCIAL_RECORD_MODULES
 
 
+# 已接入缓存的入口：路径 -> (原签名, 缓存包装)，供后台预热按登记参数重放。
+_PREWARM_ROUTES = {}
+
+
+async def _replay_finance_query(path, identity, parameters, db):
+    endpoint_signature, cached_endpoint = _PREWARM_ROUTES[path]
+    values = {
+        name: TypeAdapter(parameter.annotation).validate_python(parameters[name])
+        for name, parameter in endpoint_signature.parameters.items() if name not in {"db", "identity"}
+    }
+    # 还原后的参数必须与登记时逐项一致（入口参数已改名或改类型的旧登记直接放弃），保证命中同一缓存键。
+    if json_value(values) != parameters:
+        raise ValueError("预热参数无法按当前入口还原")
+    await cached_endpoint(db=db, identity=identity, **values)
+
+
+query_prewarm.register("finance", _replay_finance_query)
+
+
 def _wrap_query(endpoint, path):
     endpoint_signature = signature(endpoint)
 
@@ -142,6 +164,9 @@ def _wrap_query(endpoint, path):
         from app.core.query_cache import cached_query
 
         parameters = {key: value for key, value in arguments.items() if key not in {"db", "identity"}}
+        # 只预热列表类入口；单条详情本身很快，不占用预热名额。
+        if "{" not in path:
+            await query_prewarm.remember(arguments["db"], "finance", path, arguments["identity"], parameters)
         if "_finance_scope" in arguments["identity"]:
             parameters["finance_scope"] = arguments["identity"]["_finance_scope"]
         return await cached_query(
@@ -186,3 +211,4 @@ def install_finance_query_cache(app: FastAPI) -> None:
         # FastAPI 已生成的 handler 持有此 dependant；仅改执行函数，不重建或跳过认证依赖。
         if path not in FINANCE_REALTIME_QUERIES:
             route.dependant.call = _wrap_query(endpoint, path)
+            _PREWARM_ROUTES[path] = (signature(endpoint), route.dependant.call)

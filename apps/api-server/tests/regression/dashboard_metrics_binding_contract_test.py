@@ -855,6 +855,7 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
 
         self.cache, self.store, self.shared = cache, store, shared
         self.original_read, self.original_publish = store.read, store.publish
+        store._memory_state.update(checked_at=None, allowed=True)
         self.patches = ExitStack()
         self.addCleanup(self.patches.close)
         self.patches.enter_context(patch.object(cache.settings, "cache_redis_url", "redis://cache:6380/0"))
@@ -903,7 +904,7 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
         self.publish.reset_mock()
         await self.query()
         self.assertEqual(self.publish.await_args.kwargs, {})
-        for invalid in (0, 301, True, "300"):
+        for invalid in (0, 86401, True, "300"):
             with self.assertRaises(ValueError):
                 await self.cache.cached_query(self.db, IDENTITY, "dashboard.cases", {}, self.compute,
                                               ttl_seconds=invalid)
@@ -1001,7 +1002,8 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
         self.compute.assert_not_awaited()
 
     async def test_oversize_result_is_marked_so_the_same_revision_skips_the_encoding(self):
-        client = SimpleNamespace(eval=AsyncMock(return_value=1), get=AsyncMock(return_value=None), set=AsyncMock())
+        client = SimpleNamespace(eval=AsyncMock(return_value=1), get=AsyncMock(return_value=None), set=AsyncMock(),
+                                 info=AsyncMock(return_value={"used_memory": 1, "maxmemory": 0}))
         big = {"items": ["客户" * 1000]}
         with patch.object(self.shared, "client", return_value=client), \
                 patch.object(self.store.settings, "query_cache_max_payload_bytes", 1024), \
@@ -1020,7 +1022,8 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
         client.eval.assert_not_awaited()
 
     async def test_payload_limit_and_response_objects_are_explicit_admission_bypasses(self):
-        client = SimpleNamespace(eval=AsyncMock(return_value=1), get=AsyncMock(return_value=None), set=AsyncMock())
+        client = SimpleNamespace(eval=AsyncMock(return_value=1), get=AsyncMock(return_value=None), set=AsyncMock(),
+                                 info=AsyncMock(return_value={"used_memory": 1, "maxmemory": 0}))
         with patch.object(self.shared, "client", return_value=client), \
                 patch.object(self.store.settings, "query_cache_max_payload_bytes", 1024):
             self.assertIsNone(self.store._encode("10:20:", {"items": ["客户" * 1000]}))
@@ -1048,12 +1051,13 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual((await self.original_read("key"))["result"], result)
 
     async def test_publish_uses_bounded_ttl_and_checks_owner_token(self):
-        client = SimpleNamespace(eval=AsyncMock(return_value=1), get=AsyncMock(return_value=None), set=AsyncMock())
+        client = SimpleNamespace(eval=AsyncMock(return_value=1), get=AsyncMock(return_value=None), set=AsyncMock(),
+                                 info=AsyncMock(return_value={"used_memory": 1, "maxmemory": 0}))
         with patch.object(self.shared, "client", return_value=client):
             await self.original_publish("key", "owner", "10:20:", self.result)
             args = client.eval.await_args.args
             self.assertEqual(args[:5], (self.shared._PUBLISH, 2, "key:lock", "key:data", "owner"))
-            self.assertEqual(args[6], 60)
+            self.assertEqual(args[6], 86400)
             self.assertEqual(self.store._decode(args[5])["result"], jsonable_encoder(self.result))
             client.eval.return_value = 0
             with self.assertRaises(HTTPException) as caught:
@@ -1061,13 +1065,14 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(caught.exception.status_code, 503)
 
     async def test_explicit_dashboard_ttl_does_not_mutate_finance_configuration(self):
-        client = SimpleNamespace(eval=AsyncMock(return_value=1), get=AsyncMock(return_value=None), set=AsyncMock())
+        client = SimpleNamespace(eval=AsyncMock(return_value=1), get=AsyncMock(return_value=None), set=AsyncMock(),
+                                 info=AsyncMock(return_value={"used_memory": 1, "maxmemory": 0}))
         with patch.object(self.shared, "client", return_value=client):
             await self.original_publish("key", "owner", "10:20:", self.result, ttl_seconds=300)
             self.assertEqual(client.eval.await_args.args[-1], 300)
-            self.assertEqual(self.store.settings.query_cache_ttl_seconds, 60)
+            self.assertEqual(self.store.settings.query_cache_ttl_seconds, 86400)
             await self.original_publish("key", "owner", "10:20:", self.result)
-            self.assertEqual(client.eval.await_args.args[-1], 60)
+            self.assertEqual(client.eval.await_args.args[-1], 86400)
 
     async def test_dashboard_retention_survives_refresh_expires_and_checks_live_revision(self):
         from app.core import dashboard_metrics_cache as dashboard_cache
@@ -1088,7 +1093,8 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
             saved[data_key] = (payload, clock + ttl)
             return 1
 
-        client = SimpleNamespace(get=AsyncMock(side_effect=get), eval=AsyncMock(side_effect=evaluate))
+        client = SimpleNamespace(get=AsyncMock(side_effect=get), eval=AsyncMock(side_effect=evaluate),
+                                 info=AsyncMock(return_value={"used_memory": 1, "maxmemory": 0}))
         reader = AsyncMock(return_value="1:100:")
         with patch.object(self.shared, "client", return_value=client), \
              patch.object(self.store, "read", self.original_read), \
@@ -1135,29 +1141,48 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
         from app.core import dashboard_metrics_cache as dashboard_cache
         from pydantic import ValidationError
 
-        self.assertEqual(Settings.model_fields["dashboard_metrics_cache_ttl_seconds"].default, 3600)
-        self.assertEqual(Settings.model_fields["query_cache_ttl_seconds"].default, 60)
+        self.assertEqual(Settings.model_fields["dashboard_metrics_cache_ttl_seconds"].default, 86400)
+        self.assertEqual(Settings.model_fields["query_cache_ttl_seconds"].default, 86400)
         self.assertEqual(Settings(_env_file=None, dashboard_metrics_cache_ttl_seconds=86400).dashboard_metrics_cache_ttl_seconds, 86400)
         for invalid in (0, 86401):
             with self.assertRaises(ValidationError):
                 Settings(_env_file=None, dashboard_metrics_cache_ttl_seconds=invalid)
         with self.assertRaises(ValidationError):
-            Settings(_env_file=None, query_cache_ttl_seconds=301)
+            Settings(_env_file=None, query_cache_ttl_seconds=86401)
 
-        client = SimpleNamespace(eval=AsyncMock(return_value=1), get=AsyncMock(return_value=None), set=AsyncMock())
+        client = SimpleNamespace(eval=AsyncMock(return_value=1), get=AsyncMock(return_value=None), set=AsyncMock(),
+                                 info=AsyncMock(return_value={"used_memory": 1, "maxmemory": 0}))
         with patch.object(self.shared, "client", return_value=client), \
              patch.object(dashboard_cache.settings, "dashboard_metrics_cache_ttl_seconds", 86400):
             await dashboard_cache._publish_dashboard_query("key", "owner", "1:100:", self.result)
             self.assertEqual(client.eval.await_args.args[-1], 86400)
             with self.assertRaises(ValueError):
-                await self.original_publish("key", "owner", "1:100:", self.result, ttl_seconds=301)
+                await self.original_publish("key", "owner", "1:100:", self.result, ttl_seconds=86401)
             await self.original_publish("key", "owner", "1:100:", self.result)
-            self.assertEqual(client.eval.await_args.args[-1], 60)
+            self.assertEqual(client.eval.await_args.args[-1], 86400)
             client.eval.return_value = 0
             with self.assertRaises(HTTPException) as caught:
                 await dashboard_cache._publish_dashboard_query("key", "expired", "1:100:", self.result)
             self.assertEqual(caught.exception.status_code, 503)
 
+
+    async def test_publish_pauses_when_redis_memory_is_near_its_limit(self):
+        client = SimpleNamespace(eval=AsyncMock(return_value=1), get=AsyncMock(return_value=None), set=AsyncMock(),
+                                 info=AsyncMock(return_value={"used_memory": 700, "maxmemory": 1000}))
+        with patch.object(self.shared, "client", return_value=client):
+            await self.original_publish("key", "owner", "10:20:", self.result)
+            client.eval.assert_not_awaited()
+            # 30 秒内复用判定结果，不每次查询 INFO
+            await self.original_publish("key", "owner", "10:20:", self.result)
+            client.info.assert_awaited_once()
+            self.store._memory_state.update(checked_at=None)
+            client.info.return_value = {"used_memory": 100, "maxmemory": 1000}
+            await self.original_publish("key", "owner", "10:20:", self.result)
+            client.eval.assert_awaited_once()
+            self.store._memory_state.update(checked_at=None)
+            client.info.side_effect = RedisResponseError("NOPERM")
+            await self.original_publish("key", "owner", "10:20:", self.result)
+            self.assertEqual(client.eval.await_count, 2)
 
     async def test_request_and_orm_dependencies_are_not_encoded(self):
         for value in (Request({"type": "http"}), User(username="unused")):

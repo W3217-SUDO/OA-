@@ -211,6 +211,7 @@ async def lifespan(_: FastAPI):
     )
     from app.core.notification_scheduler import notification_scheduler_loop
     from app.core.attachment_oss_sync import attachment_oss_sync_loop
+    from app.core.query_prewarm import query_prewarm_loop
     if settings.app_env.strip().lower() == "production":
         unsafe_secret = (
             len(settings.secret_key) < 64
@@ -249,6 +250,7 @@ async def lifespan(_: FastAPI):
         asyncio.create_task(_dingtalk_notification_loop()),
         asyncio.create_task(notification_scheduler_loop()),
         asyncio.create_task(attachment_oss_sync_loop()),
+        asyncio.create_task(query_prewarm_loop()),
     ]))
     try:
         await start_dashboard_metrics_cache()
