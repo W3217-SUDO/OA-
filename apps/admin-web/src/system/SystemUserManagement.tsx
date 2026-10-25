@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import {
   Alert,
   Button,
@@ -267,7 +268,7 @@ export function SystemUserManagement({
         onOk={onSaveUser}
         onCancel={() => onUserOpenChange(false)}
         destroyOnHidden
-        width={680}
+        width={POPUP_WIDTH.md}
       >
         <Form form={userForm} layout="vertical">
           <div className="system-modal-grid">

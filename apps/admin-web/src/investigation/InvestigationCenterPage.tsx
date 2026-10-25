@@ -1,3 +1,4 @@
+import { StatusTag } from "../components/common/StatusTag";
 import { useEffect, useMemo, useState, useRef } from "react";
 import {
   Alert,
@@ -56,7 +57,6 @@ import type {
 } from "./types";
 import {
   moduleMeta,
-  statusColors,
   investigationListView,
   serial,
 } from "./constants";
@@ -2031,9 +2031,7 @@ export default function InvestigationCenterPage({
           title: "状态",
           dataIndex: "status",
           width: 100,
-          render: (value: string) => (
-            <Tag color={statusColors[value] || "blue"}>{value}</Tag>
-          ),
+          render: (value: string) => <StatusTag status={value} />,
         },
         {
           title: "办理",
@@ -2286,7 +2284,7 @@ export default function InvestigationCenterPage({
         title: "状态",
         dataIndex: "status",
         width: 100,
-        render: (v: string) => <Tag color={statusColors[v] || "blue"}>{v}</Tag>,
+        render: (v: string) => <StatusTag status={v} />,
       },
       {
         title: "负责人",

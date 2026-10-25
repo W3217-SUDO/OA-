@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import {
 Alert,
 Button,
@@ -1528,7 +1529,7 @@ export default function IprCenterPage({
       <Drawer
         open={legacyHistoryOpen}
         title="Historical IPR cases (read-only)"
-        width={980}
+        size={POPUP_WIDTH.lg}
         onClose={() => {
           setLegacyHistoryOpen(false);
           setLegacyHistoryCaseId(null);
@@ -1618,7 +1619,7 @@ export default function IprCenterPage({
       <Drawer
         open={legacyHistoryCaseId !== null}
         title="Historical IPR relations (read-only)"
-        width={900}
+        size={POPUP_WIDTH.lg}
         onClose={() => setLegacyHistoryCaseId(null)}
       >
         {legacyHistoryCaseId !== null ? (
@@ -1635,7 +1636,7 @@ export default function IprCenterPage({
       <Drawer
         open={reminderTypeWorkbenchOpen}
         title="案件提醒类型工作台"
-        width={920}
+        size={POPUP_WIDTH.lg}
         onClose={() => setReminderTypeWorkbenchOpen(false)}
         extra={
           <Space>
@@ -1742,7 +1743,7 @@ export default function IprCenterPage({
             ? `编辑提醒类型：${editingReminderType.name}`
             : "新建案件提醒类型"
         }
-        width={700}
+        width={POPUP_WIDTH.md}
         onCancel={() => {
           setReminderTypeEditorOpen(false);
           setEditingReminderType(null);
@@ -1848,7 +1849,7 @@ export default function IprCenterPage({
             ? `${detail.data.case_kind}案件详情：${detail.serial_no}`
             : ""
         }
-        width={820}
+        size={POPUP_WIDTH.lg}
         extra={
           detail && !isLegacyIprRecord(detail) ? (
             <Space size={0}>

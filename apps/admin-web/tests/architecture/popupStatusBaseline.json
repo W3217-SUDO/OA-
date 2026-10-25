@@ -1,0 +1,20 @@
+{
+  "popupWidths": {
+    "contract/ContractCenterPage.tsx": 1,
+    "contract/ContractInvestigationWizard.tsx": 1,
+    "crm/CustomerCreateEditModal.tsx": 1,
+    "legal/CaseCenterPage.tsx": 2,
+    "NotificationCenter.tsx": 1,
+    "office/LibreOfficeEditorModal.tsx": 1,
+    "personal-agent/ConversationManager.tsx": 1,
+    "theme/ThemeModeSwitch.tsx": 1
+  },
+  "statusMaps": {
+    "BusinessPage.tsx": 1,
+    "feedback/FeedbackDetail.tsx": 1,
+    "feedback/FeedbackManager.tsx": 1,
+    "personal-agent/ConfirmationHistory.tsx": 1,
+    "personal-agent/PersonalAiSpaceFiles.tsx": 1,
+    "WarehousePage.tsx": 1
+  }
+}

@@ -1,3 +1,5 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
+import { StatusTag } from "../components/common/StatusTag";
 import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import {
   Alert,
@@ -29,7 +31,6 @@ import type {
 import {
   formatTaskScheduleTime,
   formatTaskDateTime,
-  statusColors,
   taskEndedAt,
   taskStartedAt,
   visiblePersonName,
@@ -524,7 +525,7 @@ export function CaseContextModal(props: CaseContextModalProps) {
 
   return (
     <Modal
-      width={900}
+      width={POPUP_WIDTH.lg}
       open={Boolean(caseContext)}
       title={`${
         caseContext?.mode === "tasks" ? "案件任务" : "案件日志"
@@ -572,7 +573,7 @@ export function CaseContextModal(props: CaseContextModalProps) {
               dataIndex: "status",
               width: 95,
               render: (value: string) => (
-                <Tag color={statusColors[value] || "blue"}>{value}</Tag>
+                <StatusTag status={value} />
               ),
             },
           ]}

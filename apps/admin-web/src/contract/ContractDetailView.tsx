@@ -1,3 +1,4 @@
+import { StatusTag } from "../components/common/StatusTag";
 import {
 Alert,
 Button,
@@ -6,7 +7,6 @@ Input,
 Pagination,
 Popconfirm,
 Space,
-Tag,
 Timeline
 } from "antd";
 import Table from "../components/ResizableTable";
@@ -481,7 +481,7 @@ export function ContractDetailView({ viewing, isContractDetailView, detailActive
                             title: "状态",
                             dataIndex: "status",
                             width: 120,
-                            render: (value: string) => <Tag>{value || "—"}</Tag>,
+                            render: (value: string) => <StatusTag status={value} label={value ? displayContractStatus(value) : undefined} />,
                           },
                           { title: "审批意见", dataIndex: "comment" },
                         ]}

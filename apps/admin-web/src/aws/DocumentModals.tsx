@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import {
   Alert,
   Button,
@@ -650,7 +651,7 @@ export function PreviewModal({
       open={open}
       title={`文件预览：${previewName}`}
       footer={null}
-      width={760}
+      width={POPUP_WIDTH.md}
       onCancel={onCancel}
       destroyOnHidden
     >

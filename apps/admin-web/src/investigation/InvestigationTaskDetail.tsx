@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Collapse, Descriptions, Modal, Space, Spin } from "antd";
 import Table from "../components/ResizableTable";
@@ -155,7 +156,7 @@ export default function InvestigationTaskDetail({ record, personName, onOpenCust
         ...(!isChild ? [{ key: "children", label: "调查子任务", children: related }] : []),
       ]} />}
     </Spin>
-    <Modal title={preview?.name || "调查资料"} open={Boolean(preview)} onCancel={closePreview} footer={<Button onClick={closePreview}>关闭</Button>} width={1000} destroyOnHidden>
+    <Modal title={preview?.name || "调查资料"} open={Boolean(preview)} onCancel={closePreview} footer={<Button onClick={closePreview}>关闭</Button>} width={POPUP_WIDTH.lg} destroyOnHidden>
       <AttachmentPreviewContent preview={preview} />
     </Modal>
   </div>;

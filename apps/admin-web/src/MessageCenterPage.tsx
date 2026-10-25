@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "./components/common/popupSize";
 import { KeywordPersonSelect } from "./components/KeywordPersonSelect";
 import {useEffect, useMemo, useState} from 'react'
 import {Button, Card, DatePicker, Drawer, Empty, Form, Input, message, Modal, Popconfirm, Select, Space, Tabs, Tag} from 'antd'
@@ -116,7 +117,7 @@ export default function MessageCenterPage(){
         <Table rowKey="id" size="small" loading={loading} rowSelection={{selectedRowKeys:selectedKeys,onChange:setSelectedKeys,columnWidth:42}} columns={columns} dataSource={rows} locale={{emptyText:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据"/>}} pagination={{current:page,pageSize,showSizeChanger:true,pageSizeOptions:[10,15,20,50,100,200],showQuickJumper:{goButton:'GO'},showTotal:total=>`共 ${total} 条`,onChange:(nextPage,nextPageSize)=>{setPage(nextPage);setPageSize(nextPageSize)}}} scroll={{x:1120}}/>
       </section>
     </Card>
-    <Drawer open={Boolean(selected)} width={520} title={<Space><MailOutlined/>{selected?.title}</Space>} onClose={()=>setSelected(null)}>
+    <Drawer open={Boolean(selected)} size={POPUP_WIDTH.sm} title={<Space><MailOutlined/>{selected?.title}</Space>} onClose={()=>setSelected(null)}>
       <p><Tag>{selected?.notification_type}</Tag><Tag color={selected?.is_read?'default':'red'}>{selected?.is_read?'已读':'未读'}</Tag></p>
       <p>发送者：{personDisplayName(selected?.sender_display_name)}</p><p>接收者：{personDisplayName(selected?.recipient_display_name)}</p>
       <p>时间：{selected?.created_at?new Date(selected.created_at).toLocaleString('zh-CN',{hour12:false}):''}</p>

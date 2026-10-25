@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useEffect, useState } from "react";
 import { Alert, Empty, List, Modal, Spin, Tag } from "antd";
 import { api } from "../api";
@@ -58,7 +59,7 @@ export function CaseAgentFileFolderModal({ open, caseId, serialNo, onClose }: Pr
     return () => controller.abort();
   }, [open, caseId]);
 
-  return <Modal open={open} title={`案件智能体文件夹${serialNo ? ` · ${serialNo}` : ""}`} footer={null} width={680} onCancel={onClose} destroyOnHidden>
+  return <Modal open={open} title={`案件智能体文件夹${serialNo ? ` · ${serialNo}` : ""}`} footer={null} width={POPUP_WIDTH.md} onCancel={onClose} destroyOnHidden>
     {error && <Alert type="error" showIcon title="文件夹加载失败" description={error} />}
     {loading ? <Spin tip="正在读取案件智能体生成文件" /> : files.length ? <>
       <div className="case-agent-folder-summary">当前案件智能体已生成 <strong>{files.length}</strong> 个文件</div>

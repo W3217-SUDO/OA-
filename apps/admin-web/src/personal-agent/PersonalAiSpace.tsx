@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Drawer, Modal, Pagination, Spin, Tooltip, message } from "antd";
 import { DeleteOutlined, ReloadOutlined } from "@ant-design/icons";
@@ -114,7 +115,7 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
   return <Drawer
     open={open}
     onClose={close}
-    width={760}
+    size={POPUP_WIDTH.md}
     destroyOnHidden
     rootClassName="personal-ai-space-drawer"
     title={<span className="personal-ai-space-title">{space ? `${space.owner_name}的${label}` : label}</span>}

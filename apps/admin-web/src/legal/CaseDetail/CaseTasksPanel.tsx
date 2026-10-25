@@ -1,3 +1,4 @@
+import { StatusTag } from "../../components/common/StatusTag";
 import type { TablePaginationConfig } from "antd";
 import { Button,Tag } from "antd";
 import Table from "../../components/ResizableTable";
@@ -36,7 +37,7 @@ export const CaseCaseTasksPanel = ({
       {title:"剩余时间",width:100,render:(_:unknown,row:TaskRow)=>row.days_remaining===null||row.days_remaining===undefined?"—":`${row.days_remaining} 天`},
       {title:"发起人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.initiator,row.initiator_display_name)},
       {title:"负责人",width:110,ellipsis:true,render:(_:unknown,row:TaskRow)=>casePersonDisplayName(row.owner,row.owner_display_name)},
-      {title:"状态",dataIndex:"status",width:110,render:(value:string)=><Tag color={value==="已完成"||value==="已验收"?"green":value==="处理中"?"blue":"default"}>{value||"—"}</Tag>},
+      {title:"状态",dataIndex:"status",width:110,render:(value:string)=><StatusTag status={value} />},
     ]}/>
     {capabilities.can_create_case_task&&<div className="case-legacy-bottom-actions"><Button onClick={()=>viewingCase && onCreateTask(viewingCase)}>发布任务</Button></div>}
   </div>);

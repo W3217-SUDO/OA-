@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useState } from "react";
 import { Alert, Button, Empty, Form, Input, Modal, Space, Switch, Tabs, Tooltip, message } from "antd";
 import { DeleteOutlined, EditOutlined, GithubOutlined, PlusOutlined } from "@ant-design/icons";
@@ -87,7 +88,7 @@ export function SkillManager({ open, onClose, skills, refresh, onSelect, scope: 
     try { await api.delete(`${base}/${skill.id}`); await refresh(); if (editingId === skill.id) reset(); }
     catch (error) { message.error(errorText(error, "技能删除失败")); throw error; }
   } });
-  return <Modal open={open} title={importOnly ? "导入与选用个人技能" : scopeLabel} width={1040} footer={null} className="workspace-skill-modal" maskClosable={!busy} closable={!busy} onCancel={() => { if (busy) return; onClose(); reset(); setTab(importOnly ? "mine" : "capabilities"); setGithubPreview(null); if (!githubRefreshPending) setGithubError(""); }}>
+  return <Modal open={open} title={importOnly ? "导入与选用个人技能" : scopeLabel} width={POPUP_WIDTH.xl} footer={null} className="workspace-skill-modal" maskClosable={!busy} closable={!busy} onCancel={() => { if (busy) return; onClose(); reset(); setTab(importOnly ? "mine" : "capabilities"); setGithubPreview(null); if (!githubRefreshPending) setGithubError(""); }}>
     <Tabs activeKey={activeTab} onChange={key => { if (!busy) setTab(key); }} items={importOnly ? [
       { key: "mine", label: "本人技能", disabled: busy }, { key: "github", label: "GitHub 导入", disabled: busy },
     ] : [

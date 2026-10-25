@@ -1,5 +1,6 @@
-import { Button, Tag } from "antd";
-import { ARCHIVE_FINAL_STATUSES, ARCHIVE_REVIEW_STATUSES, statusColors } from "../constants";
+import { StatusTag } from "../../components/common/StatusTag";
+import { Button } from "antd";
+import { ARCHIVE_FINAL_STATUSES, ARCHIVE_REVIEW_STATUSES } from "../constants";
 import type { CaseDetailCapabilities, CaseRow } from "../types";
 export function createArchiveColumns(context: {
     readonly caseColumns: ({
@@ -62,7 +63,7 @@ export function createArchiveColumns(context: {
             title: "归档状态",
             dataIndex: "status",
             width: 105,
-            render: (v: string) => <Tag color={statusColors[v] || "blue"}>{v}</Tag>,
+            render: (v: string) => <StatusTag status={v} fallback="stage" />,
         },
         {
             title: "归档号",
@@ -87,7 +88,7 @@ export function createArchiveColumns(context: {
                 "fees_settled",
                 "documents_complete",
                 "finance_complete",
-            ].every((k) => r.data[k]) ? (<Tag color="green">已通过</Tag>) : (<Tag color="orange">待完善</Tag>),
+            ].every((k) => r.data[k]) ? <StatusTag status="已通过" /> : <StatusTag status="待完善" tone="pending" />,
         },
         {
             title: "驳回原因",
@@ -101,7 +102,7 @@ export function createArchiveColumns(context: {
             key: "archive",
             fixed: "right" as const,
             width: 190,
-            render: (_: unknown, r: CaseRow) => ARCHIVE_REVIEW_STATUSES.includes(r.status) && context.canReview ? (<Button type="link" onClick={() => context.openArchiveReview(r)}>归档审核</Button>) : ARCHIVE_FINAL_STATUSES.includes(r.status) ? (<Tag color="green">已归档</Tag>) : context.getCaseCapability(r).can_archive ? (<Button type="link" onClick={() => context.openArchive(r)}>
+            render: (_: unknown, r: CaseRow) => ARCHIVE_REVIEW_STATUSES.includes(r.status) && context.canReview ? (<Button type="link" onClick={() => context.openArchiveReview(r)}>归档审核</Button>) : ARCHIVE_FINAL_STATUSES.includes(r.status) ? <StatusTag status="已归档" /> : context.getCaseCapability(r).can_archive ? (<Button type="link" onClick={() => context.openArchive(r)}>
             归档检查
           </Button>) : null,
         },

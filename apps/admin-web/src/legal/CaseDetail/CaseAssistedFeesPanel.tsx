@@ -1,4 +1,5 @@
-import { Button,Space,Tag } from "antd";
+import { StatusTag } from "../../components/common/StatusTag";
+import { Button,Space } from "antd";
 import Table from "../../components/ResizableTable";
 import type { CaseAssistedFee,CaseDetailCapabilities } from "../types";
 import { displayFeeValue } from "../../financialValueDisplay";
@@ -60,7 +61,7 @@ export const CaseAssistedFeesPanel = ({
         {title:"提交人",dataIndex:"request_user",width:120,render:(value:string)=>casePersonDisplayName(value)},
         {title:"办理日期",dataIndex:"confirmed_date",width:120,render:(value:string|undefined)=>value||"待办理"},
         {title:"办理人",dataIndex:"confirmed_user",width:120,render:(value:string|undefined)=>value?casePersonDisplayName(value):""},
-        {title:"状态",dataIndex:"status",width:100,render:(value:string)=><Tag color={value === "已办理" ? "green" : "gold"}>{value}</Tag>},
+        {title:"状态",dataIndex:"status",width:100,render:(value:string)=><StatusTag status={value} />},
         {title:"说明",dataIndex:"remark",width:220,ellipsis:true,render:(value:string)=>displayFeeValue(value)},
         {title:"操作",key:"actions",fixed:"right",width:180,render:(_:unknown,row:CaseAssistedFee)=><Space size={0}>
           {row.status === "待办理" && capabilities.can_manage_assisted_fees && <Button type="link" onClick={()=>onEditClick(row)}>修改</Button>}

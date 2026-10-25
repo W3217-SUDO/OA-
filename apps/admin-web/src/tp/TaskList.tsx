@@ -1,3 +1,4 @@
+import { StatusTag } from "../components/common/StatusTag";
 import type { Key } from "react";
 import {
   Button,
@@ -25,7 +26,6 @@ import type {
 import {
   formatTaskDate,
   formatTaskScheduleTime,
-  statusColors,
   taskCaseNos,
   taskEndedAt,
   taskStartedAt,
@@ -252,9 +252,7 @@ export default function TaskList(props: TaskListProps) {
                   <Button type="link" onClick={() => onOpenCommunication(row)}>
                     {row.title || row.serial_no}
                   </Button>
-                  <Tag color={statusColors[row.status] || "default"}>
-                    {row.status || "-"}
-                  </Tag>
+                  <StatusTag status={row.status} />
                 </div>
                 <button
                   type="button"

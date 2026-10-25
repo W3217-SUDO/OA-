@@ -5,6 +5,7 @@ import test from "node:test";
 import vm from "node:vm";
 import dayjs from "dayjs";
 import ts from "typescript";
+import * as popupSize from "../../src/components/common/popupSize.ts";
 
 const require = createRequire(import.meta.url);
 const sourceRoot = new URL("../../src/finance/", import.meta.url);
@@ -52,6 +53,7 @@ function loadFinanceModule(name, dependencies = {}, globals = {}) {
       }
       if (specifier === "./settlementIdentity") return loadFinanceModule("settlementIdentity.ts");
       if (specifier === "../components/stackedTotals") return loadFinanceModule("../components/stackedTotals.tsx");
+      if (specifier.endsWith("components/common/popupSize")) return popupSize;
       return require(specifier);
     },
     ...globals,

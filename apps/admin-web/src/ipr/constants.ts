@@ -33,14 +33,6 @@ export const lawsuitFeeFromRecord = (record: IprRecord): IprLawsuitFee => ({
 export const personDisplayName = (value?: unknown) =>
   String(value || "").trim() || "姓名待维护";
 
-export const statusColor: Record<string, string> = {
-  草稿: "default",
-  待立案审核: "gold",
-  在办: "blue",
-  已驳回: "red",
-  已结案: "green",
-};
-
 export const CUSTOMER_IPR_RELATION_STORAGE_KEY =
   "sunhold:customer-ipr-relation";
 export const IPR_WARNING_TARGET_STORAGE_KEY = "sunhold:ipr-warning-target";

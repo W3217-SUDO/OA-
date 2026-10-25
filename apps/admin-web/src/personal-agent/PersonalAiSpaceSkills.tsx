@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useEffect, useState } from "react";
 import { Alert, Button, Empty, Modal, Spin, Tag } from "antd";
 import { DownloadOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
@@ -59,7 +60,7 @@ export function PersonalAiSpaceSkills({ active, busy, onSkillsChanged, onSelect 
       </div>
     </li>)}</ul>}
     <SkillManager open={managerOpen} onClose={() => setManagerOpen(false)} mode="import-only" scope="personal" skills={items} refresh={refresh} onSelect={onSelect} />
-    <Modal open={!!definition} onCancel={() => setDefinition(null)} title={definition ? `${definition.name} · 个人技能定义` : "个人技能定义"} width={760} className="personal-ai-skill-definition" footer={<Button onClick={() => setDefinition(null)}>关闭</Button>}>
+    <Modal open={!!definition} onCancel={() => setDefinition(null)} title={definition ? `${definition.name} · 个人技能定义` : "个人技能定义"} width={POPUP_WIDTH.md} className="personal-ai-skill-definition" footer={<Button onClick={() => setDefinition(null)}>关闭</Button>}>
       {definition && <div className="personal-ai-skill-definition-content"><p>当前保存的 SKILL.md 定义；不是原 GitHub 仓库 ZIP。</p><small>当前定义 SHA256：{definition.definition_sha256}</small>{definition.import_sha256 && <small>导入时原文件 SHA256：{definition.import_sha256}</small>}<pre tabIndex={0}>{definition.content}</pre></div>}
     </Modal>
   </section>;

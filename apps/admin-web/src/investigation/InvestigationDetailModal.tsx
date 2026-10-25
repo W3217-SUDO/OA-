@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { Modal, Button, Drawer } from "antd";
 import InvestigationTaskDetail from "./InvestigationTaskDetail";
 import type { Row, ClueWorkspace, Attachment } from "./types";
@@ -70,12 +71,12 @@ export function InvestigationDetailContent({
 
 export default function InvestigationDetailModal(props: InvestigationDetailModalProps) {
   if (props.investigationDetail && ["investigation", "task"].includes(props.investigationDetail.module)) {
-    return <Drawer open={props.open} size={1080} title={`调查详情：${props.investigationDetail.serial_no}`} onClose={props.onClose} destroyOnHidden>
+    return <Drawer open={props.open} size={POPUP_WIDTH.xl} title={`调查详情：${props.investigationDetail.serial_no}`} onClose={props.onClose} destroyOnHidden>
       {props.open && <InvestigationTaskDetail key={props.investigationDetail.id} record={props.investigationDetail} personName={props.projectedPersonDisplayName} onOpenCustomer={props.onOpenLinkedCustomer} onOpenClue={props.onOpenLinkedInvestigation} />}
     </Drawer>;
   }
   return <Modal
-    width={1040}
+    width={POPUP_WIDTH.xl}
     open={props.open}
     title={`调查详情：${props.investigationDetail?.serial_no || ""}`}
     footer={<Button onClick={props.onClose}>关闭</Button>}

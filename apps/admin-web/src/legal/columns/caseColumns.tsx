@@ -1,8 +1,9 @@
+import { StatusTag } from "../../components/common/StatusTag";
 import { CalendarOutlined, CheckSquareOutlined, EditOutlined, FileTextOutlined, TeamOutlined } from "@ant-design/icons";
 import { Button, Space, Tag } from "antd";
 import type { MessageType } from "antd/es/message/interface";
 import { useMemo } from "react";
-import { ARCHIVE_LOCKED_STATUSES, statusColors } from "../constants";
+import { ARCHIVE_LOCKED_STATUSES } from "../constants";
 import type { CaseDetailCapabilities, CaseRow } from "../types";
 export function createCaseColumns(context: {
     readonly openCounselDetail: (row: CaseRow, preferredTab?: string | undefined) => Promise<void>;
@@ -54,7 +55,7 @@ export function createCaseColumns(context: {
             title: "阶段",
             dataIndex: "status",
             width: 115,
-            render: (v: string) => <Tag color={statusColors[v] || "blue"}>{v}</Tag>,
+            render: (v: string) => <StatusTag status={v} fallback="stage" />,
         },
         {
             title: "法院",

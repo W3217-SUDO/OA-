@@ -6,6 +6,7 @@ import test from "node:test";
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import ts from "typescript";
+import * as popupSize from "../src/components/common/popupSize.ts";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const require = createRequire(import.meta.url);
@@ -22,7 +23,7 @@ const output = ts.transpileModule(fs.readFileSync(filename, "utf8"), {
 const module = { exports: {} };
 vm.runInNewContext(output, {
   module, exports: module.exports, AbortController,
-  require: name => name === "antd" ? controls : name === "../../api" ? { api } : name === "../../components/ResizableTable" ? { default: "Table", __esModule: true } : name.endsWith(".css") ? {} : require(name),
+  require: name => name === "antd" ? controls : name === "../../api" ? { api } : name === "../../components/ResizableTable" ? { default: "Table", __esModule: true } : name === "../../components/common/popupSize" ? popupSize : name.endsWith(".css") ? {} : require(name),
 });
 const Panel = module.exports.CaseSystemLogsPanel;
 const personName = (account, name) => name || account;

@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { Button, Descriptions, Form, Input, InputNumber, Modal } from "antd";
 import type { FormInstance } from "antd";
 import { FeeTypePicker } from "./FeeTypePicker";
@@ -35,7 +36,7 @@ export function FeeDetailModal({
 }: FeeDetailModalProps) {
   return (
       <Modal
-        width={760}
+        width={POPUP_WIDTH.md}
         open={Boolean(feeDetail) && !isInternalHistoryList}
         title="请款单详情"
         footer={null}

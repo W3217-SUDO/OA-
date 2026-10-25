@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { Button, Card, Descriptions, Drawer, Space, Tag, Timeline } from "antd";
 import Table from "../components/ResizableTable";
 import { UploadOutlined } from "@ant-design/icons";
@@ -35,7 +36,7 @@ export function DocumentDetail({
 
   return (
     <Drawer
-      size={720}
+      size={POPUP_WIDTH.md}
       open={open}
       title={`收发文详情：${viewing?.serial_no || ""}`}
       onClose={onClose}

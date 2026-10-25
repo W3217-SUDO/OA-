@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { useEffect, useState } from "react";
 import {
@@ -179,7 +180,7 @@ export function SystemConfigList({ configs }: SystemConfigListProps) {
         onCancel={() => setStaffVisible(false)}
         onOk={() => void saveStaff()}
         okButtonProps={{ loading: staffSaving }}
-        width={800}
+        width={POPUP_WIDTH.lg}
       >
         <Form form={staffForm} layout="vertical" initialValues={{ companies: [] }}>
           <Form.List name="companies">

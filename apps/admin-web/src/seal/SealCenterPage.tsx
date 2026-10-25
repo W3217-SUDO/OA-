@@ -1,3 +1,4 @@
+import { StatusTag } from "../components/common/StatusTag";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
@@ -14,7 +15,6 @@ import {
   Space,
   Statistic,
   Tabs,
-  Tag,
 } from "antd";
 import Table from "../components/ResizableTable";
 import {
@@ -69,7 +69,6 @@ import type {
 } from "./types";
 import {
   SEAL_STAMPED_FILE_CATEGORY,
-  assetColors,
   listSealRowFileNames,
   personDisplayName,
   sealActionFailureMessage,
@@ -79,7 +78,6 @@ import {
   sealAttachmentPreviewFailureMessage,
   sealPackageDownloadFailureMessage,
   sealStatusOptions,
-  statusColors,
   validateSealUploadFile,
 } from "./constants";
 import { SealActionModal } from "./SealActionModal";
@@ -1452,7 +1450,7 @@ export default function SealCenterPage({
       dataIndex: "status",
       width: 105,
       render: (v: string) => (
-        <Tag color={statusColors[v] || "blue"}>{displayStatus(v)}</Tag>
+        <StatusTag status={v} label={displayStatus(v)} />
       ),
     },
     {
@@ -1667,7 +1665,7 @@ export default function SealCenterPage({
       title: "状态",
       dataIndex: "status",
       width: 85,
-      render: (v: string) => <Tag color={assetColors[v] || "blue"}>{v}</Tag>,
+      render: (v: string) => <StatusTag status={v} />,
     },
     {
       title: "操作",

@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useState } from "react";
 import { Button, Checkbox, Empty, Input, Modal } from "antd";
 import { EnvironmentOutlined } from "@ant-design/icons";
@@ -30,7 +31,7 @@ export function InvestigationRegionPicker({ value = [], onChange, options, id }:
         setDraft(options.flatMap((province) => selectedCities(value, province).map((city) => [province.value, city])));
         setSearch(""); setOpen(true);
       }}>{summary || "请选择调查区域"}</Button>
-    <Modal open={open} title="选择调查区域" rootClassName="investigation-region-modal" width={880} okText="确定" cancelText="取消"
+    <Modal open={open} title="选择调查区域" rootClassName="investigation-region-modal" width={POPUP_WIDTH.lg} okText="确定" cancelText="取消"
       okButtonProps={{ disabled: draft.length === 0 }} onCancel={() => setOpen(false)}
       onOk={() => { onChange?.(draft); setOpen(false); }} destroyOnHidden>
       <Input.Search allowClear placeholder="搜索省份或城市" aria-label="搜索调查区域" value={search} onChange={(event) => setSearch(event.target.value)} />

@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Modal, Spin } from "antd";
 import { DownloadOutlined, EditOutlined } from "@ant-design/icons";
@@ -72,7 +73,7 @@ export function PersonalAiFilePreview({ file, blob, downloading, downloadError, 
     })();
     return () => { controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [file.id, file.name, blob]);
-  return <Modal open title={`在线查看：${file.name}`} width={personalAiFilePreviewKind(file.name) === "pdf" ? 1000 : 860}
+  return <Modal open title={`在线查看：${file.name}`} width={POPUP_WIDTH.lg}
     rootClassName="personal-ai-file-preview" onCancel={onClose} destroyOnHidden footer={<>
       <Button onClick={onClose}>关闭</Button>
       {/\.(docx|xlsx|xls|md|txt)$/i.test(file.name) && <Button icon={<EditOutlined />} disabled={loading || downloading} onClick={onEdit}>编辑并保存</Button>}

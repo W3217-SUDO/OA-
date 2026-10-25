@@ -1,3 +1,5 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
+import { StatusTag } from "../components/common/StatusTag";
 import { Button,Card,Form,Modal,Space,Tag,message } from "antd";
 import dayjs from "dayjs";
 import type { Key } from "react";
@@ -938,19 +940,7 @@ export default function ContractCenterPage({
     title: `第${s.step_order}级：${personName(s.approver_display_name || s.approver)}`,
     description: (
       <>
-        <Tag
-          color={
-            s.status === "已通过"
-              ? "green"
-              : s.status === "已拒绝"
-                ? "red"
-                : s.status === "待审批"
-                  ? "orange"
-                  : "default"
-          }
-        >
-          {displayContractStatus(s.status)}
-        </Tag>
+        <StatusTag status={s.status} label={displayContractStatus(s.status)} />
         {s.acted_at && (
           <span>{new Date(s.acted_at).toLocaleString("zh-CN")}</span>
         )}
@@ -1302,7 +1292,7 @@ export default function ContractCenterPage({
       )}
 
       <Modal
-        width={isContractDetailView ? "100%" : 860}
+        width={isContractDetailView ? "100%" : POPUP_WIDTH.lg}
         open={Boolean(viewing)}
         title={isContractDetailView ? "合同查看" : `合同查看：${viewing?.serial_no || ""}`}
         footer={
@@ -1461,7 +1451,7 @@ export default function ContractCenterPage({
       />
 
       <Modal
-        width={820}
+        width={POPUP_WIDTH.lg}
         open={open && initialView !== "contract-new"}
         title={editing ? "编辑合同" : "新建合同"}
         footer={

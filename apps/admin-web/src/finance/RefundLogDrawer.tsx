@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { Alert, Button, Drawer, Empty, Spin } from "antd";
 import dayjs from "dayjs";
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
@@ -76,7 +77,7 @@ export function RefundLogDrawer({ feeId, onClose, personDisplayName }: Props) {
       open
       title="查看日志"
       placement="right"
-      width="min(600px, 100vw)"
+      size={POPUP_WIDTH.md}
       mask={false}
       closable={{ placement: "end" }}
       rootClassName="refund-log-drawer"

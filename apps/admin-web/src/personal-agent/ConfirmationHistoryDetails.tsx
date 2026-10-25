@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useEffect, useState } from "react";
 import { Alert, Button, Modal, Space, Spin, Tag } from "antd";
 import { ArrowRightOutlined, ReloadOutlined } from "@ant-design/icons";
@@ -39,7 +40,7 @@ export function ConfirmationHistoryDetails({ record, onClose, onReopen, onReopen
     finally { setReopening(false); }
   };
 
-  return <Modal className="confirmation-history-detail" open={!!record} title="操作详情" width={760}
+  return <Modal className="confirmation-history-detail" open={!!record} title="操作详情" width={POPUP_WIDTH.md}
     closable={!reopening} maskClosable={!reopening} keyboard={!reopening} onCancel={onClose}
     footer={<Space wrap>
       <Button icon={<ReloadOutlined />} loading={loading} disabled={reopening} onClick={() => setRefresh((value) => value + 1)}>刷新详情</Button>

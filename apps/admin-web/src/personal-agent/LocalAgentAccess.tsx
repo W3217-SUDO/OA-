@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Button, Checkbox, Input, Modal, Popconfirm, Select, Tag, Typography, message } from "antd";
 import { CopyOutlined, LaptopOutlined } from "@ant-design/icons";
@@ -69,7 +70,7 @@ export function LocalAgentAccess() {
 
   return <>
     <Button type="text" icon={<LaptopOutlined />} onClick={() => setOpen(true)}>电脑连接 OA</Button>
-    <Modal title={listing.can_write ? "让我电脑上的 agent 连接 OA（可读写）" : "让我电脑上的 agent 连接 OA（只读）"} open={open} width={860} footer={null} onCancel={() => { setOpen(false); setFresh(""); }} destroyOnHidden>
+    <Modal title={listing.can_write ? "让我电脑上的 agent 连接 OA（可读写）" : "让我电脑上的 agent 连接 OA（只读）"} open={open} width={POPUP_WIDTH.lg} footer={null} onCancel={() => { setOpen(false); setFresh(""); }} destroyOnHidden>
       {listing.can_write
         ? <Alert type="error" showIcon style={{ marginBottom: 12 }}
           title="这把令牌可以新增、修改、删除 OA 数据，权限和你的账号一致。写入会直接执行，OA 不再二次确认：请在本地 agent 里保持“每次调用前询问”，不要对写入类工具设置“始终允许”。OA 数据会进入你电脑上的 agent（及其所用的模型），请确认符合律所保密要求。令牌等同密码，不要发给他人，不用时请撤销。" />

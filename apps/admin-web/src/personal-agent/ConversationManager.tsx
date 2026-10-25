@@ -107,7 +107,7 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
       <Tooltip title="新建对话"><Button size="small" icon={<PlusOutlined />} aria-label="新建对话" disabled={busy} onClick={() => create()}><span className="workspace-conversation-label">新建对话</span></Button></Tooltip>
       <Tooltip title="对话列表"><Button size="small" type="text" icon={<HistoryOutlined />} aria-label="对话列表" onClick={() => setOpen(true)}>{showHistoryLabel && <span className="workspace-conversation-label">对话列表</span>}</Button></Tooltip>
     </div>
-    <Drawer title="我的对话" placement="right" width="min(360px, 100vw)" open={open} onClose={() => setOpen(false)} className={drawerClassName} extra={<Button icon={<PlusOutlined />} disabled={busy} onClick={() => create(true)}>新建对话</Button>}>
+    <Drawer title="我的对话" placement="right" size="min(360px, 100vw)" open={open} onClose={() => setOpen(false)} className={drawerClassName} extra={<Button icon={<PlusOutlined />} disabled={busy} onClick={() => create(true)}>新建对话</Button>}>
       {list}
     </Drawer>
   </>;

@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { Drawer, Form, Alert, Input, Select, Radio, DatePicker, Button, Space, Typography } from "antd";
 import { CLUE_INFRINGEMENT_METHOD_OPTIONS, CLUE_SALES_CHANNEL_OPTIONS } from "./constants";
@@ -29,7 +30,7 @@ export default function ClueCreateDrawer({
       open={open}
       title="线索报备"
       placement="right"
-      width={620}
+      size={POPUP_WIDTH.md}
       footer={
         <Space>
           <Button onClick={onSave}>暂存线索</Button>

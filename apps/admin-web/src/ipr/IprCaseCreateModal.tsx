@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import {
 Button,
 DatePicker,
@@ -35,7 +36,7 @@ export function IprCaseCreateModal({ open, editing, form, customers, deadlineOff
             ? `编辑知识产权案件草稿：${editing.serial_no}`
             : "新建知识产权案件草稿"
         }
-        width={760}
+        width={POPUP_WIDTH.md}
         onCancel={onClose}
         onOk={onCreate}
         okText={editing ? "保存修改" : "保存草稿"}

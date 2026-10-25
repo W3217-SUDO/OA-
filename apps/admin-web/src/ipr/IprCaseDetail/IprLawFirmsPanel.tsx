@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../../components/common/popupSize";
 import { Button,Card,Modal } from "antd";
 import Table from "../../components/ResizableTable";
 import type { IprLawFirm,IprLawFirmCandidate,IprRecord } from "../types";
@@ -75,7 +76,7 @@ export function IprLawFirmsPanel({
         onCancel={onCloseLawFirmSelector}
         onOk={onSaveLawFirms}
         okText="保存关联"
-        width={760}
+        width={POPUP_WIDTH.md}
       >
         <p style={{ color: "var(--oa-text-2)" }}>
           仅显示启用的律所；保存时会以当前勾选结果替换本案件的协作律所。

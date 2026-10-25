@@ -1,5 +1,7 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
+import { StatusTag } from "../components/common/StatusTag";
 import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
-import { Drawer, Card, Form, Alert, Input, Select, DatePicker, Button, Space, Tag } from "antd";
+import { Drawer, Card, Form, Alert, Input, Select, DatePicker, Button, Space } from "antd";
 import Table from "../components/ResizableTable";
 import { isLegacyInvestigationRecord } from "./constants";
 import { taskRegionLabel } from "./taskRegionDisplay";
@@ -41,7 +43,7 @@ export default function TaskDetailDrawer({
 }: TaskDetailDrawerProps) {
   return (
     <Drawer
-      size={760}
+      size={POPUP_WIDTH.md}
       open={open}
       title={`调查任务：${taskTarget?.serial_no || ""}`}
       onClose={onClose}
@@ -95,7 +97,7 @@ export default function TaskDetailDrawer({
             title: "状态",
             dataIndex: "status",
             width: 90,
-            render: (v: string) => <Tag>{v}</Tag>,
+            render: (v: string) => <StatusTag status={v} />,
           },
         ]}
       />

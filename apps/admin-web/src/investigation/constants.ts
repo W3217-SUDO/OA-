@@ -56,24 +56,6 @@ export const moduleMeta: Record<ModuleKey, { title: string; prefix: string; stat
   },
 };
 
-export const statusColors: Record<string, string> = {
-  待分配: "orange",
-  进行中: "blue",
-  已完成: "green",
-  已取消: "red",
-  待审批: "orange",
-  待客户审核: "gold",
-  待取证: "cyan",
-  已取证: "blue",
-  待公证: "purple",
-  已转案件: "green",
-  等待材料: "gold",
-  审核通过: "green",
-  审核驳回: "red",
-  待审核: "orange",
-  已入卷: "green",
-};
-
 export const isLegacyInvestigationRecord = (row: Row | null) => {
   const data = row?.data || {};
   return Boolean(

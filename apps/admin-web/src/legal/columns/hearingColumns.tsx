@@ -1,4 +1,5 @@
-import { Button, Tag } from "antd";
+import { StatusTag } from "../../components/common/StatusTag";
+import { Button } from "antd";
 import type { MessageType } from "antd/es/message/interface";
 import type { CaseRow, Hearing, Profile } from "../types";
 export function createHearingColumns(context: {
@@ -41,7 +42,7 @@ export function createHearingColumns(context: {
             title: "状态",
             dataIndex: "status",
             width: 90,
-            render: (v: string) => <Tag color="green">{v}</Tag>,
+            render: (v: string) => <StatusTag status={v} fallback="stage" />,
         },
         {
             title: "操作",

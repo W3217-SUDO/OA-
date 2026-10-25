@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../../components/common/popupSize";
 import { Card,Checkbox,Modal } from "antd";
 import Table from "../../components/ResizableTable";
 import type { CustomerContact,IprCaseContact,IprCaseCustomer,IprRecord } from "../types";
@@ -66,7 +67,7 @@ export function IprContactsPanel({ caseContacts, contactOpen, contactCustomer, c
         onCancel={onCloseContactSelector}
         onOk={onSaveContacts}
         okText="保存联系人"
-        width={860}
+        width={POPUP_WIDTH.lg}
       >
         <p style={{ color: "var(--oa-text-2)" }}>
           同一客户联系人可以同时承担文书联系人和技术联系人两种角色；已失效联系人不可再选择。

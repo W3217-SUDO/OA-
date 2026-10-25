@@ -1,3 +1,5 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
+import { StatusTag } from "../components/common/StatusTag";
 import { CaseLogEntry } from "./CaseDetail/CaseLogEntry";
 import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { CaseClueContextPanel } from "./CaseClueContextPanel";
@@ -240,7 +242,6 @@ shouldUseCompanyArbitrationQueryFields,
 shouldUseCompanyCriminalQueryFields,
 shouldUseCompanySchedulePagination,
 shouldUseCompanyScheduleQueryFields,
-statusColors
 } from "./constants";
 
 import { CaseAgentDrawer } from "./CaseAgentDrawer";
@@ -3350,7 +3351,7 @@ export default function CaseCenterPage({
         </Form>
       </Modal>
       <Modal
-        width={760}
+        width={POPUP_WIDTH.md}
         open={Boolean(companyScheduleCourtInfo)}
         title={`修改法院信息 · ${companyScheduleCourtLevelLabel}`}
         okText="保存"
@@ -3410,7 +3411,7 @@ export default function CaseCenterPage({
         </Form>
       </Modal>
       <Modal
-        width={720}
+        width={POPUP_WIDTH.md}
         open={clueConversionOpen}
         title="从调查线索批量转案件"
         okText="生成案件"
@@ -3436,7 +3437,7 @@ export default function CaseCenterPage({
         </Form>
       </Modal>
       <Modal
-        width={520}
+        width={POPUP_WIDTH.sm}
         open={Boolean(phaseEditing)}
         title={`变更阶段：${phaseEditing?.map((row) => row.serial_no).join("、") || ""}`}
         okText="确认变更"
@@ -3453,7 +3454,7 @@ export default function CaseCenterPage({
         </Form>
       </Modal>
       <Modal
-        width={760}
+        width={POPUP_WIDTH.md}
         open={Boolean(progressEditing)}
         title={`登记案件进展：${progressEditing?.serial_no || ""}`}
         okText="保存并更新阶段"
@@ -3677,7 +3678,7 @@ export default function CaseCenterPage({
       <Drawer
         open={Boolean(feeCase)}
         title={activeFeeContractScope === "内部" && caseFeeCreateStep === 1 ? "申请付款" : activeFeeContractScope === "平台" && feeSubtypePreset === "agency" ? "新增平台代理费" : "新增费用"}
-        width={620}
+        size={POPUP_WIDTH.md}
         className={`case-fee-create-drawer${activeFeeContractScope === "内部" ? " case-internal-fee-payment-drawer" : ""}`}
         onClose={() => { if (activeFeeContractScope !== "内部" || !caseFeeSubmitting) closeCaseFeeCreator(); }}
         maskClosable={activeFeeContractScope !== "内部" || !caseFeeSubmitting}
@@ -3739,7 +3740,7 @@ export default function CaseCenterPage({
         open={Boolean(caseCommissionPreview)}
         title="新增提成"
         placement="right"
-        width={700}
+        size={POPUP_WIDTH.md}
         onClose={closeCaseCommission}
         destroyOnHidden
         className="case-commission-drawer"
@@ -3831,7 +3832,7 @@ export default function CaseCenterPage({
       <Drawer
         open={Boolean(paymentRequestFee)}
         title="申请付款"
-        width={860}
+        size={POPUP_WIDTH.lg}
         className="case-fee-create-drawer case-fee-payment-request-drawer"
         onClose={() => { setPaymentRequestFee(null); paymentRequestForm.resetFields(); }}
         destroyOnClose
@@ -3875,7 +3876,7 @@ export default function CaseCenterPage({
       </Modal>
       <Drawer
         open={Boolean(viewingCaseTask)}
-        width={620}
+        size={POPUP_WIDTH.md}
         title="任务详情"
         onClose={closeCaseTaskDetail}
         destroyOnHidden
@@ -3896,7 +3897,7 @@ export default function CaseCenterPage({
           <span><b>关联案号：</b>{viewingCaseTask?.case_no || "—"}</span>
           <span><b>开始时间：</b>{viewingCaseTask?.start_at ? new Date(viewingCaseTask.start_at).toLocaleString("zh-CN") : "—"}</span>
           <span><b>结束时间：</b>{viewingCaseTask?.end_at ? new Date(viewingCaseTask.end_at).toLocaleString("zh-CN") : viewingCaseTask?.deadline || "—"}</span>
-          <span><b>状态：</b><Tag color={statusColors[viewingCaseTask?.status || ""] || "blue"}>{viewingCaseTask?.status || "—"}</Tag></span>
+          <span><b>状态：</b><StatusTag status={viewingCaseTask?.status} /></span>
           <span><b>协作人：</b>{viewingCaseTask?.collaborator_display_names?.join("、") || casePersonDisplayNames(viewingCaseTask?.collaborators) || "—"}</span>
           <span><b>任务描述：</b>{viewingCaseTask?.description || "—"}</span>
         </div>
@@ -3919,7 +3920,7 @@ export default function CaseCenterPage({
         </Upload>
         <Button type="primary" icon={<CommentOutlined />} loading={caseTaskDetailLoading} onClick={() => void submitCaseTaskFeedback()} style={{ marginTop: 8 }}>提交留言</Button>
       </Drawer>
-      <Drawer open={Boolean(caseTaskCreateCase)} width={620} title="案件任务" onClose={() => { setCaseTaskCreateCase(null); taskForm.resetFields(); setCaseTaskMaterialFiles([]); }} destroyOnHidden footer={<Space><Button type="primary" onClick={createCaseTask}>确定</Button><Button onClick={() => { setCaseTaskCreateCase(null); taskForm.resetFields(); setCaseTaskMaterialFiles([]); }}>取消</Button></Space>}>
+      <Drawer open={Boolean(caseTaskCreateCase)} size={POPUP_WIDTH.md} title="案件任务" onClose={() => { setCaseTaskCreateCase(null); taskForm.resetFields(); setCaseTaskMaterialFiles([]); }} destroyOnHidden footer={<Space><Button type="primary" onClick={createCaseTask}>确定</Button><Button onClick={() => { setCaseTaskCreateCase(null); taskForm.resetFields(); setCaseTaskMaterialFiles([]); }}>取消</Button></Space>}>
         <Steps size="small" current={0} items={[{title:"任务填写"},{title:"任务分派"},{title:"任务处理"},{title:"任务完成"}]} style={{ marginBottom: 20 }} />
         <Form form={taskForm} layout="vertical">
           <Form.Item label="案件编号"><Input value={caseTaskCreateCase?.serial_no || ""} disabled /></Form.Item>
@@ -4010,7 +4011,7 @@ export default function CaseCenterPage({
         </Form>
       </Modal>
       <Drawer
-        width="100%"
+        size="100%"
         rootClassName={isCaseDetailView ? "case-detail-static-root case-detail-responsive-root" : "case-detail-responsive-root"}
         className="case-detail-drawer"
         getContainer={false}
@@ -4263,7 +4264,7 @@ export default function CaseCenterPage({
         <p className="case-log-detail-content"><b>日志内容：</b>{viewingCaseLog?.content || "—"}</p>
       </Modal>
       <Drawer
-        width="min(1280px, 96vw)"
+        size={POPUP_WIDTH.xl}
         open={legacyLsHistoryOpen}
         title="历史诉讼案件（只读）"
         onClose={() => setLegacyLsHistoryOpen(false)}
@@ -4277,7 +4278,7 @@ export default function CaseCenterPage({
         title={`在线查看：${attachmentPreview?.name || ""}`}
         footer={<Button onClick={closeAttachmentPreview}>关闭</Button>}
         onCancel={closeAttachmentPreview}
-        width={attachmentPreview?.kind === "pdf" ? 1000 : 760}
+        width={attachmentPreview?.kind === "pdf" ? POPUP_WIDTH.lg : POPUP_WIDTH.md}
         destroyOnHidden
       >
         <AttachmentPreviewContent preview={attachmentPreview} pdfContent={attachmentPreview?.kind === "pdf" && <div>
@@ -4307,7 +4308,7 @@ export default function CaseCenterPage({
           <Alert type="info" showIcon title="仅修改展示和下载文件名，不会移动或改写原文件内容；保存后会写入案件审计日志。"/>
         </Form>
       </Modal>
-      <Modal width={820} open={Boolean(aiDraftEditor)} title={aiDraftEditor?.mode==="create"?"新建 AI 空间 Word 文档":"编辑 AI 空间 Word 文档"} okText="保存 Word 文档" cancelText="取消" onOk={saveAiDraft} onCancel={()=>{setAiDraftEditor(null);aiDraftForm.resetFields();}}>
+      <Modal width={POPUP_WIDTH.lg} open={Boolean(aiDraftEditor)} title={aiDraftEditor?.mode==="create"?"新建 AI 空间 Word 文档":"编辑 AI 空间 Word 文档"} okText="保存 Word 文档" cancelText="取消" onOk={saveAiDraft} onCancel={()=>{setAiDraftEditor(null);aiDraftForm.resetFields();}}>
         <Alert style={{marginBottom:12}} type="info" showIcon title="案件智能体文件夹是案件草稿箱" description="案件智能体生成文件默认保存在这里；只有点击“转入正式系统”后，文件才进入正式案件文档目录。"/>
         <Form form={aiDraftForm} layout="vertical">
           <Form.Item label="Word 文件名" name="name" rules={[{required:true,message:"请输入文件名"},{pattern:/\.(docx|md|txt)$/i,message:"新建 Word 文档请使用 .docx 格式"}]}><Input maxLength={255} disabled={aiDraftEditor?.mode==="edit"}/></Form.Item>
@@ -4321,7 +4322,7 @@ export default function CaseCenterPage({
         onClosed={() => setLibreOfficeEditorTarget(null)}
       />}
       <Modal
-        width={920}
+        width={POPUP_WIDTH.lg}
         open={Boolean(wordEditor)}
         title={`在线编辑 Word：${wordEditor?.item.original_name || ""}`}
         okText="保存回案件文件"
@@ -4369,7 +4370,7 @@ export default function CaseCenterPage({
           <Form.Item label="正式案件文档目录" name="category" rules={[{required:true,message:"请选择正式目录"}]}><Select showSearch optionFilterProp="label" loading={aiDraftPromoteOptionsLoading} options={aiDraftPromoteOptions}/></Form.Item>
         </Form>
       </Modal>
-      <Modal width={720} open={Boolean(sealingCounselAttachment)} title="用印申请" okText="提交用印申请" cancelText="取消" onOk={submitCounselAttachmentSeal} onCancel={()=>{setSealingCounselAttachment(null);caseFileSealForm.resetFields();}} destroyOnHidden>
+      <Modal width={POPUP_WIDTH.md} open={Boolean(sealingCounselAttachment)} title="用印申请" okText="提交用印申请" cancelText="取消" onOk={submitCounselAttachmentSeal} onCancel={()=>{setSealingCounselAttachment(null);caseFileSealForm.resetFields();}} destroyOnHidden>
         <Alert type="info" showIcon message="案件用印" description="已带入当前案件、客户、合同和所选案件文件；申请仍在当前案件页面完成。" style={{ marginBottom: 12 }} />
         <Form form={caseFileSealForm} layout="vertical">
           <div className="form-grid">
@@ -4423,7 +4424,7 @@ export default function CaseCenterPage({
           <Form.Item label="日志内容" name="content" rules={[{required:true,message:"请输入日志内容"},{max:1000}]}><Input.TextArea rows={5}/></Form.Item>
         </Form>
       </Modal>
-      <Modal width={680} open={batchUpdateOpen} title={`批量修改案件（已选 ${selectedCaseKeys.length} 个）`} okText="确定" cancelText="取消" onOk={submitCounselBatchUpdate} onCancel={()=>setBatchUpdateOpen(false)}>
+      <Modal width={POPUP_WIDTH.md} open={batchUpdateOpen} title={`批量修改案件（已选 ${selectedCaseKeys.length} 个）`} okText="确定" cancelText="取消" onOk={submitCounselBatchUpdate} onCancel={()=>setBatchUpdateOpen(false)}>
         <Alert type="warning" showIcon title="只填写需要统一修改的字段；未填写字段保持原值。已进入归档流程的案件会被整体阻断。" style={{marginBottom:12}}/>
         <Form form={batchUpdateForm} layout="vertical">
           <Form.Item label="开庭律师" name="hearing_lawyer"><Input placeholder="不修改则留空" /></Form.Item>
@@ -4432,7 +4433,7 @@ export default function CaseCenterPage({
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>
-      <Modal width={680} open={batchFeeOpen} title={`批量新增案件费用（已选 ${selectedCaseKeys.length} 个）`} okText="创建费用草稿" cancelText="取消" onOk={submitCounselBatchFee} onCancel={()=>setBatchFeeOpen(false)}>
+      <Modal width={POPUP_WIDTH.md} open={batchFeeOpen} title={`批量新增案件费用（已选 ${selectedCaseKeys.length} 个）`} okText="创建费用草稿" cancelText="取消" onOk={submitCounselBatchFee} onCancel={()=>setBatchFeeOpen(false)}>
         <Alert type="info" showIcon title="系统会为每个案件分别创建一条费用草稿，并分别写入案件与费用审计记录。" style={{marginBottom:12}}/>
         <Form form={batchFeeForm} layout="vertical">
           <div className="form-grid">
@@ -4460,7 +4461,7 @@ export default function CaseCenterPage({
         </Form>
       </Modal>
       <Modal
-        width={700}
+        width={POPUP_WIDTH.md}
         open={Boolean(editingCounselCase)}
         title={`修改法律顾问案件基本信息：${editingCounselCase?.serial_no||""}`}
         okText="确定"
@@ -4480,7 +4481,7 @@ export default function CaseCenterPage({
         </Form>
       </Modal>
       <Modal
-        width={760}
+        width={POPUP_WIDTH.md}
         open={Boolean(editingNormalCase)}
         title={`修改${editingNormalCase?.data.case_type||"案件"}基本信息：${editingNormalCase?.serial_no||""}`}
         okText="确定"
@@ -4520,7 +4521,7 @@ export default function CaseCenterPage({
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>
-      <Modal width={720} open={Boolean(editingArbitrationCase)} title={`修改仲裁案件基本信息：${editingArbitrationCase?.serial_no||""}`} okText="确定" cancelText="取消" onOk={saveArbitrationBasic} onCancel={()=>setEditingArbitrationCase(null)} destroyOnHidden>
+      <Modal width={POPUP_WIDTH.md} open={Boolean(editingArbitrationCase)} title={`修改仲裁案件基本信息：${editingArbitrationCase?.serial_no||""}`} okText="确定" cancelText="取消" onOk={saveArbitrationBasic} onCancel={()=>setEditingArbitrationCase(null)} destroyOnHidden>
         <Alert type="info" showIcon title="仲裁案件使用独立基本信息流程，不复用民事、刑事、行政或法律顾问案件接口。" style={{marginBottom:12}}/>
         <Form form={arbitrationBasicForm} layout="vertical">
           <Form.Item name="case_phase" hidden><Input /></Form.Item>
@@ -4530,7 +4531,7 @@ export default function CaseCenterPage({
           <Form.Item label="关联调查线索" name="investigation_clue_ids"><CaseClueSelect caseId={editingArbitrationCase?.id} /></Form.Item><Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>
-      <Modal width={criminalMaintenance?.kind==="procuratorates"?560:760} open={Boolean(criminalMaintenance)} title={criminalMaintenance?.kind==="procuratorates"?"检察院信息":`维护刑事案件资料：${criminalMaintenance?.row.serial_no||""}`} okText="确定" cancelText="取消" onOk={saveCriminalMaintenance} onCancel={()=>setCriminalMaintenance(null)} destroyOnHidden>
+      <Modal width={POPUP_WIDTH.md} open={Boolean(criminalMaintenance)} title={criminalMaintenance?.kind==="procuratorates"?"检察院信息":`维护刑事案件资料：${criminalMaintenance?.row.serial_no||""}`} okText="确定" cancelText="取消" onOk={saveCriminalMaintenance} onCancel={()=>setCriminalMaintenance(null)} destroyOnHidden>
         <Form form={criminalMaintenanceForm} layout="vertical">
           {criminalMaintenance?.kind==="litigants"&&<><div className="form-grid">{[["plaintiffs","受害人"],["defendants","被告/犯罪嫌疑人"],["third_parties","第三人"]].map(([name,label])=><Form.Item key={name} label={label} name={name}><Select mode="tags" tokenSeparators={[",","，"]}/></Form.Item>)}</div>{renderCaseLitigantAgentEditor("plaintiff_agents", "受害人代理人")}{renderCaseLitigantAgentEditor("defendant_agents")}{renderCaseLitigantAgentEditor("third_party_agents")}</>}
           {criminalMaintenance?.kind==="public-security"&&<div className="form-grid">{[["public_security_name","公安机关"],["public_security_case_no","公安案件号"],["public_security_address","地址"],["public_security_phone","联系电话"],["public_security_operator","承办人"]].map(([name,label])=><Form.Item key={name} label={label} name={name}><Input/></Form.Item>)}</div>}
@@ -4545,7 +4546,7 @@ export default function CaseCenterPage({
           {criminalMaintenance?.kind!=="procuratorates"&&<Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>}
         </Form>
       </Modal>
-      <Modal width={960} open={Boolean(editingCaseLitigants)} title={`修改当事人：${editingCaseLitigants?.serial_no || ""}`} okText="保存修改" cancelText="取消" onOk={saveCaseLitigants} onCancel={()=>setEditingCaseLitigants(null)} forceRender destroyOnHidden style={{ top: 24 }} styles={{ body: { maxHeight: "calc(100vh - 190px)", overflowY: "auto" } }}>
+      <Modal width={POPUP_WIDTH.lg} open={Boolean(editingCaseLitigants)} title={`修改当事人：${editingCaseLitigants?.serial_no || ""}`} okText="保存修改" cancelText="取消" onOk={saveCaseLitigants} onCancel={()=>setEditingCaseLitigants(null)} forceRender destroyOnHidden style={{ top: 24 }} styles={{ body: { maxHeight: "calc(100vh - 190px)", overflowY: "auto" } }}>
         <Alert type="info" showIcon title="输入关键字可搜索系统已有当事人；点击字段右侧加号可新增并立即选中。下方三组代理人按本案独立维护，保存后仅更新本案当事人。" style={{marginBottom:12}} />
         <Form form={caseLitigantsForm} layout="vertical">
           <div className="form-grid">
@@ -4562,7 +4563,7 @@ export default function CaseCenterPage({
         </Form>
       </Modal>
       <Modal
-        width={620}
+        width={POPUP_WIDTH.md}
         open={Boolean(creatingCasePartyRole)}
         title={`新增${creatingCasePartyRole ? CASE_LITIGANT_PARTY_LABELS[creatingCasePartyRole] : ""}当事人`}
         okText={creatingCasePartyRole === "defendants" ? "保存被告到案件" : "保存并选中"}
@@ -4587,7 +4588,7 @@ export default function CaseCenterPage({
         </Form>
       </Modal>
       <Modal
-        width={560}
+        width={POPUP_WIDTH.sm}
         open={createDefendantEditorOpen}
         className="case-create-party-identities"
         zIndex={1300}
@@ -4614,7 +4615,7 @@ export default function CaseCenterPage({
           </Form.List>
         </Form>
       </Modal>
-      <Modal width={560} open={Boolean(editingCaseHearingLawyer)} title={`修改开庭律师：${editingCaseHearingLawyer?.serial_no || ""}`} okText="确定" cancelText="取消" onOk={saveCaseHearingLawyer} onCancel={()=>setEditingCaseHearingLawyer(null)} destroyOnHidden>
+      <Modal width={POPUP_WIDTH.sm} open={Boolean(editingCaseHearingLawyer)} title={`修改开庭律师：${editingCaseHearingLawyer?.serial_no || ""}`} okText="确定" cancelText="取消" onOk={saveCaseHearingLawyer} onCancel={()=>setEditingCaseHearingLawyer(null)} destroyOnHidden>
         <Form form={caseHearingLawyerForm} layout="vertical">
           <Form.Item label="开庭律师" name="hearing_lawyer" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}>
             <KeywordPersonSelect allowClear showSearch optionFilterProp="label" options={caseLawyerOptions} placeholder="输入关键词选择在职律师" notFoundContent="暂无在职律师；请先在人事中心创建并启用律师账号" />
@@ -4623,7 +4624,7 @@ export default function CaseCenterPage({
         </Form>
       </Modal>
       <Drawer
-        size={900}
+        size={POPUP_WIDTH.lg}
         className="case-subpage-drawer"
         getContainer={false}
         mask={false}
@@ -4668,7 +4669,7 @@ export default function CaseCenterPage({
               title: "状态",
               dataIndex: "status",
               width: 90,
-              render: (v: string) => <Tag>{v}</Tag>,
+              render: (v: string) => <StatusTag status={v} />,
             },
           ]}
         />
@@ -4735,7 +4736,7 @@ export default function CaseCenterPage({
         </Card>}
       </Drawer>
       <Drawer
-        width={620}
+        size={POPUP_WIDTH.md}
         open={Boolean(archiving)}
         title={archiveType === "deficit" ? "亏损归档申请" : "正常归档申请"}
         onClose={() => { setArchiving(null); archiveForm.resetFields(); }}
@@ -4851,7 +4852,7 @@ export default function CaseCenterPage({
       <Modal
         open={Boolean(reviewing)}
         title={(reviewing?.rows?.length || 0) > 1 ? `批量归档审核（${reviewing?.rows?.length}条）` : reviewing?.row.status === "亏损内审" ? "内部审核" : "归档审核"}
-        width={1040}
+        width={POPUP_WIDTH.xl}
         footer={[
           <Button key="approve" type="primary" loading={archiveReviewSubmitting} onClick={() => void submitArchiveReview(true)}>同意</Button>,
           <Button key="reject" danger disabled={archiveReviewSubmitting} onClick={() => void submitArchiveReview(false)}>拒绝</Button>,

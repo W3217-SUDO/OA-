@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useEffect, useState } from "react";
 import { Alert, Button, Drawer, Empty, List, Popconfirm, Segmented, Space, Spin, Switch, Tag, Tooltip, message } from "antd";
 import { DeleteOutlined, HistoryOutlined, LockOutlined, ReloadOutlined, SettingOutlined } from "@ant-design/icons";
@@ -85,7 +86,7 @@ export function MemoryControlPanel({ open, onClose }: { open: boolean; onClose: 
     open={open}
     onClose={onClose}
     title={<span><SettingOutlined /> 记忆管理</span>}
-    width={560}
+    size={POPUP_WIDTH.sm}
     rootClassName="memory-control-drawer"
     destroyOnHidden
     extra={<Tooltip title="刷新记忆"><Button type="text" icon={<ReloadOutlined />} aria-label="刷新记忆" loading={loading} onClick={() => void load()} /></Tooltip>}

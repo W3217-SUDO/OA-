@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import {
   Alert,
   Button,
@@ -73,7 +74,7 @@ export function SealCreateModal({
     <Modal
       open={open}
       title={editingApplication ? "修改用印申请" : "申请用印"}
-      width={760}
+      width={POPUP_WIDTH.md}
       okText="保存草稿"
       cancelText="取消"
       confirmLoading={submitting}

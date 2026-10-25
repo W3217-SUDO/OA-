@@ -1,3 +1,5 @@
+import { POPUP_WIDTH } from "./components/common/popupSize";
+import { StatusTag } from "./components/common/StatusTag";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
@@ -10,7 +12,6 @@ import {
   Modal,
   Select,
   Space,
-  Tag,
   Upload,
   message,
 } from "antd";
@@ -58,12 +59,6 @@ type JarAttachment = {
   created_at?: string;
 };
 
-const statusColors: Record<string, string> = {
-  待确认: "orange",
-  已确认: "blue",
-  已入账: "green",
-  已作废: "default",
-};
 const statusOptions = ["待确认", "已确认", "已入账", "已作废"];
 const amount = (value: unknown) =>
   Number(value || 0).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -260,7 +255,7 @@ export default function JarFeeManager({ onNavigate }: { onNavigate?: (route: str
     { title: "到账日期", width: 110, render: (_, row) => row.data?.received_date || "—" },
     { title: "交案费金额", width: 130, align: "right", render: (_, row) => row.data?.amount == null ? "—" : `¥ ${amount(row.data.amount)}` },
     { title: "经办人", width: 100, render: (_, row) => row.data?.handler || row.owner || "—" },
-    { title: "状态", width: 105, render: (_, row) => <Tag color={statusColors[row.status] || "default"}>{row.status || "待确认"}</Tag> },
+    { title: "状态", width: 105, render: (_, row) => <StatusTag status={row.status || "待确认"} /> },
     { title: "操作", key: "actions", fixed: "right", width: 250, render: (_, row) => (
       <Space size={0} wrap>
         <Button type="link" size="small" onClick={() => openEditor(row, true)}>查看</Button>
@@ -284,7 +279,7 @@ export default function JarFeeManager({ onNavigate }: { onNavigate?: (route: str
       </Form>
       <Table rowKey="id" loading={loading} columns={columns} dataSource={rows} scroll={{ x: 1460 }} pagination={{ current: pagination.current, pageSize: pagination.pageSize, total: pagination.total, showSizeChanger: true, onChange: (current, pageSize) => void loadRows({ current, pageSize, total: pagination.total }) }} />
     </Card>
-    <Drawer open={editorOpen} width="min(760px, 95vw)" title={editorReadonly ? "查看JAR交案费" : editing ? "编辑JAR交案费" : "新增JAR交案费"} onClose={() => setEditorOpen(false)} extra={!editorReadonly && <Button type="primary" loading={saving} onClick={() => void save()}>保存</Button>} destroyOnHidden>
+    <Drawer open={editorOpen} size={POPUP_WIDTH.md} title={editorReadonly ? "查看JAR交案费" : editing ? "编辑JAR交案费" : "新增JAR交案费"} onClose={() => setEditorOpen(false)} extra={!editorReadonly && <Button type="primary" loading={saving} onClick={() => void save()}>保存</Button>} destroyOnHidden>
       <Form form={form} layout="vertical" disabled={editorReadonly} initialValues={{ official_fee_amount: 0, agency_fee_amount: 0, other_fee_amount: 0 }}>
         <Space style={{ display: "flex" }} size={16} align="start"><Form.Item label="关联合同" name="contract_id" rules={[{ required: true, message: "请选择关联合同" }]} style={{ width: 260 }}><Select showSearch filterOption={false} placeholder="输入合同编号查询" onSearch={(value) => void searchContracts(value)} options={contractOptions} onSelect={(_value, option: any) => form.setFieldValue("customer", option.customer || "")} /></Form.Item><Form.Item label="标题" name="title" rules={[{ required: true, message: "请输入交案费标题" }]} style={{ flex: 1 }}><Input maxLength={200} /></Form.Item></Space>
         <Space style={{ display: "flex" }} size={16} align="start"><Form.Item label="客户" name="customer" style={{ flex: 1 }}><Input /></Form.Item><Form.Item label="交款单位" name="payer_name" style={{ flex: 1 }}><Input /></Form.Item></Space>
@@ -294,7 +289,7 @@ export default function JarFeeManager({ onNavigate }: { onNavigate?: (route: str
         <Form.Item label="备注" name="remark"><Input.TextArea rows={3} maxLength={1000} /></Form.Item>
       </Form>
     </Drawer>
-    <Drawer open={Boolean(fileTarget)} width="min(720px, 95vw)" title={`交案费文件${fileTarget?.serial_no ? `：${fileTarget.serial_no}` : ""}`} onClose={() => { fileTargetIdRef.current = null; setFileTarget(null); setFiles([]); }} destroyOnHidden extra={fileTarget && canManageFiles(fileTarget) ? <Upload showUploadList={false} beforeUpload={uploadFile} disabled={uploading}><Button icon={<UploadOutlined />} loading={uploading}>上传文件</Button></Upload> : undefined}>
+    <Drawer open={Boolean(fileTarget)} size={POPUP_WIDTH.md} title={`交案费文件${fileTarget?.serial_no ? `：${fileTarget.serial_no}` : ""}`} onClose={() => { fileTargetIdRef.current = null; setFileTarget(null); setFiles([]); }} destroyOnHidden extra={fileTarget && canManageFiles(fileTarget) ? <Upload showUploadList={false} beforeUpload={uploadFile} disabled={uploading}><Button icon={<UploadOutlined />} loading={uploading}>上传文件</Button></Upload> : undefined}>
       <Table rowKey="id" loading={filesLoading} dataSource={files} pagination={false} locale={{ emptyText: "尚未上传交案费附件" }} columns={[{ title: "文件名", dataIndex: "original_name" }, { title: "分类", dataIndex: "category", width: 140 }, { title: "上传人", dataIndex: "uploader_display_name", width: 110 }, { title: "操作", width: 150, render: (_, file: JarAttachment) => <Space><Button type="link" size="small" icon={<DownloadOutlined />} onClick={() => void downloadFile(file)}>下载</Button>{fileTarget && canManageFiles(fileTarget) && <Button type="link" danger size="small" onClick={() => void deleteFile(file)}>删除</Button>}</Space> }]} />
     </Drawer>
     <Modal open={Boolean(statusTarget)} title="变更JAR交案费状态" onCancel={() => setStatusTarget(null)} onOk={() => void changeStatus()} okText="确认变更">

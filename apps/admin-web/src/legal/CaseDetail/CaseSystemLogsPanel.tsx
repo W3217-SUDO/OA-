@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../../components/common/popupSize";
 import { useEffect, useState } from "react";
 import { Alert, Button, Descriptions, Empty, Modal, Pagination, Spin } from "antd";
 import Table from "../../components/ResizableTable";
@@ -102,7 +103,7 @@ const CaseSystemLogsContent = ({ caseId, refreshKey, casePersonDisplayName }: Ca
       </div>
       {result && <Pagination current={result.page} pageSize={result.page_size} total={result.total} showSizeChanger pageSizeOptions={[15, 30, 50, 100]} showTotal={total => `共 ${total} 条`} onChange={(nextPage, nextSize) => { setPage(nextSize === pageSize ? nextPage : 1); setPageSize(nextSize); }} />}
     </Spin>}
-    <Modal className="case-system-log-modal" open={Boolean(selected)} title="系统日志详情" footer={null} onCancel={() => setSelected(null)} destroyOnHidden width="min(720px, 96vw)">
+    <Modal className="case-system-log-modal" open={Boolean(selected)} title="系统日志详情" footer={null} onCancel={() => setSelected(null)} destroyOnHidden width={POPUP_WIDTH.md}>
       {detailError ? <Alert type="error" showIcon title={detailError} /> : !detail ? <Spin /> : <Descriptions column={1} size="small" className="case-system-log-detail" items={[
         { key: "time", label: "操作时间", children: logTime(detail.created_at) },
         { key: "operator", label: "操作人", children: casePersonDisplayName(detail.operator, detail.operator_display_name) },

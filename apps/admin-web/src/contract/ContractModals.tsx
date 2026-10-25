@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { CheckOutlined,CloseOutlined } from "@ant-design/icons";
 import type { FormInstance } from "antd";
@@ -153,7 +154,7 @@ export function AttachmentPreviewModal({ open, preview, onClose }: AttachmentPre
       title={`在线查看：${preview?.name || ""}`}
       footer={<Button onClick={onClose}>关闭</Button>}
       onCancel={onClose}
-      width={preview?.kind === "pdf" ? 1000 : 760}
+      width={preview?.kind === "pdf" ? POPUP_WIDTH.lg : POPUP_WIDTH.md}
       destroyOnHidden
     >
       <AttachmentPreviewContent preview={preview} />
@@ -280,7 +281,7 @@ export function ApproverSettingsModal({
 }: ApproverSettingsModalProps) {
   return (
     <Modal
-      width={760}
+      width={POPUP_WIDTH.md}
       open={open}
       title="设置合同审批人"
       okText="保存设置"
@@ -363,7 +364,7 @@ export function ContractReviewModal({
   const conflict = useConflictReview(reviewing?.id, open);
   return (
     <Modal
-      width={680}
+      width={POPUP_WIDTH.md}
       open={open}
       title={`合同审批：${reviewing?.title || ""}`}
       footer={
@@ -504,7 +505,7 @@ export function ContractChangeModal({
     );
   }
   return (
-    <Modal width={820} open={open} title={`合同变更：${changing?.serial_no || ""}`} okText="保存变更" cancelText="取消" onOk={onOk} onCancel={onCancel}>
+    <Modal width={POPUP_WIDTH.lg} open={open} title={`合同变更：${changing?.serial_no || ""}`} okText="保存变更" cancelText="取消" onOk={onOk} onCancel={onCancel}>
       {content}
     </Modal>
   );
@@ -528,7 +529,7 @@ export function ContractChangeHistoryModal({
 }: ContractChangeHistoryModalProps) {
   return (
     <Modal
-      width={820}
+      width={POPUP_WIDTH.lg}
       open={open}
       title={`合同变更记录：${changeHistory?.serial_no || ""}`}
       footer={<Button onClick={onCancel}>关闭</Button>}

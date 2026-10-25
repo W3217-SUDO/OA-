@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "./components/common/popupSize";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Descriptions, Drawer, Modal, Space, Spin, Tag, Tooltip, message } from "antd";
 import { DeleteOutlined, EyeOutlined, ReloadOutlined } from "@ant-design/icons";
@@ -111,7 +112,7 @@ export function SystemSkillPanel({ items, loading, canManage, onChanged }: {
     {error && <Alert type="error" showIcon title={error} action={refreshNeeded
       ? <Button icon={<ReloadOutlined />} loading={refreshing} onClick={() => void refresh()}>刷新目录</Button> : undefined} />}
     <Table rowKey="id" size="small" loading={loading} columns={columns} dataSource={items} pagination={false} scroll={{ x: 1012 }} />
-    <Drawer title={selected ? `${selected.name} · 系统技能详情` : "系统技能详情"} open={!!selected} onClose={close} width="min(800px, 100vw)" closable={!deleting} maskClosable={!deleting} keyboard={!deleting}>
+    <Drawer title={selected ? `${selected.name} · 系统技能详情` : "系统技能详情"} open={!!selected} onClose={close} size={POPUP_WIDTH.lg} closable={!deleting} maskClosable={!deleting} keyboard={!deleting}>
       <div className="system-skill-detail">
         {reading && <Spin />}
         {error && <Alert type="error" showIcon title={error} />}

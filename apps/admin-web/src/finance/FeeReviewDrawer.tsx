@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { Button,Drawer,Input,Space } from "antd";
 import Table from "../components/ResizableTable";
 
@@ -182,7 +183,7 @@ export function FeeReviewDrawer({
       title={
         <h5>{initialView === "finance-payment-audit" ? "付款审批" : "提成审批"}</h5>
       }
-      width={isPaymentAudit ? 580 : 960}
+      size={isPaymentAudit ? POPUP_WIDTH.md : POPUP_WIDTH.lg}
       placement="right"
       mask={false}
       closable={{ placement: "end" }}

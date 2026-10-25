@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { Button, Descriptions, Drawer, Space, Tag } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 import type { Attachment, Template } from "./types";
@@ -21,7 +22,7 @@ export function AttachmentDetailDrawer({
 }: AttachmentDetailDrawerProps) {
   return (
     <Drawer
-      size={560}
+      size={POPUP_WIDTH.sm}
       open={open}
       title={`附件详情：${attachmentDetail?.original_name || ""}`}
       onClose={onClose}
@@ -79,7 +80,7 @@ export function TemplateDetailDrawer({
 }: TemplateDetailDrawerProps) {
   return (
     <Drawer
-      size={560}
+      size={POPUP_WIDTH.sm}
       open={open}
       title={`模板详情：${templateDetail?.name || ""}`}
       onClose={onClose}

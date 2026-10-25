@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { Alert, DatePicker, Form, Input, InputNumber, Modal, Select } from "antd";
 import type { FormInstance } from "antd";
 import Table from "../components/ResizableTable";
@@ -32,7 +33,7 @@ export function PaymentPackageEditorModal({
 }: PaymentPackageEditorModalProps) {
   return (
       <Modal
-        width={860}
+        width={POPUP_WIDTH.lg}
         open={paymentPackageEditorOpen}
         title={paymentPackageEditTarget ? `编辑付款包：${paymentPackageEditTarget.serial_no}` : "新增付款包"}
         okText="保存"
@@ -95,7 +96,7 @@ export function PaymentPackageWriteoffModal({
   return (
       <Modal
         className="finance-payment-package-writeoff-modal"
-        width={600}
+        width={POPUP_WIDTH.md}
         style={{ top: 30 }}
         open={Boolean(paymentPackageWriteoffTarget)}
         title="付款核销"

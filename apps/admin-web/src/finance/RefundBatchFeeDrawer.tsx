@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import { Alert, Button, DatePicker, Drawer, Form, Input, InputNumber, Select, Space, Steps } from "antd";
@@ -28,7 +29,7 @@ export function RefundBatchFeeDrawer(props: RefundBatchFeeDrawerProps) {
       <Drawer
         open={refundBatchFeeOpen}
         title={refundBatchFeeKind === "internal" ? "新增内部费用" : "新增费用"}
-        width="min(1000px, 95vw)"
+        size={POPUP_WIDTH.lg}
         onClose={closeRefundBatchFee}
         destroyOnHidden
         footer={

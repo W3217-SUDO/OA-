@@ -1,3 +1,5 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
+import { StatusTag } from "../components/common/StatusTag";
 import {
 CloseOutlined,
 FolderOpenOutlined,
@@ -133,7 +135,7 @@ export const CaseAgentDrawer = ({
   return (
     <Drawer
       className="case-agent-drawer"
-      width={agentDrawerWidth}
+      size={agentDrawerWidth}
       open={agentOpen}
       title={<span><RobotOutlined /> 案件智能体：{agentCase?.serial_no || ""}</span>}
       onClose={closeCaseAgent}
@@ -177,12 +179,12 @@ export const CaseAgentDrawer = ({
             {action.status === "pending" ? <Space>
               <Button size="small" type="primary" disabled={actionDisabled(action)} loading={agentDecisionLoading === action.id} onClick={() => setActiveAction(action)}>查看并确认</Button>
             </Space> : <Space>
-              <Tag color={action.status === "approved" ? "success" : action.status === "restored" ? "blue" : "error"}>{action.status === "approved" ? "已批准" : action.status === "restored" ? "已恢复" : "已驳回"}</Tag>
+              <StatusTag status={action.status} tone={action.status === "approved" ? "success" : action.status === "restored" ? "processing" : "danger"} label={action.status === "approved" ? "已批准" : action.status === "restored" ? "已恢复" : "已驳回"} />
               {action.status === "approved" && action.type.endsWith(".delete") && <Button size="small" loading={agentDecisionLoading === action.id} onClick={() => void restoreCaseAgentAction(action)}>恢复</Button>}
             </Space>}
           </div>)}
         </section> : null}
-        <Modal open={Boolean(activeAction)} title="案件智能体操作确认" width={760} maskClosable={!agentDecisionLoading} onCancel={() => { if (!agentDecisionLoading) setActiveAction(null); }} footer={activeAction ? [
+        <Modal open={Boolean(activeAction)} title="案件智能体操作确认" width={POPUP_WIDTH.md} maskClosable={!agentDecisionLoading} onCancel={() => { if (!agentDecisionLoading) setActiveAction(null); }} footer={activeAction ? [
           <Button key="reject" danger icon={<CloseOutlined />} disabled={actionDisabled(activeAction)} onClick={() => void decideActiveAction("rejected")}>驳回，不修改</Button>,
           <Button key="approve" type="primary" disabled={actionDisabled(activeAction) || !hasAgentOperationPreview(activeAction)} loading={agentDecisionLoading === activeAction.id} onClick={() => void decideActiveAction("approved")}>批准并执行</Button>,
         ] : null}>

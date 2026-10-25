@@ -31,21 +31,6 @@ export const internalApprovalRoutes = [
   "finance-internal-refund-audit",
 ];
 
-export const statusColors: Record<string, string> = {
-  草稿: "default",
-  待审批: "orange",
-  已审批: "blue",
-  部分付款: "cyan",
-  已付款: "green",
-  已退回: "red",
-  已驳回: "red",
-  待开票: "cyan",
-  已开票: "green",
-  已作废: "default",
-  退款办理中: "blue",
-  已退款: "green",
-};
-
 export const money = (v: number) =>
   `¥ ${Number(v || 0).toLocaleString("zh-CN", { minimumFractionDigits: 2 })}`;
 

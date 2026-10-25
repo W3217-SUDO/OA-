@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { ReloadOutlined } from "@ant-design/icons";
 import {
 Alert,
@@ -347,7 +348,7 @@ export function LegacyFinanceDetailDrawer({ detail, detailLoading, onCloseDetail
       <Drawer
         open={detailLoading || Boolean(detail)}
         title="导入来源记录明细"
-        width={760}
+        size={POPUP_WIDTH.md}
         placement="right"
         onClose={onCloseDetail}
         footer={<Tag color="default">来源核对</Tag>}

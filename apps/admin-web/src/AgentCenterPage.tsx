@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "./components/common/popupSize";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type Key } from "react";
 import { Button, Empty, Image, Input, List, message, Modal, Select, Space, Spin, Tag, Tree } from "antd";
 import { AppstoreAddOutlined, CheckCircleOutlined, CloseOutlined, FolderOpenOutlined, FolderOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, SendOutlined, StopOutlined } from "@ant-design/icons";
@@ -400,7 +401,7 @@ export default function AgentCenterPage({ onOpenPersonalAgent, onOpenCaseAgentFo
             title="智能体操作审批"
             closable={false}
             maskClosable={false}
-            width={680}
+            width={POPUP_WIDTH.md}
             footer={activeAction ? [
               <Button key="reject" danger icon={<CloseOutlined />} disabled={Boolean(decisionLoading)} onClick={() => void decide(activeAction, "rejected")}>驳回，不修改</Button>,
               <Button key="approve" type="primary" disabled={Boolean(decisionLoading) || !hasAgentOperationPreview(activeAction)} loading={decisionLoading === activeAction.id} onClick={() => void decide(activeAction, "approved")}>批准并执行</Button>,

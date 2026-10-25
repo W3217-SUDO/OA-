@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useEffect, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import { Alert, Button, Modal, message } from "antd";
@@ -137,7 +138,7 @@ export function PersonalAiOfficeEditor({ file, onClose, onBusy, onVersionCreated
   }, [session, savedVersion, submissionUncertain]);
   const isSpreadsheet = /\.(xlsx|xls)$/i.test(file.name);
   const officeIcon = isSpreadsheet ? <FileExcelOutlined /> : <FileWordOutlined />;
-  return <Modal open title="Office 在线编辑" width={640} rootClassName="personal-ai-office-editor"
+  return <Modal open title="Office 在线编辑" width={POPUP_WIDTH.md} rootClassName="personal-ai-office-editor"
     closable={!busy && !disabled} maskClosable={!busy && !disabled} keyboard={!busy && !disabled} onCancel={close} destroyOnHidden
     footer={<Button disabled={!!busy || disabled} onClick={close}>关闭</Button>}>
     <div className="personal-ai-office-content">

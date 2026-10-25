@@ -1,10 +1,11 @@
+import { StatusTag } from "../../components/common/StatusTag";
 import { moneyColumnStyle } from "../moneyColumns";
 import { PaperClipOutlined } from "@ant-design/icons";
-import { Button, Space, Tag } from "antd";
+import { Button, Space } from "antd";
 import type { FormInstance } from "antd/es/form/hooks/useForm";
 import type { ConfigUpdate } from "antd/es/modal/confirm";
 import dayjs from "dayjs";
-import { money, statusColors } from "../constants";
+import { money } from "../constants";
 import type { Fee, FinanceFlow } from "../types";
 import { displayFeeValue } from "../../financialValueDisplay";
 export function createRefundColumns(context: {
@@ -79,7 +80,7 @@ export function createRefundColumns(context: {
             title: "状态", ...moneyColumnStyle("状态"),
             dataIndex: "status",
             width: 105,
-            render: (v: string) => (<Tag color={statusColors[v] || "default"}>{v}</Tag>),
+            render: (v: string) => <StatusTag status={v} />,
         },
         {
             title: "到账凭证", ...moneyColumnStyle("到账凭证"),

@@ -4,14 +4,6 @@ import { normalizeContractDetailReturnView } from "../contractWorkflowPolicy.mjs
 import type { Profile } from "./types";
 
 
-export const colors: Record<string, string> = {
-  草稿: "default",
-  审批中: "orange",
-  审批通过: "green",
-  已完成: "green",
-  已拒绝: "red",
-};
-
 export const CONTRACT_TYPE_OPTIONS = ["法律顾问合同", "争议解决合同", "框架合作合同", "非诉项目合同", "其他"].map((value) => ({ value, label: value }));
 
 export const CONTRACT_FEE_MODE_OPTIONS = ["固定收费", "固定+后期", "免费代理", "法律援助", "计时收费", "全风险代理"].map((value) => ({ value, label: value }));

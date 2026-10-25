@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useEffect, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import { Alert, Button, Form, Input, Modal, message } from "antd";
@@ -128,7 +129,7 @@ export function PersonalAiDocumentEditor({ document, onClose, onBusy, onVersionC
       } else if (!(failure && typeof failure === "object" && "errorFields" in failure)) setSaveError(errorText(failure, "文档校验未完成"));
     } finally { operationLock.current = false; setSaving(false); onBusy(false); }
   };
-  return <Modal open title={`在线编辑：${document.name}`} width={860} rootClassName="personal-ai-document-confirmation"
+  return <Modal open title={`在线编辑：${document.name}`} width={POPUP_WIDTH.lg} rootClassName="personal-ai-document-confirmation"
     okText="保存为新版本" cancelText="关闭" confirmLoading={saving}
     okButtonProps={{ disabled: !!formatError || readbackPending || submissionUncertain }} cancelButtonProps={{ disabled: saving }}
     closable={!saving} keyboard={!saving} maskClosable={!saving} onOk={() => void save()} onCancel={onClose} destroyOnHidden>

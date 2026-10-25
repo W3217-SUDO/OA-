@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import {
 Alert,
 Button,
@@ -69,7 +70,7 @@ export function IprWarningRules({ isAdmin, warningWorkbenchOpen, warningRuleEdit
             ) : null}
           </Space>
         }
-        width={1120}
+        size={POPUP_WIDTH.xl}
         onClose={onCloseWorkbench}
         extra={
           <Space>
@@ -297,7 +298,7 @@ export function IprWarningRules({ isAdmin, warningWorkbenchOpen, warningRuleEdit
             ? `编辑预警规则：${editingWarningRule.name}`
             : "新建案件预警规则"
         }
-        width={680}
+        width={POPUP_WIDTH.md}
         onCancel={onCloseRuleEditor}
         onOk={onSaveRule}
         okText="保存"

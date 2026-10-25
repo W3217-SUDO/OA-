@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "./components/common/popupSize";
 import { useRef, useState } from "react";
 import { Alert, Button, List, message, Modal, Pagination, Select, Space, Spin, Tag } from "antd";
 import { ArrowLeftOutlined, CheckOutlined, CloseOutlined, ReloadOutlined } from "@ant-design/icons";
@@ -88,7 +89,7 @@ export function AgentToolRequests({ buttonLabel = "MCP 待确认", titlePrefix =
 
   return <>
     <Button className={className} size="small" icon={<CheckOutlined />} aria-label={buttonLabel} title={buttonLabel} onClick={() => { setOpen(true); setActive(null); void loadRequests(); }}>{buttonLabel}</Button>
-    <Modal open={open} title={active ? `${titlePrefix}操作确认` : titlePrefix === "MCP" ? "MCP 待确认操作" : `${titlePrefix}操作记录`} width={760} onCancel={close} maskClosable={!deciding}
+    <Modal open={open} title={active ? `${titlePrefix}操作确认` : titlePrefix === "MCP" ? "MCP 待确认操作" : `${titlePrefix}操作记录`} width={POPUP_WIDTH.md} onCancel={close} maskClosable={!deciding}
       footer={active ? <Space wrap>
         <Button icon={<ArrowLeftOutlined />} disabled={deciding} onClick={() => { setActive(null); void loadRequests(); }}>返回列表</Button>
         {active.status === "pending" && <>

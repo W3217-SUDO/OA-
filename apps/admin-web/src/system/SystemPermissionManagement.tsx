@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import {
   Alert,
   Button,
@@ -97,7 +98,7 @@ export function SystemPermissionManagement({
         onCancel={() => onRoleOpenChange(false)}
         okButtonProps={{ disabled: editingRole?.role === "admin" }}
         destroyOnHidden
-        width={760}
+        width={POPUP_WIDTH.md}
       >
         <Form
           form={roleForm}

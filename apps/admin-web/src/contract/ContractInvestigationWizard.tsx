@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { CheckOutlined } from "@ant-design/icons";
 import type { FormInstance } from "antd";
 import {
@@ -63,7 +64,7 @@ export function ContractInvestigationWizard({
 }: ContractInvestigationWizardProps) {
   return (
     <Modal
-      width={isContractInvestigationView ? "100%" : 1100}
+      width={isContractInvestigationView ? "100%" : POPUP_WIDTH.xl}
       open={open}
       title="新建调查任务"
       footer={null}

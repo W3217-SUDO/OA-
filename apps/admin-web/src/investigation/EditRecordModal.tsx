@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { Modal, Form, Input, Select, Radio, DatePicker, Cascader, Space } from "antd";
 import type { Row, PersonOption, Contract } from "./types";
@@ -26,7 +27,7 @@ export default function EditRecordModal({
 }: EditRecordModalProps) {
   const scope = Form.useWatch("authorization_scope_type", editForm);
   if (editTarget?.module === "investigation") return (
-    <Modal open={open} title="基本信息修改" width={660} okText="确定" cancelText="取消" onOk={onOk} onCancel={onCancel}>
+    <Modal open={open} title="基本信息修改" width={POPUP_WIDTH.md} okText="确定" cancelText="取消" onOk={onOk} onCancel={onCancel}>
       <Form form={editForm} layout="horizontal" labelCol={{ span: 7 }} wrapperCol={{ span: 15 }} style={{ paddingTop: 16 }}>
         <Form.Item name="customer" label="权利人" rules={[{ required: true }]}><Input readOnly /></Form.Item>
         <Form.Item name="contract_id" label="合同" rules={[{ required: true, message: "请选择合同" }]}><Select showSearch optionFilterProp="label" options={contracts.map(c => ({ value: c.id, label: `${c.serial_no}_${c.title}`, disabled: ["不可选", "已删除", "已取消", "已作废"].includes(c.status) }))} /></Form.Item>

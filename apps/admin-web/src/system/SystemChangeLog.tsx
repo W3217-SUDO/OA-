@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Button, Checkbox, DatePicker, Input, Modal, Popconfirm, Select, Space, Tabs, Tag, message } from "antd";
 import type { Dayjs } from "dayjs";
@@ -182,7 +183,7 @@ function DataChangeLog() {
           ) },
         ]}
       />
-      <Modal open={!!detail} width={760} title={detail ? `${detail.table_label} · ${detail.summary || `#${detail.row_id}`}（${detail.action_label}）` : ""}
+      <Modal open={!!detail} width={POPUP_WIDTH.md} title={detail ? `${detail.table_label} · ${detail.summary || `#${detail.row_id}`}（${detail.action_label}）` : ""}
         onCancel={() => setDetail(null)} footer={detail && canRevert(detail)
           ? <Popconfirm title={revertTitle(detail)} onConfirm={() => void revert(detail)}><Button type="primary">还原</Button></Popconfirm> : null}>
         {detail && <>

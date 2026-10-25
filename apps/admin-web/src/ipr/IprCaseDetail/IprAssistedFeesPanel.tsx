@@ -1,4 +1,5 @@
-import { Alert,Button,Card,DatePicker,Form,Input,Modal,Select,Space,Tag } from "antd";
+import { StatusTag } from "../../components/common/StatusTag";
+import { Alert,Button,Card,DatePicker,Form,Input,Modal,Select,Space } from "antd";
 import Table from "../../components/ResizableTable";
 import { personDisplayName } from "../constants";
 import type { AssistedFee,Attachment,IprDetailPageState,IprRecord } from "../types";
@@ -160,9 +161,7 @@ export function IprAssistedFeesPanel({
               dataIndex: "status",
               width: 90,
               render: (value) => (
-                <Tag color={value === "已办理" ? "green" : "gold"}>
-                  {value}
-                </Tag>
+                <StatusTag status={value} />
               ),
             },
             {

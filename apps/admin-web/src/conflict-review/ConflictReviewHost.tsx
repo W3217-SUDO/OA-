@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useEffect, useState } from "react";
 import { Modal } from "antd";
 import { ConflictReviewPanel } from "./ConflictReviewPanel";
@@ -11,7 +12,7 @@ export function ConflictReviewHost() {
     window.addEventListener(CONFLICT_REVIEW_OPEN_EVENT, listener);
     return () => window.removeEventListener(CONFLICT_REVIEW_OPEN_EVENT, listener);
   }, []);
-  return <Modal open={reviewId !== null} title="利益冲突审查与反馈" width={960} zIndex={1800} footer={null} onCancel={() => setReviewId(null)} destroyOnHidden styles={{ body: { maxHeight: "75vh", overflowY: "auto" } }}>
+  return <Modal open={reviewId !== null} title="利益冲突审查与反馈" width={POPUP_WIDTH.lg} zIndex={1800} footer={null} onCancel={() => setReviewId(null)} destroyOnHidden styles={{ body: { maxHeight: "75vh", overflowY: "auto" } }}>
     {reviewId !== null && <ConflictReviewPanel key={reviewId} reviewId={reviewId} />}
   </Modal>;
 }

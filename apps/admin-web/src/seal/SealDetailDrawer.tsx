@@ -1,3 +1,5 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
+import { StatusTag } from "../components/common/StatusTag";
 import {
   Button,
   Descriptions,
@@ -16,7 +18,7 @@ import { useConflictReview } from "../conflict-review/useConflictReview";
 import { ConflictReviewNotice } from "../conflict-review/ConflictReviewNotice";
 import type { FormInstance } from "antd";
 import type { AttachmentRow, EventRow, SealRow } from "./types";
-import { personDisplayName, sealAttachmentLabel, sealAttachmentListLabel, statusColors } from "./constants";
+import { personDisplayName, sealAttachmentLabel, sealAttachmentListLabel } from "./constants";
 import {
   canBatchDeleteSealFiles,
   canSealAction,
@@ -90,7 +92,7 @@ export function SealDetailDrawer({
   return (
     <Drawer
       open={open}
-      size={640}
+      size={POPUP_WIDTH.md}
       title={`${
         showAuditFooter ? "用印审核" : "用印详情"
       }：${detail?.serial_no || ""}`}
@@ -234,9 +236,7 @@ export function SealDetailDrawer({
                 key: "status",
                 label: "当前状态",
                 children: (
-                  <Tag color={statusColors[detail.status]}>
-                    {detail.status}
-                  </Tag>
+                  <StatusTag status={detail.status} />
                 ),
               },
               { key: "owner", label: "申请人", children: personDisplayName(detail.owner_display_name) },

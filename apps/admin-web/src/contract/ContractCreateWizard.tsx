@@ -1,3 +1,4 @@
+import { StatusTag } from "../components/common/StatusTag";
 import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { CheckOutlined,CloseOutlined } from "@ant-design/icons";
 import type { FormInstance } from "antd";
@@ -16,7 +17,6 @@ Radio,
 Select,
 Space,
 Steps,
-Tag,
 Timeline,
 } from "antd";
 import { AttachmentFileInput } from "../components/common/AttachmentContent";
@@ -28,7 +28,6 @@ import {
 CONTRACT_CREATE_STEP_TITLES,
 CONTRACT_FEE_MODE_OPTIONS,
 CONTRACT_TYPE_OPTIONS,
-colors,
 } from "./constants";
 import { ContractPageWizardContent } from "./ContractPageWizardContent";
 import type { Attachment,Contract,SealAsset,Step } from "./types";
@@ -160,7 +159,7 @@ export function ContractWizardContent({ onDownloadAttachment, onClearLinkedCusto
                     {
                       key: "status",
                       label: "当前状态",
-                      children: <Tag>{displayContractStatus(wizardDraft.status)}</Tag>,
+                      children: <StatusTag status={displayContractStatus(wizardDraft.status)} />,
                     },
                     { key: "name", label: "合同名称", children: wizardDraft.title, span: 2 },
                     { key: "customer", label: "客户", children: wizardDraft.customer },
@@ -222,7 +221,7 @@ export function ContractWizardContent({ onDownloadAttachment, onClearLinkedCusto
                       key: "status",
                       label: "合同状态",
                       children: (
-                        <Tag color={colors[wizardDraft.status]}>{displayContractStatus(wizardDraft.status)}</Tag>
+                        <StatusTag status={displayContractStatus(wizardDraft.status)} />
                       ),
                     },
                     { key: "name", label: "合同名称", children: wizardDraft.title, span: 2 },
@@ -314,11 +313,11 @@ export function ContractWizardContent({ onDownloadAttachment, onClearLinkedCusto
                   label: "衔接状态",
                   children:
                     wizardDraft.data.sync_seal && !wizardDraft.data.sync_seal_submitted_at ? (
-                      <Tag color="blue">用印草稿待提交</Tag>
+                      <StatusTag status="用印草稿待提交" tone="pending" />
                     ) : wizardDraft.data.sync_seal_file_required ? (
-                      <Tag color="orange">待补用印文件</Tag>
+                      <StatusTag status="待补用印文件" tone="pending" />
                     ) : (
-                      <Tag color="green">已提交用印审批</Tag>
+                      <StatusTag status="已提交用印审批" tone="success" />
                     ),
                   span: 2,
                 },

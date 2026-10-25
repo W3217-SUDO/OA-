@@ -6,6 +6,7 @@ import vm from "node:vm";
 import React from "react";
 import { act, create } from "react-test-renderer";
 import ts from "typescript";
+import * as popupSize from "../../src/components/common/popupSize.ts";
 
 const require = createRequire(import.meta.url);
 const sourceRoot = new URL("../../src/finance/", import.meta.url);
@@ -180,6 +181,7 @@ function loadModule(name, dependencies, globals = {}) {
       if (specifier === "./financeCenterApi" || specifier === "../services/financeCenterApi") return loadModule("services/financeCenterApi.ts", dependencies);
       if (specifier === "../financialValueDisplay") return loadModule("../financialValueDisplay.ts", dependencies);
       if (specifier === "../settlementIdentity") return loadModule("settlementIdentity.ts", dependencies);
+      if (specifier.endsWith("components/common/popupSize")) return popupSize;
       return require(specifier);
     },
     AbortController, Blob, ...globals,

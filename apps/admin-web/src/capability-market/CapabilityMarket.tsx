@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Drawer, Empty, Input, Pagination, Segmented, Skeleton, Tabs, Tag, Tooltip, message } from "antd";
 import { AppstoreOutlined, CheckOutlined, DownloadOutlined, LinkOutlined, ReloadOutlined, RobotOutlined, SearchOutlined, TeamOutlined, ToolOutlined } from "@ant-design/icons";
@@ -191,7 +192,7 @@ export function CapabilityMarket({ active, scope = "personal", onInstalled, onSe
       </article>)}</div>
       {connectors.length > 24 && <Pagination className="capability-market-pagination" current={page} pageSize={24} total={connectors.length} onChange={setPage} showSizeChanger={false} responsive />}
     </>}
-    <Drawer open={active && !!selected} onClose={() => { if (!busy) setSelected(null); }} title={selected?.name} width={680} zIndex={1500} rootClassName="capability-market-detail" maskClosable={!busy} closable={!busy}
+    <Drawer open={active && !!selected} onClose={() => { if (!busy) setSelected(null); }} title={selected?.name} size={POPUP_WIDTH.md} zIndex={1500} rootClassName="capability-market-detail" maskClosable={!busy} closable={!busy}
       footer={<div className="capability-market-detail-actions"><Button disabled={busy} onClick={() => setSelected(null)}>关闭</Button>{selected?.kind !== "connector" && (!managementView || selected?.kind === "skill") && installAction}</div>}>
       {detailLoading ? <Skeleton active /> : detail && <>
         <p>{detail.description}</p><div className="capability-market-tags"><Tag>{detail.category}</Tag><Tag>{detail.license}</Tag>{detail.version && <Tag>v{detail.version}</Tag>}</div>
@@ -211,7 +212,7 @@ export function CapabilityMarket({ active, scope = "personal", onInstalled, onSe
       </>}
       {detailError && <Alert type="error" showIcon title={detailError} />}
     </Drawer>
-    <Drawer open={active && toolsOpen} onClose={() => setToolsOpen(false)} title="沪知 OA · 业务工具" width={680} zIndex={1500} rootClassName="capability-market-detail">
+    <Drawer open={active && toolsOpen} onClose={() => setToolsOpen(false)} title="沪知 OA · 业务工具" size={POPUP_WIDTH.md} zIndex={1500} rootClassName="capability-market-detail">
       <div className="capability-market-tool-list">{tools?.map(tool => <article key={tool.name}><h3>{tool.title || tool.name}</h3><p>{tool.description}</p><Tag>{tool.is_write ? "写入需确认" : "只读查询"}</Tag></article>)}</div>
     </Drawer>
   </section>;

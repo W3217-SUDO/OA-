@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { DatePicker, Form, Input, InputNumber, Modal, Select } from "antd";
 import type { FormInstance } from "antd";
 import type { RefundCreationFormValues } from "./formTypes";
@@ -14,7 +15,7 @@ export interface RefundCreationModalProps {
 export function RefundCreationModal({ open, form, cases, onSubmit, onClose }: RefundCreationModalProps) {
   return (
     <Modal
-      width={760}
+      width={POPUP_WIDTH.md}
       open={open}
       title="新增诉讼费退款申请"
       okText="保存草稿"

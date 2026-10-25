@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { Alert,Button,Card,DatePicker,Descriptions,Form,Input,InputNumber,Modal,Select } from "antd";
 import dayjs from "dayjs";
 import type { Customer,IprBatchCreateError,IprFileType,IprRecord } from "./types";
@@ -76,7 +77,7 @@ export function IprBatchOperations({
       <Modal
         open={iprBatchCreateOpen}
         title="批量新建知识产权案件"
-        width={1120}
+        width={POPUP_WIDTH.xl}
         onCancel={onCloseBatchCreate}
         onOk={onCreateBatch}
         okText="提交创建"

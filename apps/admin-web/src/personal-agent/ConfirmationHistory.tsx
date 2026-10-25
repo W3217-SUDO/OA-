@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useEffect, useState } from "react";
 import { Alert, Button, Drawer, Empty, Pagination, Select, Spin, Tag, Tooltip } from "antd";
 import { AuditOutlined, EyeOutlined, ReloadOutlined } from "@ant-design/icons";
@@ -52,7 +53,7 @@ export function ConfirmationHistory({ onReopen, busy = false }: { onReopen?: (de
         <span className="confirmation-history-label">历史确认记录</span>
       </Button>
     </Tooltip>
-    <Drawer rootClassName="confirmation-history-drawer" title="历史确认记录" width={560} open={open} onClose={() => setOpen(false)}>
+    <Drawer rootClassName="confirmation-history-drawer" title="历史确认记录" size={POPUP_WIDTH.sm} open={open} onClose={() => setOpen(false)}>
       <div className="confirmation-history-toolbar">
         <Select aria-label="确认记录状态" value={status} onChange={(value) => { setStatus(value); setPage(1); }} options={[
           { value: "", label: "全部确认记录" },

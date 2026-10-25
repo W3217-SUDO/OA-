@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { Alert, Button, DatePicker, Form, Input, Modal, Select } from "antd";
 import Table from "../components/ResizableTable";
@@ -35,7 +36,7 @@ export function SettlementContextModal({
 }: SettlementContextModalProps) {
   return (
     <Modal
-      width={900}
+      width={POPUP_WIDTH.lg}
       open={Boolean(settlementContext)}
       title={
         settlementContext?.mode === "log-create"

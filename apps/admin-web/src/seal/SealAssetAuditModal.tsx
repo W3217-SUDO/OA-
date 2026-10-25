@@ -1,9 +1,11 @@
-import { Button, DatePicker, Descriptions, Input, Modal, Space, Tag } from "antd";
+import { POPUP_WIDTH } from "../components/common/popupSize";
+import { StatusTag } from "../components/common/StatusTag";
+import { Button, DatePicker, Descriptions, Input, Modal, Space } from "antd";
 import Table from "../components/ResizableTable";
 import dayjs from "dayjs";
 import type { SealAsset, AssetAuditFilters } from "./types";
 import type { SealAssetAuditRow } from "../sealWorkflowPolicy";
-import { assetColors, personDisplayName } from "./constants";
+import { personDisplayName } from "./constants";
 import { sealAssetAuditPagination } from "../sealWorkflowPolicy";
 
 interface SealAssetAuditModalProps {
@@ -40,7 +42,7 @@ export function SealAssetAuditModal({
   return (
     <Modal
       open={open}
-      width={920}
+      width={POPUP_WIDTH.lg}
       title={asset ? `印章详情与审计：${asset.name}（${asset.code}）` : "印章详情与审计"}
       footer={<Button onClick={onClose}>关闭</Button>}
       onCancel={onClose}
@@ -57,7 +59,7 @@ export function SealAssetAuditModal({
               { key: "type", label: "印章类别", children: asset.seal_type },
               { key: "custodian", label: "保管人", children: asset.custodian },
               { key: "location", label: "存放位置", children: asset.location || "—" },
-              { key: "status", label: "状态", children: <Tag color={assetColors[asset.status] || "blue"}>{asset.status}</Tag> },
+              { key: "status", label: "状态", children: <StatusTag status={asset.status} /> },
               { key: "usage", label: "累计用印", children: `${asset.usage_count} 份` },
               { key: "last_used", label: "最近使用", children: asset.last_used_at ? dayjs(asset.last_used_at).format("YYYY-MM-DD HH:mm") : "—" },
               { key: "remark", label: "备注", children: asset.remark || "—", span: 3 },

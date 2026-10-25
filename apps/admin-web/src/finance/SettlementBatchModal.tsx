@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { Alert, Form, Input, InputNumber, Modal } from "antd";
 import type { FormInstance } from "antd";
@@ -25,7 +26,7 @@ export function SettlementBatchModal({
 }: SettlementBatchModalProps) {
   return (
       <Modal
-        width={640}
+        width={POPUP_WIDTH.md}
         open={settlementBatchOpen}
         title="批量修改案件信息"
         okText="保存修改"

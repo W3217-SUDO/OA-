@@ -1,5 +1,5 @@
-import { Descriptions, Button, Tag } from "antd";
-import { statusColors } from "../constants";
+import { StatusTag } from "../../components/common/StatusTag";
+import { Descriptions, Button } from "antd";
 import type { Row } from "../types";
 
 interface ClueDetailHeaderProps {
@@ -58,9 +58,7 @@ export default function ClueDetailHeader({
           key: "status",
           label: "状态",
           children: (
-            <Tag color={statusColors[investigationDetail.status] || "blue"}>
-              {investigationDetail.status}
-            </Tag>
+            <StatusTag status={investigationDetail.status} />
           ),
         },
         {

@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../../components/common/popupSize";
 import { Button,Card,Checkbox,Modal,Space,Tag } from "antd";
 import Table from "../../components/ResizableTable";
 import type { IprCaseCustomer,IprCaseCustomerCandidate,IprRecord } from "../types";
@@ -112,7 +113,7 @@ export function IprCustomersPanel({
         onCancel={onCloseCustomerSelector}
         onOk={onSaveCustomers}
         okText="保存关联"
-        width={760}
+        width={POPUP_WIDTH.md}
       >
         <p style={{ color: "var(--oa-text-2)" }}>
           案件可以关联多个客户；必须在已选客户中指定一个主客户，主客户会同步用于案件概览及后续关联流程。

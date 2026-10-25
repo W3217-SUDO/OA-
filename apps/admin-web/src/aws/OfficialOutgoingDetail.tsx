@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { Button, Card, Descriptions, Drawer, Popconfirm, Space, Timeline, Upload } from "antd";
 import Table from "../components/ResizableTable";
 import { UploadOutlined } from "@ant-design/icons";
@@ -34,7 +35,7 @@ export function OfficialOutgoingDetail({
     <Drawer
       open={open}
       title={detail ? `正式发文详情：${detail.official_no || detail.serial_no}` : "正式发文详情"}
-      width={760}
+      size={POPUP_WIDTH.md}
       onClose={onClose}
     >
       {detail && (

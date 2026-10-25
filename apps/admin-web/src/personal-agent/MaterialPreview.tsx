@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useEffect, useState } from "react";
 import { Alert, Modal, Spin } from "antd";
 import { api } from "../api";
@@ -31,7 +32,7 @@ export function MaterialPreview({ item, onClose }: { item: Material | null; onCl
     })();
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [item]);
-  return <Modal open={!!item} title={item?.name} width={900} footer={null} onCancel={onClose}>
+  return <Modal open={!!item} title={item?.name} width={POPUP_WIDTH.lg} footer={null} onCancel={onClose}>
     {error ? <Alert type="error" showIcon title={error} /> : <Spin spinning={loading}><div style={{ minHeight: 120 }}><AttachmentPreviewContent preview={preview} /></div></Spin>}
   </Modal>;
 }

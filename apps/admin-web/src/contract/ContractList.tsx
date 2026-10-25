@@ -1,3 +1,4 @@
+import { StatusTag } from "../components/common/StatusTag";
 import type { FormInstance } from "antd";
 import { DownOutlined } from "@ant-design/icons";
 import {
@@ -10,7 +11,7 @@ Input,
 Select,
 Space,
 Tooltip,
-Tag,message
+message
 } from "antd";
 import Table from "../components/ResizableTable";
 import type { FitStackGroup, FitStackState } from "../components/ResizableTable";
@@ -137,7 +138,7 @@ export function ContractList({
   const mobileFilter = useMobileFilterToggle();
   const textCell = (value: string) => {
     const text = displayContractStatus(value);
-    return value === "已拒绝" || value === "已驳回" ? <Tag color="error">{text}</Tag> : text;
+    return value === "已拒绝" || value === "已驳回" ? <StatusTag status={value} label={text} /> : text;
   };
   const customerManagerCell = (value: unknown) => {
     const fullNames = peopleNames(value);
@@ -414,7 +415,7 @@ export function ContractList({
       dataIndex: "archive_status",
       width: 100,
       render: (value: Contract["archive_status"]) => (
-        <Tag color={value === "已归档" ? "green" : "orange"}>{value || "—"}</Tag>
+        <StatusTag status={value} />
       ),
     },
     {

@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import {
   Alert,
@@ -129,7 +130,7 @@ export function CustomerModals({ viewingContact, onCloseViewContact, contactPhot
         open={Boolean(customerDocumentPreview)}
         title={customerDocumentPreview?.name || "客户文档预览"}
         footer={null}
-        width={960}
+        width={POPUP_WIDTH.lg}
         onCancel={onCloseCustomerDocumentPreview}
         destroyOnHidden
       >

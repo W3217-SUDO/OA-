@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Modal, Space, Spin, Tag, message } from "antd";
 import { CheckOutlined, CloseOutlined, ReloadOutlined } from "@ant-design/icons";
@@ -78,7 +79,7 @@ export function ActionConfirmation({ action, deciding, decisionFailure, onDecide
     }
   };
 
-  return <Modal className="personal-action-confirmation" open={!!action} title="智能体操作确认" width={760} maskClosable={!deciding} closable={!deciding} keyboard={!deciding}
+  return <Modal className="personal-action-confirmation" open={!!action} title="智能体操作确认" width={POPUP_WIDTH.md} maskClosable={!deciding} closable={!deciding} keyboard={!deciding}
     onCancel={() => { if (!deciding) onClose(); }}
     footer={<Space wrap>
       {action?.type === "mcp.call" && <Button icon={<ReloadOutlined />} loading={loading} disabled={deciding} onClick={() => setRefresh((value) => value + 1)}>刷新状态</Button>}

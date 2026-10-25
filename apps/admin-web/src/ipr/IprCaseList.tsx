@@ -1,3 +1,4 @@
+import { StatusTag } from "../components/common/StatusTag";
 import type { TableColumnsType } from "antd";
 import {
 Button,
@@ -9,7 +10,7 @@ Tag,
 } from "antd";
 import Table from "../components/ResizableTable";
 import { useMemo } from "react";
-import { isLegacyIprRecord,statusColor } from "./constants";
+import { isLegacyIprRecord } from "./constants";
 import type { IprRecord } from "./types";
 import { IprConflictActions } from "./IprConflictActions";
 
@@ -173,9 +174,7 @@ export function IprCaseList({
         title: "状态",
         width: 110,
         render: (_, row) => (
-          <Tag color={statusColor[row.status] || "default"}>
-            {row.status}
-          </Tag>
+          <StatusTag status={row.status} />
         ),
       },
       {

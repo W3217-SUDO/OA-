@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useEffect, useState } from "react";
 import { Alert, Button, Drawer, Empty, Modal, Tag, Tooltip } from "antd";
 import { ApiOutlined, DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
@@ -76,7 +77,7 @@ export function GlobalMcpWorkspace({ active, canManage }: Props) {
         </div>}
       </article>)}
     </div>
-    <Drawer title="全局 MCP 配置" open={mcp.open && canManage} onClose={close} width={680} destroyOnHidden maskClosable={!mcp.busy} closable={!mcp.busy} rootClassName="global-mcp-workspace-drawer">
+    <Drawer title="全局 MCP 配置" open={mcp.open && canManage} onClose={close} size={POPUP_WIDTH.md} destroyOnHidden maskClosable={!mcp.busy} closable={!mcp.busy} rootClassName="global-mcp-workspace-drawer">
       {mcp.open && (canUseCard
         ? <PersonalMcpConnectionCard connection={{ ...mcp, close, items: globals }} allowNewConnection={false} allowConfigImport={false} />
         : <div className="global-mcp-workspace-blocked">

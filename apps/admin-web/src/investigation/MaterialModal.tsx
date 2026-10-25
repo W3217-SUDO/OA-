@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { Modal, Form, Select, Input, Button, Space, Tag } from "antd";
 import Table from "../components/ResizableTable";
 import { DownloadOutlined, DeleteOutlined, UploadOutlined } from "@ant-design/icons";
@@ -34,7 +35,7 @@ export default function MaterialModal({
 }: MaterialModalProps) {
   return (
     <Modal
-      width={780}
+      width={POPUP_WIDTH.md}
       open={open}
       title={`${materialTarget?.serial_no || ""}｜材料目录`}
       footer={null}

@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "./components/common/popupSize";
 import { KeywordPersonSelect } from "./components/KeywordPersonSelect";
 import {useEffect, useRef, useState} from 'react'
 import {Alert, Button, Card, DatePicker, Descriptions, Form, Input, InputNumber, message, Modal, Popconfirm, Select, Space} from 'antd'
@@ -94,7 +95,7 @@ export default function HrPerformancePage({onNavigate}:{onNavigate:(route:string
     <div className="subrecord-toolbar"><Space wrap>{canManage&&<Button type="primary" icon={<PlusOutlined/>} onClick={()=>void showEditor()}>新增绩效</Button>}<Button icon={<DownloadOutlined/>} loading={exporting} onClick={()=>void exportCsv()}>导出 CSV</Button><Button icon={<ReloadOutlined/>} loading={loading} onClick={()=>void load()}>刷新</Button></Space></div>
     {failure&&<Alert type="error" showIcon message={failure} style={{marginBottom:12}}/>}
     <Table rowKey="id" size="small" loading={loading} columns={columns} dataSource={rows} scroll={{x:1160}} pagination={{current:page,pageSize,total,showSizeChanger:true,showTotal:count=>`共 ${count} 条`,onChange:(next,size)=>{setPage(size!==pageSize?1:next);setPageSize(size)}}}/>
-    <Modal open={open} title={editing?'绩效设置 / 编辑':'新增绩效 / 方案设置'} width={740} okText="保存" cancelText="取消" confirmLoading={saving} onOk={()=>void save()} onCancel={()=>{if(!saving){setOpen(false);form.resetFields()}}} destroyOnHidden maskClosable={!saving} closable={!saving}>
+    <Modal open={open} title={editing?'绩效设置 / 编辑':'新增绩效 / 方案设置'} width={POPUP_WIDTH.md} okText="保存" cancelText="取消" confirmLoading={saving} onOk={()=>void save()} onCancel={()=>{if(!saving){setOpen(false);form.resetFields()}}} destroyOnHidden maskClosable={!saving} closable={!saving}>
       <Form form={form} layout="vertical">
         <Form.Item name="employee_id" label="员工" rules={[{required:true,message:'请选择员工'}]}><KeywordPersonSelect showSearch filterOption={false} disabled={Boolean(editing)} loading={employeeLoading} options={employees} onSearch={value=>void searchEmployees(value)} placeholder="输入员工姓名搜索"/></Form.Item>
         <Form.Item name="scheme_name" label="方案名称" rules={[{max:128,message:'方案名称最多 128 个字符'}]}><Input maxLength={128} placeholder="例如：年度提成方案"/></Form.Item>
@@ -106,7 +107,7 @@ export default function HrPerformancePage({onNavigate}:{onNavigate:(route:string
         <Form.Item name="remark" label="备注" rules={[{max:2000,message:'备注最多 2000 个字符'}]}><Input.TextArea rows={3} maxLength={2000} showCount/></Form.Item>
       </Form>
     </Modal>
-    <Modal open={Boolean(viewing)} title="绩效查看" width={740} footer={<Button onClick={()=>setViewing(null)}>关闭</Button>} onCancel={()=>setViewing(null)} destroyOnHidden>
+    <Modal open={Boolean(viewing)} title="绩效查看" width={POPUP_WIDTH.md} footer={<Button onClick={()=>setViewing(null)}>关闭</Button>} onCancel={()=>setViewing(null)} destroyOnHidden>
       {viewing&&<Descriptions bordered size="small" column={2} items={[
         {key:'employee',label:'员工',children:<Button type="link" style={{padding:0}} onClick={()=>openEmployee(viewing)}>{viewing.employee_name||'姓名待维护'}</Button>},
         {key:'employee_no',label:'员工编号',children:viewing.employee_no||'—'},{key:'department',label:'部门',children:viewing.department||'—'},

@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { DeleteOutlined, DownloadOutlined, UploadOutlined } from "@ant-design/icons";
 import { Alert, Button, DatePicker, Form, Input, Modal, Select, Space, Tag, TreeSelect } from "antd";
 import type { FormInstance } from "antd";
@@ -36,7 +37,7 @@ export function RecordFilesModal({
 }: RecordFilesModalProps) {
   return (
       <Modal
-        width={760}
+        width={POPUP_WIDTH.md}
         open={Boolean(recordFileTarget)}
         title={recordFileTargets.length > 1 ? `批量上传案件文档（已选 ${recordFileTargets.length} 个案件）` : `业务凭证：${recordFileTarget?.serial_no || ""}`}
         footer={null}
@@ -186,7 +187,7 @@ export function VoucherModal({
 }: VoucherModalProps) {
   return (
       <Modal
-        width={760}
+        width={POPUP_WIDTH.md}
         open={voucherOpen}
         title={`财务凭证：${voucherTarget?.transaction_type || ""} #${voucherTarget?.id || ""}`}
         footer={null}

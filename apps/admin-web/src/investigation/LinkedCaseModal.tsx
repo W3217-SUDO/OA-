@@ -1,4 +1,6 @@
-import { Modal, Descriptions, Button, Tag } from "antd";
+import { POPUP_WIDTH } from "../components/common/popupSize";
+import { StatusTag } from "../components/common/StatusTag";
+import { Modal, Descriptions, Button } from "antd";
 import type { Row } from "./types";
 
 interface LinkedCaseModalProps {
@@ -16,7 +18,7 @@ export default function LinkedCaseModal({
 }: LinkedCaseModalProps) {
   return (
     <Modal
-      width={760}
+      width={POPUP_WIDTH.md}
       open={open}
       title={`关联案件：${linkedCase?.serial_no || ""}`}
       footer={<Button onClick={onClose}>关闭</Button>}
@@ -33,7 +35,7 @@ export default function LinkedCaseModal({
                 {
                   key: "status",
                   label: "阶段",
-                  children: <Tag color="blue">{linkedCase.status}</Tag>,
+                  children: <StatusTag status={linkedCase.status} fallback="stage" />,
                 },
                 {
                   key: "title",

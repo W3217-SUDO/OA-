@@ -1,3 +1,5 @@
+import { POPUP_WIDTH } from "./components/common/popupSize";
+import { StatusTag } from "./components/common/StatusTag";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FeeTypePicker, matchesFeeTypeSelection, type FeeTypeCatalog } from "./finance/FeeTypePicker";
 import { moneyColumnStyle } from "./finance/moneyColumns";
@@ -14,7 +16,6 @@ import {
   message,
   Select,
   Space,
-  Tag,
 } from "antd";
 import Table from "./components/ResizableTable";
 import type { TableColumnsType } from "antd";
@@ -1022,9 +1023,9 @@ export default function PlatformFinancePage({
         }}
         data-query-count={Object.keys(submittedQuery).length}
       />
-      <Drawer open={Boolean(detail)} width={620} title={`财务详情：${displayFinancialValue(detail?.serial_no || detail?.receipt_no || "")}`} onClose={() => setDetail(null)}>
+      <Drawer open={Boolean(detail)} size={POPUP_WIDTH.md} title={`财务详情：${displayFinancialValue(detail?.serial_no || detail?.receipt_no || "")}`} onClose={() => setDetail(null)}>
         {detail && <Descriptions bordered size="small" column={1} items={[
-          { key: "status", label: "状态", children: <Tag>{displayFinancialValue(detail.status)}</Tag> },
+          { key: "status", label: "状态", children: <StatusTag status={detail.status} label={displayFinancialValue(detail.status)} /> },
           { key: "customer", label: "客户", children: (detail.claimed_customer || detail.customer) ? <Button type="link" onClick={() => openCustomerDetail(detail.claimed_customer || detail.customer, detail.data?.customer_no)}>{displayFinancialValue(detail.claimed_customer || detail.customer)}</Button> : "—" },
           { key: "amount", label: "金额", children: money(detail.amount ?? detail.data?.amount) },
           { key: "case_no", label: "案件编号", children: detail.data?.case_no ? <Button type="link" onClick={() => openCaseDetail(detail.data.case_no)}>{displayFinancialValue(detail.data.case_no)}</Button> : "—" },

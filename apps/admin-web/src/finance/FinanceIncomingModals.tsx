@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { Alert, AutoComplete, DatePicker, Form, Input, InputNumber, Modal, Select } from "antd";
 import type { FormInstance } from "antd";
 import { money } from "./constants";
@@ -112,7 +113,7 @@ export function IncomingClaimModal({
 }: IncomingClaimModalProps) {
   return (
       <Modal
-        width={760}
+        width={POPUP_WIDTH.md}
         rootClassName="finance-claim-modal"
         open={Boolean(claimTarget)}
         title="回款领取"

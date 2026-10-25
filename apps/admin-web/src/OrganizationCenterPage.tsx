@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "./components/common/popupSize";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -640,7 +641,7 @@ export default function OrganizationCenterPage({
         onOk={save}
         onCancel={() => setOpen(false)}
         destroyOnHidden
-        width={560}
+        width={POPUP_WIDTH.md}
       >
         {rolesView ? (
           <Form form={roleForm} layout="vertical">
@@ -745,7 +746,7 @@ export default function OrganizationCenterPage({
             onCancel={() => setPermissionRole(null)}
             confirmLoading={rolePermissionLoading}
         destroyOnHidden
-        width={560}
+        width={POPUP_WIDTH.sm}
       >
         <Form layout="horizontal" labelCol={{ span: 7 }} wrapperCol={{ span: 15 }}>
           <Form.Item label="角色名称">

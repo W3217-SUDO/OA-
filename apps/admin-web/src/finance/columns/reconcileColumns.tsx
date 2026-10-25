@@ -1,3 +1,4 @@
+import { StatusTag } from "../../components/common/StatusTag";
 import { moneyColumnStyle } from "../moneyColumns";
 import { Button, Tag } from "antd";
 import { money } from "../constants";
@@ -28,7 +29,7 @@ export function createReconcileColumns(context: {
             title: "状态", ...moneyColumnStyle("状态"),
             dataIndex: "status",
             width: 90,
-            render: (v: string) => (<Tag color={v === "已确认" ? "green" : "orange"}>{v}</Tag>),
+            render: (v: string) => <StatusTag status={v} tone={v === "已确认" ? "success" : "pending"} />,
         },
         { title: "操作人", ...moneyColumnStyle("操作人"), dataIndex: "operator", width: 90, render: (value: string, row: Reconciliation) => context.financePersonDisplayName(value, (row as any).operator_display_name) },
         { title: "备注", ...moneyColumnStyle("备注"), dataIndex: "remark" },

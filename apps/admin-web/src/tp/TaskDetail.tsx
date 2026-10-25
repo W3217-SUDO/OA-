@@ -1,3 +1,5 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
+import { StatusTag } from "../components/common/StatusTag";
 import {
   Alert,
   Button,
@@ -26,7 +28,6 @@ import type {
 import {
   formatTaskDateTime,
   formatTaskScheduleTime,
-  statusColors,
   taskCaseNos,
   taskEndedAt,
   taskStartedAt,
@@ -120,7 +121,7 @@ export default function TaskDetail(props: TaskDetailProps) {
 
   return (
     <Modal
-      width={760}
+      width={POPUP_WIDTH.md}
       open={Boolean(communication)}
       title="案件任务"
       footer={communication ? (
@@ -221,9 +222,7 @@ export default function TaskDetail(props: TaskDetailProps) {
         </span>
         <span>
           <b>状态：</b>
-          <Tag color={statusColors[communication?.status || ""] || "blue"}>
-            {communication?.status || "-"}
-          </Tag>
+          <StatusTag status={communication?.status} />
         </span>
         <span><b>当前协作人：</b>{visibleCollaboratorNames(communication)}</span>
       </div>

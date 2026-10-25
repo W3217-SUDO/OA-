@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { Alert, Button, Modal } from "antd";
 import type { SealPreviewMode } from "./types";
 
@@ -24,7 +25,7 @@ export function SealPreviewModal({
     <Modal
       open={open}
       title={`文件预览：${name}`}
-      width={900}
+      width={POPUP_WIDTH.lg}
       footer={<Button onClick={onClose}>关闭</Button>}
       onCancel={onClose}
     >

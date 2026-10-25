@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { Button, Checkbox, Input, Modal, Select, Space, message } from "antd";
 import Table from "../components/ResizableTable";
 import { useEffect, useRef, useState } from "react";
@@ -42,7 +43,7 @@ export function ContractPaymentUnitPicker({ open, options, selectedId, onCancel,
     if (!row) { message.warning("请选择付款单位"); return; }
     onSelect(row);
   };
-  return <Modal open={open} title="选择付款单位" width="min(1028px, 94vw)" className="contract-payment-unit-picker"
+  return <Modal open={open} title="选择付款单位" width={POPUP_WIDTH.xl} className="contract-payment-unit-picker"
     onCancel={onCancel} footer={<Button onClick={onCancel}>取消</Button>}>
     <Space className="contract-payment-unit-query" wrap>
       <label>收款单位：<Input aria-label="收款单位查询" value={keyword} onChange={(event) => setKeyword(event.target.value)} onPressEnter={() => { setQuery({ keyword, nature }); setPage(1); setCheckedId(undefined); }} /></label>

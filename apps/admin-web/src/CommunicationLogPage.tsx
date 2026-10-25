@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "./components/common/popupSize";
 import {useEffect, useState} from 'react'
 import {Button, Card, DatePicker, Descriptions, Empty, Form, Input, List, message, Modal, Popconfirm, Select, Upload} from 'antd'
 import Table from "./components/ResizableTable";
@@ -150,7 +151,7 @@ export default function CommunicationLogPage({onNavigate}:{onNavigate?:(route:st
       <Table rowKey="id" size="small" loading={loading} columns={columns} dataSource={rows} locale={{emptyText:<div className="communication-empty"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有查询到符合条件的记录，可以去新增沟通记录。"/><Button type="primary" icon={<PlusOutlined/>} onClick={startCreate}>新增沟通记录</Button></div>}} pagination={{current:page,pageSize,total,showTotal:totalCount=>`共 ${totalCount} 条`,onChange:(nextPage,nextSize)=>{setPage(nextPage);setPageSize(nextSize);void load(nextPage,nextSize)}}} tableLayout="fixed" scroll={{x:1525}}/>
     </Card>
 
-    <Modal open={open} title={editing?'编辑沟通记录':'新增沟通记录'} okText="保存" cancelText="取消" onOk={save} onCancel={()=>setOpen(false)} destroyOnHidden width={680}>
+    <Modal open={open} title={editing?'编辑沟通记录':'新增沟通记录'} okText="保存" cancelText="取消" onOk={save} onCancel={()=>setOpen(false)} destroyOnHidden width={POPUP_WIDTH.md}>
       <Form form={form} layout="vertical">
           <div className="communication-form-grid">
             <Form.Item className="span-2" name="customer_record_id" label="客户" rules={[{required:true,message:'请选择客户'}]}><Select showSearch optionFilterProp="label" disabled={Boolean(editing)} onChange={applyCustomerDefaults} options={customers.map(item=>({value:item.id,label:`${item.title}（${item.serial_no}）`}))}/></Form.Item>
@@ -171,7 +172,7 @@ export default function CommunicationLogPage({onNavigate}:{onNavigate?:(route:st
         </>
     </Modal>
 
-    <Modal open={Boolean(viewing)} title="查看沟通记录" onCancel={()=>setViewing(null)} footer={<Button onClick={()=>setViewing(null)}>关闭</Button>} destroyOnHidden width={680}>
+    <Modal open={Boolean(viewing)} title="查看沟通记录" onCancel={()=>setViewing(null)} footer={<Button onClick={()=>setViewing(null)}>关闭</Button>} destroyOnHidden width={POPUP_WIDTH.md}>
       {viewing&&<Descriptions bordered size="small" column={2}>
         <Descriptions.Item label="客户ID"><Button type="link" onClick={()=>openCustomer(viewing.customer_record_id,viewing.customer_name)}>{customers.find(item=>item.id===viewing.customer_record_id)?.serial_no||viewing.customer_record_id}</Button></Descriptions.Item>
         <Descriptions.Item label="客户名称"><Button type="link" onClick={()=>openCustomer(viewing.customer_record_id,viewing.customer_name)}>{viewing.customer_name}</Button></Descriptions.Item>

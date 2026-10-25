@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { Button, Cascader, Form, Input, Modal, Select, Space, Tag, Typography } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { useMemo, useState } from "react";
@@ -122,7 +123,7 @@ export default function InvestigationPartyEditor({ value = [], onChange }: Props
         主体信息{index + 1}：{[party.nature, party.name, party.confirmation_method, party.identity_no, party.legal_representative, [party.province, party.city, party.district].filter(Boolean).join("/"), party.business_address].filter(Boolean).join(" / ")}
       </Typography.Text>)}
     </div>}
-    <Modal open={open} width={700} title={editingIndex === null ? "新增经营主体" : `修改经营主体${editingIndex + 1}`} okText="确定" cancelText="取消" onOk={() => void save()} onCancel={() => setOpen(false)} destroyOnHidden>
+    <Modal open={open} width={POPUP_WIDTH.md} title={editingIndex === null ? "新增经营主体" : `修改经营主体${editingIndex + 1}`} okText="确定" cancelText="取消" onOk={() => void save()} onCancel={() => setOpen(false)} destroyOnHidden>
       <Form form={form} layout="vertical">
         <div className="form-grid">
           <Form.Item label="经营性质" name="nature" rules={[{ required: true, message: "请选择经营性质" }]}><Select options={NATURE_OPTIONS} /></Form.Item>

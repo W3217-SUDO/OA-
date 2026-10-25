@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "./components/common/popupSize";
 import {useEffect, useMemo, useState, type Key} from 'react'
 import {Button, Card, DatePicker, Descriptions, Dropdown, Empty, Form, Input, message, Modal, Select, Space, Tag, Timeline, Tree} from 'antd'
 import Table from "./components/ResizableTable";
@@ -155,7 +156,7 @@ export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=
       </section>
     </div>
 
-    <Modal width={760} title={editing?'编辑证物资料':'登记证物'} open={editorOpen} confirmLoading={saving} onCancel={()=>setEditorOpen(false)} onOk={()=>void saveEvidence()} okText="保存" cancelText="取消" destroyOnHidden>
+    <Modal width={POPUP_WIDTH.md} title={editing?'编辑证物资料':'登记证物'} open={editorOpen} confirmLoading={saving} onCancel={()=>setEditorOpen(false)} onOk={()=>void saveEvidence()} okText="保存" cancelText="取消" destroyOnHidden>
       <Form form={form} layout="vertical" className="warehouse-evidence-form">
         <Form.Item label="线索编号" name="serial_no" rules={[{required:true,message:'请输入线索编号'}]}><Input/></Form.Item>
         <Form.Item label="仓库" name="warehouse_id" rules={[{required:true,message:'请选择仓库'}]}><Select options={catalog.filter(item=>item.is_active).map(value=>({value:value.id,label:value.name}))} onChange={value=>{setFormWarehouseId(value);form.setFieldValue('storage_location_id',undefined)}}/></Form.Item>
@@ -180,7 +181,7 @@ export default function WarehousePage({onNavigate}:{onNavigate?: (route:string)=
       </Form></>}
     </Modal>
 
-    <Modal width={720} title={`证物流程记录${historyRow?` · ${historyRow.serial_no}`:''}`} open={Boolean(historyRow)} footer={null} onCancel={()=>setHistoryRow(null)}>
+    <Modal width={POPUP_WIDTH.md} title={`证物流程记录${historyRow?` · ${historyRow.serial_no}`:''}`} open={Boolean(historyRow)} footer={null} onCancel={()=>setHistoryRow(null)}>
       {historyRow&&<Descriptions size="small" column={2} bordered items={[{key:'shop',label:'货物出售店铺',children:String(historyRow.data.shop_name||historyRow.title)},{key:'status',label:'当前状态',children:<Tag color={statusColor[statusOf(historyRow)]}>{statusOf(historyRow)}</Tag>}]}/>} 
       {history.length?<Timeline className="warehouse-history" items={history.map(item=>({color:item.to_status==='已销毁'?'red':'green',children:<div><strong>{item.action}</strong> <Tag>{item.from_status||'起始'} → {item.to_status}</Tag><div>{personDisplayName(item.operator_display_name)} · {dayjs(item.created_at).format('YYYY-MM-DD HH:mm')}</div>{item.comment&&<div className="warehouse-history-comment">{item.comment}</div>}</div>}))}/>:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无流程记录"/>}
     </Modal>

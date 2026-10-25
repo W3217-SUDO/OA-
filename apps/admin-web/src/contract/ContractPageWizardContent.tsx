@@ -1,9 +1,10 @@
+import { StatusTag } from "../components/common/StatusTag";
 import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { CheckOutlined, CloseOutlined } from "@ant-design/icons";
-import { Alert, Button, Checkbox, DatePicker, Descriptions, Divider, Empty, Form, Input, InputNumber, Radio, Select, Space, Steps, Tag, Timeline, } from "antd";
+import { Alert, Button, Checkbox, DatePicker, Descriptions, Divider, Empty, Form, Input, InputNumber, Radio, Select, Space, Steps, Timeline, } from "antd";
 import { displayContractStatus } from "../contractStatusPresentation.mjs";
 import { CONTRACT_ATTACHMENT_ACCEPT } from "../contractWorkflowPolicy.mjs";
-import { CONTRACT_CREATE_STEP_TITLES, CONTRACT_FEE_MODE_OPTIONS, CONTRACT_TYPE_OPTIONS, colors, } from "./constants";
+import { CONTRACT_CREATE_STEP_TITLES, CONTRACT_FEE_MODE_OPTIONS, CONTRACT_TYPE_OPTIONS, } from "./constants";
 import type { ContractWizardContentProps } from "./ContractCreateWizard";
 import { useConflictReview } from "../conflict-review/useConflictReview";
 import { ConflictReviewNotice } from "../conflict-review/ConflictReviewNotice";
@@ -36,7 +37,7 @@ export function ContractPageWizardContent({ wizardStep, wizardDraft, form, submi
         {wizardStep === 1 && (<div className="contract-wizard-panel contract-page-stage">
               <Descriptions bordered size="small" column={2} items={wizardDraft ? [
                 { key: "no", label: "合同编号", children: wizardDraft.serial_no },
-                { key: "status", label: "当前状态", children: <Tag>{displayContractStatus(wizardDraft.status)}</Tag> },
+                { key: "status", label: "当前状态", children: <StatusTag status={displayContractStatus(wizardDraft.status)} /> },
                 { key: "name", label: "合同名称", children: wizardDraft.title, span: 2 },
                 { key: "customer", label: "客户", children: wizardDraft.customer },
                 { key: "type", label: "合同类别", children: wizardDraft.data.type },
@@ -56,7 +57,7 @@ export function ContractPageWizardContent({ wizardStep, wizardDraft, form, submi
         {wizardStep === 2 && (<div className="contract-wizard-panel contract-page-stage">
               <Descriptions bordered size="small" column={2} items={wizardDraft ? [
                 { key: "no", label: "合同编号", children: wizardDraft.serial_no },
-                { key: "status", label: "合同状态", children: <Tag color={colors[wizardDraft.status]}>{displayContractStatus(wizardDraft.status)}</Tag> },
+                { key: "status", label: "合同状态", children: <StatusTag status={displayContractStatus(wizardDraft.status)} /> },
                 { key: "name", label: "合同名称", children: wizardDraft.title, span: 2 },
             ] : []}/>
               <Steps direction="vertical" size="small" className="contract-approval-flow" items={stepItems}/>
@@ -76,7 +77,7 @@ export function ContractPageWizardContent({ wizardStep, wizardDraft, form, submi
               {wizardDraft?.data.seal_application_id && (<Descriptions bordered size="small" column={2} items={[
                     { key: "contract", label: "合同编号", children: wizardDraft.serial_no },
                     { key: "seal", label: "用印申请编号", children: wizardDraft.data.seal_applications?.length ? wizardDraft.data.seal_applications.map((item) => item.serial_no || `#${item.id}`).join("、") : (wizardDraft.data.seal_application_no || `#${wizardDraft.data.seal_application_id}`) },
-                    { key: "status", label: "衔接状态", children: wizardDraft.data.sync_seal && !wizardDraft.data.sync_seal_submitted_at ? <Tag color="blue">用印草稿待提交</Tag> : wizardDraft.data.sync_seal_file_required ? <Tag color="orange">待补用印文件</Tag> : <Tag color="green">已提交用印审批</Tag>, span: 2 },
+                    { key: "status", label: "衔接状态", children: wizardDraft.data.sync_seal && !wizardDraft.data.sync_seal_submitted_at ? <StatusTag status="用印草稿待提交" tone="pending" /> : wizardDraft.data.sync_seal_file_required ? <StatusTag status="待补用印文件" tone="pending" /> : <StatusTag status="已提交用印审批" tone="success" />, span: 2 },
                 ]}/>)}
               {(<Form form={sealForm} layout="vertical" className="contract-seal-form">
                   <div className="form-grid">

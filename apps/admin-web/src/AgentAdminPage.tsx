@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "./components/common/popupSize";
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Button, Card, Descriptions, Drawer, Empty, Modal, Space, Switch, Tabs, Tag, message } from "antd";
 import { AppstoreOutlined, DeleteOutlined, EyeOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
@@ -230,11 +231,11 @@ export default function AgentAdminPage({ isSystemAdmin }: { isSystemAdmin: boole
         />
       </Card>}
       </Space>
-      {canViewUserLibraries && <Drawer title={skillOwner ? `${skillOwner.display_name || skillOwner.username} 的个人技能详情` : "个人技能详情"} open={!!skillOwner} onClose={() => setSkillOwner(null)} width="min(760px, 100vw)">
+      {canViewUserLibraries && <Drawer title={skillOwner ? `${skillOwner.display_name || skillOwner.username} 的个人技能详情` : "个人技能详情"} open={!!skillOwner} onClose={() => setSkillOwner(null)} size={POPUP_WIDTH.md}>
         <Table rowKey="id" loading={skillLoading} dataSource={skillDetails} pagination={false} locale={{ emptyText: "该账号没有个人技能" }} expandable={{ expandedRowRender: (skill: UserSkill) => <Descriptions size="small" column={1} bordered><Descriptions.Item label="完整技能指令"><pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>{skill.instruction || "—"}</pre></Descriptions.Item><Descriptions.Item label="快捷指令">{skill.quick_prompts?.join("、") || "—"}</Descriptions.Item></Descriptions> }} columns={[{ title: "名称", dataIndex: "name", width: 150 }, { title: "分类", dataIndex: "category", width: 90 }, { title: "说明", dataIndex: "description" }, { title: "状态", width: 80, render: (_: unknown, skill: UserSkill) => <Tag color={skill.enabled ? "success" : "default"}>{skill.enabled ? "启用" : "停用"}</Tag> }, { title: "操作", width: 80, render: (_: unknown, skill: UserSkill) => <Button danger type="link" onClick={() => deleteUserSkill(skill)}>删除</Button> }]} />
       </Drawer>}
       {canManage && <SkillManager open={skillsOpen} onClose={() => setSkillsOpen(false)} scope="global" skills={globalSkills} refresh={refreshGlobalConsumers} />}
-      <Drawer title={selectedSkill?.name || "全局技能详情"} open={!!selectedSkill} onClose={() => setSelectedSkill(null)} width={680} rootClassName="agent-admin-definition">
+      <Drawer title={selectedSkill?.name || "全局技能详情"} open={!!selectedSkill} onClose={() => setSelectedSkill(null)} size={POPUP_WIDTH.md} rootClassName="agent-admin-definition">
         {definitionLoading && <p>正在加载技能原文…</p>}
         {definitionError && <Alert type="error" showIcon title={definitionError} action={<Button onClick={() => selectedSkill && void openSkillDefinition(selectedSkill)}>重试</Button>} />}
         {skillDefinition && <><p>当前保存的技能定义，摘要：{skillDefinition.definition_sha256}</p><pre tabIndex={0}>{skillDefinition.content}</pre></>}

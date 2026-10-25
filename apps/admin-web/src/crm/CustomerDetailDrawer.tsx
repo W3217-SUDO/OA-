@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import {
   Alert,
   Button,
@@ -94,7 +95,7 @@ export function CustomerDetailDrawer({ open, customer, detailTab, detailLoading,
 
   return (
     <Drawer
-      size={720}
+      size={POPUP_WIDTH.md}
       loading={detailLoading}
       destroyOnHidden
       open={open}

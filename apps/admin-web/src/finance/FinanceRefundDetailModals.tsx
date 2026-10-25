@@ -1,5 +1,7 @@
-import { Button, Descriptions, Modal, Select, Tag } from "antd";
-import { money, statusColors } from "./constants";
+import { POPUP_WIDTH } from "../components/common/popupSize";
+import { StatusTag } from "../components/common/StatusTag";
+import { Button, Descriptions, Modal, Select } from "antd";
+import { money } from "./constants";
 import { displayFinancialValue } from "../financialValueDisplay";
 import type { FinanceFlow } from "./types";
 
@@ -20,7 +22,7 @@ export function RefundDetailModal({
 }: RefundDetailModalProps) {
   return (
       <Modal
-        width={760}
+        width={POPUP_WIDTH.md}
         open={Boolean(refundDetail)}
         title={`退款申请详情：${refundDetail?.serial_no || ""}`}
         footer={null}
@@ -29,7 +31,7 @@ export function RefundDetailModal({
         {refundDetail && (
           <Descriptions bordered size="small" column={2}>
             <Descriptions.Item label="退款申请号">{refundDetail.serial_no || "—"}</Descriptions.Item>
-            <Descriptions.Item label="状态"><Tag color={statusColors[refundDetail.status] || "default"}>{refundDetail.status || "—"}</Tag></Descriptions.Item>
+            <Descriptions.Item label="状态"><StatusTag status={refundDetail.status} /></Descriptions.Item>
             <Descriptions.Item label="关联案号">{refundDetail.data.case_no ? <Button type="link" onClick={() => openCaseDetail(refundDetail.data.case_no)}>{refundDetail.data.case_no}</Button> : "—"}</Descriptions.Item>
             <Descriptions.Item label="客户">{refundDetail.customer ? <Button type="link" onClick={() => openCustomerDetail(refundDetail.customer, refundDetail.data.customer_no)}>{refundDetail.customer}</Button> : "—"}</Descriptions.Item>
             <Descriptions.Item label="退款金额">{refundDetail.data.amount == null ? "—" : money(refundDetail.data.amount)}</Descriptions.Item>

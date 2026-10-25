@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Checkbox, Modal, Popconfirm, Space, Spin, Tag, Tree, message } from "antd";
 import { api } from "../api";
@@ -219,7 +220,7 @@ export function UserPagePermissionEditor({
     <Modal
       open={Boolean(target)}
       title={`页面授权：${target?.displayName || ""}`}
-      width={760}
+      width={POPUP_WIDTH.md}
       onCancel={onClose}
       destroyOnHidden
       footer={(

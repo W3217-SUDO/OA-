@@ -24,20 +24,6 @@ export const EMPTY_SUMMARY: Summary = {
   reminders: 0,
 };
 
-export const statusColors: Record<string, string> = {
-  进行中: "blue",
-  待接收: "orange",
-  待处理: "orange",
-  处理中: "blue",
-  待确认: "purple",
-  已完成: "green",
-  已验收: "green",
-  已逾期: "red",
-  已拒绝: "red",
-  已停止: "default",
-  已撤回: "default",
-};
-
 export const createdTabs: StatusTab[] = [
   {
     key: "active",

@@ -58,16 +58,6 @@ export function sealAttachmentPreviewFailureMessage(status?: number): string {
   return "文件预览失败";
 }
 
-export const statusColors: Record<string, string> = {
-  草稿: "default",
-  待审批: "orange",
-  待用印: "blue",
-  已用印: "green",
-  已归档: "cyan",
-  已拒绝: "red",
-  已撤回: "default",
-};
-
 export const sealStatusOptions = [
   { value: "待审批", label: "待审核" },
   { value: "待用印", label: "已审待用印" },
@@ -76,13 +66,6 @@ export const sealStatusOptions = [
   { value: "已用印", label: "已用印" },
   { value: "已归档", label: "已归档" },
 ];
-
-export const assetColors: Record<string, string> = {
-  可用: "green",
-  停用: "default",
-  维修: "orange",
-  遗失: "red",
-};
 
 export const sealTypes = [
   "合同章",

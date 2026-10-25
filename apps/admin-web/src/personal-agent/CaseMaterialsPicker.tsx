@@ -1,3 +1,4 @@
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useEffect, useState } from "react";
 import { Button, Empty, Input, Modal, Space, Spin, Tree, message } from "antd";
 import { ArrowLeftOutlined, FileOutlined, FolderOpenOutlined, SearchOutlined } from "@ant-design/icons";
@@ -53,7 +54,7 @@ export function CaseMaterialsPicker({ mode, onClose, selectedCase, onCase, selec
     } else onMaterials(materials);
     onClose();
   };
-  return <Modal rootClassName={onSelection ? "assistant-case-materials-picker" : undefined} open={!!mode} title={activeMode === "case" ? (onSelection ? "选择案件文件 · 先选择案件" : "关联案件") : `选择案件材料 · ${activeCase?.serial_no || ""}`} width={680} onCancel={onClose} footer={activeMode === "materials" ? <Space><Button onClick={onClose}>取消</Button><Button type="primary" disabled={currentLoading || !!currentError || (!!onSelection && !checked.length)} onClick={confirmMaterials}>{onSelection ? "引用所选文件" : "使用所选材料"}{checked.length ? `（${checked.length}）` : ""}</Button></Space> : null}>
+  return <Modal rootClassName={onSelection ? "assistant-case-materials-picker" : undefined} open={!!mode} title={activeMode === "case" ? (onSelection ? "选择案件文件 · 先选择案件" : "关联案件") : `选择案件材料 · ${activeCase?.serial_no || ""}`} width={POPUP_WIDTH.md} onCancel={onClose} footer={activeMode === "materials" ? <Space><Button onClick={onClose}>取消</Button><Button type="primary" disabled={currentLoading || !!currentError || (!!onSelection && !checked.length)} onClick={confirmMaterials}>{onSelection ? "引用所选文件" : "使用所选材料"}{checked.length ? `（${checked.length}）` : ""}</Button></Space> : null}>
     {activeMode === "case" && <Input prefix={<SearchOutlined />} value={keyword} allowClear placeholder="搜索案号、案件名称或客户" onChange={(event) => setKeyword(event.target.value)} />}
     {currentError ? <div className="workspace-picker-error">{currentError}</div> : <Spin spinning={currentLoading}>
       <div className="workspace-picker-content">

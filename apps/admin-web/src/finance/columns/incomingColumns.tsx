@@ -1,5 +1,5 @@
+import { StatusTag } from "../../components/common/StatusTag";
 import { moneyColumnStyle } from "../moneyColumns";
-import { Tag } from "antd";
 import { money } from "../constants";
 import { displayFinancialValue } from "../../financialValueDisplay";
 import type { IncomingPayment } from "../types";
@@ -34,9 +34,7 @@ export function createIncomingColumns(context: {
             title: "状态", ...moneyColumnStyle("状态"),
             dataIndex: "status",
             width: 100,
-            render: (v: string) => (<Tag color={v === "已分配" ? "green" : v === "待认领" ? "orange" : "blue"}>
-          {v}
-        </Tag>),
+            render: (v: string) => <StatusTag status={v} />,
         },
         {
             title: "认领人", ...moneyColumnStyle("认领人"),

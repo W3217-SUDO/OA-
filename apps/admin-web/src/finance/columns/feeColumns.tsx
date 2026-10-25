@@ -1,9 +1,10 @@
+import { StatusTag } from "../../components/common/StatusTag";
 import { moneyColumnStyle } from "../moneyColumns";
 import { AuditOutlined, CheckCircleOutlined, DollarOutlined } from "@ant-design/icons";
 import { Button, Space, Tag } from "antd";
 import type { FormInstance } from "antd/es/form/hooks/useForm";
 import dayjs from "dayjs";
-import { money, statusColors } from "../constants";
+import { money } from "../constants";
 import type { Fee } from "../types";
 import { displayFeeValue } from "../../financialValueDisplay";
 export function createFeeColumns(context: {
@@ -47,7 +48,7 @@ export function createFeeColumns(context: {
             title: "状态", ...moneyColumnStyle("状态"),
             dataIndex: "status",
             width: 90,
-            render: (v: string) => (<Tag color={statusColors[v] || "default"}>{v}</Tag>),
+            render: (v: string) => <StatusTag status={v} />,
         },
         {
             title: "操作", ...moneyColumnStyle("操作"),
