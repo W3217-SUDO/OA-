@@ -4,7 +4,7 @@ from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
@@ -45,6 +45,18 @@ FEEDBACK_ATTACHMENT_CATEGORIES = ("问题反馈截图", "问题反馈附件")
 # 回复里带的截图和附件，remark 记回复事件 ID。
 FEEDBACK_REPLY_CATEGORIES = ("问题反馈补充截图", "问题反馈补充附件")
 REPLY_CATEGORY = {"问题反馈截图": "问题反馈补充截图", "问题反馈附件": "问题反馈补充附件"}
+
+
+class FeedbackSubmit(BaseModel):
+    description: str = ""
+    page: str = Field(default="", max_length=500)
+    route: str = Field(default="", max_length=300)
+    controls: list[str] = Field(default_factory=list, max_length=60)
+
+
+class FeedbackReply(BaseModel):
+    content: str = ""
+    file_count: int = Field(default=0, ge=0, le=10)
 
 
 class FeedbackTransition(BaseModel):
@@ -155,6 +167,30 @@ FEEDBACK_FILE_SUFFIXES = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".tx
 FEEDBACK_MAX_FILES = 10
 
 
+IMAGE_SIGNATURES = {
+    ".png": lambda content: content.startswith(b"\x89PNG\r\n\x1a\n"),
+    ".jpg": lambda content: content.startswith(b"\xff\xd8\xff"),
+    ".jpeg": lambda content: content.startswith(b"\xff\xd8\xff"),
+    ".webp": lambda content: content.startswith(b"RIFF") and content[8:12] == b"WEBP",
+}
+
+
+def _check_feedback_bytes(name: str, content: bytes) -> tuple[str, str]:
+    """按文件名后缀和内容校验，返回 (后缀, 分类)：图片 ≤10MB 且文件头对得上，其他附件按白名单 ≤20MB。"""
+    suffix = Path(name or "").suffix.lower()
+    if suffix in FEEDBACK_IMAGE_SUFFIXES:
+        if not IMAGE_SIGNATURES[suffix](content):
+            raise HTTPException(422, "截图仅支持 PNG、JPG 或 WebP 图片")
+        if len(content) > 10 * 1024 * 1024:
+            raise HTTPException(413, "截图不能超过 10MB")
+        return suffix, "问题反馈截图"
+    if suffix not in FEEDBACK_FILE_SUFFIXES:
+        raise HTTPException(422, f"不支持的附件类型：{name}")
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(413, f"附件不能超过 20MB：{name}")
+    return suffix, "问题反馈附件"
+
+
 async def _read_feedback_file(upload: UploadFile) -> tuple[bytes, str, str]:
     """返回 (内容, 后缀, 分类)；图片按截图校验，其余按附件白名单和 20MB 上限。"""
     suffix = Path(upload.filename or "").suffix.lower()
@@ -186,6 +222,29 @@ def _save_screenshot(
     return stored_path
 
 
+async def _new_feedback(db: AsyncSession, identity: dict, description: str, page: str, route: str,
+                        control_names: list[str]) -> tuple[BusinessRecord, WorkflowEvent]:
+    data = {"page": page.strip()}
+    if route.strip():
+        data["route"] = route.strip()
+    if control_names:
+        data["controls"] = control_names
+    record = BusinessRecord(
+        module="bug_feedback", serial_no=f"BUG{uuid4().hex[:20].upper()}",
+        title=description[:100], customer="", status="待处理", owner=identity["username"],
+        description=description, data=data,
+    )
+    db.add(record)
+    await db.flush()
+    event = WorkflowEvent(
+        record_id=record.id, action="提交反馈", from_status="", to_status="待处理",
+        operator=identity["username"], comment="",
+    )
+    db.add(event)
+    await db.flush()
+    return record, event
+
+
 @router.post(f"{settings.api_prefix}/feedback")
 async def create_feedback(
     description: str = Form(...), page: str = Form(""), route: str = Form(""), controls: str = Form(""),
@@ -207,24 +266,7 @@ async def create_feedback(
     contents = [(upload, *await _read_feedback_file(upload)) for upload in uploads]
     stored_paths: list[Path] = []
     try:
-        data = {"page": page.strip()}
-        if route.strip():
-            data["route"] = route.strip()
-        if control_names:
-            data["controls"] = control_names
-        record = BusinessRecord(
-            module="bug_feedback", serial_no=f"BUG{uuid4().hex[:20].upper()}",
-            title=description[:100], customer="", status="待处理", owner=identity["username"],
-            description=description, data=data,
-        )
-        db.add(record)
-        await db.flush()
-        event = WorkflowEvent(
-            record_id=record.id, action="提交反馈", from_status="", to_status="待处理",
-            operator=identity["username"], comment="",
-        )
-        db.add(event)
-        await db.flush()
+        record, event = await _new_feedback(db, identity, description, page, route, control_names)
         for upload, content, suffix, category in contents:
             stored_paths.append(_save_screenshot(
                 db, record.id, upload, content, suffix, identity["username"], category,
@@ -497,3 +539,98 @@ async def feedback_attachment(
     if not path or not path.is_file():
         raise HTTPException(404, "附件不存在")
     return FileResponse(path, media_type=attachment.content_type, filename=attachment.original_name)
+
+
+# ---- 分步提交：文字走 JSON，截图和附件每个文件单独上传原始内容 ----
+# 钉钉 Mac 客户端内置浏览器（DTWKWebView）提交带文件的表单时，服务端收到的表单里没有文字字段
+# （2026-10-25 生产日志：POST /feedback 422 “description：Field required”）。先用 JSON 建好反馈，
+# 文件再逐个上传，某个文件失败也不影响反馈本身。原来的表单接口保留给旧页面和其他调用方。
+
+@router.post(f"{settings.api_prefix}/feedback/submit")
+async def submit_feedback(body: FeedbackSubmit, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    description = body.description.strip()
+    if not description:
+        raise HTTPException(422, "请填写问题描述")
+    control_names = list(dict.fromkeys(name.strip() for name in body.controls if name.strip()))
+    record, event = await _new_feedback(db, identity, description, body.page, body.route, control_names)
+    await _notify_participants(db, record, identity["username"], "新反馈", event.id)
+    await db.commit()
+    return {"id": record.id, "serial_no": record.serial_no}
+
+
+@router.post(f"{settings.api_prefix}/feedback/{{feedback_id}}/replies")
+async def reply_feedback(
+    feedback_id: int, body: FeedbackReply,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    content = body.content.strip()
+    if not content and not body.file_count:
+        raise HTTPException(422, "请填写回复内容或添加截图、附件")
+    record = await _get_feedback(db, feedback_id, identity, lock=True)
+    current = _status(record.status)
+    record.updated_at = func.now()
+    event = WorkflowEvent(
+        record_id=record.id, action="回复", from_status=current, to_status=current,
+        operator=identity["username"], comment=content,
+    )
+    db.add(event)
+    await db.flush()
+    await _notify_participants(db, record, identity["username"], event.action, event.id)
+    await db.commit()
+    return {"status": current, "event_id": event.id}
+
+
+@router.post(f"{settings.api_prefix}/feedback/{{feedback_id}}/files")
+async def upload_feedback_file(
+    feedback_id: int, request: Request, name: str = Query(..., min_length=1, max_length=255),
+    event_id: int | None = Query(None), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """上传一个文件（请求体就是文件内容）。不带 event_id 是反馈本身的截图/附件，只能提交人在提交后 30 分钟内上传；
+    带 event_id 是某条回复的文件，只能该回复的发送人上传。"""
+    record = await _get_feedback(db, feedback_id, identity, lock=True)
+    if event_id is None:
+        if record.owner != identity["username"]:
+            raise HTTPException(403, "只有提交人可以给反馈添加截图和附件")
+        if record.created_at and (datetime.now(record.created_at.tzinfo) - record.created_at) > timedelta(minutes=30):
+            raise HTTPException(409, "反馈已提交超过 30 分钟，请在回复里补充截图和附件")
+        categories = FEEDBACK_ATTACHMENT_CATEGORIES
+    else:
+        event = await db.scalar(select(WorkflowEvent).where(WorkflowEvent.id == event_id, WorkflowEvent.record_id == record.id))
+        if event is None or event.operator != identity["username"]:
+            raise HTTPException(403, "只能给自己的回复添加截图和附件")
+        categories = FEEDBACK_REPLY_CATEGORIES
+    existing = await db.scalar(select(func.count()).select_from(FileAttachment).where(
+        FileAttachment.record_id == record.id, FileAttachment.category.in_(categories),
+        FileAttachment.remark == (str(event_id) if event_id else ""),
+    ))
+    if (existing or 0) >= FEEDBACK_MAX_FILES:
+        raise HTTPException(422, f"截图和附件合计最多 {FEEDBACK_MAX_FILES} 个")
+    declared = int(request.headers.get("content-length") or 0)
+    if declared > 20 * 1024 * 1024 + 1024:
+        raise HTTPException(413, "附件不能超过 20MB")
+    content = bytearray()
+    async for chunk in request.stream():
+        content.extend(chunk)
+        if len(content) > 20 * 1024 * 1024:
+            raise HTTPException(413, "附件不能超过 20MB")
+    if not content:
+        raise HTTPException(422, f"文件内容为空：{name}")
+    suffix, category = _check_feedback_bytes(name, bytes(content))
+    if event_id is not None:
+        category = REPLY_CATEGORY[category]
+    stored_name = f"{uuid4().hex}{suffix}"
+    stored_path = UPLOAD_ROOT / stored_name
+    stored_path.write_bytes(bytes(content))
+    try:
+        db.add(FileAttachment(
+            record_id=record.id, category=category, original_name=Path(name).name,
+            stored_name=stored_name, content_type=request.headers.get("content-type") or "application/octet-stream",
+            size=len(content), path=str(stored_path), uploader=identity["username"],
+            remark=str(event_id) if event_id else "",
+        ))
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        stored_path.unlink(missing_ok=True)
+        raise
+    return {"name": Path(name).name, "size": len(content)}

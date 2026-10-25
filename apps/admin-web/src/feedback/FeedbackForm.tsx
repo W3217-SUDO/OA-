@@ -3,6 +3,7 @@ import { Button, Input, message, Space, Tag } from "antd";
 import dayjs from "dayjs";
 import { api } from "../api";
 import FeedbackFileDrop, { FEEDBACK_MAX_FILES } from "./FeedbackFileDrop";
+import { feedbackErrorText, uploadFeedbackFiles } from "./upload";
 import { clearFeedbackDraft, loadFeedbackDraft, saveFeedbackDraft } from "./draft";
 import type { FeedbackPageOption } from "./navigation";
 import "./feedback.css";
@@ -89,30 +90,31 @@ export default function FeedbackForm({ sourceRoute, pageControls, openPages, men
     const text = description.trim();
     if (!text) { setDescriptionError("请填写问题描述"); return; }
     if (!pageKeys.length) { message.warning("请勾选问题所在页面"); return; }
-    const body = new FormData();
-    body.append("description", text);
-    body.append("page", pageKeys.map((key) => labels.get(key) || key).join("、"));
-    body.append("route", pageKeys[0]);
     // 只勾了一个页面时只写按钮名；多个页面时带上页面名，处理人分得清是哪个页面的按钮。
     const chosen = controlGroups.flatMap((group) => group.names
       .filter((name) => controls.includes(controlKey(group.key, name)))
       .map((name) => pageKeys.length > 1 ? `${group.label}·${name}` : name));
-    if (chosen.length) body.append("controls", chosen.join("、"));
-    files.forEach((file) => body.append("files", file, file.name));
     setSubmitting(true);
     try {
-      const { data } = await api.post("/feedback", body);
-      message.success(`反馈已提交：${data.serial_no}`);
+      // 先用 JSON 建好反馈，再逐个上传截图和附件（见 upload.ts）。
+      const { data } = await api.post("/feedback/submit", {
+        description: text, page: pageKeys.map((key) => labels.get(key) || key).join("、"),
+        route: pageKeys[0], controls: chosen,
+      });
+      const failed = await uploadFeedbackFiles(data.id, files);
+      if (failed.length) message.warning(`反馈已提交：${data.serial_no}，但 ${failed.join("、")} 没有传上去，请在详情里回复补传`, 6);
+      else message.success(`反馈已提交：${data.serial_no}`);
       await clearFeedbackDraft();
       setDescription("");
       setFiles([]);
       onSubmitted?.(data.id);
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "反馈提交失败");
+      message.error(feedbackErrorText(error, "反馈提交失败"));
     } finally {
       setSubmitting(false);
     }
   };
+
 
   const discardDraft = () => {
     void clearFeedbackDraft();

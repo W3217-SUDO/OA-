@@ -5,6 +5,7 @@ import { api } from "../api";
 import type { FeedbackDetails } from "./types";
 import FeedbackEventImage from "./FeedbackEventImage";
 import FeedbackFileDrop from "./FeedbackFileDrop";
+import { feedbackErrorText, uploadFeedbackFiles } from "./upload";
 import FeedbackAttachments from "./FeedbackAttachments";
 import "./feedback.css";
 
@@ -40,27 +41,28 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
   useEffect(() => { void load(); }, [load]);
 
   // 回复带的截图和附件走回复接口；点状态按钮时如果已经选了文件，先作为一条回复发出，再改状态。
-  const sendFiles = async () => {
-    const body = new FormData();
-    body.append("content", comment.trim());
-    files.forEach((file) => body.append("files", file, file.name));
-    await api.post(`/feedback/${feedbackId}/messages`, body);
+  // 回复文字走 JSON，截图和附件再逐个上传到这条回复（见 upload.ts）；返回没传上去的文件名。
+  const sendFiles = async (content: string) => {
+    const { data } = await api.post(`/feedback/${feedbackId}/replies`, { content, file_count: files.length });
+    return uploadFeedbackFiles(feedbackId, files, data.event_id);
   };
   const perform = async (path: "messages" | "transitions", body: object | null, success: string) => {
     setBusy(true);
     try {
-      if (path === "messages") await sendFiles();
+      let failed: string[] = [];
+      if (path === "messages") failed = await sendFiles(comment.trim());
       else {
-        if (files.length) await sendFiles();
+        if (files.length) failed = await sendFiles(comment.trim());
         await api.post(`/feedback/${feedbackId}/transitions`, files.length ? { ...body, comment: "" } : body);
       }
-      message.success(success);
+      if (failed.length) message.warning(`${success}，但 ${failed.join("、")} 没有传上去，请重新添加后再发一次`, 6);
+      else message.success(success);
       setComment("");
       setFiles([]);
       await load();
       window.dispatchEvent(new Event("sunhold:notifications-updated"));
     } catch (failure: any) {
-      message.error(failure?.response?.data?.detail || "操作失败");
+      message.error(feedbackErrorText(failure, "操作失败"));
       if (failure?.response?.status === 409) await load();
     } finally {
       setBusy(false);
