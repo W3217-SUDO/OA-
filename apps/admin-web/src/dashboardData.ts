@@ -18,7 +18,14 @@ export type DashboardData = {
   civil_distribution: { label: string; value: number; color: string }[];
   rejections: DashboardRejection[];
   rejection_total: number;
+  // 首页分端待办（系统参数“首页分端待办”）：当前账号能看的端、待办目录、目录里由分端模块单独统计的数字。
+  portals: DashboardPortal[];
+  portal_items: DashboardPortalItem[];
+  portal_counts: Record<string, number>;
 };
+
+export type DashboardPortal = { key: string; name: string; items: string[] };
+export type DashboardPortalItem = { key: string; label: string; route: string; source: string; description: string };
 
 export type DashboardRejection = {
   id: number;
@@ -54,13 +61,13 @@ export const orderDashboardMetrics = <T extends { key: string }>(metrics: T[]): 
     .sort((left, right) => metricRank(left.metric.key) - metricRank(right.metric.key) || left.index - right.index)
     .map(({ metric }) => metric);
 
-export type DashboardSection = "metrics" | "todos" | "cases" | "rejections";
-const sections: DashboardSection[] = ["metrics", "todos", "cases", "rejections"];
+export type DashboardSection = "metrics" | "todos" | "cases" | "rejections" | "portals";
+const sections: DashboardSection[] = ["metrics", "todos", "cases", "rejections", "portals"];
 const refreshIntervalMs = 5 * 60_000;
 
 export function useDashboardData(requestedSections: readonly DashboardSection[] = sections) {
   const [data, setData] = useState<Partial<DashboardData>>({});
-  const [loading, setLoading] = useState<Record<DashboardSection, boolean>>({ metrics: true, todos: true, cases: true, rejections: true });
+  const [loading, setLoading] = useState<Record<DashboardSection, boolean>>({ metrics: true, todos: true, cases: true, rejections: true, portals: true });
   const [errors, setErrors] = useState<Partial<Record<DashboardSection, string>>>({});
   const [caseMetricsError, setCaseMetricsError] = useState<string>();
   const loader = useRef<(section: DashboardSection) => void>(() => {});

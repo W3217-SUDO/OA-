@@ -1,17 +1,28 @@
 import type { ReactNode } from "react";
 import {
+  AlertOutlined,
+  AuditOutlined,
   BankOutlined,
   CalculatorOutlined,
   CheckSquareOutlined,
   ContainerOutlined,
+  DollarOutlined,
   FallOutlined,
+  FileAddOutlined,
+  FileDoneOutlined,
   FileProtectOutlined,
   FileSearchOutlined,
+  FileTextOutlined,
   FolderOpenOutlined,
+  PayCircleOutlined,
+  RiseOutlined,
+  RollbackOutlined,
   SafetyCertificateOutlined,
+  ScheduleOutlined,
+  TransactionOutlined,
   WalletOutlined,
 } from "@ant-design/icons";
-import type { DashboardData } from "./dashboardData";
+import type { DashboardData, DashboardPortal } from "./dashboardData";
 
 // 工作台“我的待办”的入口和图标，顺序和入口沿用原有待办。
 export const DASHBOARD_TODOS: Record<string, { route: string; icon: ReactNode }> = {
@@ -51,4 +62,53 @@ export function prepareTodoNavigation(label: string) {
   } catch {
     // 浏览器禁用会话存储时仍然跳转，只是停在默认标签页。
   }
+}
+
+// 首页分端待办：目录项的图标；数字来源见后端 dashboard_portals.PORTAL_ITEMS（todo/metric 复用已有统计，extra 单独统计）。
+const PORTAL_ICONS: Record<string, ReactNode> = {
+  "fee-unpaid": <PayCircleOutlined />,
+  "fee-audit": <BankOutlined />,
+  "archive-fee": <ContainerOutlined />,
+  "seal-stamping": <SafetyCertificateOutlined />,
+  appeal: <RiseOutlined />,
+  evidence: <FileAddOutlined />,
+  opinion: <FileTextOutlined />,
+  "receipts-pending": <TransactionOutlined />,
+  receivable: <DollarOutlined />,
+  "archive-closing": <FileDoneOutlined />,
+  "notary-review": <AuditOutlined />,
+  execution: <ScheduleOutlined />,
+  urgent: <AlertOutlined />,
+  refund: <RollbackOutlined />,
+  "fee-unreceived": <WalletOutlined />,
+};
+
+export type DashboardPortalTodoItem = DashboardTodoItem & { key: string; description: string; metric?: DashboardData["metrics"][number]; amount?: boolean };
+
+// 一个端的待办格子：数字取自“我的待办”、提醒指标或分端单独统计，与点进去的列表同一口径。
+export function dashboardPortalItems(portal: DashboardPortal, data: Partial<DashboardData>): DashboardPortalTodoItem[] {
+  const catalog = new Map((data.portal_items || []).map((item) => [item.key, item]));
+  const todos = new Map(dashboardTodoItems(data.todos).map((item) => [item.label, item]));
+  const metrics = new Map((data.metrics || []).map((metric) => [metric.key, metric]));
+  return portal.items.flatMap((key) => {
+    const item = catalog.get(key);
+    if (!item) return [];
+    const [kind, ref] = item.source.split(":");
+    const base = { key, label: item.label, description: item.description, route: item.route, icon: PORTAL_ICONS[key] };
+    if (kind === "todo") {
+      const todo = todos.get(ref);
+      return [{ ...base, icon: todo?.icon || base.icon, count: todo?.count ?? 0, pending: todo?.pending ?? 0 }];
+    }
+    if (kind === "metric") {
+      const metric = metrics.get(ref);
+      const value = metric?.value || "0";
+      const pending = Number.parseFloat(value) || 0;
+      // 件数只显示数字；金额（未到官费）保留“元”，不计入“共 N 件”。
+      const amount = value.endsWith("元");
+      const count = value.endsWith("件") ? value.slice(0, -1) : value;
+      return [{ ...base, route: metric?.route || item.route, metric, count, pending, amount }];
+    }
+    const count = data.portal_counts?.[key] ?? 0;
+    return [{ ...base, count, pending: count }];
+  });
 }

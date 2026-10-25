@@ -2,3 +2,14 @@
 /* 菜单管理：上方有提示和模块显示配置，内容比一屏长，卡片整体滚动，菜单表格不能被压成零高度 */
 .page-workbench>.ant-card.system-menu-list-panel>.ant-card-body{overflow:auto!important}
 .page-workbench>.ant-card.system-menu-list-panel>.ant-card-body>.ant-table-wrapper{flex:0 0 auto!important;overflow:visible!important}
+/* 系统参数“首页分端待办”：三个端并排，窄屏单列 */
+.system-portal-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media(max-width:1100px){.system-portal-grid{grid-template-columns:minmax(0,1fr)}}
+.system-portal-items{list-style:none;margin:0 0 10px;padding:0;counter-reset:portal}
+.system-portal-items>li{counter-increment:portal;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid var(--oa-border)}
+.system-portal-items>li::before{content:counter(portal);flex:0 0 20px;color:var(--oa-text-3);font-variant-numeric:tabular-nums}
+.system-portal-item-name{flex:1;min-width:0}
+.system-portal-count{color:var(--oa-text-2)}
+.system-portal-count.is-over{color:var(--oa-danger)}
+.system-portal-subtitle{margin:20px 0 8px;font-size:15px}
+.system-portal-note{margin:8px 0 0;color:var(--oa-text-3)}

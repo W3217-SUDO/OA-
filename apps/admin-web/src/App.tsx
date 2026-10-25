@@ -575,6 +575,7 @@ const menuItems: NavItem[] = [
           { key: "system-parameters-ipr-case-file-type", label: "知识产权案件文件类型" },
           { key: "system-parameters-district", label: "地区设置" },
           { key: "system-parameters-court-officer", label: "法院工作人员" },
+          { key: "system-parameters-dashboard-portals", label: "首页分端待办" },
         ],
       },
       { key: "system-law-firms", label: "律所档案" },

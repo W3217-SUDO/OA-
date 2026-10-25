@@ -108,7 +108,7 @@ test("dashboard split metrics merge both arrival orders without cancelling cases
   for (const first of ["metrics_finance", "metrics_cases"]) {
     const harness = dashboardDataHarness();
     try {
-      assert.deepEqual(harness.requests.map((request) => request.config.params.section), ["metrics_cases", "metrics_finance", "todos", "cases", "rejections"]);
+      assert.deepEqual(harness.requests.map((request) => request.config.params.section), ["metrics_cases", "metrics_finance", "todos", "cases", "rejections", "portals"]);
       const firstKeys = first === "metrics_finance" ? financeMetricKeys : caseMetricKeys;
       const second = first === "metrics_finance" ? "metrics_cases" : "metrics_finance";
       harness.request(first).resolve(metricResponse(firstKeys));
@@ -118,7 +118,7 @@ test("dashboard split metrics merge both arrival orders without cancelling cases
       assert.equal(harness.request("metrics_cases").config.signal.aborted, false);
       assert.equal(harness.request("metrics_finance").config.signal.aborted, false);
       harness.view.retry("metrics");
-      assert.equal(harness.requests.length, 5);
+      assert.equal(harness.requests.length, 6);
       harness.request(second).resolve(metricResponse(second === "metrics_cases" ? caseMetricKeys : financeMetricKeys));
       await settleDashboard();
       assert.deepEqual(Array.from(harness.view.data.metrics, (metric) => metric.key).sort(), [...financeMetricKeys, ...caseMetricKeys].sort());
@@ -144,9 +144,9 @@ test("dashboard split errors survive the other group's success and retry merges 
       assert.equal(harness.view.loading.metrics, false);
       assert.equal(harness.view.caseMetricsError, failed === "metrics_cases" ? "案件统计加载失败：真实分区错误" : undefined);
       assert.equal(harness.view.errors.metrics, failed === "metrics_finance" ? "真实分区错误" : undefined);
-      assert.equal(harness.requests.length, 5);
+      assert.equal(harness.requests.length, 6);
       harness.view.retry("metrics");
-      assert.equal(harness.requests.length, 7);
+      assert.equal(harness.requests.length, 8);
       assert.equal(harness.view.caseMetricsError, undefined);
       assert.equal(harness.view.errors.metrics, undefined);
       harness.request("metrics_finance", 1).resolve(metricResponse(financeMetricKeys, "2件"));

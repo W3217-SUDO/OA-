@@ -5,6 +5,7 @@ from app.core.dependencies import (
     ZoneInfo, asyncio, create_case_agent_runtime, date, logging,
     re, settings, timedelta,
 )
+from app.core.dashboard_portals import DEFAULT_CONFIG as DASHBOARD_PORTALS_DEFAULT
 
 
 logger = logging.getLogger("app.main")
@@ -191,6 +192,7 @@ DEFAULT_SYSTEM_MENUS += [
     ("system-parameters-ipr-case-file-type", "system-parameters", "知识产权案件文件类型", "", 11),
     ("system-parameters-district", "system-parameters", "地区设置", "", 12),
     ("system-parameters-court-officer", "system-parameters", "法院工作人员", "", 13),
+    ("system-parameters-dashboard-portals", "system-parameters", "首页分端待办", "", 14),
     ("system-law-firms", "system", "律所档案", "", 13),
     ("system-management-cache", "system-management", "缓存管理", "", 1),
     ("system-management-recycle", "system-management", "回收站", "", 4),
@@ -510,6 +512,11 @@ DEFAULT_SYSTEM_CONFIGS = {
         "label": "案件自动任务交接人员", "group": "业务配置",
         "description": "按公司配置公证书交接人员与证物仓库管理员；未配置时对应任务不生成并记录诊断。",
         "value": {"companies": {}},
+    },
+    "dashboard_portals": {
+        "label": "首页分端待办", "group": "业务配置",
+        "description": "首页“我的待办”按律师端、财务行政端、调查端分页签显示的待办项，以及各角色默认看哪个端；管理端看全部。",
+        "value": DASHBOARD_PORTALS_DEFAULT,
     },
     "conflict_auto_review": {
         "label": "自动利冲审查", "group": "业务配置", "description": "提交合同审批、合同用印和保存案件时自动检索并发起人工核查；关闭不解除已有审查阻断。",

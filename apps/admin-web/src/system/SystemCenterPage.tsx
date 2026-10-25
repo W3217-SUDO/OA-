@@ -33,6 +33,7 @@ import { SystemPermissionManagement } from "./SystemPermissionManagement";
 import { SystemSecurityPolicy } from "./SystemSecurityPolicy";
 import { SystemCompanySettings } from "./SystemCompanySettings";
 import { SystemShareSettings } from "./SystemShareSettings";
+import { SystemDashboardPortals } from "./SystemDashboardPortals";
 
 export default function SystemCenterPage({
   initialView = "system-parameters",
@@ -752,6 +753,8 @@ export default function SystemCenterPage({
         onSelectedRelationTargetIdsChange={setSelectedRelationTargetIds}
       />
     );
+  } else if (initialView === "system-parameters-dashboard-portals") {
+    content = <SystemDashboardPortals />;
   } else if (initialView === "system-parameters-company") {
     content = (
       <SystemCompanySettings

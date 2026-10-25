@@ -1,9 +1,19 @@
-import type { ReactNode } from "react";
-import { Button, Empty, Tooltip } from "antd";
+import { useState, type ReactNode } from "react";
+import { Button, Empty, Segmented, Tooltip } from "antd";
 import { CheckCircleFilled, ReloadOutlined } from "@ant-design/icons";
-import type { DashboardData } from "./dashboardData";
+import type { DashboardData, DashboardPortal } from "./dashboardData";
 import DashboardGreeting from "./DashboardGreeting";
-import { dashboardTodoItems, prepareTodoNavigation } from "./dashboardTodos";
+import { dashboardPortalItems, dashboardTodoItems, prepareTodoNavigation, type DashboardPortalTodoItem } from "./dashboardTodos";
+
+const PORTAL_TAB_STORAGE = "sunhold:dashboard-portal";
+
+function rememberedPortal() {
+  try {
+    return localStorage.getItem(PORTAL_TAB_STORAGE) || "";
+  } catch {
+    return "";
+  }
+}
 
 type Props = {
   showHead?: boolean;
@@ -23,15 +33,35 @@ type Props = {
   onNavigate: (route: string) => void;
   onOpenCase: (caseNo: string) => void;
   onRefresh: () => void;
+  // 首页分端待办：有端时按端分页签；没有端（角色未归属）时显示原来的“我的待办”。
+  portals?: DashboardPortal[];
+  portalData?: Partial<DashboardData>;
+  portalsLoading?: boolean;
+  onOpenMetric?: (metric: DashboardData["metrics"][number]) => void;
 };
 
-export default function DashboardOverview({ showHead = true, greeting, name, briefing, todos, cases, todoStatus, caseStatus, todosLoading, casesLoading, todosError, casesError, canNavigate, canOpenCase, onNavigate, onOpenCase, onRefresh }: Props) {
-  const items = dashboardTodoItems(todos);
+export default function DashboardOverview({ showHead = true, greeting, name, briefing, todos, cases, todoStatus, caseStatus, todosLoading, casesLoading, todosError, casesError, canNavigate, canOpenCase, onNavigate, onOpenCase, onRefresh, portals = [], portalData, portalsLoading = false, onOpenMetric }: Props) {
+  const [portalKey, setPortalKey] = useState(rememberedPortal);
+  const activePortal = portals.find((portal) => portal.key === portalKey) || portals[0];
+  const choosePortal = (key: string) => {
+    setPortalKey(key);
+    try {
+      localStorage.setItem(PORTAL_TAB_STORAGE, key);
+    } catch {
+      // 浏览器禁用本地存储时只是不记住上次的页签。
+    }
+  };
+  const items: (ReturnType<typeof dashboardTodoItems>[number] & Partial<DashboardPortalTodoItem>)[] =
+    activePortal && portalData ? dashboardPortalItems(activePortal, portalData) : dashboardTodoItems(todos);
   const pendingItems = items.filter((item) => item.pending > 0);
-  const pendingTotal = pendingItems.reduce((total, item) => total + item.pending, 0);
-  const loaded = !todosLoading && !todosError && items.length > 0;
-  const openTodo = (label: string, route?: string) => {
+  const pendingTotal = pendingItems.reduce((total, item) => total + (item.amount ? 0 : item.pending), 0);
+  const loaded = !todosLoading && !todosError && !portalsLoading && items.length > 0;
+  const openTodo = (label: string, route?: string, metric?: DashboardData["metrics"][number]) => {
     if (!route || !canNavigate(route)) return;
+    if (metric && onOpenMetric) {
+      onOpenMetric(metric);
+      return;
+    }
     prepareTodoNavigation(label);
     onNavigate(route);
   };
@@ -47,6 +77,13 @@ export default function DashboardOverview({ showHead = true, greeting, name, bri
         <section className="wb-overview-section" aria-label="我的待办">
           <div className="wb-overview-section-head">
             <h3>我的待办</h3>
+            {portals.length > 1 && activePortal && <Segmented
+              className="wb-portal-tabs"
+              size="small"
+              value={activePortal.key}
+              options={portals.map((portal) => ({ label: portal.name, value: portal.key }))}
+              onChange={(value) => choosePortal(String(value))}
+            />}
             {loaded && (pendingItems.length
               ? <span className="wb-todo-summary is-pending"><i aria-hidden="true" />{pendingItems.length} 项待处理 · 共 {pendingTotal} 件</span>
               : <span className="wb-todo-summary is-clear"><CheckCircleFilled aria-hidden="true" />待办已全部处理</span>)}
@@ -55,7 +92,7 @@ export default function DashboardOverview({ showHead = true, greeting, name, bri
           {!todosLoading && !todosError && !items.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无待办事项" />}
           {/* 图标宫格（类似钉钉工作台）：统一用主题色，有待办的图标填满并在右上角挂角标写件数，没有待办的只是浅色描边。 */}
           <div className="wb-todo-grid">
-            {items.map(({ label, count, pending, route, icon }) => {
+            {items.map(({ label, count, pending, route, icon, metric, description: itemDescription }) => {
               const clickable = Boolean(route && canNavigate(route));
               const className = `wb-todo-entry${pending > 0 ? " has-pending" : " is-clear"}`;
               const content = <>
@@ -67,8 +104,8 @@ export default function DashboardOverview({ showHead = true, greeting, name, bri
               </>;
               const description = pending > 0 ? `${label}，${count} 件待处理` : `${label}，暂无待办`;
               return clickable
-                ? <button key={label} className={className} type="button" onClick={() => openTodo(label, route)} aria-label={description}>{content}</button>
-                : <div key={label} className={className} aria-label={description}>{content}</div>;
+                ? <button key={label} className={className} type="button" title={itemDescription} onClick={() => openTodo(label, route, metric)} aria-label={description}>{content}</button>
+                : <div key={label} className={className} title={itemDescription} aria-label={description}>{content}</div>;
             })}
           </div>
         </section>

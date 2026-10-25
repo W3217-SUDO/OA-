@@ -894,6 +894,36 @@ async def update_system_config(config_key: str, body: SystemConfigUpdate, identi
     return {"key": item.key, "label": item.label, "group": item.group, "value": item.value, "description": item.description, "updated_by": item.updated_by, "updated_at": item.updated_at, **(auto_review_status(item.value) if item.key == CONFIG_KEY else {})}
 
 
+@router.get(f"{settings.api_prefix}/system/dashboard-portals")
+async def get_dashboard_portal_settings(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """系统参数“首页分端待办”：当前配置、待办目录和人事角色名单。"""
+    from app.core.dashboard_portals import DEFAULT_CONFIG, catalog, load_config
+    from app.core.permissions import _require_admin
+    from app.data_models.identity import JobRole
+
+    _require_admin(identity)
+    roles = (await db.scalars(select(JobRole).where(JobRole.is_active.is_(True)).order_by(JobRole.sort_order, JobRole.id))).all()
+    return {"value": await load_config(db), "defaults": DEFAULT_CONFIG, "items": catalog(),
+            "roles": [{"code": role.code, "name": role.name} for role in roles]}
+
+
+@router.put(f"{settings.api_prefix}/system/dashboard-portals")
+async def update_dashboard_portal_settings(body: SystemConfigUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.dashboard_portals import CONFIG_KEY, validate_config
+    from app.core.permissions import _require_admin
+    from app.core.system import _system_audit
+
+    _require_admin(identity)
+    value = validate_config(body.value)
+    item = await db.scalar(select(SystemConfig).where(SystemConfig.key == CONFIG_KEY))
+    if not item:
+        raise HTTPException(status_code=404, detail="首页分端配置不存在，请重启服务后再试")
+    item.value = value; item.updated_by = identity["username"]
+    await _system_audit(db, identity, "更新首页分端待办", f"系统配置:{CONFIG_KEY}", {"portals": {portal["key"]: portal["items"] for portal in value["portals"]}})
+    await db.commit(); await db.refresh(item)
+    return {"value": item.value, "updated_by": item.updated_by, "updated_at": item.updated_at}
+
+
 @router.get(f"{settings.api_prefix}/system/cache")
 @router.get(f"{settings.api_prefix}/system/caches", include_in_schema=False)
 async def list_system_caches(keyword: str = "", page: int | None = Query(None, ge=1), page_size: int | None = Query(None, ge=1, le=200), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
@@ -1254,7 +1284,7 @@ async def update_role_permission(role: str, body: RolePermissionUpdate, identity
 async def dashboard_http(
     request: Request,
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
-    section: str | None = Query(default=None, pattern="^(metrics|metrics_finance|metrics_cases|todos|cases|rejections)$"),
+    section: str | None = Query(default=None, pattern="^(metrics|metrics_finance|metrics_cases|todos|cases|rejections|portals)$"),
 ):
     from app.core.dashboard_request import run_dashboard_read
     from app.core.dashboard_metrics_cache import cached_dashboard_query, read_dashboard_metrics
@@ -1282,14 +1312,15 @@ query_prewarm.register("dashboard", _replay_dashboard_section)
 
 async def dashboard(
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
-    section: str | None = Query(default=None, pattern="^(metrics|metrics_finance|metrics_cases|todos|cases|rejections)$"),
+    section: str | None = Query(default=None, pattern="^(metrics|metrics_finance|metrics_cases|todos|cases|rejections|portals)$"),
 ):
     from app.core.dashboard_metrics import dashboard_case_metrics, dashboard_finance_metrics, dashboard_metrics
     from app.core.dashboard_todos import dashboard_todos
     from app.core.dashboard_cases import dashboard_cases
     from app.core.dashboard_rejections import dashboard_rejections
+    from app.core.dashboard_portals import dashboard_portals
 
-    loaders = {"metrics": dashboard_metrics, "metrics_cases": dashboard_case_metrics,
+    loaders = {"portals": dashboard_portals, "metrics": dashboard_metrics, "metrics_cases": dashboard_case_metrics,
                "metrics_finance": dashboard_finance_metrics, "todos": dashboard_todos, "cases": dashboard_cases,
                "rejections": dashboard_rejections}
     if section is not None:

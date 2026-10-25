@@ -208,7 +208,7 @@ export default function Dashboard({
       onAsk={askAgent}
     />
   );
-  const refreshAll = () => { retry("todos"); retry("cases"); retry("rejections"); retry("metrics"); };
+  const refreshAll = () => { retry("todos"); retry("cases"); retry("rejections"); retry("metrics"); retry("portals"); };
   const greeting = greetingByHour(now.hour());
   const displayName = workspace.status?.identity?.display_name;
   return (
@@ -260,6 +260,10 @@ export default function Dashboard({
               onNavigate={onNavigate}
               onOpenCase={(caseNo) => void openDashboardDetail("case", caseNo)}
               onRefresh={refreshAll}
+              portals={errors.portals ? [] : data.portals}
+              portalData={data}
+              portalsLoading={loading.portals}
+              onOpenMetric={navigateMetric}
             />}
           </div>
           <div className="wb-side">

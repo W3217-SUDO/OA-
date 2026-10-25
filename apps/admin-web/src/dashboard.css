@@ -419,3 +419,6 @@ button.wb-todo-entry:active{background:var(--oa-fill)}
 @media(max-width:720px){
   .wb-hearing-detail{padding-left:0}
 }
+/* 首页分端待办的端口页签 */
+.wb-overview-section-head .wb-portal-tabs{margin-right:auto;margin-left:12px}
+@media(max-width:640px){.wb-overview-section-head{flex-wrap:wrap}.wb-overview-section-head .wb-portal-tabs{order:3;margin-left:0;max-width:100%;overflow-x:auto}}

@@ -549,6 +549,9 @@ def _validate_system_config(key: str, value: dict) -> dict:
             str(company_id): {role: username.strip() for role, username in staff.items()}
             for company_id, staff in companies.items()
         }}
+    elif key == "dashboard_portals":
+        from app.core.dashboard_portals import validate_config
+        value = validate_config(value)
     elif key == "conflict_auto_review":
         if set(value) != {"enabled"} or not isinstance(value["enabled"], bool):
             raise HTTPException(status_code=422, detail="自动利冲审查开关必须为布尔值")
