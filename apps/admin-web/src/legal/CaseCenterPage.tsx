@@ -30,6 +30,7 @@ Alert,
 Button,
 Card,
 Checkbox,
+Descriptions,
 DatePicker,
 Drawer,
 Dropdown,
@@ -4489,6 +4490,15 @@ export default function CaseCenterPage({
         destroyOnHidden
       >
         <Alert type="info" showIcon title="此表单对应旧系统民事、刑事、行政及国家赔偿案件的基本信息修改；归档案件和无办理权限账号不能保存。" style={{marginBottom:12}}/>
+        {/* 详情页不再显示这几项，修改时在这里对照查看；代理人在“当事人”里修改，原案件号由复制/关联案件时生成。 */}
+        {editingNormalCase && editingNormalCase.data.case_type !== "刑事案件" && <Descriptions size="small" bordered column={2} className="case-edit-readonly-info" style={{marginBottom:12}} items={[
+          { key: "participants", label: "案件参与人", span: 2, children: legacyCaseParticipantDisplayNames(editingNormalCase.data) },
+          { key: "plaintiff_agents", label: "原告代理人", children: renderCaseLitigantAgentSummary(editingNormalCase.data.plaintiff_agents) },
+          { key: "defendant_agents", label: "被告代理人", children: renderCaseLitigantAgentSummary(editingNormalCase.data.defendant_agents) },
+          { key: "third_party_agents", label: "第三人代理人", span: 2, children: renderCaseLitigantAgentSummary(editingNormalCase.data.third_party_agents) },
+          { key: "original_case", label: "原案件号", children: String(editingNormalCase.data.original_case_no||editingNormalCase.data.origin_case_no||editingNormalCase.data.source_case_no||"").trim() || "—" },
+          { key: "relation_comment", label: "复制/关联说明", children: editingNormalCase.data.copy_comment||editingNormalCase.data.relation_comment||"—" },
+        ]} />}
         <Form form={normalCaseEditForm} layout="vertical">
           <Form.Item label="案件阶段" name="case_phase" rules={[{required:true,message:"请选择案件阶段"}]}>
             <Select showSearch optionFilterProp="label" options={normalEditPhaseOptions.map((option) => ({

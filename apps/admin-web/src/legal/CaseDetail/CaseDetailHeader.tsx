@@ -103,11 +103,9 @@ export const CaseDetailHeader = (props: CaseDetailHeaderProps) => {
   renderCaseLitigantAgentSummary,
   caseDetailDate,
   caseDetailNames,
-  legacyCaseParticipantDisplayNames,
   openRelatedCustomer,
   openRelatedContract,
   openRelatedClue,
-  openRelatedOriginalCase,
  } = props;
   const sectionVisibility = getCaseDetailSectionVisibility(viewingCase.data, viewingCase.status);
   const [courtExpanded, setCourtExpanded] = useState(true);
@@ -143,17 +141,14 @@ export const CaseDetailHeader = (props: CaseDetailHeaderProps) => {
               <tr><th>案源日期</th><td>{caseDetailDate(viewingCase.data.source_date||viewingCase.data.source_at)}</td><th>案件来源</th><td colSpan={3}>{casePersonDisplayName(viewingCase.data.business_owner||viewingCase.data.source_person||viewingCase.owner,viewingCase.data.business_owner_display_name||viewingCase.data.source_person_display_name||viewingCase.owner_display_name)}</td></tr>
             </tbody>
           </table> : <table className="case-legacy-summary" data-testid="case-legacy-summary">
+            {/* 案件参与人、各方代理人、原案件号和复制/关联说明平时不看，放到“修改基本信息”弹窗里显示（用户要求，2026-10-25）。 */}
             <colgroup><col className="case-legacy-label"/><col/><col className="case-legacy-label"/><col/><col className="case-legacy-label"/><col/><col className="case-legacy-label"/><col/></colgroup>
             <tbody>
               <tr><th>我方案号</th><td>{viewingCase.serial_no||"—"}</td><th>起诉案由</th><td>{viewingCase.data.cause_or_charge||viewingCase.data.cause_of_action||"—"}</td><th>案件阶段</th><td>{viewingCase.status||"—"}</td><th>原告</th><td>{viewingCase.data.plaintiff||viewingCase.customer||"—"}</td></tr>
               <tr><th>案件名称</th><td colSpan={3}>{viewingCase.title||"—"}</td><th>开庭律师</th><td>{casePersonDisplayNames(caseHeaderHearingLawyers(viewingCase.data))}</td><th>被告</th><td>{caseDetailNames(Array.isArray(viewingCase.data.defendants) && viewingCase.data.defendants.length ? viewingCase.data.defendants : viewingCase.data.opponent || viewingCase.data.defendant)}</td></tr>
-              <tr><th>案件参与人</th><td colSpan={7}>{legacyCaseParticipantDisplayNames(viewingCase.data)}</td></tr>
-              <tr><th>原告代理人</th><td colSpan={3}>{renderCaseLitigantAgentSummary(viewingCase.data.plaintiff_agents)}</td><th>被告代理人</th><td colSpan={3}>{renderCaseLitigantAgentSummary(viewingCase.data.defendant_agents)}</td></tr>
-              <tr><th>第三人代理人</th><td colSpan={7}>{renderCaseLitigantAgentSummary(viewingCase.data.third_party_agents)}</td></tr>
               <tr><th>客户</th><td colSpan={3}><Button type="link" className="case-cell-link" onClick={() => openRelatedCustomer({ id: Number(viewingCase.data.customer_id) || undefined, serial_no: viewingCase.data.customer_no, title: viewingCase.customer })}>{viewingCase.customer||"—"}</Button></td><th>经办律师</th><td>{casePersonDisplayNames(viewingCase.data.handling_lawyers)}</td><th>第三人</th><td>{viewingCase.data.third_party||caseDetailNames(viewingCase.data.third_parties)}</td></tr>
               <tr><th>合同号</th><td>{viewingCase.data.contract_no?<Button type="link" className="case-cell-link" onClick={() => openRelatedContract({ id: Number(viewingCase.data.contract_record_id || viewingCase.data.contract_id) || undefined, serial_no: viewingCase.data.contract_no })}>{viewingCase.data.contract_no}</Button>:"—"}</td><th>调查员</th><td>{casePersonDisplayName(viewingCase.data.investigator,viewingCase.data.investigator_display_name)}</td><th>律师助理</th><td>{caseAssistantDisplayNames(viewingCase.data)}</td><th>公证书号</th><td>{viewingCase.data.notarial_no||viewingCase.data.notary_no||viewingCase.data.certificate_no||"—"}</td></tr>
               <tr><th>线索号</th><td colSpan={3}>{String(viewingCase.data.clue_no||viewingCase.data.investigation_clue||viewingCase.data.source_clue_no||viewingCase.data.investigation_clue_nos||"").trim()?<Button type="link" className="case-cell-link" onClick={() => openRelatedClue({ id: Number(viewingCase.data.clue_record_id || viewingCase.data.investigation_clue_id) || undefined, serial_no: viewingCase.data.clue_no || viewingCase.data.investigation_clue || viewingCase.data.source_clue_no || viewingCase.data.investigation_clue_nos })}>{caseDetailNames(viewingCase.data.investigation_clue_nos||viewingCase.data.clue_no||viewingCase.data.investigation_clue||viewingCase.data.source_clue_no)}</Button>:"—"}</td><th>立案日期</th><td>{caseDetailDate(viewingCase.created_at)}</td><th>仓库位置</th><td>{viewingCase.data.warehouse||viewingCase.data.warehouse_location||viewingCase.data.storage_location||viewingCase.data.location||viewingCase.data.deposit_address||"—"}</td></tr>
-              <tr><th>原案件号</th><td colSpan={3}>{String(viewingCase.data.original_case_no||viewingCase.data.origin_case_no||viewingCase.data.source_case_no||"").trim()?<Button type="link" className="case-cell-link" onClick={() => openRelatedOriginalCase({ id: Number(viewingCase.data.original_case_id||viewingCase.data.source_case_id)||undefined, serial_no: viewingCase.data.original_case_no||viewingCase.data.origin_case_no||viewingCase.data.source_case_no })}>{viewingCase.data.original_case_no||viewingCase.data.origin_case_no||viewingCase.data.source_case_no}</Button>:"—"}</td><th>复制/关联说明</th><td colSpan={3}>{viewingCase.data.copy_comment||viewingCase.data.relation_comment||"—"}</td></tr>
               <tr><th>诉讼标的</th><td>{viewingCase.data.litigation_subject||viewingCase.data.litigation_amount||"—"}</td><th>判决/调解金额</th><td>{viewingCase.data.judgment_amount||viewingCase.data.settlement_amount||viewingCase.data.mediation_amount||"—"}</td><th>分案日期</th><td>{caseDetailDate(viewingCase.data.case_divisional_date||viewingCase.data.assignment_date)}</td><th>案源人</th><td>{casePersonDisplayName(viewingCase.data.business_owner||viewingCase.data.source_person||viewingCase.owner,viewingCase.data.business_owner_display_name||viewingCase.data.source_person_display_name||viewingCase.owner_display_name)}</td></tr>
             </tbody>
           </table>}

@@ -1315,6 +1315,8 @@ export default function App() {
   const [permissionsReady, setPermissionsReady] = useState(false);
   const [permissionLoadError, setPermissionLoadError] = useState("");
   const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
+  // 侧栏收起时子菜单是悬浮弹出层：只跟鼠标走，选中页面后立即收回（不沿用展开状态下“当前页的上级保持展开”）。
+  const [collapsedOpenKeys, setCollapsedOpenKeys] = useState<string[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(() => Boolean(document.fullscreenElement));
   const [taskUnreadCount, setTaskUnreadCount] = useState(0);
   const [dashboardView, setDashboardView] = useState<DashboardView>("overview");
@@ -1638,6 +1640,7 @@ export default function App() {
   useEffect(() => {
     const ancestors = ancestorMenuKeys(effectiveMenuItems, active);
     setOpenMenuKeys(ancestors);
+    setCollapsedOpenKeys([]);
   }, [active, effectiveMenuItems]);
   const logout = () => {
     endClientSession();
@@ -2070,8 +2073,12 @@ export default function App() {
             theme={sidebarStyle === "dark" ? "dark" : "light"}
             items={sidebarReloadableItems}
             selectedKeys={[active]}
-            openKeys={openMenuKeys}
+            openKeys={sidebarCollapsed ? collapsedOpenKeys : openMenuKeys}
             onOpenChange={(keys) => {
+              if (sidebarCollapsed) {
+                setCollapsedOpenKeys(keys as string[]);
+                return;
+              }
               const nextKeys = normalizeOpenMenuKeys(effectiveMenuItems, openMenuKeys, keys as string[]);
               const parentRoute = routeForMenuOpenChange(openMenuKeys, nextKeys, active);
               setOpenMenuKeys(nextKeys);
@@ -2080,6 +2087,7 @@ export default function App() {
             onClick={({ key }) => {
               const item = flattenMenu(sideMenuItems).find(entry => entry.key === key);
               if (!item || item.disabled) return;
+              setCollapsedOpenKeys([]);
               if (item.link_url) {
                 openLegacyMenuItem(item);
                 if (isNarrowViewport) setMobileSidebarOpen(false);
