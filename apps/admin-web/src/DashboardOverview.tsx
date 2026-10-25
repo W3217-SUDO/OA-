@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Button, Empty, Segmented, Tooltip } from "antd";
 import { CheckCircleFilled, ReloadOutlined } from "@ant-design/icons";
 import type { DashboardData, DashboardPortal } from "./dashboardData";
@@ -6,6 +6,36 @@ import DashboardGreeting from "./DashboardGreeting";
 import { dashboardPortalItems, dashboardTodoItems, prepareTodoNavigation, type DashboardPortalTodoItem } from "./dashboardTodos";
 
 const PORTAL_TAB_STORAGE = "sunhold:dashboard-portal";
+
+// 待办格子按项数自动排列：一行放得下就平均铺满整行（至少按 4 列，避免一两项被拉得过宽），
+// 放不下就按最少行数平均分配每行个数，不在最后一行留一大片空白。
+function todoColumns(count: number, max: number) {
+  if (count <= max) return Math.max(count, 4);
+  return Math.ceil(count / Math.ceil(count / max));
+}
+
+// 一行最多放几格由待办区实际宽度决定：每格约 112px，最少 5 格、最多 10 格；手机宽度固定 5 格。
+function maxTodoColumns(width: number) {
+  if (width < 640) return 5;
+  return Math.min(10, Math.max(5, Math.floor(width / 112)));
+}
+
+// 回调 ref：元素每次挂上（含重新渲染换了节点）都重新量宽度并监听变化。
+function useElementWidth<T extends HTMLElement>() {
+  const observer = useRef<ResizeObserver | null>(null);
+  const [width, setWidth] = useState(0);
+  const ref = useCallback((element: T | null) => {
+    observer.current?.disconnect();
+    observer.current = null;
+    if (!element) return;
+    setWidth(Math.round(element.getBoundingClientRect().width));
+    if (typeof ResizeObserver === "undefined") return;
+    observer.current = new ResizeObserver(([entry]) => setWidth(Math.round(entry.contentRect.width)));
+    observer.current.observe(element);
+  }, []);
+  useEffect(() => () => observer.current?.disconnect(), []);
+  return [ref, width] as const;
+}
 
 function rememberedPortal() {
   try {
@@ -42,6 +72,7 @@ type Props = {
 
 export default function DashboardOverview({ showHead = true, greeting, name, briefing, todos, cases, todoStatus, caseStatus, todosLoading, casesLoading, todosError, casesError, canNavigate, canOpenCase, onNavigate, onOpenCase, onRefresh, portals = [], portalData, portalsLoading = false, onOpenMetric }: Props) {
   const [portalKey, setPortalKey] = useState(rememberedPortal);
+  const [gridRef, gridWidth] = useElementWidth<HTMLDivElement>();
   const activePortal = portals.find((portal) => portal.key === portalKey) || portals[0];
   const choosePortal = (key: string) => {
     setPortalKey(key);
@@ -91,7 +122,7 @@ export default function DashboardOverview({ showHead = true, greeting, name, bri
           {todoStatus}
           {!todosLoading && !todosError && !items.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无待办事项" />}
           {/* 图标宫格（类似钉钉工作台）：统一用主题色，有待办的图标填满并在右上角挂角标写件数，没有待办的只是浅色描边。 */}
-          <div className="wb-todo-grid">
+          <div ref={gridRef} className="wb-todo-grid" style={{ "--todo-cols": todoColumns(items.length, gridWidth ? maxTodoColumns(gridWidth) : 5) } as CSSProperties}>
             {items.map(({ label, count, pending, route, icon, metric, description: itemDescription }) => {
               const clickable = Boolean(route && canNavigate(route));
               const className = `wb-todo-entry${pending > 0 ? " has-pending" : " is-clear"}`;
