@@ -49,7 +49,7 @@ DEFAULT_PORTALS = [
         "task", "fee-unpaid", "clue-audit", "notary-review", "evidence",
     ]},
 ]
-# 角色默认归属：按人事角色名称匹配；系统管理员账号（admin）始终看管理端。
+# 角色默认归属：按人事角色名称匹配；系统管理员账号（admin）按“系统管理员”这一行的勾选显示。
 DEFAULT_ROLE_PORTALS = {
     "系统管理员": [MANAGE_PORTAL],
     "合伙人律师": ["lawyer"], "主办律师": ["lawyer"], "承办律师": ["lawyer"], "律师助理": ["lawyer"],
@@ -107,21 +107,24 @@ async def load_config(db) -> dict:
 
 
 async def portal_keys_for_identity(identity, db, config) -> list[str]:
-    """当前账号能看的端：admin 账号看管理端；其余按人事角色名称（或编码）匹配。"""
+    """当前账号能看的端：按人事角色名称（或编码）匹配；admin 账号同时按“系统管理员”那一行匹配。
+
+    没勾任何端就不显示分端页签，首页回到原来的“我的待办”（用户 2026-10-25：没勾就不要显示）。
+    """
     from app.core.dependencies import select
     from app.core.permissions import _configured_user_job_role_name, _identity_role_ids, _job_role_for_name
     from app.data_models.identity import User
 
-    if "admin" in _identity_role_ids(identity):
-        return [MANAGE_PORTAL]
+    names = {"系统管理员", "SYSTEM-ADMIN"} if "admin" in _identity_role_ids(identity) else set()
     user = await db.scalar(select(User).where(User.username == identity.get("username", "")))
     role_name = _configured_user_job_role_name(user) if user else str(identity.get("permission_role") or identity.get("staff_role") or "").strip()
-    if not role_name:
+    if role_name:
+        names.add(role_name)
+        job_role = await _job_role_for_name(role_name, db)
+        if job_role:
+            names |= {job_role.name, job_role.code}
+    if not names:
         return []
-    names = {role_name}
-    job_role = await _job_role_for_name(role_name, db)
-    if job_role:
-        names |= {job_role.name, job_role.code}
     keys = {key for name in names for key in config["role_portals"].get(name, [])}
     return [key for key in [*(portal["key"] for portal in config["portals"]), MANAGE_PORTAL] if key in keys]
 

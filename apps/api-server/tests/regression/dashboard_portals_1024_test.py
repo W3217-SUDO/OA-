@@ -113,6 +113,18 @@ class DashboardPortalsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["portal_counts"]["notary-review"], listed.json()["total"])
         self.assertEqual(result["portal_counts"]["notary-review"], 1)
 
+    async def test_admin_without_manage_tick_sees_no_portals(self):
+        # 用户 2026-10-25：系统管理员那一行没勾就不显示，首页回到原来的“我的待办”。
+        async with self.sessions() as db:
+            item = await db.scalar(select(SystemConfig).where(SystemConfig.key == "dashboard_portals"))
+            roles = {role: keys for role, keys in DEFAULT_CONFIG["role_portals"].items() if role != "系统管理员"}
+            item.value = {**DEFAULT_CONFIG, "role_portals": roles}
+            await db.commit()
+        async with self.sessions() as db:
+            result = await dashboard(ADMIN, db, section="portals")
+        self.assertEqual(result["portals"], [])
+        self.assertEqual(result["portal_counts"], {})
+
     async def test_lawyer_role_sees_lawyer_portal_only(self):
         async with self.sessions() as db:
             result = await dashboard(LAWYER, db, section="portals")

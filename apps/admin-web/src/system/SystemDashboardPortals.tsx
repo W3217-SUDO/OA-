@@ -155,7 +155,7 @@ export function SystemDashboardPortals() {
           },
         ]}
       />
-      <p className="system-portal-note">没有归属任何端的角色，首页继续显示原来的“我的待办”；系统管理员账号始终看管理端。</p>
+      <p className="system-portal-note">没有勾选任何端的角色，首页不显示分端页签，继续显示原来的“我的待办”；系统管理员账号按“系统管理员”这一行显示。</p>
     </Card>
   );
 }
