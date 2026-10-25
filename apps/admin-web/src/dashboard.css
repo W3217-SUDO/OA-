@@ -262,9 +262,10 @@ button.wb-todo-entry:active{background:var(--oa-fill)}
   .wb-shell{gap:12px}
   .wb-grid{grid-template-columns:minmax(0,1fr) minmax(320px,380px);gap:12px}
   .wb-main>.wb-overview{border:0;border-radius:0;background:transparent;box-shadow:none;overflow:visible}
-  .wb-overview-body{display:flex;flex-direction:column;gap:12px;padding:0;overflow:hidden}
+  /* 待办项多（如管理端全部待办）时一屏放不下：整列可滚动，最新案件至少留一块可见高度。 */
+  .wb-overview-body{display:flex;flex-direction:column;gap:12px;padding:0;overflow:auto}
   .wb-overview-section{flex:none;padding:14px 16px;border:1px solid var(--oa-border);border-radius:12px;background:var(--oa-surface);box-shadow:var(--oa-shadow-sm)}
-  .wb-overview-recent{display:flex;flex:1 1 auto;flex-direction:column;min-height:0;margin-top:0}
+  .wb-overview-recent{display:flex;flex:1 1 auto;flex-direction:column;min-height:260px;margin-top:0}
   .wb-overview-recent .wb-overview-case-list{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain}
   .wb-overview-cases thead th{position:sticky;top:0;z-index:1}
   .wb-overview-section-head{margin-bottom:10px}
