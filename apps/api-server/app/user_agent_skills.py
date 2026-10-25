@@ -126,6 +126,20 @@ def _docx_markdown(filename: str, content: bytes) -> tuple[str, str, str]:
     return name, description, markdown
 
 
+async def read_raw_skill_upload(request) -> bytes:
+    """读取请求体里的技能文件原始内容（超过上限多读 1 字节即停，交给 parse_uploaded_skill 报“超过 2MB”）。
+
+    钉钉 Mac 客户端内置浏览器提交带文件的 multipart 表单时服务端收不到文件字段（422“Field required”），
+    技能导入改为请求体直接是文件内容、文件名放在查询参数里。
+    """
+    content = bytearray()
+    async for chunk in request.stream():
+        content.extend(chunk)
+        if len(content) > CUSTOM_SKILL_FILE_LIMIT:
+            break
+    return bytes(content[:CUSTOM_SKILL_FILE_LIMIT + 1])
+
+
 def parse_uploaded_skill(filename: str, content: bytes) -> dict[str, Any]:
     if len(content) > CUSTOM_SKILL_FILE_LIMIT:
         raise ValueError("file_too_large")

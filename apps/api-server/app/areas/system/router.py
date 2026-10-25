@@ -1719,15 +1719,28 @@ async def create_user_agent_skill(body: UserAgentSkillInput, identity: dict = De
 
 @router.post(f"{settings.api_prefix}/agent/skills/upload")
 async def upload_user_agent_skill(file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    return await _import_user_agent_skill(file.filename or "", await file.read(CUSTOM_SKILL_FILE_LIMIT + 1), identity, db)
+
+
+@router.post(f"{settings.api_prefix}/agent/skills/upload-file")
+async def upload_user_agent_skill_file(
+    request: Request, name: str = Query(..., min_length=1, max_length=255),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """请求体就是技能文件内容（不用 multipart），文件名放 name；钉钉 Mac 客户端用这个。"""
+    from app.user_agent_skills import read_raw_skill_upload
+    return await _import_user_agent_skill(name, await read_raw_skill_upload(request), identity, db)
+
+
+async def _import_user_agent_skill(filename: str, content: bytes, identity: dict, db: AsyncSession):
     from app.core.documents import (
         _save_user_agent_skills, _user_agent_skill_store,
     )
     _, skills = await _user_agent_skill_store(identity["username"], db)
     if len(skills) >= CUSTOM_SKILL_LIMIT:
         raise HTTPException(status_code=409, detail=f"每个账号最多保存 {CUSTOM_SKILL_LIMIT} 个自定义技能")
-    content = await file.read(CUSTOM_SKILL_FILE_LIMIT + 1)
     try:
-        record = parse_uploaded_skill(file.filename or "", content)
+        record = parse_uploaded_skill(filename, content)
     except ValueError as exc:
         errors = {
             "file_too_large": "技能文件不能超过 2MB",

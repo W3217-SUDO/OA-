@@ -28,8 +28,10 @@ export function SkillFileImport({ scope, busy, onBusy, refresh, onSelect }: Prop
   const upload = async (file: File) => {
     let saved: WorkspaceSkill | null = null;
     try {
-      const body = new FormData(); body.append("file", file);
-      const { data } = await api.post<WorkspaceSkill>(`${skillBase(scope)}/upload`, body);
+      // 请求体直接是文件内容、文件名放查询参数：钉钉 Mac 客户端提交 multipart 表单时服务端收不到文件字段。
+      const { data } = await api.post<WorkspaceSkill>(`${skillBase(scope)}/upload-file`, file, {
+        params: { name: file.name }, headers: { "Content-Type": file.type || "application/octet-stream" },
+      });
       saved = data;
       await refresh(); selected(data); setRefreshPending(null);
     } catch (failure) {

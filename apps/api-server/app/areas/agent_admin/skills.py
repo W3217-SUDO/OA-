@@ -1,5 +1,5 @@
 """Global management and scope-specific definition access."""
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,9 +55,23 @@ async def create_global_skill(body: GlobalSkillInput, identity: dict = Depends(c
 @router.post(settings.api_prefix + "/agent/global-skills/upload")
 async def upload_global_skill(file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     require_agent_settings_management(identity)
-    content = await file.read(CUSTOM_SKILL_FILE_LIMIT + 1)
+    return await _import_global_skill(file.filename or "", await file.read(CUSTOM_SKILL_FILE_LIMIT + 1), identity, db)
+
+
+@router.post(settings.api_prefix + "/agent/global-skills/upload-file")
+async def upload_global_skill_file(
+    request: Request, name: str = Query(..., min_length=1, max_length=255),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """请求体就是技能文件内容（不用 multipart），文件名放 name；钉钉 Mac 客户端用这个。"""
+    require_agent_settings_management(identity)
+    from app.user_agent_skills import read_raw_skill_upload
+    return await _import_global_skill(name, await read_raw_skill_upload(request), identity, db)
+
+
+async def _import_global_skill(filename: str, content: bytes, identity: dict, db: AsyncSession):
     try:
-        parsed = parse_uploaded_skill(file.filename or "", content)
+        parsed = parse_uploaded_skill(filename, content)
         record = await add_global_skill(parsed, identity, db, source=parsed["source"])
     except ValueError as exc:
         raise HTTPException(422, f"技能文件格式不正确：{exc}") from exc
