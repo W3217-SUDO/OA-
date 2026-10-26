@@ -1,13 +1,15 @@
 """首页分端待办：律师端、财务行政端、调查端各放哪些待办，角色默认看哪个端（系统参数“首页分端待办”）。
 
-管理端固定看全部待办，不单独配置。待办数字口径不变：首页数字 = 点进去那个列表的总数；
+系统管理员固定看三个端，按端分组同时显示（用户 2026-10-26：三个端分开显示，不混在一起），不单独配置；
+其他角色按勾选显示，多个端用页签切换。每个端的项数不限，首页一页显示 8 项，多了前端自动分页切换。待办数字口径不变：首页数字 = 点进去那个列表的总数；
 已在“我的待办”和“案件与费用提醒”里统计的项直接复用那两组数字，其余项在这里按列表接口计数。
 """
 from fastapi import HTTPException
 
 CONFIG_KEY = "dashboard_portals"
+# 旧的“管理端（全部待办）”勾选项，2026-10-26 起不再提供；旧配置里勾了它的角色按三个端都勾处理。
 MANAGE_PORTAL = "manage"
-MAX_PORTAL_ITEMS = 12
+ADMIN_ROLE_NAMES = {"系统管理员", "SYSTEM-ADMIN"}
 
 # 待办目录：key、名称、点进去的页面、数字来源（todo=我的待办，metric=提醒指标，extra=本模块计数）、口径说明。
 PORTAL_ITEMS = (
@@ -49,9 +51,8 @@ DEFAULT_PORTALS = [
         "task", "fee-unpaid", "clue-audit", "notary-review", "evidence",
     ]},
 ]
-# 角色默认归属：按人事角色名称匹配；系统管理员账号（admin）按“系统管理员”这一行的勾选显示。
+# 角色默认归属：按人事角色名称匹配；系统管理员固定看三个端，不在这里配置。
 DEFAULT_ROLE_PORTALS = {
-    "系统管理员": [MANAGE_PORTAL],
     "合伙人律师": ["lawyer"], "主办律师": ["lawyer"], "承办律师": ["lawyer"], "律师助理": ["lawyer"],
     "案件主管": ["lawyer"], "合同管理员": ["lawyer"], "业务专员": ["lawyer"], "客户主管": ["lawyer"],
     "财务主管": ["finance_admin"], "财务专员": ["finance_admin"], "财务人员": ["finance_admin"],
@@ -81,8 +82,6 @@ def validate_config(value: dict) -> dict:
             raise HTTPException(status_code=422, detail="端口名称必填，最多 20 个字")
         if not isinstance(items, list) or any(item not in ITEM_KEYS for item in items) or len(set(items)) != len(items):
             raise HTTPException(status_code=422, detail="端口里有无效或重复的待办项")
-        if len(items) > MAX_PORTAL_ITEMS:
-            raise HTTPException(status_code=422, detail=f"每个端最多放 {MAX_PORTAL_ITEMS} 项待办")
         cleaned_portals.append({"key": portal["key"], "name": name.strip(), "items": list(items)})
     allowed = {*default_keys, MANAGE_PORTAL}
     if not isinstance(role_portals, dict):
@@ -91,8 +90,9 @@ def validate_config(value: dict) -> dict:
     for role, keys in role_portals.items():
         if not isinstance(role, str) or not role.strip() or not isinstance(keys, list) or any(key not in allowed for key in keys):
             raise HTTPException(status_code=422, detail="角色归属里有无效的角色或端口")
-        if keys:
-            cleaned_roles[role.strip()] = [key for key in [*default_keys, MANAGE_PORTAL] if key in keys]
+        # 系统管理员固定看三个端，这一行的勾选不再保存。
+        if keys and role.strip() not in ADMIN_ROLE_NAMES:
+            cleaned_roles[role.strip()] = [key for key in default_keys if key in keys or MANAGE_PORTAL in keys]
     return {"portals": cleaned_portals, "role_portals": cleaned_roles}
 
 
@@ -106,16 +106,17 @@ async def load_config(db) -> dict:
         return DEFAULT_CONFIG
 
 
-async def portal_keys_for_identity(identity, db, config) -> list[str]:
-    """当前账号能看的端：按人事角色名称（或编码）匹配；admin 账号同时按“系统管理员”那一行匹配。
+async def portal_keys_for_identity(identity, db, config) -> tuple[list[str], bool]:
+    """当前账号能看的端，以及是否系统管理员（admin 账号或人事角色为系统管理员）。
 
+    系统管理员固定看三个端；其他角色按人事角色名称（或编码）匹配勾选，
     没勾任何端就不显示分端页签，首页回到原来的“我的待办”（用户 2026-10-25：没勾就不要显示）。
     """
     from app.core.dependencies import select
     from app.core.permissions import _configured_user_job_role_name, _identity_role_ids, _job_role_for_name
     from app.data_models.identity import User
 
-    names = {"系统管理员", "SYSTEM-ADMIN"} if "admin" in _identity_role_ids(identity) else set()
+    names = set(ADMIN_ROLE_NAMES) if "admin" in _identity_role_ids(identity) else set()
     user = await db.scalar(select(User).where(User.username == identity.get("username", "")))
     role_name = _configured_user_job_role_name(user) if user else str(identity.get("permission_role") or identity.get("staff_role") or "").strip()
     if role_name:
@@ -123,10 +124,11 @@ async def portal_keys_for_identity(identity, db, config) -> list[str]:
         job_role = await _job_role_for_name(role_name, db)
         if job_role:
             names |= {job_role.name, job_role.code}
-    if not names:
-        return []
+    portal_keys = [portal["key"] for portal in config["portals"]]
+    if names & ADMIN_ROLE_NAMES:
+        return portal_keys, True
     keys = {key for name in names for key in config["role_portals"].get(name, [])}
-    return [key for key in [*(portal["key"] for portal in config["portals"]), MANAGE_PORTAL] if key in keys]
+    return [key for key in portal_keys if key in keys], False
 
 
 async def _extra_count(key, identity, db) -> int:
@@ -156,17 +158,16 @@ async def _extra_count(key, identity, db) -> int:
 
 
 async def dashboard_portals(identity, db):
-    """控制台 portals 分区：当前账号的端口、待办目录和本模块负责的计数。"""
+    """控制台 portals 分区：当前账号的端口、显示方式（groups=分组同时显示，tabs=页签）、待办目录和本模块负责的计数。"""
     from app.core.dashboard_list_counts import gather_counts
 
     config = await load_config(db)
-    keys = await portal_keys_for_identity(identity, db, config)
+    keys, is_admin = await portal_keys_for_identity(identity, db, config)
     portals = [portal for portal in config["portals"] if portal["key"] in keys]
-    if MANAGE_PORTAL in keys:
-        portals.append({"key": MANAGE_PORTAL, "name": "管理端", "items": list(ITEM_KEYS)})
     sources = {key: source for key, _label, _route, source, _description in PORTAL_ITEMS}
     needed = {item for portal in portals for item in portal["items"] if sources[item] == "extra"}
     counts = await gather_counts(db, {
         key: (lambda session, key=key: _extra_count(key, identity, session)) for key in sorted(needed)
     }) if needed else {}
-    return {"portals": portals, "portal_items": catalog(), "portal_counts": counts}
+    return {"portals": portals, "portal_layout": "groups" if is_admin else "tabs",
+            "portal_items": catalog(), "portal_counts": counts}

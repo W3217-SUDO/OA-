@@ -4,14 +4,15 @@ import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined } from "@ant-design/
 import { api } from "../api";
 import Table from "../components/ResizableTable";
 
-// 系统参数“首页分端待办”：三个端各放哪些待办（顺序即首页顺序），各角色默认看哪个端；管理端看全部。
+// 系统参数“首页分端待办”：三个端各放哪些待办（顺序即首页顺序），各角色默认看哪个端；系统管理员固定三个端分组同时显示。
 type PortalItem = { key: string; label: string; route: string; source: string; description: string };
 type Portal = { key: string; name: string; items: string[] };
 type PortalConfig = { portals: Portal[]; role_portals: Record<string, string[]> };
 type Settings = { value: PortalConfig; defaults: PortalConfig; items: PortalItem[]; roles: { code: string; name: string }[] };
 
-const MANAGE_PORTAL = "manage";
-const MAX_PORTAL_ITEMS = 12;
+const ADMIN_ROLE = "系统管理员";
+// 首页一页显示 8 项，多了自动分页切换；配置本身不限项数。
+const PAGE_SIZE = 8;
 
 export function SystemDashboardPortals() {
   const [settings, setSettings] = useState<Settings>();
@@ -49,7 +50,7 @@ export function SystemDashboardPortals() {
     items.splice(index + offset, 0, moved);
     return { ...portal, items };
   };
-  const portalOptions = [...draft.portals.map((portal) => ({ label: portal.name, value: portal.key })), { label: "管理端（全部）", value: MANAGE_PORTAL }];
+  const portalOptions = draft.portals.map((portal) => ({ label: portal.name, value: portal.key }));
   const roleNames = Array.from(new Set([...settings.roles.map((role) => role.name), ...Object.keys(draft.role_portals)]));
   const changed = JSON.stringify(draft) !== JSON.stringify(settings.value);
 
@@ -87,7 +88,7 @@ export function SystemDashboardPortals() {
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        title="首页“我的待办”按端分页签显示。每个端最多 12 项，排在前面的显示在前面；管理端固定显示全部待办，不用配置。一个角色可以勾选多个端，首页就会出现多个页签。"
+        title={`首页“我的待办”按端显示。排在前面的显示在前面，一页显示 ${PAGE_SIZE} 项，多于 ${PAGE_SIZE} 项时自动多分一页，在首页切换；系统管理员固定把三个端分组上下同时显示，不用配置。其他角色可以勾选多个端，首页就会出现多个页签。`}
       />
       <div className="system-portal-grid">
         {draft.portals.map((portal) => {
@@ -96,7 +97,7 @@ export function SystemDashboardPortals() {
             <Card key={portal.key} size="small" type="inner" title={
               <Input value={portal.name} maxLength={20} aria-label="端口名称" style={{ maxWidth: 200 }}
                 onChange={(event) => updatePortal(portal.key, (current) => ({ ...current, name: event.target.value }))} />
-            } extra={<span className={portal.items.length > 8 ? "system-portal-count is-over" : "system-portal-count"}>{portal.items.length} 项</span>}>
+            } extra={<span className="system-portal-count">{portal.items.length} 项{portal.items.length > PAGE_SIZE ? ` · 分 ${Math.ceil(portal.items.length / PAGE_SIZE)} 页` : ""}</span>}>
               {!portal.items.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有待办项" />}
               <ol className="system-portal-items">
                 {portal.items.map((key, index) => {
@@ -118,8 +119,8 @@ export function SystemDashboardPortals() {
               </ol>
               <Select
                 style={{ width: "100%" }}
-                placeholder={portal.items.length >= MAX_PORTAL_ITEMS ? `最多 ${MAX_PORTAL_ITEMS} 项` : "添加待办项"}
-                disabled={portal.items.length >= MAX_PORTAL_ITEMS}
+                placeholder={unused.length ? "添加待办项" : "待办项已全部加入"}
+                disabled={!unused.length}
                 value={null}
                 showSearch
                 optionFilterProp="label"
@@ -140,7 +141,7 @@ export function SystemDashboardPortals() {
           { title: "角色", dataIndex: "name", width: 180, render: (name: string) => settings.roles.some((role) => role.name === name) ? name : <Space>{name}<Tag>已停用</Tag></Space> },
           {
             title: "首页显示的端",
-            render: (_: unknown, row: { name: string }) => (
+            render: (_: unknown, row: { name: string }) => row.name === ADMIN_ROLE ? <span className="system-portal-fixed">固定显示三个端（分组上下排列）</span> : (
               <Checkbox.Group
                 options={portalOptions}
                 value={draft.role_portals[row.name] || []}
@@ -155,7 +156,7 @@ export function SystemDashboardPortals() {
           },
         ]}
       />
-      <p className="system-portal-note">没有勾选任何端的角色，首页不显示分端页签，继续显示原来的“我的待办”；系统管理员账号按“系统管理员”这一行显示。</p>
+      <p className="system-portal-note">没有勾选任何端的角色，首页不显示分端页签，继续显示原来的“我的待办”；系统管理员固定同时显示三个端。</p>
     </Card>
   );
 }

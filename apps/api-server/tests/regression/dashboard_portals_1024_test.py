@@ -1,7 +1,8 @@
 """首页分端待办（2026-10-24 用户要求）：系统参数里配置律师端、财务行政端、调查端的待办和角色归属。
 
 覆盖：默认配置合法且与用户给定的分端一致；非法配置被拒绝；系统参数接口读写并留审计；
-管理员账号看管理端（全部待办），律师角色只看律师端；分端单独统计的数字与点进去的列表同一口径。
+管理员固定看三个端、分组同时显示（2026-10-26），每端项数不限（首页每页 8 项、多了分页）；律师角色只看律师端；
+分端单独统计的数字与点进去的列表同一口径。
 """
 
 import unittest
@@ -13,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.config import settings
-from app.core.dashboard_portals import DEFAULT_CONFIG, ITEM_KEYS, MANAGE_PORTAL, validate_config
+from app.core.dashboard_portals import DEFAULT_CONFIG, ITEM_KEYS, MANAGE_PORTAL, load_config, validate_config
 from app.data_models.identity import JobRole
 from app.database import Base, get_db
 from app.main import app, dashboard
@@ -68,13 +69,16 @@ class DashboardPortalsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(portals["律师端"], ["task", "fee-unpaid", "appeal", "evidence", "opinion", "receipts-pending", "receivable", "archive-closing"])
         self.assertEqual(portals["财务行政端"], ["task", "fee-unpaid", "internal-fee-audit", "fee-audit", "settlement-audit", "archive-fee", "seal-stamping"])
         self.assertEqual(portals["调查端"], ["task", "fee-unpaid", "clue-audit", "notary-review", "evidence"])
-        self.assertEqual(value["role_portals"]["系统管理员"], [MANAGE_PORTAL])
+        self.assertNotIn("系统管理员", value["role_portals"])
+        # 用户 2026-10-26：项数不限，首页一页 8 项，多了分页切换。
+        full = validate_config({**DEFAULT_CONFIG, "portals": [{**DEFAULT_CONFIG["portals"][0], "items": list(ITEM_KEYS)}, *DEFAULT_CONFIG["portals"][1:]]})
+        self.assertEqual(full["portals"][0]["items"], list(ITEM_KEYS))
 
     def test_invalid_config_is_rejected(self):
         broken = [
             {**DEFAULT_CONFIG, "portals": DEFAULT_CONFIG["portals"][:2]},
             {**DEFAULT_CONFIG, "portals": [{**DEFAULT_CONFIG["portals"][0], "items": ["task", "no-such-item"]}, *DEFAULT_CONFIG["portals"][1:]]},
-            {**DEFAULT_CONFIG, "portals": [{**DEFAULT_CONFIG["portals"][0], "items": list(ITEM_KEYS)}, *DEFAULT_CONFIG["portals"][1:]]},
+            {**DEFAULT_CONFIG, "portals": [{**DEFAULT_CONFIG["portals"][0], "items": ["task", "task"]}, *DEFAULT_CONFIG["portals"][1:]]},
             {**DEFAULT_CONFIG, "role_portals": {"承办律师": ["unknown"]}},
         ]
         for value in broken:
@@ -101,34 +105,57 @@ class DashboardPortalsTest(unittest.IsolatedAsyncioTestCase):
             audits = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "system_audit"))).all()
         self.assertIn("系统配置:dashboard_portals", [audit.title for audit in audits])
 
-    async def test_admin_sees_manage_portal_and_list_counts(self):
+    async def test_admin_sees_three_portal_groups_and_list_counts(self):
+        # 用户 2026-10-26：管理员三个端分开显示，不再把全部待办混在一个“管理端”里。
         async with self.sessions() as db:
             result = await dashboard(ADMIN, db, section="portals")
-        self.assertEqual([portal["key"] for portal in result["portals"]], [MANAGE_PORTAL])
-        self.assertEqual(result["portals"][0]["items"], list(ITEM_KEYS))
-        extra = {item["key"] for item in result["portal_items"] if item["source"] == "extra"}
+        self.assertEqual([portal["name"] for portal in result["portals"]], ["律师端", "财务行政端", "调查端"])
+        self.assertEqual(result["portal_layout"], "groups")
+        self.assertEqual([portal["items"] for portal in result["portals"]], [portal["items"] for portal in DEFAULT_CONFIG["portals"]])
+        extra = {item for portal in result["portals"] for item in portal["items"]
+                 if next(entry for entry in result["portal_items"] if entry["key"] == item)["source"] == "extra"}
         self.assertEqual(set(result["portal_counts"]), extra)
         listed = await self.client.get(f"{API}/records", params={"module": "notary", "record_status": "待审核", "page": 1, "page_size": 1})
         self.assertEqual(listed.status_code, 200, listed.text)
         self.assertEqual(result["portal_counts"]["notary-review"], listed.json()["total"])
         self.assertEqual(result["portal_counts"]["notary-review"], 1)
 
-    async def test_admin_without_manage_tick_sees_no_portals(self):
-        # 用户 2026-10-25：系统管理员那一行没勾就不显示，首页回到原来的“我的待办”。
+    async def test_admin_sees_three_portals_whatever_old_tick(self):
+        # 生产 2026-10-26 的配置里“系统管理员”只勾了律师端；管理员仍固定看三个端（用户 2026-10-26 确认）。
         async with self.sessions() as db:
             item = await db.scalar(select(SystemConfig).where(SystemConfig.key == "dashboard_portals"))
-            roles = {role: keys for role, keys in DEFAULT_CONFIG["role_portals"].items() if role != "系统管理员"}
-            item.value = {**DEFAULT_CONFIG, "role_portals": roles}
+            item.value = {**DEFAULT_CONFIG, "role_portals": {**DEFAULT_CONFIG["role_portals"], "系统管理员": ["lawyer"]}}
             await db.commit()
         async with self.sessions() as db:
             result = await dashboard(ADMIN, db, section="portals")
-        self.assertEqual(result["portals"], [])
-        self.assertEqual(result["portal_counts"], {})
+        self.assertEqual([portal["key"] for portal in result["portals"]], ["lawyer", "finance_admin", "investigation"])
+        self.assertEqual(result["portal_layout"], "groups")
+
+    async def test_legacy_config_is_read_without_falling_back(self):
+        # 某端放了 12 项、某角色勾了旧的“管理端”：12 项原样保留（首页每页 8 项分页显示），“管理端”按三个端都勾处理。
+        legacy_items = list(ITEM_KEYS[:12])
+        async with self.sessions() as db:
+            item = await db.scalar(select(SystemConfig).where(SystemConfig.key == "dashboard_portals"))
+            item.value = {
+                "portals": [{**DEFAULT_CONFIG["portals"][0], "items": legacy_items}, *DEFAULT_CONFIG["portals"][1:]],
+                "role_portals": {**DEFAULT_CONFIG["role_portals"], "承办律师": [MANAGE_PORTAL], "系统管理员": ["lawyer"]},
+            }
+            await db.commit()
+        async with self.sessions() as db:
+            value = await load_config(db)
+            result = await dashboard(LAWYER, db, section="portals")
+        self.assertEqual(value["portals"][0]["items"], legacy_items)
+        self.assertEqual(value["role_portals"]["承办律师"], ["lawyer", "finance_admin", "investigation"])
+        self.assertNotIn("系统管理员", value["role_portals"])
+        self.assertEqual([portal["key"] for portal in result["portals"]], ["lawyer", "finance_admin", "investigation"])
+        self.assertEqual(result["portals"][0]["items"], legacy_items)
+        self.assertEqual(result["portal_layout"], "tabs")
 
     async def test_lawyer_role_sees_lawyer_portal_only(self):
         async with self.sessions() as db:
             result = await dashboard(LAWYER, db, section="portals")
         self.assertEqual([portal["name"] for portal in result["portals"]], ["律师端"])
+        self.assertEqual(result["portal_layout"], "tabs")
         self.assertEqual(set(result["portal_counts"]), {"receipts-pending", "receivable", "archive-closing"})
 
 

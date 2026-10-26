@@ -419,6 +419,16 @@ button.wb-todo-entry:active{background:var(--oa-fill)}
 @media(max-width:720px){
   .wb-hearing-detail{padding-left:0}
 }
+/* 系统管理员的“我的待办”：律师端、财务行政端、调查端分组上下排列，每组一个小标题和自己的待处理汇总。 */
+.wb-todo-groups{display:flex;flex-direction:column;gap:10px}
+.wb-todo-group+.wb-todo-group{padding-top:10px;border-top:1px solid var(--oa-border)}
+.wb-todo-group-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 8px;margin-bottom:2px}
+.wb-todo-group-head h4{display:flex;align-items:center;gap:6px;margin:0;color:var(--oa-text);font-size:13px;font-weight:600;white-space:nowrap}
+.wb-todo-group-head h4::before{content:"";width:3px;height:12px;border-radius:2px;background:var(--hue)}
+/* 一页 8 项，多了的分页切换：靠右放在汇总前面；没在看的那页有待办时页码旁挂小圆点。 */
+.wb-todo-group-head .wb-todo-pages,.wb-overview-section-head .wb-todo-pages{margin-left:auto}
+.wb-todo-page{display:inline-flex;align-items:center;gap:4px}
+.wb-todo-page i{width:6px;height:6px;border-radius:50%;background:var(--oa-primary)}
 /* 首页分端待办的端口页签 */
 .wb-overview-section-head .wb-portal-tabs{margin-right:auto;margin-left:12px}
 @media(max-width:640px){.wb-overview-section-head{flex-wrap:wrap}.wb-overview-section-head .wb-portal-tabs{order:3;margin-left:0;max-width:100%;overflow-x:auto}}

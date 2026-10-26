@@ -10,6 +10,6 @@
 .system-portal-items>li::before{content:counter(portal);flex:0 0 20px;color:var(--oa-text-3);font-variant-numeric:tabular-nums}
 .system-portal-item-name{flex:1;min-width:0}
 .system-portal-count{color:var(--oa-text-2)}
-.system-portal-count.is-over{color:var(--oa-danger)}
+.system-portal-fixed{color:var(--oa-text-2)}
 .system-portal-subtitle{margin:20px 0 8px;font-size:15px}
 .system-portal-note{margin:8px 0 0;color:var(--oa-text-3)}
