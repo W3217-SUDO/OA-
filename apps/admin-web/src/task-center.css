@@ -781,3 +781,24 @@
   margin-bottom: 10px;
   border-color: var(--oa-border);
 }
+
+/* 新建任务“关联案件”“客户”选择器（TaskLinkPickers）：下拉里一行编号加名称，搜索框底部说明。 */
+.task-link-picker-option {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  align-items: baseline;
+}
+.task-link-picker-option > span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--oa-text-3);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-link-picker-hint {
+  margin-top: 8px;
+  color: var(--oa-text-3);
+  font-size: 12px;
+}

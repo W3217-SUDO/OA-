@@ -40,6 +40,60 @@ async def export_task_print_table(ids: str = "", identity: dict = Depends(curren
     return _csv_response(f"案件任务打印表-{date.today()}.csv", ["任务编号", "案件编号", "任务标题", "任务内容", "客户", "原告", "被告", "状态", "优先级", "发起人", "负责人", "截止日期", "任务来源"], rows)
 
 
+# 新建任务选“关联案件”“客户”（问题处理中心 BUG20261026002）：输入即搜，也给放大镜搜索框用；只列当前账号看得到的。
+TASK_PICKER_LIMIT = 50
+
+
+@router.get(f"{settings.api_prefix}/tasks/case-options")
+async def task_case_options(
+    keyword: str = Query("", max_length=100), limit: int = Query(20, ge=1, le=TASK_PICKER_LIMIT),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """按案号、案件名称、客户、法院案号搜案件；案号完全一致的排第一，其余按最近更新。"""
+    from app.core.permissions import _record_scope_conditions
+    conditions = [BusinessRecord.module == "case", BusinessRecord.serial_no != "",
+                  *(await _record_scope_conditions(identity, db))]
+    keyword = keyword.strip()
+    if keyword:
+        conditions.append(or_(
+            BusinessRecord.serial_no.icontains(keyword, autoescape=True),
+            BusinessRecord.title.icontains(keyword, autoescape=True),
+            BusinessRecord.customer.icontains(keyword, autoescape=True),
+            BusinessRecord.data["court_case_no"].as_string().icontains(keyword, autoescape=True),
+        ))
+    exact_first = [case((BusinessRecord.serial_no == keyword, 0), else_=1)] if keyword else []
+    rows = (await db.scalars(select(BusinessRecord).where(*conditions).order_by(
+        *exact_first, BusinessRecord.updated_at.desc(), BusinessRecord.id.desc(),
+    ).limit(limit))).all()
+    return {"items": [{
+        "id": row.id, "serial_no": row.serial_no, "title": row.title, "customer": row.customer, "status": row.status,
+        "court_case_no": str((row.data or {}).get("court_case_no") or (row.data or {}).get("first_court_case_no") or ""),
+    } for row in rows]}
+
+
+@router.get(f"{settings.api_prefix}/tasks/customer-options")
+async def task_customer_options(
+    keyword: str = Query("", max_length=100), limit: int = Query(20, ge=1, le=TASK_PICKER_LIMIT),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """按客户名称、客户编号搜客户；名称完全一致的排第一，其余按最近更新。"""
+    from app.core.permissions import _record_scope_conditions
+    # 没有名称的客户带不进任务，不列出来。
+    conditions = [BusinessRecord.module == "customer", BusinessRecord.title != "",
+                  *(await _record_scope_conditions(identity, db))]
+    keyword = keyword.strip()
+    if keyword:
+        conditions.append(or_(
+            BusinessRecord.title.icontains(keyword, autoescape=True),
+            BusinessRecord.serial_no.icontains(keyword, autoescape=True),
+        ))
+    exact_first = [case((BusinessRecord.title == keyword, 0), else_=1)] if keyword else []
+    rows = (await db.scalars(select(BusinessRecord).where(*conditions).order_by(
+        *exact_first, BusinessRecord.updated_at.desc(), BusinessRecord.id.desc(),
+    ).limit(limit))).all()
+    return {"items": [{"id": row.id, "serial_no": row.serial_no, "name": row.title, "status": row.status} for row in rows]}
+
+
 @router.get(f"{settings.api_prefix}/vip-tasks")
 async def list_vip_tasks(
     keyword: str = "", customer: str = "", status_filter: str = "", priority: str = "",

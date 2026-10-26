@@ -500,7 +500,10 @@
   text-align: left;
   background: var(--oa-surface) !important;
 }
+/* 按钮行上移到分页条那一行左侧；分页条吸底、白底、z-index 3，按钮行要在它上面，否则文字被白底盖住。 */
 .finance-archive-settlement-footer {
+  position: relative;
+  z-index: 4;
   min-height: 39px;
   margin-top: -43px;
   padding: 3px 10px 4px 28px;
@@ -759,7 +762,7 @@
 }
 .finance-settlement-footer {
   position: relative;
-  z-index: 2;
+  z-index: 4;
   width: 420px;
   height: 39px;
   margin-top: -43px;

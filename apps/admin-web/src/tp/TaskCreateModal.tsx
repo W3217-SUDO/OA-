@@ -13,6 +13,7 @@ import type { UploadFile } from "antd";
 import type { FormInstance } from "antd";
 import dayjs from "dayjs";
 import type { PeopleOption } from "./types";
+import { TaskCasePicker, TaskCustomerPicker } from "./TaskLinkPickers";
 
 export interface TaskCreateModalProps {
   open: boolean;
@@ -120,16 +121,19 @@ export default function TaskCreateModal(props: TaskCreateModalProps) {
         <Form.Item
           label="关联案件"
           name="case_nos"
-          extra="不填为事务性任务，直接发给负责人；填写案号即为案件任务。"
+          extra="不填为事务性任务，直接发给负责人；选了案件即为案件任务。可直接输入案号搜索，或点放大镜查找。"
         >
-          <Select
-            mode="tags"
-            tokenSeparators={[",", "，", ";", "；"]}
-            placeholder="输入案号后回车，可关联多个案件"
+          <TaskCasePicker
+            onPick={(item) => {
+              // 关联案件时任务客户取案件的客户（与后端一致）：客户还没填就带出来。
+              if (item.customer && !String(createForm.getFieldValue("customer") || "").trim()) {
+                createForm.setFieldValue("customer", item.customer);
+              }
+            }}
           />
         </Form.Item>
         <Form.Item label="客户" name="customer">
-          <Input />
+          <TaskCustomerPicker />
         </Form.Item>
         <Form.Item label="任务说明" name="description">
           <Input.TextArea rows={3} />
