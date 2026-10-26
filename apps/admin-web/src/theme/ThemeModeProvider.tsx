@@ -20,6 +20,8 @@ export const THEME_PRESETS: ThemePreset[] = [
   { key: "violet", label: "紫罗兰", light: "#6d28d9", dark: "#a78bfa" },
   { key: "rose", label: "绛红", light: "#be123c", dark: "#fb7185" },
   { key: "amber", label: "琥珀", light: "#b45309", dark: "#f59e0b" },
+  // 樱花粉：取自用户给的浅粉 #fbb6b8，按钮白字需要对比度，主色加深一档，夜间用浅粉。
+  { key: "sakura", label: "樱花粉", light: "#e8708a", dark: "#f6a5b4" },
 ];
 
 // 主题方案：一次性设置主题色、顶栏和侧栏，用户也可以在方案基础上单独微调。
@@ -31,6 +33,7 @@ export const THEME_SCHEMES: ThemeScheme[] = [
   { key: "minimal", label: "简约白", preset: "ink", header: "light", sidebar: "light" },
   { key: "teal", label: "松石", preset: "green", header: "light", sidebar: "light" },
   { key: "violet", label: "雅紫", preset: "violet", header: "primary", sidebar: "dark" },
+  { key: "sakura", label: "樱花粉", preset: "sakura", header: "primary", sidebar: "light" },
 ];
 
 type ThemePrefs = { mode: ThemeMode; preset: string; sidebar: SidebarStyle; header: HeaderStyle };
