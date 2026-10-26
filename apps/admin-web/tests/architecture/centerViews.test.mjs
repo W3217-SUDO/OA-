@@ -274,7 +274,6 @@ test("dashboard approved entries keep their destinations and unapproved entries 
     "./components/ResizableTable": Table,
     "./DashboardPersonCell": () => null,
     "./DashboardGreeting": () => null,
-    "./DashboardFocus": () => null,
     "./DashboardHearingSchedule": HearingScheduleStub,
     "./DashboardMetricTiles": MetricTilesStub,
     "./DashboardRejectionReminder": RejectionReminderStub,

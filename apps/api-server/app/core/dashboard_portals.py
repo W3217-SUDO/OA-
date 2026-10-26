@@ -1,7 +1,7 @@
 """首页分端待办：律师端、财务行政端、调查端各放哪些待办，角色默认看哪个端（系统参数“首页分端待办”）。
 
-系统管理员固定看三个端，按端分组同时显示（用户 2026-10-26：三个端分开显示，不混在一起），不单独配置；
-其他角色按勾选显示，多个端用页签切换。每个端的项数不限，首页一页显示 8 项，多了前端自动分页切换。待办数字口径不变：首页数字 = 点进去那个列表的总数；
+系统管理员固定看三个端，不单独配置；其他角色按勾选显示。有多个端时用页签切换，一次只显示一个端
+（用户 2026-10-26：三个端分开，一次只看一个端）；每个端的项数不限，首页一页显示 8 项，多了前端自动分页切换。待办数字口径不变：首页数字 = 点进去那个列表的总数；
 已在“我的待办”和“案件与费用提醒”里统计的项直接复用那两组数字，其余项在这里按列表接口计数。
 """
 from fastapi import HTTPException
@@ -106,10 +106,9 @@ async def load_config(db) -> dict:
         return DEFAULT_CONFIG
 
 
-async def portal_keys_for_identity(identity, db, config) -> tuple[list[str], bool]:
-    """当前账号能看的端，以及是否系统管理员（admin 账号或人事角色为系统管理员）。
-
-    系统管理员固定看三个端；其他角色按人事角色名称（或编码）匹配勾选，
+async def portal_keys_for_identity(identity, db, config) -> list[str]:
+    """当前账号能看的端：系统管理员（admin 账号或人事角色为系统管理员）固定看三个端；
+    其他角色按人事角色名称（或编码）匹配勾选，
     没勾任何端就不显示分端页签，首页回到原来的“我的待办”（用户 2026-10-25：没勾就不要显示）。
     """
     from app.core.dependencies import select
@@ -126,9 +125,9 @@ async def portal_keys_for_identity(identity, db, config) -> tuple[list[str], boo
             names |= {job_role.name, job_role.code}
     portal_keys = [portal["key"] for portal in config["portals"]]
     if names & ADMIN_ROLE_NAMES:
-        return portal_keys, True
+        return portal_keys
     keys = {key for name in names for key in config["role_portals"].get(name, [])}
-    return [key for key in portal_keys if key in keys], False
+    return [key for key in portal_keys if key in keys]
 
 
 async def _extra_count(key, identity, db) -> int:
@@ -158,16 +157,15 @@ async def _extra_count(key, identity, db) -> int:
 
 
 async def dashboard_portals(identity, db):
-    """控制台 portals 分区：当前账号的端口、显示方式（groups=分组同时显示，tabs=页签）、待办目录和本模块负责的计数。"""
+    """控制台 portals 分区：当前账号的端口、待办目录和本模块负责的计数。"""
     from app.core.dashboard_list_counts import gather_counts
 
     config = await load_config(db)
-    keys, is_admin = await portal_keys_for_identity(identity, db, config)
+    keys = await portal_keys_for_identity(identity, db, config)
     portals = [portal for portal in config["portals"] if portal["key"] in keys]
     sources = {key: source for key, _label, _route, source, _description in PORTAL_ITEMS}
     needed = {item for portal in portals for item in portal["items"] if sources[item] == "extra"}
     counts = await gather_counts(db, {
         key: (lambda session, key=key: _extra_count(key, identity, session)) for key in sorted(needed)
     }) if needed else {}
-    return {"portals": portals, "portal_layout": "groups" if is_admin else "tabs",
-            "portal_items": catalog(), "portal_counts": counts}
+    return {"portals": portals, "portal_items": catalog(), "portal_counts": counts}

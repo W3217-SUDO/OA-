@@ -80,7 +80,7 @@ type Props = {
   onNavigate: (route: string) => void;
   onOpenCase: (caseNo: string) => void;
   onRefresh: () => void;
-  // 首页分端待办：系统管理员三个端分组同时显示（portal_layout=groups），其他角色有多个端时按端分页签；
+  // 首页分端待办：有多个端时（系统管理员固定三个端）按端分页签，一次只显示一个端；
   // 没有端（角色未归属）时显示原来的“我的待办”。
   portals?: DashboardPortal[];
   portalData?: Partial<DashboardData>;
@@ -102,33 +102,18 @@ export default function DashboardOverview({ showHead = true, greeting, name, bri
       // 浏览器禁用本地存储时只是不记住上次的页签。
     }
   };
-  const groups = portalData?.portal_layout === "groups"
-    ? portals.map((portal) => ({ portal, items: dashboardPortalItems(portal, portalData) })).filter((group) => group.items.length)
-    : [];
-  const items: TodoItem[] = groups.length
-    ? groups.flatMap((group) => group.items)
-    : activePortal && portalData ? dashboardPortalItems(activePortal, portalData) : dashboardTodoItems(todos);
+  // 分端数据比原“我的待办”晚到；首次回来之前不先显示原来的格子，一加载就是分端页签，不闪一下再切换（用户 2026-10-26）。
+  // 只等第一次：之后每 5 分钟刷新时沿用已有数据，不让格子消失。
+  const waitingPortals = portalsLoading && !portalData?.portals;
+  const items: TodoItem[] = waitingPortals ? [] : activePortal && portalData ? dashboardPortalItems(activePortal, portalData) : dashboardTodoItems(todos);
   const loaded = !todosLoading && !todosError && !portalsLoading && items.length > 0;
-  // 分组时各组用同一列数（按一页项数最多的那组算），上下几组的图标对齐。
-  const pageLength = (list: TodoItem[]) => Math.min(list.length, TODO_PAGE_SIZE);
-  const columns = todoColumns(groups.length ? Math.max(...groups.map((group) => pageLength(group.items))) : pageLength(items), gridWidth ? maxTodoColumns(gridWidth) : 5);
-  const paged = (key: string, list: TodoItem[]) => {
-    const pages = todoPages(list);
-    const page = Math.min(pageByKey[key] || 0, Math.max(pages.length - 1, 0));
-    return { key, pages, page, items: pages[page] || [] };
-  };
-  const single = paged(activePortal?.key || "todos", items);
-  // 只有一页时不显示切换；没在看的那页里有待办时，页码旁挂一个小圆点提示。
-  const renderPageSwitch = ({ key, pages, page }: ReturnType<typeof paged>) => pages.length > 1 && <Segmented
-    className="wb-todo-pages"
-    size="small"
-    value={page}
-    options={pages.map((pageItems, index) => ({
-      value: index,
-      label: <span className="wb-todo-page">第{index + 1}页{index !== page && pageItems.some((item) => item.pending > 0) && <i aria-hidden="true" />}</span>,
-    }))}
-    onChange={(value) => setPageByKey((current) => ({ ...current, [key]: Number(value) }))}
-  />;
+  // 当前端的分页：每个端各自记住看到第几页。
+  const pageKey = activePortal?.key || "todos";
+  const pages = todoPages(items);
+  const page = Math.min(pageByKey[pageKey] || 0, Math.max(pages.length - 1, 0));
+  const pageItems = pages[page] || [];
+  // 列数按一页的项数算，翻到项数少的最后一页时格子宽度不变。
+  const columns = todoColumns(Math.min(items.length, TODO_PAGE_SIZE), gridWidth ? maxTodoColumns(gridWidth) : 5);
   const openTodo = (label: string, route?: string, metric?: DashboardData["metrics"][number]) => {
     if (!route || !canNavigate(route)) return;
     if (metric && onOpenMetric) {
@@ -138,26 +123,6 @@ export default function DashboardOverview({ showHead = true, greeting, name, bri
     prepareTodoNavigation(label);
     onNavigate(route);
   };
-  // 图标宫格（类似钉钉工作台）：统一用主题色，有待办的图标填满并在右上角挂角标写件数，没有待办的只是浅色描边。
-  const renderGrid = (gridItems: TodoItem[], ref?: (element: HTMLDivElement | null) => void) => (
-    <div ref={ref} className="wb-todo-grid" style={{ "--todo-cols": columns } as CSSProperties}>
-      {gridItems.map(({ label, count, pending, route, icon, metric, description: itemDescription }) => {
-        const clickable = Boolean(route && canNavigate(route));
-        const className = `wb-todo-entry${pending > 0 ? " has-pending" : " is-clear"}`;
-        const content = <>
-          <span className="wb-todo-icon" aria-hidden="true">
-            {icon}
-            {pending > 0 && <i className="wb-todo-badge">{count}</i>}
-          </span>
-          <span className="wb-todo-title">{label}</span>
-        </>;
-        const description = pending > 0 ? `${label}，${count} 件待处理` : `${label}，暂无待办`;
-        return clickable
-          ? <button key={label} className={className} type="button" title={itemDescription} onClick={() => openTodo(label, route, metric)} aria-label={description}>{content}</button>
-          : <div key={label} className={className} title={itemDescription} aria-label={description}>{content}</div>;
-      })}
-    </div>
-  );
   return (
     <section className="wb-overview" aria-label="工作概况">
       {showHead && <header className="wb-overview-head">
@@ -170,35 +135,46 @@ export default function DashboardOverview({ showHead = true, greeting, name, bri
         <section className="wb-overview-section" aria-label="我的待办">
           <div className="wb-overview-section-head">
             <h3>我的待办</h3>
-            {!groups.length && portals.length > 1 && activePortal && <Segmented
+            {portals.length > 1 && activePortal && <Segmented
               className="wb-portal-tabs"
               size="small"
               value={activePortal.key}
               options={portals.map((portal) => ({ label: portal.name, value: portal.key }))}
               onChange={(value) => choosePortal(String(value))}
             />}
-            {!groups.length && renderPageSwitch(single)}
-            {loaded && !groups.length && <TodoSummary items={items} />}
+            {/* 一页 8 项，多了的分页切换；只有一页时不显示。没在看的那页里有待办时，页码旁挂一个小圆点。 */}
+            {pages.length > 1 && <Segmented
+              className="wb-todo-pages"
+              size="small"
+              value={page}
+              options={pages.map((sheet, index) => ({
+                value: index,
+                label: <span className="wb-todo-page">第{index + 1}页{index !== page && sheet.some((item) => item.pending > 0) && <i aria-hidden="true" />}</span>,
+              }))}
+              onChange={(value) => setPageByKey((current) => ({ ...current, [pageKey]: Number(value) }))}
+            />}
+            {loaded && <TodoSummary items={items} />}
           </div>
-          {todoStatus}
-          {!todosLoading && !todosError && !items.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无待办事项" />}
-          {groups.length
-            ? <div ref={gridRef} className="wb-todo-groups">
-              {groups.map((group) => {
-                const groupPage = paged(group.portal.key, group.items);
-                return (
-                  <section key={group.portal.key} className="wb-todo-group" aria-label={`${group.portal.name}待办`}>
-                    <div className="wb-todo-group-head">
-                      <h4>{group.portal.name}</h4>
-                      {renderPageSwitch(groupPage)}
-                      {loaded && <TodoSummary items={group.items} />}
-                    </div>
-                    {renderGrid(groupPage.items)}
-                  </section>
-                );
-              })}
-            </div>
-            : renderGrid(single.items, gridRef)}
+          {todoStatus || (waitingPortals && <div className="dashboard-section-status" role="status">正在加载...</div>)}
+          {!todosLoading && !todosError && !waitingPortals && !items.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无待办事项" />}
+          {/* 图标宫格（类似钉钉工作台）：统一用主题色，有待办的图标填满并在右上角挂角标写件数，没有待办的只是浅色描边。 */}
+          <div ref={gridRef} className="wb-todo-grid" style={{ "--todo-cols": columns } as CSSProperties}>
+            {pageItems.map(({ label, count, pending, route, icon, metric, description: itemDescription }) => {
+              const clickable = Boolean(route && canNavigate(route));
+              const className = `wb-todo-entry${pending > 0 ? " has-pending" : " is-clear"}`;
+              const content = <>
+                <span className="wb-todo-icon" aria-hidden="true">
+                  {icon}
+                  {pending > 0 && <i className="wb-todo-badge">{count}</i>}
+                </span>
+                <span className="wb-todo-title">{label}</span>
+              </>;
+              const description = pending > 0 ? `${label}，${count} 件待处理` : `${label}，暂无待办`;
+              return clickable
+                ? <button key={label} className={className} type="button" title={itemDescription} onClick={() => openTodo(label, route, metric)} aria-label={description}>{content}</button>
+                : <div key={label} className={className} title={itemDescription} aria-label={description}>{content}</div>;
+            })}
+          </div>
         </section>
         <section className="wb-overview-section wb-overview-recent" aria-label="最新案件">
           <div className="wb-overview-section-head">

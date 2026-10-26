@@ -18,10 +18,8 @@ export type DashboardData = {
   civil_distribution: { label: string; value: number; color: string }[];
   rejections: DashboardRejection[];
   rejection_total: number;
-  // 首页分端待办（系统参数“首页分端待办”）：当前账号能看的端、显示方式、待办目录、目录里由分端模块单独统计的数字。
+  // 首页分端待办（系统参数“首页分端待办”）：当前账号能看的端、待办目录、目录里由分端模块单独统计的数字。
   portals: DashboardPortal[];
-  // groups：系统管理员，三个端分组同时显示；tabs：其他角色，多个端用页签切换。
-  portal_layout: "groups" | "tabs";
   portal_items: DashboardPortalItem[];
   portal_counts: Record<string, number>;
 };

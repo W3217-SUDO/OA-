@@ -287,9 +287,8 @@ button.wb-todo-entry:active{background:var(--oa-fill)}
 /* 2026-10 提醒区：律所办公风格，统一用主题色（跟随“偏好设置”里的主题色），不做多彩；
    数字为 0 的变灰，有待办的图标填满主题色并挂角标；红色只留给紧急事项（紧急案件有数时）。 */
 /* 主题色推出的几种颜色都用主题变量（旧内核上由 JS 按当前主题算好），切换主题色时一起变。 */
-:is(.wb-metrics,.wb-overview,.wb-focus){--hue:var(--oa-primary);--hue-2:var(--oa-primary-light);--hue-ink:var(--oa-primary-ink);--hue-tint:var(--oa-primary-tint);--hue-line:var(--oa-primary-line);--hue-glow:var(--oa-primary-glow)}
-:is(.wb-metric,.wb-focus-chip).is-urgent{--hue:var(--oa-danger);--hue-2:color-mix(in srgb,var(--oa-danger) 62%,#fff);--hue-ink:var(--oa-danger);--hue-tint:color-mix(in srgb,var(--oa-danger) 10%,var(--oa-surface));--hue-line:color-mix(in srgb,var(--oa-danger) 40%,var(--oa-border));--hue-glow:color-mix(in srgb,var(--oa-danger) 45%,transparent)}
-@keyframes wb-ring{0%,60%,100%{transform:rotate(0)}8%{transform:rotate(16deg)}16%{transform:rotate(-14deg)}24%{transform:rotate(10deg)}32%{transform:rotate(-6deg)}40%{transform:rotate(3deg)}}
+:is(.wb-metrics,.wb-overview){--hue:var(--oa-primary);--hue-2:var(--oa-primary-light);--hue-ink:var(--oa-primary-ink);--hue-tint:var(--oa-primary-tint);--hue-line:var(--oa-primary-line);--hue-glow:var(--oa-primary-glow)}
+.wb-metric.is-urgent{--hue:var(--oa-danger);--hue-2:color-mix(in srgb,var(--oa-danger) 62%,#fff);--hue-ink:var(--oa-danger);--hue-tint:color-mix(in srgb,var(--oa-danger) 10%,var(--oa-surface));--hue-line:color-mix(in srgb,var(--oa-danger) 40%,var(--oa-border));--hue-glow:color-mix(in srgb,var(--oa-danger) 45%,transparent)}
 @keyframes wb-glow{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--oa-danger) 0%,transparent)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--oa-danger) 18%,transparent)}}
 
 /* 提醒指标：白底卡片，左侧主题色图标，右侧数字和名称；未到官费金额数字长，占稍宽的一列。 */
@@ -325,20 +324,6 @@ button.wb-todo-entry:active{background:var(--oa-fill)}
 .wb-overview .wb-todo-title{min-width:0;color:var(--oa-text-2);font-size:12.5px;line-height:1.35;overflow-wrap:anywhere}
 .wb-overview .wb-todo-entry.has-pending .wb-todo-title{color:var(--oa-text);font-weight:500}
 
-/* 问候语旁的“优先处理”：铃铛 + 几枚胶囊，点胶囊直达对应列表；只有紧急案件是红色。 */
-.wb-hero .wb-greeting{flex:0 1 auto}
-.wb-focus{display:flex;flex:1 1 auto;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px;min-width:0}
-.wb-focus-bell{display:grid;flex:none;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--hue-tint);color:var(--hue-ink);font-size:15px}
-.wb-focus-bell.is-ringing .anticon{transform-origin:50% 8%;animation:wb-ring 2.6s ease-in-out infinite}
-.wb-focus-title{flex:none;color:var(--oa-text-2);font-size:13px;font-weight:600}
-.wb-focus-chip{display:inline-flex;flex:none;align-items:center;gap:6px;height:32px;padding:0 5px 0 11px;border:1px solid var(--oa-border);border-radius:999px;background:var(--oa-surface);color:var(--oa-text);font:inherit;font-size:13px;white-space:nowrap;cursor:pointer;transition:transform .15s var(--oa-ease),border-color .15s,box-shadow .15s}
-.wb-focus-chip .anticon{color:var(--hue-ink);font-size:14px}
-.wb-focus-chip b{min-width:26px;padding:2px 8px;border-radius:999px;background:var(--hue);color:#fff;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;line-height:18px;text-align:center}
-.wb-focus-chip:hover{border-color:var(--hue-line);transform:translateY(-1px);box-shadow:var(--oa-shadow-md)}
-.wb-focus-chip:focus-visible{outline:2px solid var(--hue);outline-offset:2px}
-.wb-focus-chip.is-urgent{border-color:color-mix(in srgb,var(--oa-danger) 45%,var(--oa-border));background:color-mix(in srgb,var(--oa-danger) 6%,var(--oa-surface));animation:wb-glow 2.2s ease-in-out infinite}
-.wb-focus-clear{display:inline-flex;align-items:center;gap:6px;color:var(--oa-text-2);font-size:13px}
-
 /* 标题不折行；标签放不下时整体换到标题下一行。 */
 .wb-overview-section-head{flex-wrap:wrap}
 .wb-overview-section-head h3{flex:none;white-space:nowrap}
@@ -358,7 +343,7 @@ button.wb-todo-entry:active{background:var(--oa-fill)}
   .wb-todo-badge{left:calc(100% - 13px);min-width:20px;height:18px;padding:0 5px;font-size:10px;line-height:14px}
 }
 @media (prefers-reduced-motion:reduce){
-  .wb-focus-bell.is-ringing .anticon,.wb-focus-chip.is-urgent,.wb-metrics .wb-metric.is-urgent{animation:none}
+  .wb-metrics .wb-metric.is-urgent{animation:none}
 }
 
 /* 最新案件：与原系统同样的九项（案号、阶段、原告、被告、案源日期、客户管理人、开庭律师、经办律师、律师助理）。
@@ -419,16 +404,10 @@ button.wb-todo-entry:active{background:var(--oa-fill)}
 @media(max-width:720px){
   .wb-hearing-detail{padding-left:0}
 }
-/* 系统管理员的“我的待办”：律师端、财务行政端、调查端分组上下排列，每组一个小标题和自己的待处理汇总。 */
-.wb-todo-groups{display:flex;flex-direction:column;gap:10px}
-.wb-todo-group+.wb-todo-group{padding-top:10px;border-top:1px solid var(--oa-border)}
-.wb-todo-group-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 8px;margin-bottom:2px}
-.wb-todo-group-head h4{display:flex;align-items:center;gap:6px;margin:0;color:var(--oa-text);font-size:13px;font-weight:600;white-space:nowrap}
-.wb-todo-group-head h4::before{content:"";width:3px;height:12px;border-radius:2px;background:var(--hue)}
 /* 一页 8 项，多了的分页切换：靠右放在汇总前面；没在看的那页有待办时页码旁挂小圆点。 */
-.wb-todo-group-head .wb-todo-pages,.wb-overview-section-head .wb-todo-pages{margin-left:auto}
+.wb-overview-section-head .wb-todo-pages{margin-left:auto}
 .wb-todo-page{display:inline-flex;align-items:center;gap:4px}
 .wb-todo-page i{width:6px;height:6px;border-radius:50%;background:var(--oa-primary)}
 /* 首页分端待办的端口页签 */
 .wb-overview-section-head .wb-portal-tabs{margin-right:auto;margin-left:12px}
-@media(max-width:640px){.wb-overview-section-head{flex-wrap:wrap}.wb-overview-section-head .wb-portal-tabs{order:3;margin-left:0;max-width:100%;overflow-x:auto}}
+@media(max-width:640px){.wb-overview-section-head{flex-wrap:wrap}.wb-overview-section-head .wb-portal-tabs{order:3;margin-left:0;max-width:100%;overflow-x:auto}.wb-overview-section-head .wb-todo-pages{order:4}}

@@ -4,7 +4,7 @@ import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined } from "@ant-design/
 import { api } from "../api";
 import Table from "../components/ResizableTable";
 
-// 系统参数“首页分端待办”：三个端各放哪些待办（顺序即首页顺序），各角色默认看哪个端；系统管理员固定三个端分组同时显示。
+// 系统参数“首页分端待办”：三个端各放哪些待办（顺序即首页顺序），各角色默认看哪个端；系统管理员固定看三个端。
 type PortalItem = { key: string; label: string; route: string; source: string; description: string };
 type Portal = { key: string; name: string; items: string[] };
 type PortalConfig = { portals: Portal[]; role_portals: Record<string, string[]> };
@@ -88,7 +88,7 @@ export function SystemDashboardPortals() {
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        title={`首页“我的待办”按端显示。排在前面的显示在前面，一页显示 ${PAGE_SIZE} 项，多于 ${PAGE_SIZE} 项时自动多分一页，在首页切换；系统管理员固定把三个端分组上下同时显示，不用配置。其他角色可以勾选多个端，首页就会出现多个页签。`}
+        title={`首页“我的待办”按端显示。排在前面的显示在前面，一页显示 ${PAGE_SIZE} 项，多于 ${PAGE_SIZE} 项时自动多分一页，在首页切换；有多个端时首页用页签切换，一次只显示一个端；系统管理员固定看三个端，不用配置。其他角色可以勾选多个端，首页就会出现多个页签。`}
       />
       <div className="system-portal-grid">
         {draft.portals.map((portal) => {
@@ -141,7 +141,7 @@ export function SystemDashboardPortals() {
           { title: "角色", dataIndex: "name", width: 180, render: (name: string) => settings.roles.some((role) => role.name === name) ? name : <Space>{name}<Tag>已停用</Tag></Space> },
           {
             title: "首页显示的端",
-            render: (_: unknown, row: { name: string }) => row.name === ADMIN_ROLE ? <span className="system-portal-fixed">固定显示三个端（分组上下排列）</span> : (
+            render: (_: unknown, row: { name: string }) => row.name === ADMIN_ROLE ? <span className="system-portal-fixed">固定显示三个端（页签切换）</span> : (
               <Checkbox.Group
                 options={portalOptions}
                 value={draft.role_portals[row.name] || []}
@@ -156,7 +156,7 @@ export function SystemDashboardPortals() {
           },
         ]}
       />
-      <p className="system-portal-note">没有勾选任何端的角色，首页不显示分端页签，继续显示原来的“我的待办”；系统管理员固定同时显示三个端。</p>
+      <p className="system-portal-note">没有勾选任何端的角色，首页不显示分端页签，继续显示原来的“我的待办”；系统管理员固定显示三个端。</p>
     </Card>
   );
 }
