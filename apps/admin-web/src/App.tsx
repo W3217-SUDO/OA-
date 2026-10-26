@@ -53,6 +53,7 @@ import {
   QrcodeOutlined,
 } from "@ant-design/icons";
 import { api, AUTH_EXPIRED_EVENT } from "./api";
+import { clearCaseContractContext } from "./caseContractPrefill";
 import { bindDingTalkWebLogin, clearDingTalkWebCallback, consumeDingTalkWebCallback, startDingTalkWebLogin } from "./auth/dingtalkWebLogin";
 import {
   PERMISSIONS_UPDATED_EVENT,
@@ -1629,6 +1630,7 @@ export default function App() {
     });
   }, [active, effectiveMenuItems, grantedMenuKeys, permissionAdministrator, permissionsReady, personalAgentName]);
   const closeOpenPage = (target: string) => {
+    if (target === "case-new" || target.startsWith("case-new-")) clearCaseContractContext(sessionStorage);
     setOpenPages((current) => {
       if (current.length <= 1) return current;
       const index = current.findIndex((entry) => entry.key === target);

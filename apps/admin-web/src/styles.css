@@ -1345,3 +1345,10 @@ body {
     font-size: 11px;
   }
 }
+
+/* 10.26 第2行：蓝色跳转字段（链接按钮）文字可拖选复制；拖选时的点击由 selectableLinks.ts 拦截。 */
+.ant-btn.ant-btn-variant-link,
+.ant-btn.ant-btn-link {
+  -webkit-user-select: text;
+  user-select: text;
+}

@@ -1688,7 +1688,9 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
         "can_confirm_fee_arrival": active and await _case_action_granted(identity, db, "case.fee.arrival"),
         "can_view_fee_receipt": await _case_action_granted(identity, db, "case.fee.receipt.view"),
         "can_mark_fee_unpaid": active and await _case_action_granted(identity, db, "case.fee.mark_unpaid"),
-        "can_move_fee": active and await _case_action_granted(identity, db, "case.fee.move"),
+        # 10.26 第11行：能修改案件费用的人都可以“移到其他案子”（角色里没有单独勾选移费动作也放行）。
+        "can_move_fee": active and (await _case_action_granted(identity, db, "case.fee.move")
+                                    or await _case_action_granted(identity, db, "case.fee.update")),
     }
     try:
         await _require_case_attachment_upload_access(case_record, identity, db)

@@ -1547,7 +1547,11 @@ async def customer_reference_options(identity: dict = Depends(current_identity),
     customer_types = (await db.scalars(select(SystemParameter).where(
         SystemParameter.category == "customer_type", SystemParameter.is_active.is_(True),
     ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
-    return {"customer_types": [{"value": item.name, "label": item.name, "code": item.code} for item in customer_types]}
+    # 客户里存的是类型名称；旧迁移字典与新预置可能同名（10.26 第5行两个“客户”），按名称只保留排序靠前的一条。
+    seen_names: set[str] = set()
+    unique_types = [item for item in customer_types
+                    if item.name.strip() and not (item.name.strip() in seen_names or seen_names.add(item.name.strip()))]
+    return {"customer_types": [{"value": item.name, "label": item.name, "code": item.code} for item in unique_types]}
 
 
 @router.get(f"{settings.api_prefix}/customers")

@@ -6,6 +6,7 @@ import type { MessageType } from "antd/es/message/interface";
 import dayjs, { type Dayjs } from "dayjs";
 import type { Key } from "react";
 import { api } from "../../api";
+import { clearCaseContractContext } from "../../caseContractPrefill";
 import { rememberCaseDetailTarget } from "../../caseDetailNavigation";
 import { getCaseReminderDateValidationError } from "../../caseFifthBatchParity.mjs";
 import { buildCaseCreatePayload, buildCaseDuplicateRequest, buildCaseExecutionStatusPayload, buildCaseMergePayload, buildCaseProgressPayload, buildClueConversionPayload, getCaseCreateValidationError, getCaseEditValidationError, getCaseMutationBlockReason, getClueConversionIssues, normalizeCaseEditPayload } from "../../caseSecondBatchParity";
@@ -259,6 +260,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
                     throw new Error("案件创建接口没有返回有效案件 ID");
                 }
                 setCreatedCaseId(newCaseId);
+                clearCaseContractContext(sessionStorage);
                 const customer = String(values.customer || "").trim();
                 const customerIsDefendant = ["被告人/犯罪嫌疑人", "被告/被申请人"].includes(values.client_position);
                 const customerIsThirdParty = values.client_position === "第三人";

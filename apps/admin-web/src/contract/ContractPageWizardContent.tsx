@@ -47,7 +47,7 @@ export function ContractPageWizardContent({ wizardStep, wizardDraft, form, submi
                   <Radio.Group disabled={!(["草稿", "已拒绝"].includes(wizardDraft?.status || ""))} options={[{ value: true, label: "是" }, { value: false, label: "否" }]}/>
                 </Form.Item>
                 <Form.Item label={contractApproverLabel} name="approvers" rules={[{ required: true, message: "请选择一名合同审批人" }]}>
-                  <KeywordPersonSelect disabled={!("草稿 已拒绝".split(" ").includes(wizardDraft?.status || ""))} showSearch optionFilterProp="label" options={approvalOptions} placeholder="请选择后台已配置的合同审批人" notFoundContent="没有可用审批人，请由管理员在人事中心为在职员工配置合同审批流程资格"/>
+                  <KeywordPersonSelect listAll disabled={!("草稿 已拒绝".split(" ").includes(wizardDraft?.status || ""))} showSearch optionFilterProp="label" options={approvalOptions} placeholder="请选择后台已配置的合同审批人" notFoundContent="没有可用审批人，请由管理员在人事中心为在职员工配置合同审批流程资格"/>
                 </Form.Item>
                 <Form.Item label="提交说明" name="comment"><Input.TextArea disabled={!("草稿 已拒绝".split(" ").includes(wizardDraft?.status || ""))} rows={3}/></Form.Item>
               </Form>
@@ -82,7 +82,7 @@ export function ContractPageWizardContent({ wizardStep, wizardDraft, form, submi
               {(<Form form={sealForm} layout="vertical" className="contract-seal-form">
                   <div className="form-grid">
                     <Form.Item label="用印审批人" name="approver" rules={[{ required: true, message: "请选择用印审批人" }]}>
-                      <KeywordPersonSelect showSearch optionFilterProp="label" options={sealApprovalOptions} placeholder="请选择用印审批人" notFoundContent="没有可用审批人，请先在人事中心配置用印审批资格"/>
+                      <KeywordPersonSelect listAll showSearch optionFilterProp="label" options={sealApprovalOptions} placeholder="请选择用印审批人" notFoundContent="没有可用审批人，请先在人事中心配置用印审批资格"/>
                     </Form.Item>
                     <Form.Item label="选择印章" name="seal_asset_id" rules={[{ required: true, message: "请选择印章" }]}><Select placeholder="请选择印章类型" notFoundContent="暂无可用印章，请管理员到用印中心维护" options={sealAssets.map((asset) => ({ value: asset.id, label: `${asset.seal_type}｜${asset.name}（${asset.code}）` }))}/></Form.Item>
                     <Form.Item label="用印份数" name="copies" rules={[{ required: true }]}><InputNumber min={1} max={999} style={{ width: "100%" }}/></Form.Item>

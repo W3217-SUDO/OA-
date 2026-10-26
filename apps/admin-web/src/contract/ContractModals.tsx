@@ -236,6 +236,7 @@ export function ContractSubmitModal({
       <Form form={submitForm} layout="vertical">
         <Form.Item label={contractApproverLabel} name="approvers" rules={[{ required: true }]}>
           <KeywordPersonSelect
+            listAll
             showSearch
             optionFilterProp="label"
             options={approvalOptions}

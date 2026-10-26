@@ -732,7 +732,7 @@ async def create_contract_event_by_guid(contract_guid: str, body: ContractEventI
 @router.get(f"{settings.api_prefix}/contracts/{{contract_id}}/objects")
 async def list_contract_objects(contract_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.contracts import (
-        _contract_object_payload,
+        _contract_linked_case, _contract_object_payload,
     )
     from app.core.permissions import (
         _ensure_record_visible,
@@ -741,6 +741,8 @@ async def list_contract_objects(contract_id: int, identity: dict = Depends(curre
     if contract.module != "contract":
         raise HTTPException(status_code=404, detail="合同不存在")
     objects = (await db.scalars(select(ContractObject).where(ContractObject.contract_record_id == contract.id).order_by(ContractObject.id))).all()
+    # 关联案件已删除的标的不再展示，避免整个列表报错（10.26 第4行）。
+    objects = [item for item in objects if await _contract_linked_case(item.case_record_id, db)]
     return {"items": [await _contract_object_payload(item, identity, db) for item in objects], "total": len(objects)}
 
 

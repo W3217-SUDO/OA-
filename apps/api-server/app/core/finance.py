@@ -280,9 +280,8 @@ def _fee_type_directory_items(items: list[SystemParameter]) -> tuple[list[System
     items = [item for item in items if not (item.extra or {}).get("alias_of")]
     by_code = {item.code: item for item in items}
     replacements = _fee_type_root_replacements(items)
-    if not replacements:
-        return items, replacements
-
+    # 10.26 第10行：旧迁移叶子也可能直接挂在新系统根节点下（replacements 为空），
+    # 此时同根同名的初始化叶子同样是重复项，不能因为没有根替换就整体跳过合并。
     legacy_leaf_keys = {
         (_fee_type_effective_root_code(item, by_code, replacements), item.name)
         for item in items
@@ -290,7 +289,7 @@ def _fee_type_directory_items(items: list[SystemParameter]) -> tuple[list[System
     }
     initialized_leaf_codes = {
         code for category, code, _name, extra in DEFAULT_SYSTEM_PARAMETERS
-        if category == "fee_type" and str((extra or {}).get("parent_code") or "").strip() in replacements
+        if category == "fee_type" and str((extra or {}).get("parent_code") or "").strip()
     }
     parent_codes = {str((item.extra or {}).get("parent_code") or "").strip() for item in items}
     result: list[SystemParameter] = []
@@ -315,8 +314,6 @@ def _fee_type_catalog_aliases(items: list[SystemParameter]) -> dict[int, int]:
     targets = {item.code: item.id for item in items}
     configured = {item.id: targets[item.extra["alias_of"]] for item in items
                   if (item.extra or {}).get("alias_of") in targets}
-    if not replacements:
-        return configured
     by_code = {item.code: item for item in items}
 
     canonical = {
@@ -783,9 +780,7 @@ async def _contract_payment_candidate_rows(contract: BusinessRecord, identity: d
     the same subject cannot be submitted twice while an earlier request is in
     flight. Rejected requests deliberately release the amount.
     """
-    from app.core.permissions import (
-        _ensure_record_visible,
-    )
+    from app.core.contracts import _contract_linked_case
     from app.core.formatters import _case_fee_display_type
     objects = (await db.scalars(select(ContractObject).where(
         ContractObject.contract_record_id == contract.id
@@ -863,7 +858,7 @@ async def _contract_payment_candidate_rows(contract: BusinessRecord, identity: d
             case_id = int(data.get("case_id") or data.get("case_record_id") or 0)
         except (TypeError, ValueError):
             case_id = 0
-        case = await _ensure_record_visible(case_id, identity, db) if case_id else await _finance_linked_case(
+        case = await _contract_linked_case(case_id, db) if case_id else await _finance_linked_case(
             str(data.get("case_no") or "").strip(), identity, db,
         )
         if not case or case.module != "case":
@@ -903,8 +898,8 @@ async def _contract_payment_candidate_rows(contract: BusinessRecord, identity: d
         from app.core.finance_batch_parity import is_internal_fee
         if is_internal_fee({"fee_type": item.fee_type}):
             continue
-        case = await _ensure_record_visible(item.case_record_id, identity, db)
-        if case.module != "case":
+        case = await _contract_linked_case(item.case_record_id, db)
+        if case is None:
             continue
         case_finance_records = (await db.scalars(select(BusinessRecord).where(
             BusinessRecord.module == "finance",

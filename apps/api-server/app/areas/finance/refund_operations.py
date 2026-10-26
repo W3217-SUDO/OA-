@@ -226,8 +226,15 @@ async def create_litigation_refund(body: LitigationRefundInput, identity: dict =
     db.add(item); await db.flush(); db.add(WorkflowEvent(record_id=item.id, action="创建诉讼费退款申请", to_status=item.status, operator=identity["username"], comment=f"{body.court}：{data['amount']:.2f} 元"))
     # 律所官费和代理费法院退费均生成同额代理费退费，保留原费用类型和退费流程。
     if fee_record and str((fee_record.data or {}).get("expense_scope") or "律所") == "律所":
-        from app.core.agency_refund import create_agency_refund_fee
+        from app.core.agency_refund import case_agency_fee_has_receipt, create_agency_refund_fee
         await create_agency_refund_fee(item, fee_record, identity, db)
+        # 10.26 第8行：诉讼费（官费）法院退费时，本案律师代理费还没有到账，只新增律师代理费（退费），
+        # 来源诉讼费的“退费”列不显示本次金额（沿用“仅归零源费用显示”的口径，退款申请与派生费用保留）。
+        if (fee_record.data or {}).get("fee_type") == "官方费用" and not await case_agency_fee_has_receipt(case_record, identity, db):
+            fee_record.data = {**(fee_record.data or {}), "refund_amount_override": 0, "refund_requested_amount_override": 0}
+            db.add(WorkflowEvent(record_id=fee_record.id, action="法院退费显示归零", from_status=fee_record.status,
+                to_status=fee_record.status, operator=identity["username"],
+                comment="律师代理费未回款，只新增律师代理费（退费），诉讼费退费列不显示"))
     await db.commit(); await db.refresh(item); return await _record_dict_for_identity(item, identity, db)
 
 

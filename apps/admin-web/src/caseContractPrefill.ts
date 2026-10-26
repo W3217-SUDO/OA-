@@ -53,6 +53,21 @@ export function rememberCaseContractContext(storage: CaseContractStorage, contex
   storage.setItem(CASE_CONTRACT_CONTEXT_KEY, JSON.stringify(context));
 }
 
+// 10.26 第7行：读取时不删除，“刷新当前页”或定时刷新导致页面重挂载后仍能带入客户和合同号；
+// 案件创建成功或关闭新建案件页签时再清除。
+export function readCaseContractContext(storage: Pick<Storage, "getItem" | "removeItem">): CaseContractContext | null {
+  try {
+    return JSON.parse(storage.getItem(CASE_CONTRACT_CONTEXT_KEY) || "null");
+  } catch {
+    storage.removeItem(CASE_CONTRACT_CONTEXT_KEY);
+    return null;
+  }
+}
+
+export function clearCaseContractContext(storage: Pick<Storage, "removeItem">): void {
+  storage.removeItem(CASE_CONTRACT_CONTEXT_KEY);
+}
+
 export function resolveCaseSourcePerson(contract: CaseContractOptionSource | null | undefined): string {
   if (!contract) return "";
   return String(

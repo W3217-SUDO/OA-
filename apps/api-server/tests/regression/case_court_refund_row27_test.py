@@ -43,8 +43,13 @@ class CaseCourtRefundRow27Test(unittest.IsolatedAsyncioTestCase):
         app.dependency_overrides.clear()
         await self.engine.dispose()
 
-    async def test_refund_is_bound_and_amount_is_projected_back_to_source_fee(self):
-        payload = {
+    async def _add_agency_fee(self, cashed_amount: float) -> None:
+        async with self.sessions() as db:
+            db.add(BusinessRecord(module="finance", serial_no="CODEX-812-ROW27-AGENCY", title="律师代理费", customer="CODEX-812-ROW27-CUSTOMER", status="已到账", owner="row27-admin", department="上海分所", data={"amount": 1000, "fee_type": "代理费", "expense_scope": "律所", "expense_subtype": "律师代理费", "case_id": self.case_id, "case_no": "CODEX-812-ROW27-CASE", "cashed_amount": cashed_amount}))
+            await db.commit()
+
+    def _payload(self):
+        return {
             "fee_record_id": self.fee_id,
             "customer": "CODEX-812-ROW27-CUSTOMER",
             "case_no": "CODEX-812-ROW27-CASE",
@@ -56,6 +61,11 @@ class CaseCourtRefundRow27Test(unittest.IsolatedAsyncioTestCase):
             "refund_bank": "第27行银行",
             "refund_account": "CODEX-812-ROW27-ACCOUNT",
         }
+
+    async def test_refund_is_bound_and_amount_is_projected_back_to_source_fee(self):
+        # 本案律师代理费已部分到账：沿用 10.23 第3行口径，诉讼费“退费”列显示本次退费。
+        await self._add_agency_fee(300)
+        payload = self._payload()
         created = await self.client.post(f"{settings.api_prefix}/finance/refunds", json=payload)
         self.assertEqual(created.status_code, 201, created.text)
         self.assertEqual(created.json()["data"]["case_id"], self.case_id)
@@ -67,6 +77,19 @@ class CaseCourtRefundRow27Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fee["data"]["refund_amount"], 60)
         over_limit = await self.client.post(f"{settings.api_prefix}/finance/refunds", json={**payload, "amount": 41})
         self.assertEqual(over_limit.status_code, 422, over_limit.text)
+
+    async def test_agency_fee_without_receipt_only_adds_agency_refund_fee(self):
+        """10.26 第8行：律师代理费没有到账时，只新增律师代理费（退费），诉讼费退费列不显示。"""
+        await self._add_agency_fee(0)
+        created = await self.client.post(f"{settings.api_prefix}/finance/refunds", json=self._payload())
+        self.assertEqual(created.status_code, 201, created.text)
+        relations = await self.client.get(f"{settings.api_prefix}/cases/{self.case_id}/relations")
+        self.assertEqual(relations.status_code, 200, relations.text)
+        fees = relations.json()["fees"]
+        source = next(item for item in fees if item["id"] == self.fee_id)
+        self.assertEqual(source["data"]["refund_amount"], 0)
+        refund_fee = next(item for item in fees if item["data"].get("refund_fee"))
+        self.assertEqual(float(refund_fee["data"]["amount"]), 60)
 
 
 if __name__ == "__main__":

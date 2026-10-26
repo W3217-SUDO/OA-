@@ -62,7 +62,7 @@ import { api } from "../api";
 import { rememberBusinessRecordDetailTarget } from "../businessRecordDetailNavigation";
 import "../case-center.css";
 import { caseAssistantDisplayValues } from "../caseAssistantDisplay";
-import { buildCaseContractOptions } from "../caseContractPrefill";
+import { buildCaseContractOptions, readCaseContractContext } from "../caseContractPrefill";
 import { buildCaseCounselSearchPayload } from "../caseCounselSearchParity.mjs";
 import { rememberCaseDetailTarget } from "../caseDetailNavigation";
 import { buildCaseFeeContractOptions } from "../caseFeeContractOptions.mjs";
@@ -323,16 +323,9 @@ export default function CaseCenterPage({
   const litigantLabels = isAdministrativeCreate
     ? { plaintiff: "原告/申请人", plaintiffAgent: "原告/申请人代理人", defendant: "被告/被申请人", defendantAgent: "被告/被申请人代理人", third: "第三人", thirdAgent: "第三人代理人" }
     : { plaintiff: "原告", plaintiffAgent: "原告代理人", defendant: "被告", defendantAgent: "被告代理人", third: "第三人", thirdAgent: "第三人代理人" };
-  const [contractPrefill] = useState<{ id: number; serial_no: string; title: string; customer: string } | null>(() => {
-    try {
-      const value = JSON.parse(sessionStorage.getItem("sunhold:case-contract-context") || "null");
-      sessionStorage.removeItem("sunhold:case-contract-context");
-      return value;
-    } catch {
-      sessionStorage.removeItem("sunhold:case-contract-context");
-      return null;
-    }
-  });
+  const [contractPrefill] = useState<{ id: number; serial_no: string; title: string; customer: string } | null>(
+    () => (isCreateView ? readCaseContractContext(sessionStorage) : null),
+  );
   const first =
     initialView.endsWith("-schedule") || initialView === "case-schedule"
       ? "hearing"

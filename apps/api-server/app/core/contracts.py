@@ -672,12 +672,17 @@ async def _create_contract_event_for_record(contract: BusinessRecord, body: Cont
     return result
 
 
+async def _contract_linked_case(case_id: int, db: AsyncSession) -> BusinessRecord | None:
+    """合同已鉴权后，标的/费用关联的案件只用于展示；已删除或失效的案件返回 None，不让整页 404（10.26 第4行）。"""
+    case = await db.get(BusinessRecord, case_id) if case_id else None
+    if not case or case.module != "case" or case.deleted_at is not None or case.status == "已删除":
+        return None
+    return case
+
+
 async def _contract_object_payload(item: ContractObject, identity: dict, db: AsyncSession) -> dict:
-    from app.core.permissions import (
-        _ensure_record_visible,
-    )
-    case = await _ensure_record_visible(item.case_record_id, identity, db)
-    if case.module != "case":
+    case = await _contract_linked_case(item.case_record_id, db)
+    if case is None:
         raise HTTPException(status_code=409, detail="合同标的关联案件已失效")
     data = case.data or {}
     logs = (await db.scalars(select(ContractObjectLog).where(ContractObjectLog.contract_object_id == item.id).order_by(ContractObjectLog.created_at.desc(), ContractObjectLog.id.desc()))).all()

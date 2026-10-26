@@ -38,6 +38,33 @@ async def create_agency_refund_fee(refund, source, identity, db):
     return fee
 
 
+async def case_agency_fee_has_receipt(case_record, identity, db) -> bool:
+    """本案律所“律师代理费”（非退费派生）是否已有到账；部分到账也算有回款（10.26 第8行，用户确认）。"""
+    from sqlalchemy import or_
+    from app.core.finance import _invoice_case_fee_rows
+
+    fees = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "finance",
+        BusinessRecord.status != "已删除",
+        BusinessRecord.data["fee_type"].as_string() == "代理费",
+        or_(BusinessRecord.data["case_id"].as_integer() == case_record.id,
+            BusinessRecord.data["case_record_id"].as_integer() == case_record.id,
+            BusinessRecord.data["case_no"].as_string() == case_record.serial_no),
+    ))).all()
+    fee_ids = {fee.id for fee in fees
+               if not is_agency_refund_fee(fee.data) and str((fee.data or {}).get("expense_scope") or "律所") == "律所"}
+    if not fee_ids:
+        return False
+    rows = await _invoice_case_fee_rows(identity, db, scope="company", ids=fee_ids,
+        scope_authorized_fee_ids=fee_ids, include_all_fee_types=True, force_amount_projection=True)
+    for row in rows:
+        data = row.get("data") or {}
+        if any(abs(float(data.get(key) or 0)) > 0 for key in ("cashed_amount", "received_amount")):
+            return True
+    return any(abs(float((fee.data or {}).get(key) or 0)) > 0
+               for fee in fees if fee.id in fee_ids for key in ("cashed_amount", "received_amount"))
+
+
 async def update_agency_refund_fee_amount(refund, amount, db):
     fee_id = (refund.data or {}).get("refund_fee_id")
     if not fee_id:

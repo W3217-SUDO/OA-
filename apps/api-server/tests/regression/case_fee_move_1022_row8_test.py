@@ -3,6 +3,8 @@
 用户答复“全按照建议”：手输目标案件编号；同一客户按客户记录 ID → 客户编号 → 名称；
 合同号保留；有后续单据的费用不允许迁移；归档中/已归档/已合并案件不能迁出迁入；
 只限律所、平台费用；两案和费用各记一条系统日志；权限 case.fee.move。
+
+10.26 第11行：只保留“同一客户、一次一条”两条限制——已有后续单据、已归档/已合并案件都允许迁移。
 """
 
 from __future__ import annotations
@@ -133,16 +135,24 @@ class CaseFeeMove1022Row8Test(unittest.IsolatedAsyncioTestCase):
             (self.fee.id, f"{PREFIX}OTHER", 422, "同一客户"),
             (self.fee.id, f"{PREFIX}SRC", 422, "相同"),
             (self.fee.id, f"{PREFIX}NOPE", 404, "未找到目标案件"),
-            (self.fee.id, f"{PREFIX}ARCH", 409, "已归档"),
             (self.internal_fee.id, f"{PREFIX}DST", 422, "律所费用和平台费用"),
-            (self.paid_fee.id, f"{PREFIX}DST", 409, "已申请付款"),
-            (self.commission_source.id, f"{PREFIX}DST", 409, "已生成提成"),
         )
         for fee_id, target_no, status_code, text in cases:
             response = await self._move(fee_id, target_no)
             self.assertEqual(response.status_code, status_code, (target_no, response.text))
             self.assertIn(text, response.text)
             self.assertEqual(await self._fee_case_no(fee_id), f"{PREFIX}SRC")
+
+    async def test_no_extra_limits_beyond_customer_and_single_fee(self) -> None:
+        """10.26 第11行：有后续单据的费用、已归档的目标案件都允许迁移。"""
+        for fee_id, target_no in (
+            (self.paid_fee.id, f"{PREFIX}DST"),
+            (self.commission_source.id, f"{PREFIX}DST"),
+            (self.fee.id, f"{PREFIX}ARCH"),
+        ):
+            response = await self._move(fee_id, target_no)
+            self.assertEqual(response.status_code, 200, (target_no, response.text))
+            self.assertEqual(await self._fee_case_no(fee_id), target_no)
 
     async def test_only_one_fee_per_request_and_target_required(self) -> None:
         response = await self._move(self.fee.id, f"{PREFIX}DST", fee_ids=[self.fee.id, self.platform_fee.id])

@@ -4,11 +4,14 @@ import type { SelectProps } from "antd";
 import type { DefaultOptionType } from "antd/es/select";
 import "./keyword-person-select.css";
 
-/** 人员候选仅在输入关键词后显示，已选人员的名称仍由原目录解析。 */
-export function KeywordPersonSelect(props: SelectProps<any, DefaultOptionType>) {
+/**
+ * 人员候选仅在输入关键词后显示，已选人员的名称仍由原目录解析。
+ * listAll：后台固定配置的少量人员（如合同/用印审批人）直接列出，仍可输入关键词过滤（10.26 第6行）。
+ */
+export function KeywordPersonSelect({ listAll = false, ...props }: SelectProps<any, DefaultOptionType> & { listAll?: boolean }) {
   const [keyword, setKeyword] = useState("");
   const { options = [], onSearch, onOpenChange, onSelect, labelRender, notFoundContent, ...rest } = props;
-  const searching = Boolean(keyword.trim());
+  const searching = listAll || Boolean(keyword.trim());
   return <Select
     {...rest}
     showSearch
