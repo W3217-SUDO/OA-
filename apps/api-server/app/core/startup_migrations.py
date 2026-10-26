@@ -20,6 +20,9 @@ from app.core.dashboard_finance_read_model_migration import (
     upgrade_dashboard_finance_read_model, validate_dashboard_finance_read_model,
 )
 from app.core.dashboard_revision import MIGRATION_REVISION as DASHBOARD_REVISION
+from app.core.feedback_serial_migration import (
+    MIGRATION_REVISION as FEEDBACK_SERIAL_REVISION, upgrade_feedback_date_serial,
+)
 from app.core.dashboard_revision_migration import upgrade_dashboard_revision, validate_dashboard_revision
 from app.core.finance_query_revision import (
     MIGRATION_REVISION as FINANCE_QUERY_REVISION, REINSTALL_REVISION as FINANCE_QUERY_REINSTALL_REVISION,
@@ -170,6 +173,10 @@ def _apply_customer_list_indexes(connection: Connection, _upgrade_schema: Callab
     create_customer_list_indexes(connection)
 
 
+def _apply_feedback_date_serial(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    upgrade_feedback_date_serial(connection)
+
+
 def _run_versioned_schema_migrations(
     connection: Connection,
     upgrade_schema: Callable[[Connection], None],
@@ -199,6 +206,8 @@ def _run_versioned_schema_migrations(
         ("read_model_case_no_index_v1", _apply_read_model_case_no_index),
         # 放在所有建表修订之后：给此前新建的表补财务查询修订触发器，恢复财务查询缓存。
         (FINANCE_QUERY_REINSTALL_REVISION, _apply_finance_query_revision),
+        # 问题反馈旧的随机编号按提交日期改成“BUG + 日期 + 当天流水”（一次性数据修正）。
+        (FEEDBACK_SERIAL_REVISION, _apply_feedback_date_serial),
     )
     for revision, migration in revisions:
         if connection.execute(

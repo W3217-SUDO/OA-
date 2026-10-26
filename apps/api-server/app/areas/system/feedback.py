@@ -1,4 +1,5 @@
 """系统问题反馈与截图附件。"""
+import re
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -7,11 +8,12 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.core.constants import UPLOAD_ROOT
+from app.core.feedback_serial_migration import FEEDBACK_SERIAL_PREFIX
 from app.core.dependencies import current_identity, get_db, settings
 from app.models import BusinessRecord, FileAttachment, Notification, User, WorkflowEvent
 
@@ -132,6 +134,23 @@ async def _notify_participants(
         ))
 
 
+async def _next_feedback_serial(db: AsyncSession, *, now: datetime | None = None) -> str:
+    """问题编号：BUG + 提交当天日期（北京时间）+ 当天三位流水，如 BUG20261026001（用户要求，2026-10-26）。
+    已删除的问题也占着号，删除后新问题不会重用同一个编号。"""
+    get_bind = getattr(db, "get_bind", None)
+    if get_bind is not None and get_bind().dialect.name == "postgresql":
+        # 事务级锁持有到提交，多个工作进程同时提交反馈也不会拿到同一个流水号。
+        from app.core.process_coordination import advisory_lock_id
+        await db.execute(text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": advisory_lock_id("feedback-serial")})
+    prefix = f"{FEEDBACK_SERIAL_PREFIX}{(now or datetime.now(FEEDBACK_TZ)).astimezone(FEEDBACK_TZ):%Y%m%d}"
+    existing = (await db.scalars(select(BusinessRecord.serial_no).where(
+        BusinessRecord.module == "bug_feedback", BusinessRecord.serial_no.like(f"{prefix}%"),
+    ).execution_options(include_deleted=True))).all()
+    sequence = max((int(match.group(1)) for value in existing
+                    if (match := re.fullmatch(rf"{prefix}(\d{{3,4}})", value))), default=0) + 1
+    return f"{prefix}{sequence:03d}"
+
+
 def _serialize_feedback(record: BusinessRecord, owner_name: str = "", assignee_name: str = "", has_screenshot: bool = False) -> dict:
     return {
         "id": record.id, "serial_no": record.serial_no, "description": record.description,
@@ -139,6 +158,7 @@ def _serialize_feedback(record: BusinessRecord, owner_name: str = "", assignee_n
         "assignee": _assignee(record), "assignee_display_name": assignee_name,
         "page": (record.data or {}).get("page", ""), "route": (record.data or {}).get("route", ""),
         "controls": (record.data or {}).get("controls", []),
+        "legacy_serial_no": (record.data or {}).get("legacy_serial_no", ""),
         "has_screenshot": has_screenshot,
         "created_at": record.created_at, "updated_at": record.updated_at,
     }
@@ -230,7 +250,7 @@ async def _new_feedback(db: AsyncSession, identity: dict, description: str, page
     if control_names:
         data["controls"] = control_names
     record = BusinessRecord(
-        module="bug_feedback", serial_no=f"BUG{uuid4().hex[:20].upper()}",
+        module="bug_feedback", serial_no=await _next_feedback_serial(db),
         title=description[:100], customer="", status="待处理", owner=identity["username"],
         description=description, data=data,
     )
@@ -334,6 +354,7 @@ async def list_feedback(
     if keyword:
         conditions.append(or_(
             BusinessRecord.serial_no.icontains(keyword, autoescape=True),
+            BusinessRecord.data["legacy_serial_no"].as_string().icontains(keyword, autoescape=True),
             BusinessRecord.description.icontains(keyword, autoescape=True),
             BusinessRecord.owner.icontains(keyword, autoescape=True),
             owner_user.display_name.icontains(keyword, autoescape=True),
@@ -348,7 +369,7 @@ async def list_feedback(
     .select_from(joins).where(*conditions).order_by(
         BusinessRecord.updated_at.desc(), BusinessRecord.id.desc(),
     ).offset((page - 1) * page_size).limit(page_size))).all()
-    return {"total": total, "page": page, "page_size": page_size, "items": [
+    return {"total": total, "page": page, "page_size": page_size, "can_delete": _is_admin(identity), "items": [
         _serialize_feedback(item, owner_name or "", assignee_name or "", bool(screenshot_exists))
         for item, owner_name, assignee_name, screenshot_exists in records
     ]}
@@ -380,7 +401,8 @@ async def get_feedback(feedback_id: int, identity: dict = Depends(current_identi
         names.update({user.username: user.display_name for user in authors})
     return {
         **_serialize_feedback(record, names.get(record.owner, ""), names.get(_assignee(record), ""), has_screenshot),
-        "can_assign": _is_admin(identity), "available_actions": _available_actions(record, identity),
+        "can_assign": _is_admin(identity), "can_delete": _is_admin(identity),
+        "available_actions": _available_actions(record, identity),
         "attachments": [{
             "id": item.id, "name": item.original_name, "size": item.size,
             "content_type": item.content_type, "is_image": item.category == "问题反馈截图",
@@ -494,6 +516,19 @@ async def assign_feedback(
     await _notify_participants(db, record, identity["username"], "指派处理人", event.id)
     await db.commit()
     return {"assignee": username}
+
+
+@router.delete(f"{settings.api_prefix}/feedback/{{feedback_id}}")
+async def delete_feedback(feedback_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """管理员删除问题（用户要求，2026-10-26）。逻辑删除：处理记录、截图和附件记录一并标记，文件保留，
+    可在“系统管理 → 回收站”恢复。"""
+    if not _is_admin(identity):
+        raise HTTPException(403, "仅管理员可以删除问题")
+    record = await _get_feedback(db, feedback_id, identity, lock=True)
+    serial_no = record.serial_no
+    await db.delete(record)
+    await db.commit()
+    return {"id": feedback_id, "serial_no": serial_no}
 
 
 @router.get(f"{settings.api_prefix}/feedback/{{feedback_id}}/screenshot")

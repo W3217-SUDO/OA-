@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, DatePicker, Input, Segmented, Select, Space, Tag } from "antd";
+import { Alert, Button, DatePicker, Input, message, Popconfirm, Segmented, Select, Space, Tag } from "antd";
 import type { Dayjs } from "dayjs";
 import Table from "../components/ResizableTable";
 import type { TableColumnsType } from "antd";
@@ -59,6 +59,8 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
   };
   const mine = Boolean(view);
   const [statusCounts, setStatusCounts] = useState<FeedbackStatusCounts | null>(null);
+  // 管理员在问题处理中心可以删除问题（逻辑删除，回收站可恢复）。
+  const [canDelete, setCanDelete] = useState(false);
   const listVisible = !viewingId && !creating;
 
   useEffect(() => {
@@ -84,6 +86,7 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
       if (controller.signal.aborted) return;
       setRows(data.items);
       setTotal(data.total);
+      setCanDelete(Boolean(data.can_delete));
     }).catch((failure: any) => {
       if (controller.signal.aborted) return;
       setError(failure?.response?.data?.detail || "反馈列表加载失败");
@@ -103,6 +106,18 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
     return () => { cancelled = true; };
   }, [center, listVisible, reload, dateKey]);
 
+  const removeFeedback = async (row: FeedbackRecord) => {
+    try {
+      await api.delete(`/feedback/${row.id}`);
+      message.success(`已删除问题 ${row.serial_no}`);
+      setReload((current) => current + 1);
+      onChanged?.();
+    } catch (failure: any) {
+      message.error(failure?.response?.data?.detail || "删除失败");
+    }
+  };
+  const showDelete = center && canDelete;
+
   const columns: TableColumnsType<FeedbackRecord> = [
     { title: "编号", dataIndex: "serial_no", width: 215, ellipsis: true,
       render: (value, row) => <Button type="link" size="small" onClick={() => setViewingId(row.id)}>{value}</Button> },
@@ -115,6 +130,12 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
     ...(center ? [{ title: "涉及按钮", key: "controls", width: 160, ellipsis: true,
       render: (_: unknown, row: FeedbackRecord) => row.controls?.length ? row.controls.join("、") : "—" }] : []),
     { title: "截图/附件", width: 85, render: (_, row) => row.has_screenshot ? "有" : "无" },
+    ...(showDelete ? [{ title: "操作", key: "actions", width: 80,
+      render: (_: unknown, row: FeedbackRecord) => <Popconfirm title={`删除问题 ${row.serial_no}？`}
+        description="删除后可由管理员在“系统管理 → 回收站”恢复。" okText="删除" cancelText="取消"
+        okButtonProps={{ danger: true }} onConfirm={() => removeFeedback(row)}>
+        <Button type="link" size="small" danger>删除</Button>
+      </Popconfirm> }] : []),
   ];
 
   if (viewingId) return <FeedbackDetail feedbackId={viewingId} onNavigate={onNavigate} onBack={() => { setViewingId(null); setReload((current) => current + 1); onChanged?.(); }} />;
@@ -142,7 +163,7 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
           ...statuses.map((value) => ({ value, label: `${value} ${statusCounts?.counts[value] ?? ""}` }))]} />}
       {error ? <Alert type="error" showIcon title={error} /> : <Table<FeedbackRecord>
         rowKey="id" size="small" tableLayout="fixed" columns={columns} dataSource={rows}
-        loading={loading} scroll={{ x: center ? 1285 : 1125 }} pagination={{
+        loading={loading} scroll={{ x: (center ? 1285 : 1125) + (showDelete ? 80 : 0) }} pagination={{
           current: page, pageSize, total, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100],
           showTotal: (count) => `共 ${count} 条`,
           onChange: (nextPage, nextSize) => { setPage(nextPage); setPageSize(nextSize); },

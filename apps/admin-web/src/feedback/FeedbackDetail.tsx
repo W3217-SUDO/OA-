@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Button, Descriptions, Input, message, Space, Spin, Tag, Timeline } from "antd";
+import { Alert, Button, Descriptions, Input, message, Popconfirm, Space, Spin, Tag, Timeline } from "antd";
 import dayjs from "dayjs";
 import { api } from "../api";
 import type { FeedbackDetails } from "./types";
@@ -69,6 +69,21 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
     }
   };
 
+  // 管理员删除问题：逻辑删除，回收站可恢复；删完回到列表。
+  const remove = async () => {
+    if (!feedback) return;
+    setBusy(true);
+    try {
+      await api.delete(`/feedback/${feedbackId}`);
+      message.success(`已删除问题 ${feedback.serial_no}`);
+      window.dispatchEvent(new Event("sunhold:notifications-updated"));
+      onBack();
+    } catch (failure: any) {
+      message.error(failure?.response?.data?.detail || "删除失败");
+      setBusy(false);
+    }
+  };
+
   const reply = () => {
     if (!comment.trim() && !files.length) { message.warning("请填写回复内容或添加截图、附件"); return; }
     void perform("messages", null, "回复已发送");
@@ -90,10 +105,16 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
       <Button onClick={onBack}>返回列表</Button>
       <Button onClick={() => void load()} loading={loading}>刷新</Button>
       <Tag color={statusColors[feedback.status] || "default"}>{feedback.status}</Tag>
+      {feedback.can_delete && <Popconfirm title={`删除问题 ${feedback.serial_no}？`}
+        description="删除后可由管理员在“系统管理 → 回收站”恢复。" okText="删除" cancelText="取消"
+        okButtonProps={{ danger: true }} onConfirm={() => remove()}>
+        <Button danger loading={busy}>删除问题</Button>
+      </Popconfirm>}
     </Space>
     {error && <Alert type="error" showIcon title={error} style={{ marginBottom: 16 }} />}
     <Descriptions bordered size="small" column={{ xs: 1, sm: 2, md: 2 }} items={[
-      { key: "serial", label: "反馈编号", children: feedback.serial_no },
+      { key: "serial", label: "反馈编号", children: feedback.legacy_serial_no
+        ? `${feedback.serial_no}（原编号 ${feedback.legacy_serial_no}）` : feedback.serial_no },
       { key: "owner", label: "提交人", children: feedback.owner_display_name || feedback.owner },
       { key: "date", label: "提交时间", children: dayjs(feedback.created_at).format("YYYY-MM-DD HH:mm:ss") },
       { key: "page", label: "问题页面", span: 2, children: <Space wrap size={4}>

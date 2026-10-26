@@ -10,6 +10,8 @@ export type FeedbackRecord = {
   page: string;
   route: string;
   controls: string[];
+  /** 改成日期编号前的旧编号（只有 2026-10-26 前提交的问题有）。 */
+  legacy_serial_no?: string;
   created_at: string;
   updated_at: string;
   has_screenshot: boolean;
@@ -40,6 +42,8 @@ export type FeedbackDetails = FeedbackRecord & {
   attachments: FeedbackAttachment[];
   events: FeedbackEvent[];
   can_assign: boolean;
+  /** 管理员可以删除问题（逻辑删除，可在回收站恢复）。 */
+  can_delete?: boolean;
   available_actions: string[];
 };
 
@@ -51,6 +55,7 @@ export type FeedbackStatusCounts = {
 export type FeedbackPage = {
   items: FeedbackRecord[];
   total: number;
+  can_delete?: boolean;
   page: number;
   page_size: number;
 };

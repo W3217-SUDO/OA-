@@ -109,8 +109,8 @@ class IncomingFinanceMigrationAssertions:
                 self.assertEqual(tuple(sync.execute(self.old_incoming.select()).one()), self.old_snapshot)
                 self.assertEqual(tuple(sync.execute(text("SELECT finance_scope, legacy_finance_record_id, payment_method, local_allocation_summary FROM incoming_payments")).one()), (None, None, "", None))
                 self.assertEqual(sync.scalar(text("SELECT count(*) FROM schema_migrations WHERE key=:key"), {"key": MIGRATION_REVISION}), 1)
-                # 20：含 2026-10-24 补装财务查询修订触发器、退费单编号索引与读模型案号索引三个修订。
-                self.assertEqual(sync.scalar(text("SELECT count(*) FROM schema_migrations")), 20)
+                # 21：含 2026-10-24 补装财务查询修订触发器、退费单编号索引与读模型案号索引三个修订，及 2026-10-26 问题反馈改日期编号。
+                self.assertEqual(sync.scalar(text("SELECT count(*) FROM schema_migrations")), 21)
                 sync.execute(self.old_incoming.insert().values(id=2, receipt_no="EXISTING-WRITER-COMPATIBILITY",
                     received_date=date(2026, 10, 16), amount=1, allocated_amount=0, status="待认领",
                     payer_name="独立旧写入", operator="admin"))
