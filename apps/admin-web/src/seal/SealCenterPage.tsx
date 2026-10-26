@@ -92,6 +92,10 @@ import { SealPreviewModal } from "./SealPreviewModal";
 import { ensureSealSuccess, postSeal, patchSeal, deleteSeal, postSealBlob } from "./sealRequests";
 import { useSealSourceAttachments } from "./useSealSourceAttachments";
 import { useMobileFilterToggle } from "../components/common/MobileFilterToggle";
+// 查询标签统一三字宽：两三个字一行；四个字拆成上下各两个字，避免“上面两个字、下面一个字”。
+const sealQueryLabel = (text: string) =>
+  text.length === 4 ? <span className="seal-query-label-stack">{text.slice(0, 2)}<br />{text.slice(2)}</span> : text;
+
 export default function SealCenterPage({
   initialView,
   onNavigate,
@@ -1951,26 +1955,26 @@ export default function SealCenterPage({
         {tab !== "assets" && mobileFilter.toggle}
         {tab !== "assets" && (
           <Form form={queryForm} className={`seal-query ${mobileFilter.className}`} onFinish={setQuery}>
-            <Form.Item label="申请编号" name="serial_no">
+            <Form.Item label={sealQueryLabel("申请编号")} name="serial_no">
               <Input />
             </Form.Item>
-            <Form.Item label="申请人" name="applicant">
+            <Form.Item label={sealQueryLabel("申请人")} name="applicant">
               <Input />
             </Form.Item>
-            <Form.Item label="申请日期" name="application_date">
+            <Form.Item label={sealQueryLabel("申请日期")} name="application_date">
               <DatePicker.RangePicker />
             </Form.Item>
-            <Form.Item label="案件编号" name="case_no">
+            <Form.Item label={sealQueryLabel("案件编号")} name="case_no">
               <Input />
             </Form.Item>
-            <Form.Item label="合同编号" name="contract_no">
+            <Form.Item label={sealQueryLabel("合同编号")} name="contract_no">
               <Input />
             </Form.Item>
-            <Form.Item label="客户名称" name="customer">
+            <Form.Item label={sealQueryLabel("客户名称")} name="customer">
               <Input />
             </Form.Item>
             <Form.Item
-              label="用印状态"
+              label={sealQueryLabel("用印状态")}
               name={statusLocked ? undefined : "record_status"}
             >
               <Select
@@ -1981,7 +1985,7 @@ export default function SealCenterPage({
                 options={sealStatusOptions}
               />
             </Form.Item>
-            <Form.Item label="用印类型" name="use_type">
+            <Form.Item label={sealQueryLabel("用印类型")} name="use_type">
               <Select
                 allowClear
                 placeholder="请选择"
@@ -1991,7 +1995,7 @@ export default function SealCenterPage({
                 }))}
               />
             </Form.Item>
-            <Form.Item label="文件名称" name="file_name">
+            <Form.Item label={sealQueryLabel("文件名称")} name="file_name">
               <Input />
             </Form.Item>
             <div className="seal-query-actions">

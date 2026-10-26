@@ -440,7 +440,6 @@ export default function CaseCenterPage({
   const [viewingCounselCase, setViewingCounselCase] = useState<CaseRow | null>(null);
   const [viewingFeeIncomingPayments, setViewingFeeIncomingPayments] = useState<CaseFeeIncomingPaymentLink[] | null>(null);
   const [legacyLsHistoryCaseIds, setLegacyLsHistoryCaseIds] = useState<Record<number, number>>({});
-  const [legacyLsHistoryOpen, setLegacyLsHistoryOpen] = useState(false);
   const [activeCounselDetailTab, setActiveCounselDetailTab] = useState("documents");
   const [mergingCase, setMergingCase] = useState<CaseRow | null>(null);
   const [movingFee, setMovingFee] = useState<CaseRow | null>(null);
@@ -3213,7 +3212,6 @@ export default function CaseCenterPage({
               {canCreateSelectedCaseFees&&<Button onClick={()=>{const feeTypeId=initialFeeTypeId(feeTypeCatalog,"律所");const feeType=feeTypeSelection(feeTypeCatalog,feeTypeId);batchFeeForm.resetFields();batchFeeForm.setFieldsValue({expense_scope:"律所",fee_type_id:feeTypeId,expense_subtype:feeType?.name,handler:profile.username,case_contracts:selectedBatchCases.map((row)=>({case_id:row.id,contract_record_id:undefined}))});setBatchFeeOpen(true);}}>批量新增费用</Button>}
             </>}
             {caseOperationsMenu}
-            {!counselListMode && initialView.includes("civil") && <Button onClick={() => setLegacyLsHistoryOpen(true)}>历史诉讼案件</Button>}
           </Space></div>}
         </Card>
       </div>}
@@ -4256,15 +4254,6 @@ export default function CaseCenterPage({
         <p><b>记录人：</b>{viewingCaseLog ? casePersonDisplayName(viewingCaseLog.operator, viewingCaseLog.operator_display_name) : "—"}</p>
         <p className="case-log-detail-content"><b>日志内容：</b>{viewingCaseLog?.content || "—"}</p>
       </Modal>
-      <Drawer
-        size={POPUP_WIDTH.xl}
-        open={legacyLsHistoryOpen}
-        title="历史诉讼案件（只读）"
-        onClose={() => setLegacyLsHistoryOpen(false)}
-        destroyOnHidden
-      >
-        <LegacyLsHistoryPanel />
-      </Drawer>
       <CaseAgentDrawer {...agentDrawerProps} counselDetailCapabilities={counselDetailCapabilities} />
       <Modal
         open={Boolean(attachmentPreview)}
