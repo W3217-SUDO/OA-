@@ -167,15 +167,9 @@ def _serialize_feedback(record: BusinessRecord, owner_name: str = "", assignee_n
 async def _read_screenshot(screenshot: UploadFile | None) -> tuple[bytes, str]:
     if not screenshot:
         return b"", ""
-    suffix = Path(screenshot.filename or "").suffix.lower()
     content = await screenshot.read(10 * 1024 * 1024 + 1)
-    signatures = {
-        ".png": content.startswith(b"\x89PNG\r\n\x1a\n"),
-        ".jpg": content.startswith(b"\xff\xd8\xff"),
-        ".jpeg": content.startswith(b"\xff\xd8\xff"),
-        ".webp": content.startswith(b"RIFF") and content[8:12] == b"WEBP",
-    }
-    if not signatures.get(suffix):
+    suffix = _image_suffix(content)
+    if not suffix:
         raise HTTPException(422, "截图仅支持 PNG、JPG 或 WebP 图片")
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(413, "截图不能超过 10MB")
@@ -195,11 +189,20 @@ IMAGE_SIGNATURES = {
 }
 
 
+def _image_suffix(content: bytes) -> str:
+    """按文件头认图片类型。截图工具常把 PNG/WebP 存成 .jpg，扩展名不可靠，按真实类型保存。"""
+    for suffix in (".png", ".jpg", ".webp"):
+        if IMAGE_SIGNATURES[suffix](content):
+            return suffix
+    return ""
+
+
 def _check_feedback_bytes(name: str, content: bytes) -> tuple[str, str]:
     """按文件名后缀和内容校验，返回 (后缀, 分类)：图片 ≤10MB 且文件头对得上，其他附件按白名单 ≤20MB。"""
     suffix = Path(name or "").suffix.lower()
     if suffix in FEEDBACK_IMAGE_SUFFIXES:
-        if not IMAGE_SIGNATURES[suffix](content):
+        suffix = _image_suffix(content)
+        if not suffix:
             raise HTTPException(422, "截图仅支持 PNG、JPG 或 WebP 图片")
         if len(content) > 10 * 1024 * 1024:
             raise HTTPException(413, "截图不能超过 10MB")

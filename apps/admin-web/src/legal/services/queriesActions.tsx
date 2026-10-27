@@ -335,7 +335,8 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
                 api.get("/cases/summary"),
                 api.get("/cases/reference-options"),
                 api.get("/records", { params: { module: "customer", page_size: 100 } }),
-                api.get("/records", { params: { module: "clue", page_size: 100 } }),
+                // 调查线索只是可选下拉；没有调查中心菜单的律师读不到时按空列表处理，不能连带整页数据加载失败。
+                api.get("/records", { params: { module: "clue", page_size: 100 } }).catch(() => ({ data: { items: [] } })),
                 api.get("/system/parameters/options", { params: { category: "fee_type" } }),
             ]);
             setContracts(contractRes.data.items);
