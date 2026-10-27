@@ -2035,7 +2035,8 @@ test("personal AI mobile tools close their existing popover before opening the s
   assert.equal(renderer.root.findByType("case-picker").props.onSelection, undefined, "原手机材料流程保持unscoped旧回调");
   assert.equal(opened, 0);
   await act(async () => renderer.root.findByType("popover").props.onOpenChange(true));
-  const entry = renderer.root.findAllByType("button").find((item) => item.props.className === "personal-ai-space-mobile-entry");
+  // 手机“＋”面板是图标宫格（2026-10-27），个人 AI 空间是其中一格。
+  const entry = renderer.root.findAllByType("button").find((item) => item.props["aria-label"] === "个人 AI 空间");
   assert.ok(entry);
   await act(async () => entry.props.onClick());
   assert.equal(renderer.root.findByType("popover").props.open, false);
@@ -2046,7 +2047,7 @@ test("personal AI mobile tools close their existing popover before opening the s
   assert.equal(renderer.root.findByType("select").props.allowClear, true);
   await act(async () => { renderer.root.findByType("select").props.onChange(undefined); });
   assert.deepEqual(chosenSkills, [""], "实际Select清空传空ID而不是undefined/default");
-  assert.equal(renderer.root.findAllByType("button").some((item) => item.props.className === "personal-ai-space-mobile-entry"), false, "桌面工具组不重复挂入口");
+  assert.equal(renderer.root.findAllByType("button").some((item) => item.props["aria-label"] === "个人 AI 空间"), false, "桌面工具组不重复挂入口");
   const selections = [];
   const desktop = { ...workspace, status: { commands: [{ id: "cases" }] }, chooseCaseMaterials: (item, files) => selections.push({ item, files }) };
   await act(async () => renderer.update(React.createElement(AssistantWorkspaceTools, { workspace: desktop, desktopWorkspace: true, onOpenPersonalAiSpace: () => { opened++; } })));

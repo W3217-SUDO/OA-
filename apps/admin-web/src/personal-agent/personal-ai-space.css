@@ -77,7 +77,6 @@
 
 @media (max-width: 991px) {
   .assistant .assistant-bar .assistant-bar-actions button.personal-ai-space-trigger.ant-btn { display: none; }
-  .assistant-tools-popover .personal-ai-space-mobile-entry.ant-btn { grid-column: 1 / -1; justify-content: flex-start; max-width: 100%; min-height: 44px; height: auto; white-space: normal; overflow-wrap: anywhere; }
   .personal-ai-space-drawer .ant-drawer-header { padding-inline: 12px; }
   .personal-ai-space-drawer .ant-drawer-body { padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); }
 }

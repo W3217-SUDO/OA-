@@ -1,6 +1,6 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from "react";
 import { Button, Popover, Segmented, Select, Tooltip, message } from "antd";
-import { CloseOutlined, ExperimentOutlined, FileOutlined, FolderOpenOutlined, PaperClipOutlined, PlusOutlined, SettingOutlined } from "@ant-design/icons";
+import { CloseOutlined, ExperimentOutlined, FileOutlined, FolderOpenOutlined, FolderOutlined, LoadingOutlined, PaperClipOutlined, PlusOutlined, SettingOutlined } from "@ant-design/icons";
 import { CaseMaterialsPicker } from "./CaseMaterialsPicker";
 import { MaterialPreview } from "./MaterialPreview";
 import { SkillManager } from "./SkillManager";
@@ -72,14 +72,50 @@ export const AssistantWorkspaceTools = forwardRef<AssistantWorkspaceToolsHandle,
         <Button type="text" htmlType="button" icon={<FileOutlined />} disabled={busy || !!workspace.loadError} aria-label="选择案件材料" onClick={() => openPicker("materials")} />
       </Tooltip>}
       <Tooltip title="上传文件">
-        <Button type="text" htmlType="button" icon={<PaperClipOutlined />} loading={workspace.uploading} disabled={busy} aria-label="上传文件" onClick={() => { setToolsOpen(false); fileRef.current?.click(); }} />
+        <Button type="text" htmlType="button" icon={<PaperClipOutlined />} loading={workspace.uploading} disabled={busy} aria-label="上传文件" onClick={() => { setToolsOpen(false); fileRef.current?.click(); }}>附件</Button>
       </Tooltip>
       {!desktopWorkspace && <Tooltip title="导入技能">
         <Button type="text" htmlType="button" className="assistant-skills-manage" icon={<ExperimentOutlined />} disabled={busy} aria-label="导入技能" onClick={() => void openSkills()}>技能</Button>
       </Tooltip>}
       {onOpenMemory && <Button type="text" htmlType="button" icon={<SettingOutlined />} aria-label="记忆管理" onClick={() => { setToolsOpen(false); onOpenMemory(); }}>记忆管理</Button>}
-      {mobile && <Button type="text" htmlType="button" className="personal-ai-space-mobile-entry" icon={<FolderOpenOutlined />} onClick={() => { setToolsOpen(false); onOpenPersonalAiSpace(); }}>个人 AI 空间</Button>}
     </div>;
+
+  // 手机“＋”面板（用户 2026-10-27，参考钉钉“＋”面板）：顶部一行技能下拉和快速/深度，下面每行 4 个图标宫格，图标在上、文字在下。
+  const tile = (key: string, icon: ReactNode, label: string, onClick: () => void, disabled = false, loading = false) =>
+    <button key={key} type="button" className="assistant-tool-tile" disabled={disabled || loading} aria-label={label} onClick={onClick}>
+      <span className="assistant-tool-tile-icon" aria-hidden="true">{loading ? <LoadingOutlined /> : icon}</span>
+      <span className="assistant-tool-tile-label">{label}</span>
+    </button>;
+  const mobileControls = <div className="assistant-tools-panel" role="dialog" aria-label="对话工具" onKeyDown={(event) => {
+    if (event.key === "Escape") { event.stopPropagation(); setToolsOpen(false); triggerRef.current?.focus(); }
+  }}>
+    <div className="assistant-tools-head">
+      <Select
+        className="assistant-skill-select"
+        aria-label="选择技能"
+        value={workspace.skillId}
+        disabled={busy}
+        allowClear
+        onChange={value => workspace.setSkillId(value ?? "")}
+        options={[NO_AGENT_SKILL_OPTION, ...workspace.skills.map((skill) => ({ value: skill.id, label: skillChoiceLabel(skill), disabled: !skill.available }))]}
+      />
+      {workspace.status?.supports_response_modes && <Segmented
+        aria-label="回答模式"
+        value={workspace.responseMode}
+        disabled={busy}
+        options={[{ label: "快速", value: "fast" }, { label: "深度", value: "deep" }]}
+        onChange={(value) => workspace.setResponseMode(value as ResponseMode)}
+      />}
+    </div>
+    <div className="assistant-tools-grid">
+      {canUseCases && tile("case", <FolderOpenOutlined />, workspace.selectedCase?.serial_no || "关联案件", () => openPicker("case"), busy || !!workspace.loadError)}
+      {canUseCases && workspace.selectedCase && tile("materials", <FileOutlined />, "案件材料", () => openPicker("materials"), busy || !!workspace.loadError)}
+      {tile("upload", <PaperClipOutlined />, "附件", () => { setToolsOpen(false); fileRef.current?.click(); }, busy, workspace.uploading)}
+      {tile("skills", <ExperimentOutlined />, "技能", () => void openSkills(), busy)}
+      {onOpenMemory && tile("memory", <SettingOutlined />, "记忆管理", () => { setToolsOpen(false); onOpenMemory(); })}
+      {tile("space", <FolderOutlined />, "个人 AI 空间", () => { setToolsOpen(false); onOpenPersonalAiSpace(); })}
+    </div>
+  </div>;
 
   return <>
     <div className="assistant-context-tools">
@@ -90,9 +126,9 @@ export const AssistantWorkspaceTools = forwardRef<AssistantWorkspaceToolsHandle,
         onOpenChange={setToolsOpen}
         getPopupContainer={() => document.body}
         classNames={{ root: "assistant-tools-popover" }}
-        content={controls}
+        content={mobileControls}
       >
-        <Tooltip title="对话工具">
+        <Tooltip title="对话工具" open={toolsOpen ? false : undefined}>
           <Button ref={triggerRef} type="text" htmlType="button" className="assistant-tools-trigger" icon={<PlusOutlined />} disabled={busy} aria-label="对话工具" aria-haspopup="dialog" aria-expanded={toolsOpen} onKeyDown={(event) => {
             if (event.key === "Escape") setToolsOpen(false);
           }} />

@@ -52,52 +52,93 @@
     max-width: calc(100vw - 24px);
   }
 
-  .assistant-tools-popover .assistant-context-controls {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-    max-height: min(360px, calc(100dvh - 112px));
+  /* “＋”面板：顶部一行技能下拉和快速/深度，下面每行 4 个等宽等高的图标宫格（图标在上、文字在下），不竖着一行一个堆。 */
+  .assistant-tools-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: min(420px, calc(100vh - 140px));
     overflow-y: auto;
     overscroll-behavior: contain;
   }
 
-  .assistant-tools-popover .assistant-skill-select,
-  .assistant-tools-popover .assistant-skills-manage,
-  .assistant-tools-popover .assistant-case-select,
-  .assistant-tools-popover .ant-segmented {
-    grid-column: 1 / -1;
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    min-height: 44px;
-  }
-
-  .assistant-tools-popover .assistant-skill-select {
-    height: 44px;
-  }
-
-  .assistant-tools-popover .assistant-case-select {
-    justify-content: flex-start;
-  }
-
-  .assistant-tools-popover .ant-segmented-group {
+  .assistant-tools-head {
     display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
-  .assistant-tools-popover .ant-segmented-item {
-    flex: 1;
-    min-width: 44px;
-    min-height: 44px;
+  .assistant-tools-head .assistant-skill-select {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 36px;
   }
 
-  .assistant-tools-popover .ant-segmented-item-label {
-    min-height: 44px;
-    line-height: 44px;
+  .assistant-tools-head .ant-segmented {
+    flex: none;
   }
 
-  .assistant-tools-popover .ant-btn {
-    min-width: 44px;
-    min-height: 44px;
+  .assistant-tools-head .ant-segmented-item-label {
+    min-height: 28px;
+    line-height: 28px;
+    padding: 0 12px;
+  }
+
+  .assistant-tools-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px 4px;
+  }
+
+  .assistant-tool-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 6px 2px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--oa-text);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .assistant-tool-tile:active:not(:disabled) {
+    background: var(--oa-fill);
+  }
+
+  .assistant-tool-tile:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  .assistant-tool-tile:focus-visible {
+    outline: 2px solid var(--oa-primary);
+    outline-offset: -2px;
+  }
+
+  .assistant-tool-tile-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--oa-fill);
+    color: var(--oa-primary);
+    font-size: 20px;
+  }
+
+  .assistant-tool-tile-label {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 12px;
+    line-height: 1.3;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .assistant-composer > .assistant-context-items {
