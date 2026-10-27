@@ -145,6 +145,8 @@ async def get_jar_fee(jar_fee_id: int, identity: dict = Depends(current_identity
 
 @router.put(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}")
 async def update_jar_fee(jar_fee_id: int, body: JarFeeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.finance_action_permissions import require_finance_action
+    await require_finance_action(identity, db, "finance.fee.update")
     from app.core.finance import (
         _editable_jar_fee, _jar_fee_audit, _jar_fee_contract, _jar_fee_data, _jar_fee_dict,
     )
@@ -161,6 +163,8 @@ async def update_jar_fee(jar_fee_id: int, body: JarFeeInput, identity: dict = De
 
 @router.delete(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_jar_fee(jar_fee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.finance_action_permissions import require_finance_action
+    await require_finance_action(identity, db, "finance.fee.delete")
     from app.core.finance import (
         _editable_jar_fee, _jar_fee_audit,
     )
@@ -272,6 +276,8 @@ async def download_jar_fee_file(jar_fee_id: int, attachment_id: int, identity: d
 
 @router.delete(f"{settings.api_prefix}/finance/jar-fees/{{jar_fee_id}}/files/{{attachment_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_jar_fee_file(jar_fee_id: int, attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.finance_action_permissions import require_finance_action
+    await require_finance_action(identity, db, "finance.fee.delete")
     from app.core.finance import (
         _editable_jar_fee, _jar_fee_audit,
     )

@@ -74,7 +74,8 @@ paymentQueryLegacyStatusMatrix,
 paymentQueryQuickPageResult,
 paymentWriteoffClearQuery,
 settlementLegacyErrorMessage,
-voucherCategory
+voucherCategory,
+financeActionAllowed
 } from "./constants";
 import { FinanceCenterView } from "./FinanceCenterView";
 import type { FinanceOriginalRoutesViewProps } from "./FinanceOriginalRoutesView";
@@ -1537,6 +1538,11 @@ function FinanceCenterContent({
   const internalReviewCanApprove = role === "admin" || actionKeys.has("*") || actionKeys.has(internalReviewApproveAction);
   const internalReviewCanReject = role === "admin" || actionKeys.has("*") || actionKeys.has(internalReviewRejectAction);
   const canManage = ["admin", "manager"].includes(role);
+  const canReceiptUpdate = financeActionAllowed(sessionUser, "finance.receipt.update");
+  const canReceiptDelete = financeActionAllowed(sessionUser, "finance.receipt.delete");
+  const canPaymentUpdate = financeActionAllowed(sessionUser, "finance.payment.update");
+  const canPaymentDelete = financeActionAllowed(sessionUser, "finance.payment.delete");
+  const canFeeUpdate = financeActionAllowed(sessionUser, "finance.fee.update");
   const canWithdrawFinanceFee = (row: Fee) =>
     (row.module === "finance" || isContractPayment(row)) &&
     (["草稿", "待审批", "已审批", "待付款"].includes(row.status) || canEditContractPayment(row)) &&
@@ -1545,7 +1551,7 @@ function FinanceCenterContent({
   const originalIncomingOperation = (_: unknown, r: IncomingPayment) => (
     unclassifiedIncoming ? <Button type="link" onClick={() => setIncomingDetailTarget(r)}>查看</Button> : <Space size={0}>
       {initialView === "finance-receipts-manage" ? (
-        canManage && ["manual", "hz_crm_20260930"].includes(r.source_kind || "") && r.amount !== null &&
+        canReceiptUpdate && ["manual", "hz_crm_20260930"].includes(r.source_kind || "") && r.amount !== null &&
         <Button type="link" onClick={() => setEditingIncoming(r)}>编辑</Button>
       ) : <Button type="link" onClick={() => setIncomingDetailTarget(r)}>查看</Button>}
       {initialView !== "finance-receipts-manage" && r.status === "待认领" && (
@@ -1578,7 +1584,7 @@ function FinanceCenterContent({
           分配记录
         </Button>
       )}
-      {role === "admin" && (
+      {canReceiptDelete && (
         <Button type="link" danger onClick={() => deleteIncoming(r)}>
           删除
         </Button>
@@ -1973,7 +1979,7 @@ function FinanceCenterContent({
       row.module === "finance" &&
       row.data.fee_type === "内部费用" &&
       row.status === "草稿" &&
-      (canManage || row.owner === currentUser.username);
+      (canFeeUpdate || row.owner === currentUser.username);
     const mayCancel = mayChange &&
       ["草稿", "待到账", "待分配", "待结算", "待归档", "待审批"].includes(row.status);
     const mayRollback = mayChange &&
@@ -2049,7 +2055,7 @@ function FinanceCenterContent({
         {initialView === "finance-payment-mine" &&
           row.module === "finance" &&
           row.status === "草稿" &&
-          (canManage || row.owner === currentUser.username) && (
+          (canFeeUpdate || row.owner === currentUser.username) && (
             <Button type="link" onClick={() => openFeeEdit(row)}>
               编辑
             </Button>
@@ -2367,12 +2373,12 @@ function FinanceCenterContent({
         <Button type="link" onClick={() => void openPaymentPackageDetail(row)}>
           查看
         </Button>
-        {row.status === "待核销" && (
+        {row.status === "待核销" && canPaymentUpdate && (
           <Button type="link" onClick={() => openPaymentPackageEditor(row)}>
             编辑
           </Button>
         )}
-        {role === "admin" && (
+        {canPaymentDelete && (
           <Button type="link" danger onClick={() => deletePaymentPackage(row)}>
             删除
           </Button>

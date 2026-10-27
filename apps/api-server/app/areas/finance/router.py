@@ -46,6 +46,8 @@ async def update_finance_fee(fee_id: int, body: FinanceFeeUpdateInput, identity:
         _case_detail_action_capabilities, _ensure_record_visible, _record_dict_for_identity, _validate_finance_fee_scope_subtype,
     )
     item = await _editable_finance_fee(fee_id, identity, db)
+    from app.core.finance_action_permissions import require_fee_action
+    await require_fee_action(item, identity, db, "finance.fee.update")
     amount = _round_fee_amount(body.amount)
     data = dict(item.data or {})
     case_record = None
@@ -105,6 +107,8 @@ async def delete_finance_fee(fee_id: int, identity: dict = Depends(current_ident
     )
     item = await _editable_finance_fee(fee_id, identity, db, action="delete")
     await _require_linked_case_fee_action(item, "case.fee.delete", identity, db)
+    from app.core.finance_action_permissions import require_fee_action
+    await require_fee_action(item, identity, db, "finance.fee.delete")
     db.add(WorkflowEvent(record_id=item.id, action="删除费用", from_status=item.status, to_status="已删除", operator=identity["username"], comment=item.serial_no))
     item.status = "已删除"
     from app.core.fee_refund_query import void_refund_for_agency_fee
@@ -145,6 +149,8 @@ async def delete_internal_fee(fee_id: int, identity: dict = Depends(current_iden
     )
     await _internal_fee_mutation_target(fee_id, identity, db)
     item = await _editable_finance_fee(fee_id, identity, db, action="delete")
+    from app.core.finance_action_permissions import require_fee_action
+    await require_fee_action(item, identity, db, "finance.fee.delete")
     previous = item.status
     # Keep the deletion event queryable. The generic physical-delete route
     # cascades WorkflowEvent rows, which would erase this finance audit trail.

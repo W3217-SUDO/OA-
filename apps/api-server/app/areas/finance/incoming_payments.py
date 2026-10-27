@@ -939,6 +939,8 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
 
 @router.delete(f"{settings.api_prefix}/finance/incoming-payments/{{payment_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_incoming_payment(payment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.finance_action_permissions import require_finance_action
+    await require_finance_action(identity, db, "finance.receipt.delete")
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="仅管理者、财务端或财务审核端可删除银行到账")
     item = await db.scalar(incoming_source_for(db, IncomingPayment.id == payment_id))
@@ -956,6 +958,8 @@ async def delete_incoming_payment(payment_id: int, identity: dict = Depends(curr
 
 @router.put(f"{settings.api_prefix}/finance/incoming-payments/{{payment_id}}")
 async def update_incoming_payment(payment_id: int, body: IncomingPaymentUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.finance_action_permissions import require_finance_action
+    await require_finance_action(identity, db, "finance.receipt.update")
     from app.core.finance import (
         _incoming_payment_dict, _round_fee_amount,
     )

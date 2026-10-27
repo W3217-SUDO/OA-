@@ -259,6 +259,7 @@ async def _login_response(user: User, db: AsyncSession, *, require_password_chan
         "actual_role": role_ids[0],
         "actual_role_ids": role_ids,
         "action_keys": ["*"],
+        "configured_action_keys": ["*"] if "admin" in role_ids else list(permission.get("action_keys") or []),
         "field_keys": list(FIELD_KEYS),
         "data_scope": "全所数据",
     }

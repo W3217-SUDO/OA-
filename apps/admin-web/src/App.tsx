@@ -925,6 +925,7 @@ type SessionUser = {
   actual_role_ids?: string[];
   menu_keys?: string[];
   action_keys?: string[];
+  configured_action_keys?: string[];
   can_manage_agent_settings?: boolean;
   data_scope?: string;
   must_change_password?: boolean;
@@ -1501,6 +1502,7 @@ export default function App() {
           actual_role: data.actual_role || data.role,
           actual_role_ids: data.actual_role_ids || data.role_ids,
           menu_keys: data.menu_keys,
+          configured_action_keys: Array.isArray(data.configured_action_keys) ? data.configured_action_keys : [],
           can_manage_agent_settings: data.can_manage_agent_settings === true,
           data_scope: data.data_scope,
           must_change_password: data.must_change_password,

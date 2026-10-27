@@ -1,5 +1,6 @@
 """系统管理路由编排。"""
 from time import monotonic
+from app.core.finance_action_permissions import configured_action_keys
 from app.core.constants import (
     DEFAULT_HIDDEN_MENU_KEYS, DEFAULT_ROLE_PERMISSIONS,
     DEFAULT_SYSTEM_MENUS, FIELD_KEYS, MENU_KEYS, ROLE_DATA_SCOPES, SYSTEM_ACTION_BY_CODE,
@@ -158,6 +159,8 @@ async def current_user_profile(identity: dict = Depends(current_identity), db: A
         "actual_role": role_ids[0],
         "actual_role_ids": role_ids,
         "action_keys": ["*"],
+        # 财务编辑/删除等需单独授权的动作按角色配置显示按钮，不受上面页面级全开的影响。
+        "configured_action_keys": await configured_action_keys(user.username, db),
         "field_keys": list(FIELD_KEYS),
         "data_scope": "全所数据",
     }
@@ -208,6 +211,8 @@ async def update_current_user_profile(body: CurrentUserUpdate, identity: dict = 
         "actual_role": role_ids[0],
         "actual_role_ids": role_ids,
         "action_keys": ["*"],
+        # 财务编辑/删除等需单独授权的动作按角色配置显示按钮，不受上面页面级全开的影响。
+        "configured_action_keys": await configured_action_keys(user.username, db),
         "field_keys": list(FIELD_KEYS),
         "data_scope": "全所数据",
     }

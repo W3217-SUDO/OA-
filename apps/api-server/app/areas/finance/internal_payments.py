@@ -284,6 +284,8 @@ async def get_internal_payment_package(package_id: int, identity: dict = Depends
 
 @router.put(f"{settings.api_prefix}/finance/payment-packages/{{package_id}}")
 async def update_internal_payment_package(package_id: int, body: FinancePaymentPackageUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.finance_action_permissions import require_finance_action
+    await require_finance_action(identity, db, "finance.payment.update")
     from app.core.finance import (
         _prepare_internal_payment_package, _round_fee_amount,
     )
@@ -433,6 +435,8 @@ async def writeoff_internal_payment_package(package_id: int, body: FinancePaymen
 
 @router.delete(f"{settings.api_prefix}/finance/payment-packages/{{package_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def cancel_internal_payment_package(package_id: int, reverse_paid: bool = Query(False), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.finance_action_permissions import require_finance_action
+    await require_finance_action(identity, db, "finance.payment.delete")
     from app.core.imported_internal_finance import adjust_imported_internal_paid
     from app.core.permissions import (
         _ensure_record_module,

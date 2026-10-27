@@ -46,6 +46,7 @@ type JarFee = {
     can_delete?: boolean;
     can_manage_status?: boolean;
     can_manage_files?: boolean;
+    can_delete_files?: boolean;
     allowed_statuses?: string[];
   };
 };
@@ -290,7 +291,7 @@ export default function JarFeeManager({ onNavigate }: { onNavigate?: (route: str
       </Form>
     </Drawer>
     <Drawer open={Boolean(fileTarget)} size={POPUP_WIDTH.md} title={`交案费文件${fileTarget?.serial_no ? `：${fileTarget.serial_no}` : ""}`} onClose={() => { fileTargetIdRef.current = null; setFileTarget(null); setFiles([]); }} destroyOnHidden extra={fileTarget && canManageFiles(fileTarget) ? <Upload showUploadList={false} beforeUpload={uploadFile} disabled={uploading}><Button icon={<UploadOutlined />} loading={uploading}>上传文件</Button></Upload> : undefined}>
-      <Table rowKey="id" loading={filesLoading} dataSource={files} pagination={false} locale={{ emptyText: "尚未上传交案费附件" }} columns={[{ title: "文件名", dataIndex: "original_name" }, { title: "分类", dataIndex: "category", width: 140 }, { title: "上传人", dataIndex: "uploader_display_name", width: 110 }, { title: "操作", width: 150, render: (_, file: JarAttachment) => <Space><Button type="link" size="small" icon={<DownloadOutlined />} onClick={() => void downloadFile(file)}>下载</Button>{fileTarget && canManageFiles(fileTarget) && <Button type="link" danger size="small" onClick={() => void deleteFile(file)}>删除</Button>}</Space> }]} />
+      <Table rowKey="id" loading={filesLoading} dataSource={files} pagination={false} locale={{ emptyText: "尚未上传交案费附件" }} columns={[{ title: "文件名", dataIndex: "original_name" }, { title: "分类", dataIndex: "category", width: 140 }, { title: "上传人", dataIndex: "uploader_display_name", width: 110 }, { title: "操作", width: 150, render: (_, file: JarAttachment) => <Space><Button type="link" size="small" icon={<DownloadOutlined />} onClick={() => void downloadFile(file)}>下载</Button>{fileTarget?.capabilities?.can_delete_files === true && <Button type="link" danger size="small" onClick={() => void deleteFile(file)}>删除</Button>}</Space> }]} />
     </Drawer>
     <Modal open={Boolean(statusTarget)} title="变更JAR交案费状态" onCancel={() => setStatusTarget(null)} onOk={() => void changeStatus()} okText="确认变更">
       <Form layout="vertical"><Form.Item label="状态"><Select value={statusValue} options={(statusTarget?.capabilities?.allowed_statuses || []).map((value) => ({ value, label: value }))} onChange={setStatusValue} /></Form.Item><Form.Item label="操作说明"><Input.TextArea value={statusComment} rows={3} maxLength={500} onChange={(event) => setStatusComment(event.target.value)} /></Form.Item></Form>

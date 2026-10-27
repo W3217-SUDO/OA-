@@ -886,6 +886,17 @@ INTERNAL_REVIEW_APPROVE_ACTION = "finance.internal.review.approve"
 INTERNAL_REVIEW_REJECT_ACTION = "finance.internal.review.reject"
 
 
+# 财务中心回款/付款/费用的编辑、删除：不随“能看到页面就能操作”放开，只认角色配置里勾选的动作（管理者默认全有）。
+FINANCE_EDIT_DELETE_ACTIONS = (
+    ("finance.receipt.update", "finance-receipts-manage", "编辑回款"),
+    ("finance.receipt.delete", "finance-receipts-manage", "删除回款"),
+    ("finance.payment.update", "finance-payment-package-manage", "编辑付款包"),
+    ("finance.payment.delete", "finance-payment-package-manage", "删除付款包"),
+    ("finance.fee.update", "finance-fee-query", "编辑费用"),
+    ("finance.fee.delete", "finance-fee-query", "删除费用"),
+)
+
+
 SYSTEM_ACTION_OPERATION_LABELS = {
     "query": "查询", "create": "新增", "update": "编辑", "delete": "删除",
     "clear": "清理", "reset": "重置", "permissions": "维护权限", "restore": "恢复",
@@ -955,6 +966,7 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
             ("case.assisted_fee.manage", "维护资助费用"),
         )),
         {"code": "case.fee.receipt.upload", "menu_key": "case-files-receipt", "label": "上传案件票据文件"},
+        *({"code": code, "menu_key": menu_key, "label": label} for code, menu_key, label in FINANCE_EDIT_DELETE_ACTIONS),
     ])
     return definitions
 

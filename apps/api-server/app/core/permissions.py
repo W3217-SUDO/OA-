@@ -1340,8 +1340,11 @@ async def _jar_fee_capabilities(item: BusinessRecord, identity: dict, db: AsyncS
     except HTTPException:
         can_manage = False
     editable = can_manage and item.status == "待确认"
+    from app.core.finance_action_permissions import finance_action_granted
+    can_update = editable and await finance_action_granted(identity, db, "finance.fee.update")
+    can_delete = editable and await finance_action_granted(identity, db, "finance.fee.delete")
     return {
-        "can_update": editable, "can_delete": editable, "can_manage_files": editable,
+        "can_update": can_update, "can_delete": can_delete, "can_manage_files": editable, "can_delete_files": can_delete,
         "can_manage_status": can_manage and bool(JAR_FEE_TRANSITIONS.get(item.status, set())),
         "allowed_statuses": sorted(JAR_FEE_TRANSITIONS.get(item.status, set())) if can_manage else [],
     }

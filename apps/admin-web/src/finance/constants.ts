@@ -49,6 +49,12 @@ export const attachmentRecordModule = (row: FinanceFlow, category: string) =>
       ? "refund"
       : "finance");
 
+// 财务回款/付款/费用的编辑、删除只认角色配置里勾选的动作（configured_action_keys），管理者为 "*"。
+export const financeActionAllowed = (user: { configured_action_keys?: string[] }, code: string) => {
+  const keys = user.configured_action_keys || [];
+  return keys.includes("*") || keys.includes(code);
+};
+
 export const initialSessionUser = () => {
   try {
     return JSON.parse(localStorage.getItem("user") || "{}");
