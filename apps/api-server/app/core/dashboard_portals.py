@@ -61,6 +61,16 @@ DEFAULT_ROLE_PORTALS = {
 }
 DEFAULT_CONFIG = {"portals": DEFAULT_PORTALS, "role_portals": DEFAULT_ROLE_PORTALS}
 
+# 管理端（用户 2026-10-27）：排在三个端之后的第四个页签，只有管理员（admin 角色，即管理者账号）能看到。
+# 固定内容、不进分端配置，和 2026-10-26 去掉的旧“管理端（全部待办）”勾选项无关（旧勾选仍按三个端都勾处理）。
+ADMIN_PORTAL_KEY = "admin"
+ADMIN_PORTAL_ITEMS = (
+    ("feedback-pending", "问题反馈", "feedback-center", "extra", "问题处理中心里待处理的问题"),
+    ("feedback-verify", "问题处理中心", "feedback-center", "extra", "问题处理中心里待验证的问题"),
+)
+ADMIN_PORTAL = {"key": ADMIN_PORTAL_KEY, "name": "管理端", "items": [key for key, *_ in ADMIN_PORTAL_ITEMS]}
+FEEDBACK_ITEM_STATUS = {"feedback-pending": "待处理", "feedback-verify": "待验证"}
+
 
 def catalog() -> list[dict]:
     return [{"key": key, "label": label, "route": route, "source": source, "description": description}
@@ -130,8 +140,29 @@ async def portal_keys_for_identity(identity, db, config) -> list[str]:
     return [key for key in portal_keys if key in keys]
 
 
+def _is_admin_account(identity) -> bool:
+    """系统角色是管理员（admin）的账号；只挂人事角色“系统管理员”的不算。"""
+    from app.core.permissions import _identity_role_ids
+
+    return "admin" in _identity_role_ids(identity)
+
+
+async def _feedback_count(status, db) -> int:
+    """与问题处理中心状态页签的数字一致：全部未删除的问题，旧状态按新流程归类。"""
+    from app.areas.system.feedback import _stored_statuses
+    from app.core.dependencies import BusinessRecord, func, select
+
+    return int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
+        BusinessRecord.module == "bug_feedback", BusinessRecord.deleted_at.is_(None),
+        BusinessRecord.status.in_(_stored_statuses(status)),
+    )) or 0)
+
+
 async def _extra_count(key, identity, db) -> int:
     from app.core import dashboard_list_counts as list_counts
+
+    if key in FEEDBACK_ITEM_STATUS:
+        return await _feedback_count(FEEDBACK_ITEM_STATUS[key], db) if _is_admin_account(identity) else 0
 
     if key == "seal-stamping":
         from app.areas.legal.seals import list_seal_applications
@@ -163,9 +194,14 @@ async def dashboard_portals(identity, db):
     config = await load_config(db)
     keys = await portal_keys_for_identity(identity, db, config)
     portals = [portal for portal in config["portals"] if portal["key"] in keys]
-    sources = {key: source for key, _label, _route, source, _description in PORTAL_ITEMS}
+    items = catalog()
+    if _is_admin_account(identity):
+        portals.append(ADMIN_PORTAL)
+        items += [{"key": key, "label": label, "route": route, "source": source, "description": description}
+                  for key, label, route, source, description in ADMIN_PORTAL_ITEMS]
+    sources = {item["key"]: item["source"] for item in items}
     needed = {item for portal in portals for item in portal["items"] if sources[item] == "extra"}
     counts = await gather_counts(db, {
         key: (lambda session, key=key: _extra_count(key, identity, session)) for key in sorted(needed)
     }) if needed else {}
-    return {"portals": portals, "portal_items": catalog(), "portal_counts": counts}
+    return {"portals": portals, "portal_items": items, "portal_counts": counts}

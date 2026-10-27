@@ -7,7 +7,7 @@ import dayjs from "dayjs";
 import { api } from "../api";
 import FeedbackDetail from "./FeedbackDetail";
 import FeedbackForm from "./FeedbackForm";
-import { consumeFeedbackTarget, type FeedbackPageOption } from "./navigation";
+import { consumeFeedbackStatusFilter, consumeFeedbackTarget, type FeedbackPageOption } from "./navigation";
 import type { FeedbackPage, FeedbackRecord, FeedbackStatusCounts } from "./types";
 
 type Props = {
@@ -72,6 +72,21 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
     window.addEventListener("sunhold:feedback-target", openTarget);
     return () => window.removeEventListener("sunhold:feedback-target", openTarget);
   }, []);
+
+  // 首页管理端进来时按状态筛选（问题处理中心已打开时也会切过去）。
+  useEffect(() => {
+    if (!center) return;
+    const applyStatus = () => {
+      const next = consumeFeedbackStatusFilter();
+      if (!next || !statuses.includes(next)) return;
+      setViewingId(null);
+      setStatus(next);
+      setPage(1);
+    };
+    applyStatus();
+    window.addEventListener("sunhold:feedback-status-filter", applyStatus);
+    return () => window.removeEventListener("sunhold:feedback-status-filter", applyStatus);
+  }, [center]);
 
   useEffect(() => { if (navKey) setViewingId(null); }, [navKey]);
 

@@ -4,6 +4,7 @@ import {
   AuditOutlined,
   BankOutlined,
   CalculatorOutlined,
+  CheckCircleOutlined,
   CheckSquareOutlined,
   ContainerOutlined,
   DollarOutlined,
@@ -14,6 +15,7 @@ import {
   FileSearchOutlined,
   FileTextOutlined,
   FolderOpenOutlined,
+  MessageOutlined,
   PayCircleOutlined,
   RiseOutlined,
   RollbackOutlined,
@@ -23,6 +25,7 @@ import {
   WalletOutlined,
 } from "@ant-design/icons";
 import type { DashboardData, DashboardPortal } from "./dashboardData";
+import { rememberFeedbackStatusFilter } from "./feedback/navigation";
 
 // 工作台“我的待办”的入口和图标，顺序和入口沿用原有待办。
 export const DASHBOARD_TODOS: Record<string, { route: string; icon: ReactNode }> = {
@@ -54,8 +57,15 @@ export function dashboardTodoItems(todos: DashboardData["todos"] | undefined): D
   });
 }
 
+// 管理端两项进入问题处理中心时按状态筛选。
+const FEEDBACK_TODO_STATUS: Record<string, string> = { 问题反馈: "待处理", 问题处理中心: "待验证" };
+
 // “待处理任务”进入任务中心时直接打开“待处理”标签页。
 export function prepareTodoNavigation(label: string) {
+  if (FEEDBACK_TODO_STATUS[label]) {
+    rememberFeedbackStatusFilter(FEEDBACK_TODO_STATUS[label]);
+    return;
+  }
   if (label !== "待处理任务") return;
   try {
     sessionStorage.setItem("sunhold:dashboard-task-tab", "pending");
@@ -81,6 +91,8 @@ const PORTAL_ICONS: Record<string, ReactNode> = {
   urgent: <AlertOutlined />,
   refund: <RollbackOutlined />,
   "fee-unreceived": <WalletOutlined />,
+  "feedback-pending": <MessageOutlined />,
+  "feedback-verify": <CheckCircleOutlined />,
 };
 
 export type DashboardPortalTodoItem = DashboardTodoItem & { key: string; description: string; metric?: DashboardData["metrics"][number]; amount?: boolean };

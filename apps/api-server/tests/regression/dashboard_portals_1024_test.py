@@ -3,6 +3,7 @@
 覆盖：默认配置合法且与用户给定的分端一致；非法配置被拒绝；系统参数接口读写并留审计；
 管理员固定看三个端（首页页签切换，一次一个端），每端项数不限（首页每页 8 项、多了分页）；律师角色只看律师端；
 分端单独统计的数字与点进去的列表同一口径。
+2026-10-27：管理员另有第四个“管理端”（问题反馈=待处理、问题处理中心=待验证），其他角色看不到。
 """
 
 import unittest
@@ -14,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.config import settings
-from app.core.dashboard_portals import DEFAULT_CONFIG, ITEM_KEYS, MANAGE_PORTAL, load_config, validate_config
+from app.core.dashboard_portals import ADMIN_PORTAL, DEFAULT_CONFIG, ITEM_KEYS, MANAGE_PORTAL, load_config, validate_config
 from app.data_models.identity import JobRole
 from app.database import Base, get_db
 from app.main import app, dashboard
@@ -47,6 +48,14 @@ class DashboardPortalsTest(unittest.IsolatedAsyncioTestCase):
                                owner="other", department="测试部", data={}),
                 BusinessRecord(module="notary", serial_no=f"{PREFIX}N2", title="公证2", customer="", status="审核通过",
                                owner="other", department="测试部", data={}),
+                BusinessRecord(module="bug_feedback", serial_no=f"{PREFIX}F1", title="反馈1", customer="", status="待处理",
+                               owner="lawyer1", department="测试部", data={}),
+                BusinessRecord(module="bug_feedback", serial_no=f"{PREFIX}F2", title="反馈2", customer="", status="待补充",
+                               owner="lawyer1", department="测试部", data={}),
+                BusinessRecord(module="bug_feedback", serial_no=f"{PREFIX}F3", title="反馈3", customer="", status="待验证",
+                               owner="lawyer1", department="测试部", data={}),
+                BusinessRecord(module="bug_feedback", serial_no=f"{PREFIX}F4", title="反馈4", customer="", status="已解决",
+                               owner="lawyer1", department="测试部", data={}),
             ])
             await db.commit()
         app.dependency_overrides[get_db] = self.override_db
@@ -106,11 +115,13 @@ class DashboardPortalsTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("系统配置:dashboard_portals", [audit.title for audit in audits])
 
     async def test_admin_sees_three_portals_and_list_counts(self):
-        # 用户 2026-10-26：管理员三个端分开、一次看一个端，不再把全部待办混在一个“管理端”里。
+        # 用户 2026-10-26：管理员三个端分开、一次看一个端，不再把全部待办混在一个“管理端”里；
+        # 2026-10-27 起另有第四个“管理端”，只放问题反馈和问题处理中心。
         async with self.sessions() as db:
             result = await dashboard(ADMIN, db, section="portals")
-        self.assertEqual([portal["name"] for portal in result["portals"]], ["律师端", "财务行政端", "调查端"])
-        self.assertEqual([portal["items"] for portal in result["portals"]], [portal["items"] for portal in DEFAULT_CONFIG["portals"]])
+        self.assertEqual([portal["name"] for portal in result["portals"]], ["律师端", "财务行政端", "调查端", "管理端"])
+        self.assertEqual([portal["items"] for portal in result["portals"]],
+                         [*(portal["items"] for portal in DEFAULT_CONFIG["portals"]), ["feedback-pending", "feedback-verify"]])
         extra = {item for portal in result["portals"] for item in portal["items"]
                  if next(entry for entry in result["portal_items"] if entry["key"] == item)["source"] == "extra"}
         self.assertEqual(set(result["portal_counts"]), extra)
@@ -118,6 +129,12 @@ class DashboardPortalsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(listed.status_code, 200, listed.text)
         self.assertEqual(result["portal_counts"]["notary-review"], listed.json()["total"])
         self.assertEqual(result["portal_counts"]["notary-review"], 1)
+        # 管理端两项与问题处理中心状态页签同一口径（待补充按待处理算）。
+        self.assertEqual(result["portal_counts"]["feedback-pending"], 2)
+        self.assertEqual(result["portal_counts"]["feedback-verify"], 1)
+        routes = {entry["key"]: entry["route"] for entry in result["portal_items"]}
+        self.assertEqual(routes["feedback-pending"], "feedback-center")
+        self.assertEqual(routes["feedback-verify"], "feedback-center")
 
     async def test_admin_sees_three_portals_whatever_old_tick(self):
         # 生产 2026-10-26 的配置里“系统管理员”只勾了律师端；管理员仍固定看三个端（用户 2026-10-26 确认）。
@@ -127,7 +144,7 @@ class DashboardPortalsTest(unittest.IsolatedAsyncioTestCase):
             await db.commit()
         async with self.sessions() as db:
             result = await dashboard(ADMIN, db, section="portals")
-        self.assertEqual([portal["key"] for portal in result["portals"]], ["lawyer", "finance_admin", "investigation"])
+        self.assertEqual([portal["key"] for portal in result["portals"]], ["lawyer", "finance_admin", "investigation", ADMIN_PORTAL["key"]])
 
     async def test_legacy_config_is_read_without_falling_back(self):
         # 某端放了 12 项、某角色勾了旧的“管理端”：12 项原样保留（首页每页 8 项分页显示），“管理端”按三个端都勾处理。
@@ -153,6 +170,15 @@ class DashboardPortalsTest(unittest.IsolatedAsyncioTestCase):
             result = await dashboard(LAWYER, db, section="portals")
         self.assertEqual([portal["name"] for portal in result["portals"]], ["律师端"])
         self.assertEqual(set(result["portal_counts"]), {"receipts-pending", "receivable", "archive-closing"})
+        self.assertNotIn("feedback-pending", {entry["key"] for entry in result["portal_items"]})
+
+    async def test_admin_portal_is_not_configurable(self):
+        # 管理端固定内容，不进分端配置：配置里不能加它，待办目录里也选不到这两项。
+        self.assertNotIn("feedback-pending", ITEM_KEYS)
+        with self.assertRaises(HTTPException):
+            validate_config({**DEFAULT_CONFIG, "portals": [*DEFAULT_CONFIG["portals"], ADMIN_PORTAL]})
+        with self.assertRaises(HTTPException):
+            validate_config({**DEFAULT_CONFIG, "role_portals": {"承办律师": [ADMIN_PORTAL["key"]]}})
 
 
 if __name__ == "__main__":

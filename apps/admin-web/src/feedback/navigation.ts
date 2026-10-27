@@ -77,6 +77,24 @@ export function consumeFeedbackTarget(): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+// 首页管理端点“问题反馈 / 问题处理中心”进入问题处理中心时，带上要筛选的状态（待处理 / 待验证）。
+const FEEDBACK_STATUS_FILTER_KEY = "sunhold:feedback-status-filter";
+
+export function rememberFeedbackStatusFilter(status: string) {
+  try { sessionStorage.setItem(FEEDBACK_STATUS_FILTER_KEY, status); } catch { /* 存储不可用时停在全部状态 */ }
+  window.dispatchEvent(new Event("sunhold:feedback-status-filter"));
+}
+
+export function consumeFeedbackStatusFilter(): string | null {
+  try {
+    const value = sessionStorage.getItem(FEEDBACK_STATUS_FILTER_KEY);
+    sessionStorage.removeItem(FEEDBACK_STATUS_FILTER_KEY);
+    return value || null;
+  } catch {
+    return null;
+  }
+}
+
 export type FeedbackPageOption = { key: string; label: string };
 
 const DETAIL_PAGE_PREFIXES: [string, string][] = [
