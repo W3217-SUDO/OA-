@@ -951,6 +951,8 @@ body {
     left: 0;
     z-index: 1150;
     height: auto;
+    /* dashboard.css 给桌面侧栏设了 min-height: calc(100vh - 50px)，手机抽屉上会把菜单撑到底部导航下面，这里取消。 */
+    min-height: 0;
     max-width: min(86vw, 320px) !important;
     box-shadow: 10px 0 28px rgba(0, 0, 0, 0.26);
   }
