@@ -51,7 +51,7 @@ function nodes(element) {
   return [element, ...nodes(element.props.children)];
 }
 
-function dashboardDataHarness() {
+function dashboardDataHarness(localStorage) {
   const slots = [];
   const requests = [];
   const deferredUpdates = [];
@@ -64,7 +64,8 @@ function dashboardDataHarness() {
     react: {
       useState: (initial) => {
         const index = cursor++;
-        if (!(index in slots)) slots[index] = initial;
+        // 与 React 一致：函数形式的初始值只在首次渲染时调用。
+        if (!(index in slots)) slots[index] = typeof initial === "function" ? initial() : initial;
         return [slots[index], (update) => {
           const apply = () => { slots[index] = typeof update === "function" ? update(slots[index]) : update; };
           if (index === 0 && deferData) deferredUpdates.push(apply);
@@ -84,6 +85,7 @@ function dashboardDataHarness() {
     AbortController,
     document: { hidden: false, addEventListener: () => {}, removeEventListener: () => {} },
     window: { setInterval: () => 1, clearInterval: () => {} },
+    ...(localStorage ? { localStorage } : {}),
   });
   const render = () => { cursor = 0; return useDashboardData(); };
   render();
@@ -161,6 +163,34 @@ test("dashboard split errors survive the other group's success and retry merges 
     } finally {
       harness.cleanup();
     }
+  }
+});
+
+function memoryStorage(entries = {}) {
+  const values = new Map(Object.entries(entries));
+  return { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)), values };
+}
+
+test("dashboard shows the account's last snapshot first and replaces it with fresh data", async () => {
+  const cached = { metrics: financeMetricKeys.map((key) => ({ key, label: key, value: "上次", tone: "green", route: `dashboard-queue-${key}` })), todos: [["上次待办"]] };
+  const storage = memoryStorage({
+    user: JSON.stringify({ username: "fwl" }),
+    "sunhold:dashboard-snapshot:fwl": JSON.stringify({ at: Date.now(), sections: ["metrics", "todos"], data: cached }),
+  });
+  const harness = dashboardDataHarness(storage);
+  try {
+    assert.equal(harness.view.data.todos[0][0], "上次待办");
+    assert.equal(harness.view.loading.metrics, false);
+    assert.equal(harness.view.loading.todos, false);
+    assert.equal(harness.view.loading.cases, true);
+    harness.request("todos").resolve({ data: { todos: [["最新待办"]] } });
+    await settleDashboard();
+    assert.equal(harness.view.data.todos[0][0], "最新待办");
+    const saved = JSON.parse(storage.values.get("sunhold:dashboard-snapshot:fwl"));
+    assert.equal(saved.data.todos[0][0], "最新待办");
+    assert.equal(saved.sections.includes("todos"), true);
+  } finally {
+    harness.cleanup();
   }
 });
 

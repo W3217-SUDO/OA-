@@ -65,9 +65,50 @@ export type DashboardSection = "metrics" | "todos" | "cases" | "rejections" | "p
 const sections: DashboardSection[] = ["metrics", "todos", "cases", "rejections", "portals"];
 const refreshIntervalMs = 5 * 60_000;
 
+// 控制台首屏：先显示本浏览器里该账号上次的结果，后台照常取最新数据后替换。
+// 只存在本机 localStorage，按账号区分，退出登录时清除；超过一天不再使用。
+export const DASHBOARD_SNAPSHOT_PREFIX = "sunhold:dashboard-snapshot:";
+const snapshotMaxAgeMs = 24 * 60 * 60_000;
+type DashboardSnapshot = { at: number; sections: DashboardSection[]; data: Partial<DashboardData> };
+
+const snapshotKey = () => {
+  try {
+    const username = String(JSON.parse(localStorage.getItem("user") || "{}").username || "");
+    return username ? `${DASHBOARD_SNAPSHOT_PREFIX}${username}` : "";
+  } catch {
+    return "";
+  }
+};
+
+function readSnapshot(): DashboardSnapshot | null {
+  const key = snapshotKey();
+  if (!key) return null;
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "null") as DashboardSnapshot | null;
+    if (!value || typeof value.at !== "number" || Date.now() - value.at > snapshotMaxAgeMs) return null;
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+function writeSnapshot(data: Partial<DashboardData>, sections: Set<DashboardSection>) {
+  const key = snapshotKey();
+  if (!key || !sections.size) return;
+  try {
+    localStorage.setItem(key, JSON.stringify({ at: Date.now(), sections: Array.from(sections), data }));
+  } catch {
+    // 存储已满或被禁用时只是少了首屏快照，不影响实时数据。
+  }
+}
+
 export function useDashboardData(requestedSections: readonly DashboardSection[] = sections) {
-  const [data, setData] = useState<Partial<DashboardData>>({});
-  const [loading, setLoading] = useState<Record<DashboardSection, boolean>>({ metrics: true, todos: true, cases: true, rejections: true, portals: true });
+  const [data, setData] = useState<Partial<DashboardData>>(() => readSnapshot()?.data ?? {});
+  const [loading, setLoading] = useState<Record<DashboardSection, boolean>>(() => {
+    const cached = new Set(readSnapshot()?.sections ?? []);
+    return { metrics: !cached.has("metrics"), todos: !cached.has("todos"), cases: !cached.has("cases"),
+      rejections: !cached.has("rejections"), portals: !cached.has("portals") };
+  });
   const [errors, setErrors] = useState<Partial<Record<DashboardSection, string>>>({});
   const [caseMetricsError, setCaseMetricsError] = useState<string>();
   const loader = useRef<(section: DashboardSection) => void>(() => {});
@@ -75,6 +116,13 @@ export function useDashboardData(requestedSections: readonly DashboardSection[] 
     let active = true;
     const pending = new Map<DashboardSection, AbortController>();
     const loaded = new Set<DashboardSection>();
+    // 有快照的分区刷新时不再显示“正在加载”，新数据到达后直接替换。
+    const hydrated = new Set<DashboardSection>(readSnapshot()?.sections ?? []);
+    const fresh = new Set<DashboardSection>();
+    const remember = (section: DashboardSection, next: Partial<DashboardData>) => {
+      fresh.add(section);
+      writeSnapshot(next, new Set([...hydrated, ...fresh]));
+    };
     const lastAttempt = new Map<DashboardSection, number>();
     let metricsGeneration = 0;
     let caseMetricsController: AbortController | undefined;
@@ -93,7 +141,7 @@ export function useDashboardData(requestedSections: readonly DashboardSection[] 
           setLoading((previous) => ({ ...previous, [section]: false }));
         }
       };
-      setLoading((previous) => ({ ...previous, [section]: section === "metrics" || !loaded.has(section) }));
+      setLoading((previous) => ({ ...previous, [section]: !hydrated.has(section) && (section === "metrics" || !loaded.has(section)) }));
       setErrors((previous) => ({ ...previous, [section]: undefined }));
       if (section === "metrics") {
         caseMetricsController?.abort();
@@ -114,7 +162,9 @@ export function useDashboardData(requestedSections: readonly DashboardSection[] 
                 if (!active || requestController.signal.aborted || generation !== metricsGeneration) return previous;
                 const metrics = new Map(previous.metrics?.map((metric) => [metric.key, metric]));
                 result.metrics.forEach((metric) => metrics.set(metric.key, metric));
-                return { ...previous, metrics: orderDashboardMetrics(Array.from(metrics.values())) };
+                const next = { ...previous, metrics: orderDashboardMetrics(Array.from(metrics.values())) };
+                remember(section, next);
+                return next;
               });
             })
             .catch((error) => {
@@ -136,7 +186,11 @@ export function useDashboardData(requestedSections: readonly DashboardSection[] 
         .then(({ data: result }) => {
           if (active && !controller.signal.aborted) {
             loaded.add(section);
-            setData((previous) => ({ ...previous, ...result }));
+            setData((previous) => {
+              const next = { ...previous, ...result };
+              remember(section, next);
+              return next;
+            });
           }
         })
         .catch((error) => {

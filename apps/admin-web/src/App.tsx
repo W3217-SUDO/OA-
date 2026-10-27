@@ -54,6 +54,7 @@ import {
 } from "@ant-design/icons";
 import { api, AUTH_EXPIRED_EVENT } from "./api";
 import { clearCaseContractContext } from "./caseContractPrefill";
+import { DASHBOARD_SNAPSHOT_PREFIX } from "./dashboardData";
 import { bindDingTalkWebLogin, clearDingTalkWebCallback, consumeDingTalkWebCallback, startDingTalkWebLogin } from "./auth/dingtalkWebLogin";
 import {
   PERMISSIONS_UPDATED_EVENT,
@@ -954,6 +955,8 @@ function clearClientSessionStorage() {
   localStorage.removeItem("sunhold:open-pages");
   localStorage.removeItem("sunhold:last-page");
   businessNavigationSessionKeys.forEach((key) => sessionStorage.removeItem(key));
+  // 控制台首屏快照含业务数字，退出登录时一并清除。
+  Object.keys(localStorage).filter((key) => key.startsWith(DASHBOARD_SNAPSHOT_PREFIX)).forEach((key) => localStorage.removeItem(key));
 }
 
 function replaceWithRootRoute() {
