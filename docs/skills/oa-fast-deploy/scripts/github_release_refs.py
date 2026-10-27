@@ -64,7 +64,7 @@ def capture(repository, remote, output):
     if git("remote", "get-url", "--push", "--all", remote) != source:
         raise ValueError("GitHub 读取和推送地址不一致")
     refs = {}
-    for line in git("ls-remote", source, "refs/heads/dev", "refs/heads/main", "refs/tags/v1.1.*").splitlines():
+    for line in git("ls-remote", source, "refs/heads/dev", "refs/heads/main", "refs/tags/v1.*").splitlines():
         commit, ref = line.split("\t")
         # Git 通配符也返回历史安全标签；它们不是正式版本领取记录。
         if not re.fullmatch(r"refs/heads/(dev|main)|refs/tags/v1\.[12]\.\d+(\^\{\})?", ref):
