@@ -394,6 +394,9 @@ async def _require_system_parameter_menu(
     not have a second administrator-only or action-permission gate.
     """
     permission = await _permission_payload_for_identity(identity, db)
+    # 业务页面读取参数关系（如案件类型↔阶段/文件类型）时按所在页面授权；保存仍只认参数菜单。
+    if identity.get("_page_menu_capability") and identity.get("_request_method") in {"GET", "HEAD"}:
+        return permission
     menu_keys = set(permission.get("menu_keys") or [])
     if not _system_parameter_menu_granted(category, menu_keys):
         raise HTTPException(status_code=403, detail=f"当前账号没有{action}该系统参数菜单的权限")

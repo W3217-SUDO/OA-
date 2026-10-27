@@ -515,6 +515,9 @@ app.include_router(case_statistics_router)
 app.include_router(stage_export_router)
 app.include_router(contract_template_exports_router)
 app.exception_handler(RequestValidationError)(request_validation_error_handler)
+from starlette.exceptions import HTTPException as _StarletteHTTPException  # noqa: E402
+from app.core.permission_denied_log import permission_denied_handler  # noqa: E402
+app.exception_handler(_StarletteHTTPException)(permission_denied_handler)
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost", "http://127.0.0.1"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 include_route_slice(app, system_router, 0, 1)
 app.include_router(

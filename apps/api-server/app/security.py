@@ -219,6 +219,31 @@ async def _page_menu_candidates(request: Request, db: AsyncSession) -> tuple[str
     return ()
 
 
+# 页面在用的读取一律按“用户所在页面”授权：页面里顺带读别的中心数据（下拉选项、参数关系等）时，
+# 按接口路径去对另一个中心的菜单，会出现“能看见菜单和功能、点进去说没权限”。前端每个请求带上当前页面，
+# 账号持有该页面就放行该页发出的读取；写操作仍按接口所属页面判断，系统管理、人事、审计、登录和令牌不随页面放开。
+PAGE_HEADER = "x-oa-page"
+_PAGE_KEY_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]{0,95}")
+_PAGE_READ_METHODS = frozenset({"GET", "HEAD"})
+_PAGE_READ_PROTECTED_PREFIXES = ("/system", "/hr", "/audit", "/auth", "/law-firms", "/agent-tools")
+_PAGE_READ_SHARED_PREFIXES = ("/system/parameter-relations", "/system/parameters", "/system/parameter")
+
+
+def _page_header_candidates(request: Request) -> tuple[str, ...]:
+    if request.method not in _PAGE_READ_METHODS:
+        return ()
+    page = str(request.headers.get(PAGE_HEADER) or "").strip()
+    path = _relative_api_path(request.url.path)
+    protected = any(_route_prefix_match(path, prefix) for prefix in _PAGE_READ_PROTECTED_PREFIXES)
+    if protected and not any(_route_prefix_match(path, prefix) for prefix in _PAGE_READ_SHARED_PREFIXES):
+        return ()
+    if "-detail-" in page:
+        # 详情页（case-detail-<id>-<编号> 等）不是菜单项，按所属中心判断；编号部分可能是编码后的中文，不参与。
+        prefix = page.split("-detail-", 1)[0]
+        return (f"@root:{prefix.split('-', 1)[0]}",) if _PAGE_KEY_PATTERN.fullmatch(prefix) else ()
+    return (page,) if _PAGE_KEY_PATTERN.fullmatch(page) else ()
+
+
 def _menu_candidate_granted(menu_keys: set[str], candidate: str) -> bool:
     if candidate.startswith("@root:"):
         root = candidate.removeprefix("@root:")
@@ -227,7 +252,7 @@ def _menu_candidate_granted(menu_keys: set[str], candidate: str) -> bool:
 
 
 async def _page_menu_authorized(request: Request, db: AsyncSession, menu_keys: list[str]) -> bool:
-    candidates = await _page_menu_candidates(request, db)
+    candidates = (*(await _page_menu_candidates(request, db)), *_page_header_candidates(request))
     if not candidates:
         return False
     granted = {str(key).strip() for key in menu_keys if str(key).strip()}
@@ -282,4 +307,5 @@ async def current_identity(request: Request, token: str = Depends(oauth2_scheme)
         "_actual_role_ids": role_ids,
         "_page_menu_capability": page_capability,
         "_request_path": request.url.path,
+        "_request_method": request.method,
     }

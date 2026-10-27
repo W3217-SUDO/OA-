@@ -6,6 +6,9 @@ export const api = axios.create({baseURL:'/api/v1'})
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('access_token')
   if (token) config.headers.Authorization = `Bearer ${token}`
+  // 带上当前页面：后端按“账号持有这个页面”放行该页发出的读取，页面顺带读取别的中心数据时不再报没有菜单权限。
+  const page = typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('page') || ''
+  if (page && !config.headers['X-OA-Page']) config.headers['X-OA-Page'] = encodeURIComponent(page).slice(0, 200)
   return config
 })
 
