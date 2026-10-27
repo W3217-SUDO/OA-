@@ -11,6 +11,9 @@ from app.core.request_metrics import measure_phase
 logger = logging.getLogger(__name__)
 REVISION_TABLE = "dashboard_change_revisions"
 MIGRATION_REVISION = "dashboard_transaction_revisions_v1"
+# 10-27：登录只改 users 的登录记录列（最后登录、失败次数、锁定到期），不再推进修订——
+# 否则每次登录都让所有人的控制台与财务查询缓存失效，登录后首屏必然实时重算。
+LOGIN_COLUMNS_REVISION = "dashboard_revision_skip_login_columns_v2"
 DEPENDENCY_TABLES = (
     "business_records", "business_record_read_models", "users", "job_roles",
     "role_permissions", "workflow_events", "contract_objects", "contract_approval_steps",
@@ -27,6 +30,12 @@ IMMUTABLE_FUNCTION = "oa_dashboard_revision_reject_changes"
 FUNCTION_BODIES = {
     TOUCH_FUNCTION: """
         BEGIN
+            IF TG_OP = 'UPDATE' AND TG_TABLE_NAME = 'users' THEN
+                IF (to_jsonb(NEW) - ARRAY['last_login_at', 'failed_login_attempts', 'locked_until'])
+                    = (to_jsonb(OLD) - ARRAY['last_login_at', 'failed_login_attempts', 'locked_until']) THEN
+                    RETURN NULL;
+                END IF;
+            END IF;
             INSERT INTO {table} (txid) VALUES (pg_current_xact_id()::text::bigint)
             ON CONFLICT (txid) DO NOTHING;
             RETURN NULL;

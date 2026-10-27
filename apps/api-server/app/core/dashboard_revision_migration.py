@@ -62,3 +62,30 @@ def upgrade_dashboard_revision(connection):
         for trigger in (ROW_TRIGGER, TRUNCATE_TRIGGER):
             connection.execute(text(f"ALTER TABLE {target} ENABLE ALWAYS TRIGGER {trigger}"))
     validate_dashboard_revision(connection)
+
+
+# 回滚到本修订之前的版本时，先用旧函数体恢复（启动校验按函数体逐字比对）：
+LEGACY_TOUCH_BODY = """
+        BEGIN
+            INSERT INTO {table} (txid) VALUES (pg_current_xact_id()::text::bigint)
+            ON CONFLICT (txid) DO NOTHING;
+            RETURN NULL;
+        END;
+    """
+
+
+def upgrade_dashboard_revision_login_columns(connection):
+    """只替换修订触发函数体：users 仅登录记录列变化时不推进修订；触发器、表和已有修订不动。"""
+    if connection.dialect.name != "postgresql":
+        return
+    if not connection.scalar(text(f"SELECT to_regclass('{REVISION_TABLE}') IS NOT NULL")):
+        return
+    connection.execute(text("SET LOCAL lock_timeout = '5s'"))
+    schema = connection.scalar(text("SELECT current_schema()"))
+    qualified = f"{quoted_identifier(schema)}.{quoted_identifier(TOUCH_FUNCTION)}"
+    connection.execute(text(f"""
+        CREATE OR REPLACE FUNCTION {qualified}() RETURNS trigger
+        LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog
+        AS $body${function_body(TOUCH_FUNCTION, schema)}$body$
+    """))
+    validate_dashboard_revision(connection)

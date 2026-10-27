@@ -19,11 +19,13 @@ from app.core.dashboard_finance_read_model_migration import (
     MIGRATION_REVISION as DASHBOARD_FINANCE_REVISION,
     upgrade_dashboard_finance_read_model, validate_dashboard_finance_read_model,
 )
-from app.core.dashboard_revision import MIGRATION_REVISION as DASHBOARD_REVISION
+from app.core.dashboard_revision import LOGIN_COLUMNS_REVISION as DASHBOARD_LOGIN_COLUMNS_REVISION, MIGRATION_REVISION as DASHBOARD_REVISION
 from app.core.feedback_serial_migration import (
     MIGRATION_REVISION as FEEDBACK_SERIAL_REVISION, upgrade_feedback_date_serial,
 )
-from app.core.dashboard_revision_migration import upgrade_dashboard_revision, validate_dashboard_revision
+from app.core.dashboard_revision_migration import (
+    upgrade_dashboard_revision, upgrade_dashboard_revision_login_columns, validate_dashboard_revision,
+)
 from app.core.finance_query_revision import (
     MIGRATION_REVISION as FINANCE_QUERY_REVISION, REINSTALL_REVISION as FINANCE_QUERY_REINSTALL_REVISION,
     upgrade_finance_query_revision,
@@ -109,6 +111,10 @@ def _apply_record_read_model(connection: Connection, _upgrade_schema: Callable[[
 
 def _apply_dashboard_revision(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
     upgrade_dashboard_revision(connection)
+
+
+def _apply_dashboard_revision_login_columns(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    upgrade_dashboard_revision_login_columns(connection)
 
 
 def _apply_finance_query_revision(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
@@ -208,6 +214,8 @@ def _run_versioned_schema_migrations(
         (FINANCE_QUERY_REINSTALL_REVISION, _apply_finance_query_revision),
         # 问题反馈旧的随机编号按提交日期改成“BUG + 日期 + 当天流水”（一次性数据修正）。
         (FEEDBACK_SERIAL_REVISION, _apply_feedback_date_serial),
+        # 登录只改登录记录列时不推进控制台/财务查询修订，登录后首屏可直接命中缓存。
+        (DASHBOARD_LOGIN_COLUMNS_REVISION, _apply_dashboard_revision_login_columns),
     )
     for revision, migration in revisions:
         if connection.execute(
