@@ -28,9 +28,14 @@ HANDLER_ACTIONS = {
     "处理完成，请验证": ({"待处理"}, "待验证"),
 }
 REPORTER_ACTIONS = {
+    # 修改前要提交人点“确认修改”（用户要求，2026-10-27）：处理人先回复打算怎么改，提交人确认后才动手；
+    # 只记一条处理记录并通知，状态不变。有意见直接回复继续沟通。
+    "确认修改": ({"待处理"}, "待处理"),
     "验证通过": ({"待验证"}, "已解决"),
     "未解决，重新打开": ({"待验证", "已解决"}, "待处理"),
 }
+# 被指派的处理人也能替提交人确认（如非诉问题由指定的人确认）。
+ASSIGNEE_CONFIRM_ACTIONS = {"确认修改"}
 COMMENT_REQUIRED_ACTIONS = {"未解决，重新打开"}
 
 
@@ -108,13 +113,25 @@ async def _get_feedback(db: AsyncSession, feedback_id: int, identity: dict, *, l
     return record
 
 
-def _available_actions(record: BusinessRecord, identity: dict) -> list[str]:
-    actions = []
-    if _can_handle(record, identity):
-        actions.extend(action for action, (states, _) in HANDLER_ACTIONS.items() if _status(record.status) in states)
+def _reporter_actions(record: BusinessRecord, identity: dict) -> set[str]:
     if record.owner == identity["username"]:
-        actions.extend(action for action, (states, _) in REPORTER_ACTIONS.items() if _status(record.status) in states)
-    return actions
+        return set(REPORTER_ACTIONS)
+    if _assignee(record) == identity["username"]:
+        return set(ASSIGNEE_CONFIRM_ACTIONS)
+    return set()
+
+
+def _action_definition(record: BusinessRecord, identity: dict, action: str) -> tuple[set[str], str] | None:
+    if _can_handle(record, identity) and action in HANDLER_ACTIONS:
+        return HANDLER_ACTIONS[action]
+    if action in _reporter_actions(record, identity):
+        return REPORTER_ACTIONS[action]
+    return None
+
+
+def _available_actions(record: BusinessRecord, identity: dict) -> list[str]:
+    return [action for action in (*HANDLER_ACTIONS, *REPORTER_ACTIONS)
+            if (definition := _action_definition(record, identity, action)) and _status(record.status) in definition[0]]
 
 
 async def _notify_participants(
@@ -468,9 +485,7 @@ async def transition_feedback(
 ):
     record = await _get_feedback(db, feedback_id, identity, lock=True)
     action = body.action.strip()
-    definition = HANDLER_ACTIONS.get(action) if _can_handle(record, identity) else None
-    if definition is None and record.owner == identity["username"]:
-        definition = REPORTER_ACTIONS.get(action)
+    definition = _action_definition(record, identity, action)
     if definition is None:
         raise HTTPException(403, "无权执行此操作")
     allowed_statuses, next_status = definition

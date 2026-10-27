@@ -12,7 +12,7 @@ import "./feedback.css";
 type Props = { feedbackId: number; onBack: () => void; onNavigate: (route: string) => void };
 
 const requiresComment = new Set(["未解决，重新打开"]);
-const primaryActions = new Set(["处理完成，请验证", "验证通过"]);
+const primaryActions = new Set(["确认修改", "处理完成，请验证", "验证通过"]);
 const statusColors: Record<string, string> = {
   待处理: "warning", 待验证: "processing", 已解决: "success",
 };
@@ -143,10 +143,12 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
           : event.has_screenshot && <FeedbackEventImage feedbackId={feedbackId} eventId={event.id} />}
       </div>,
     }))} />
+    {feedback.available_actions.includes("确认修改") && <Alert type="warning" showIcon style={{ maxWidth: 850, marginBottom: 12 }}
+      title="处理人会在处理记录里写明打算怎么改：没问题点“确认修改”，确认后才开始改；有意见请在下面写明后发送回复。" />}
     {feedback.available_actions.includes("验证通过") && <Alert type="info" showIcon style={{ maxWidth: 850, marginBottom: 12 }}
       title="已处理完成，请验证问题是否已解决：解决了点“验证通过”，没解决写明情况后点“未解决，重新打开”。" />}
     {feedback.available_actions.includes("处理完成，请验证") && <Alert type="info" showIcon style={{ maxWidth: 850, marginBottom: 12 }}
-      title="处理完成后点“处理完成，请验证”，会通知提交人验证；可以先在下面写处理说明。" />}
+      title="改之前先在下面回复打算怎么改，等提交人点“确认修改”后再改；处理完成后点“处理完成，请验证”，会通知提交人验证。" />}
     <Input.TextArea value={comment} rows={4} aria-label="回复或处理说明"
       placeholder="回复或填写处理说明（随状态操作一起提交）" onChange={(event) => setComment(event.target.value)}
       style={{ maxWidth: 850, marginBottom: 12 }} />
