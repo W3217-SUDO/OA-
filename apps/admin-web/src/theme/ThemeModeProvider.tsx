@@ -182,7 +182,7 @@ export function buildAntdTheme(resolved: ResolvedTheme, primary: string): ThemeC
         headerBg: c.fill,
         headerColor: c.textSecondary,
         headerSplitColor: "transparent",
-        rowHoverBg: c.fill,
+        rowHoverBg: dark ? "#4d4a12" : "#ffff99",
         borderColor: c.border,
         cellPaddingBlock: 12,
         cellPaddingBlockMD: 10,

@@ -128,7 +128,8 @@ async def incoming_customers(items, db) -> dict:
 def matches_incoming_filters(item, view: str, filters: dict, customers: dict, users: dict) -> bool:
     # 回款响应没有 data；不能把缺失的前端筛选字段擅自改为顶层同名字段。
     if view in BANK_VIEWS:
-        raw_values = [item.payer_name, None, None, item.status]
+        # 入库状态：上传后还没认领进回款流程的是“未导入”，已认领/分配的是“已导入”。
+        raw_values = [item.payer_name, None, None, "未导入" if item.status == "待认领" else "已导入"]
         date_index, enum_indexes = 2, {3}
     elif view in RECEIPT_VIEWS:
         raw_values = [item.received_date, item.bank_reference, item.claimed_customer,

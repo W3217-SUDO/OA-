@@ -3,6 +3,7 @@
 import asyncio
 
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from app.core.dependencies import (
     AsyncSession, BusinessRecord, Depends, File, FinanceTransaction, Form, HTTPException,
@@ -27,6 +28,16 @@ from app.security import current_identity as contract_identity
 from app.database import SessionLocal
 
 router = APIRouter()
+_BEIJING = ZoneInfo("Asia/Shanghai")
+
+
+def _fee_created_date(created_at: datetime | None) -> str:
+    """费用实际新建（提交）当天的北京日期；分配回款列表的“提交日期”按费用本身算，不取案件立案日期。"""
+    if created_at is None:
+        return ""
+    if created_at.tzinfo is not None:
+        created_at = created_at.astimezone(_BEIJING)
+    return created_at.date().isoformat()
 
 
 async def _read_unclassified_total(identity: dict) -> int:
@@ -120,6 +131,9 @@ async def list_incoming_payments(
             func.lower(func.trim(IncomingPayment.bank_source)) == bank_code,
             *(IncomingPayment.bank_source.contains(name) for name in aliases[bank_code]),
         ))
+    if view in {f"finance-receipts-{bank}" for bank in ("icbc", "citic", "boc", "cmb")}:
+        # 银行导入页只管本页上传的流水；迁移来的历史回款在“回款管理”里查，不在这里堆着（数据不删）。
+        statement = statement.where(IncomingPayment.source_kind == "bank_import")
     if payment_status:
         statement = statement.where(IncomingPayment.status == payment_status)
     can_view_amount = "finance.amount" in await _allowed_field_keys(identity, db)
@@ -574,12 +588,6 @@ async def incoming_payment_allocation_candidates(payment_id: int, case_fees_only
         linked_cases = linked_cases or [None]
         for case_record in linked_cases:
             case_data = case_record.data or {} if case_record else {}
-            submitted_at = (
-                case_data.get("case_register_date")
-                or case_data.get("submission_date")
-                or case_data.get("filing_date")
-                or (case_record.created_at.isoformat() if case_record and case_record.created_at else "")
-            )
             rows.append({
                 "key": f"{plan.id}:{case_record.id if case_record else 0}",
                 "receivable_plan_id": plan.id,
@@ -591,7 +599,7 @@ async def incoming_payment_allocation_candidates(payment_id: int, case_fees_only
                 "plaintiff": str(case_data.get("plaintiff") or case_data.get("appellant_names") or contract.customer),
                 "defendant": str(case_data.get("defendant") or case_data.get("appellee_names") or case_data.get("opponent") or ""),
                 "case_stage": str(case_data.get("case_stage") or case_data.get("business_stage") or (case_record.status if case_record else "合同应收")),
-                "submission_date": str(submitted_at)[:10],
+                "submission_date": _fee_created_date(plan.created_at),
                 "fee_type": plan.phase,
                 "total_amount": _round_fee_amount(plan.amount),
                 "received_amount": _round_fee_amount(plan.received_amount),
@@ -671,7 +679,7 @@ async def incoming_payment_allocation_candidates(payment_id: int, case_fees_only
                 "plaintiff": str(case_data.get("plaintiff") or case_data.get("appellant_names") or contract.customer),
                 "defendant": str(case_data.get("defendant") or case_data.get("appellee_names") or case_data.get("opponent") or ""),
                 "case_stage": str(case_data.get("case_stage") or case_data.get("business_stage") or (case_record.status if case_record else "案件费用")),
-                "submission_date": str(case_data.get("case_register_date") or case_data.get("submission_date") or "")[:10],
+                "submission_date": _fee_created_date(fee_record.created_at),
                 "fee_type": _case_fee_display_type(fee_record),
                 "total_amount": total_amount,
                 "received_amount": received_amount,

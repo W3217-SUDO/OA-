@@ -9,19 +9,6 @@ import { createPaymentPrintPreview, normalizePaymentPackageResponse, paymentPack
 import type { PaymentWriteoffFormValues } from "../formTypes";
 import type { Fee, PaymentPackagePreview, PaymentPrintDocumentData, Transaction } from "../types";
 
-const printFinanceDocument = (): boolean => {
-    const source = document.querySelector<HTMLElement>(".finance-payment-print-sheet, .payment-print-document");
-    if (!source) return false;
-    const popup = window.open("", "_blank", "width=1100,height=800");
-    if (!popup) { window.print(); return false; }
-    const styles = Array.from(document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'))
-        .map((link) => `<link rel="stylesheet" href="${link.href}">`).join("");
-    popup.document.write(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>付款申请单</title>${styles}<style>html,body{margin:0;background:#fff;color:#111}body{padding:24px}.finance-payment-print-sheet,.payment-print-document{max-width:none!important;width:100%!important;margin:0!important}.ant-btn,.finance-payment-package-actions,.payment-screen-actions{display:none!important}@media print{body{padding:0}}</style></head><body>${source.outerHTML}</body></html>`);
-    popup.document.close(); popup.focus();
-    window.setTimeout(() => { popup.print(); popup.close(); }, 250);
-    return true;
-};
-
 export async function voidRejectedPaymentApplication(feeId: number): Promise<void> {
     await api.post(`/finance/fees/${feeId}/void`, { comment: "已拒绝请款单作废" });
 }
@@ -677,9 +664,8 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
             });
             setPaymentPackagePreview({ ...paymentPackagePreview, submitted: true });
             setSelectedOriginalRows([]);
-            message.success("付款包已提交，正在打开打印");
+            message.success("付款包已提交，可点“打印”导出付款申请单");
             await load();
-            window.setTimeout(() => printFinanceDocument(), 50);
         }
         catch (error: any) {
             message.error(error?.response?.data?.detail || "付款包提交失败");

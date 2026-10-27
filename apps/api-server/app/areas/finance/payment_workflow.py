@@ -246,3 +246,27 @@ async def writeoff_payment(record_id: int, paid_date: date = Form(...), amount: 
         raise
     await db.refresh(row)
     return await _record_dict_for_identity(row, identity, db)
+
+
+@router.get(f'{settings.api_prefix}/finance/payment-workflow/{{record_id}}/print-word')
+async def export_payment_print_word(record_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """“提交并打印”/“打印”导出的付款申请单 Word，单独打开打印，不在系统页面上弹打印窗口。"""
+    from urllib.parse import quote
+    from fastapi import Response
+    from .payment_document import payment_document
+    from .payment_print_word import payment_package_word
+    if not (await payment_action_allowed(identity, db, 'submit') or await payment_action_allowed(identity, db, 'writeoff')):
+        raise HTTPException(403, '当前角色没有付款单打印权限')
+    row = await _ensure_record_visible(record_id, identity, db)
+    if row.module != 'finance_package':
+        package_id = str((row.data or {}).get('payment_package_id') or '')
+        if not package_id.isdigit():
+            raise HTTPException(409, '请先提交付款单，生成打包流水号后再打印')
+        row = await _ensure_record_visible(int(package_id), identity, db)
+    if row.module != 'finance_package' or (row.data or {}).get('fee_type') != '普通付款包':
+        raise HTTPException(422, '请选择普通付款包')
+    if row.status not in {'待核销', '已付款'}:
+        raise HTTPException(409, '仅待核销或已付款的付款单可以打印')
+    filename, content = payment_package_word(await payment_document(row, identity, db), row.serial_no)
+    return Response(content=content, media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    headers={'Content-Disposition': f"attachment; filename=payment-request.docx; filename*=UTF-8''{quote(filename)}"})

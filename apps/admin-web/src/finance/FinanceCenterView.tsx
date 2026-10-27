@@ -217,7 +217,7 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
     return <IncomingAllocationModal {...incomingAllocationModal} />;
   }
   if (feeDetail && (feeDetail.data?.application_items || !isInternalHistoryList && initialView.startsWith("finance-payment-") && (feeDetail.module === "contract_payment" || feeDetail.data?.expense_scope !== "内部" && feeDetail.data?.fee_type !== "内部费用"))) {
-    return <PaymentApplicationPage key={feeDetail.id} record={feeDetail} onClose={() => setFeeDetail(null)} onChange={load} onCase={openCaseDetail} onContract={openContractDetail} />;
+    return <PaymentApplicationPage key={feeDetail.id} record={feeDetail} onClose={() => setFeeDetail(null)} onChange={load} onCase={openCaseDetail} onContract={openContractDetail} reviewable={initialView === "finance-payment-audit"} />;
   }
   return (
     <>

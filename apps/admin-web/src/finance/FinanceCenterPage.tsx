@@ -56,7 +56,6 @@ import { createReconcileColumns } from "./columns/reconcileColumns";
 import { createRefundColumns } from "./columns/refundColumns";
 import { createTransactionColumns } from "./columns/transactionColumns";
 import { createRouteConfigs } from "./config/routeConfigs";
-import { printFinanceDocument } from "./printWindow";
 import { originalFinanceRoutes, originalFinanceTitles } from "./config/routeMetadata";
 import {
 effectivePaymentQuery,
@@ -4511,6 +4510,14 @@ function FinanceCenterContent({
       </div>
     </section>
   ) : null;
+  // 打印先确认，再导出付款申请单 Word 单独打开打印；不在系统页面上直接弹打印窗口。
+  const confirmPaymentWordPrint = (download: () => Promise<void>) => Modal.confirm({
+    title: "打印付款申请单",
+    content: "将导出付款申请单 Word 文件，打开文件后再确认打印。",
+    okText: "导出打印",
+    cancelText: "取消",
+    onOk: download,
+  });
   const paymentPrintPreviewPage = paymentPrintPreview ? (
     <section className="finance-original-panel finance-payment-package-print">
       <div className="finance-original-title finance-payment-package-actions">
@@ -4524,7 +4531,7 @@ function FinanceCenterContent({
           >
             下载 Word
           </Button>
-          <Button type="link" onClick={() => printFinanceDocument()}>
+          <Button type="link" onClick={() => confirmPaymentWordPrint(() => downloadPaymentPrintWord())}>
             打印
           </Button>
           <Button size="small" onClick={() => setPaymentPrintPreview(null)}>
@@ -4668,7 +4675,7 @@ function FinanceCenterContent({
               </Button>
             )}
             {(!paymentPackagePreview || paymentPackagePreview.submitted) && (
-              <Button type="link" onClick={() => printFinanceDocument()}>
+              <Button type="link" onClick={() => confirmPaymentWordPrint(() => downloadPaymentPrintWord(paymentPackagePrintData.package_no))}>
                 打印
               </Button>
             )}

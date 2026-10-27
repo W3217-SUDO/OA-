@@ -95,6 +95,7 @@ FINANCE_FILE_QUERIES = {
     "/finance/archive-settlements/rejected/export",
     "/finance/general-settlements/export",
     "/finance/payment-packages/{package_no}/print-word",
+    "/finance/payment-workflow/{record_id}/print-word",
 }
 
 FINANCE_CONDITIONAL_QUERIES = {

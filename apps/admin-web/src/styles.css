@@ -1352,3 +1352,13 @@ body {
   -webkit-user-select: text;
   user-select: text;
 }
+
+/* 原系统模式：鼠标悬停的表格行整行黄色高亮（含固定列、勾选行、各页面自带斑马纹）。只用十六进制色，兼容钉钉旧内核。 */
+.ant-table-wrapper .ant-table-tbody > tr.ant-table-row:hover > td,
+.ant-table-wrapper .ant-table-tbody > tr.ant-table-row.ant-table-row-selected:hover > td {
+  background: #ffff99 !important;
+}
+:root[data-theme="dark"] .ant-table-wrapper .ant-table-tbody > tr.ant-table-row:hover > td,
+:root[data-theme="dark"] .ant-table-wrapper .ant-table-tbody > tr.ant-table-row.ant-table-row-selected:hover > td {
+  background: #4d4a12 !important;
+}
