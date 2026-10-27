@@ -64,6 +64,9 @@ export const orderDashboardMetrics = <T extends { key: string }>(metrics: T[]): 
 export type DashboardSection = "metrics" | "todos" | "cases" | "rejections" | "portals";
 const sections: DashboardSection[] = ["metrics", "todos", "cases", "rejections", "portals"];
 const refreshIntervalMs = 5 * 60_000;
+// 服务端在数据刚变化时先返回上次结果（stale），后台重算；几秒后再取一次拿最新值。
+const staleRetryMs = 3_000;
+const staleRetryLimit = 3;
 
 // 控制台首屏：先显示本浏览器里该账号上次的结果，后台照常取最新数据后替换。
 // 只存在本机 localStorage，按账号区分，退出登录时清除；超过一天不再使用。
@@ -126,6 +129,22 @@ export function useDashboardData(requestedSections: readonly DashboardSection[] 
     const lastAttempt = new Map<DashboardSection, number>();
     let metricsGeneration = 0;
     let caseMetricsController: AbortController | undefined;
+    const staleRetries = new Map<DashboardSection, number>();
+    const staleTimers = new Set<number>();
+    const retryWhenStale = (section: DashboardSection, stale: unknown) => {
+      if (!stale) {
+        staleRetries.delete(section);
+        return;
+      }
+      const attempt = (staleRetries.get(section) ?? 0) + 1;
+      if (attempt > staleRetryLimit) return;
+      staleRetries.set(section, attempt);
+      const timer = window.setTimeout(() => {
+        staleTimers.delete(timer);
+        load(section);
+      }, staleRetryMs);
+      staleTimers.add(timer);
+    };
     const load = (section: DashboardSection, force = true) => {
       if (!active || pending.has(section)) return;
       if (!force && (document.hidden || Date.now() - (lastAttempt.get(section) ?? 0) < refreshIntervalMs)) return;
@@ -134,9 +153,11 @@ export function useDashboardData(requestedSections: readonly DashboardSection[] 
       pending.set(section, controller);
       const generation = section === "metrics" ? ++metricsGeneration : 0;
       let remaining = section === "metrics" ? 2 : 1;
+      let metricsStale = false;
       const finish = () => {
         if (--remaining > 0 || pending.get(section) !== controller) return;
         pending.delete(section);
+        if (section === "metrics" && active && generation === metricsGeneration) retryWhenStale(section, metricsStale);
         if (active && (section !== "metrics" || generation === metricsGeneration)) {
           setLoading((previous) => ({ ...previous, [section]: false }));
         }
@@ -154,10 +175,11 @@ export function useDashboardData(requestedSections: readonly DashboardSection[] 
           requestController: AbortController,
           onError: (detail: string | undefined) => void,
         ) => {
-          api.get<Pick<DashboardData, "metrics">>("/dashboard", { params: { section: apiSection }, signal: requestController.signal })
+          api.get<Pick<DashboardData, "metrics"> & { stale?: boolean }>("/dashboard", { params: { section: apiSection }, signal: requestController.signal })
             .then(({ data: result }) => {
               if (!active || requestController.signal.aborted || generation !== metricsGeneration) return;
               loaded.add(section);
+              if (result.stale) metricsStale = true;
               setData((previous) => {
                 if (!active || requestController.signal.aborted || generation !== metricsGeneration) return previous;
                 const metrics = new Map(previous.metrics?.map((metric) => [metric.key, metric]));
@@ -182,10 +204,12 @@ export function useDashboardData(requestedSections: readonly DashboardSection[] 
         });
         return;
       }
-      api.get<Partial<DashboardData>>("/dashboard", { params: { section }, signal: controller.signal })
+      api.get<Partial<DashboardData> & { stale?: boolean }>("/dashboard", { params: { section }, signal: controller.signal })
         .then(({ data: result }) => {
           if (active && !controller.signal.aborted) {
             loaded.add(section);
+            retryWhenStale(section, result.stale);
+            delete result.stale;
             setData((previous) => {
               const next = { ...previous, ...result };
               remember(section, next);
@@ -209,6 +233,7 @@ export function useDashboardData(requestedSections: readonly DashboardSection[] 
       active = false;
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", refreshStale);
+      staleTimers.forEach((timer) => window.clearTimeout(timer));
       pending.forEach((controller) => controller.abort());
       caseMetricsController?.abort();
     };

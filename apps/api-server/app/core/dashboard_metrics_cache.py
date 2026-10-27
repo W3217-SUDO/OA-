@@ -120,9 +120,70 @@ async def _publish_dashboard_query(key, token, snapshot, result):
     await query_cache_store._publish(key, token, snapshot, result, ttl)
 
 
-async def cached_dashboard_query(db, identity, section, compute):
+# 10-27：控制台首屏要求约 1 秒内出数。数据修订变化后先返回同一账号、同一天、同一版本的上次结果
+# （标记 stale），并在后台按原共享流程重算发布；前端收到 stale 后几秒内再取一次最新值。
+# 没有任何旧结果（新账号、发版后第一次）时仍等计算结果，但计算放在独立任务里：
+# 用户离开页面（499）不会中断它，算完照常写缓存；同一进程里同一账号同一分区只算一份。
+# 预热重放不传 compute_in，始终按原流程算最新值。
+_refreshing: dict[str, asyncio.Task] = {}
+
+
+def _swr_available(db):
+    return (bool(settings.cache_redis_url.strip()) and db.get_bind().dialect.name == "postgresql"
+            and not (db.new or db.dirty or db.deleted))
+
+
+async def _stale_result(db, key):
+    try:
+        cached = await query_cache_store.read(key)
+    except RedisError:
+        return None
+    if cached is None:
+        return None
+    snapshot = await dashboard_snapshot(db)
+    if snapshot is None or snapshot == cached["snapshot"]:
+        return None  # 最新结果由独立任务走共享流程，一次读缓存即返回
+    return cached["result"]
+
+
+def _shared_refresh(key, identity, section, compute_in):
+    task = _refreshing.get(key)
+    if task is not None:
+        return task
+
+    async def refresh():
+        from app.database import SessionLocal
+
+        try:
+            async with SessionLocal() as session:
+                return await cached_dashboard_query(session, identity, section, lambda: compute_in(session))
+        finally:
+            _refreshing.pop(key, None)
+
+    def observe(done):
+        if not done.cancelled() and done.exception() is not None:
+            logger.warning("控制台后台计算失败：%s section=%s", type(done.exception()).__name__, section)
+
+    task = _refreshing[key] = asyncio.create_task(refresh())
+    task.add_done_callback(observe)
+    return task
+
+
+async def cached_dashboard_query(db, identity, section, compute, *, compute_in=None):
+    """compute_in(session) 给出时：有旧结果先返回并后台重算，否则等独立任务算完（离开页面不中断）。"""
     if section not in {"metrics_finance", "metrics_cases", "todos", "cases"}:
         raise ValueError("无效的控制台缓存分区")
+    if compute_in is not None and _swr_available(db):
+        from app.core.query_cache import _query_key
+
+        key = _query_key(db, identity, f"dashboard.{section}", {}, date.today())
+        stale = await _stale_result(db, key)
+        if db.in_transaction():
+            await db.rollback()
+        task = _shared_refresh(key, deepcopy(identity), section, compute_in)
+        if stale is not None:
+            return {**stale, "stale": True}
+        return deepcopy(await asyncio.shield(task))
     # 留存期只控制清理；每次命中仍由共享流程核对当前业务修订号。
     store = SimpleNamespace(
         read=query_cache_store.read, acquire=query_cache_store.acquire,

@@ -256,10 +256,12 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
 
         request = Request({"type": "http", "method": "GET", "path": "/api/v1/dashboard", "headers": []})
         db = object()
-        async def cached(session, identity, section, compute):
+        async def cached(session, identity, section, compute, *, compute_in=None):
             self.assertIs(session, db)
             self.assertIs(identity, IDENTITY)
             self.assertIn(section, {"metrics_finance", "metrics_cases", "todos", "cases"})
+            # 请求入口必须给出可在独立会话里重算的函数（先返回旧结果、后台重算）。
+            self.assertTrue(callable(compute_in))
             return await compute()
         async def run(_request, calculation):
             return await calculation

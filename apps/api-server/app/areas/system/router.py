@@ -1293,7 +1293,8 @@ async def dashboard_http(
         calculation = read_dashboard_metrics(identity, db)
     elif section in {"metrics_finance", "metrics_cases", "todos", "cases"}:
         await query_prewarm.remember(db, "dashboard", section, identity, {})
-        calculation = cached_dashboard_query(db, identity, section, lambda: dashboard(identity, db, section))
+        calculation = cached_dashboard_query(db, identity, section, lambda: dashboard(identity, db, section),
+                                             compute_in=lambda session: dashboard(identity, session, section))
     else:
         calculation = dashboard(identity, db, section)
     return await run_dashboard_read(request, calculation)
