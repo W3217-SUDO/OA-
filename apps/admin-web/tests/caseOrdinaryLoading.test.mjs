@@ -40,7 +40,7 @@ function setup() {
   const setters = new Proxy({}, { get: (_target, name) => name.startsWith('set') ? value => { const field = name[3].toLowerCase() + name.slice(4); state[field] = value; } : undefined });
   const context = new Proxy({ ordinaryRequestGuard: createLatestRequestGuard(), originalPageSize: 15, caseQuery: {}, ordinaryScope: 'company', ordinaryCaseTypes: ['民事案件'], initialView: 'case-company-civil', isCreateView: false, isCaseDetailView: false }, { get: (target, name) => name in target ? target[name] : setters[name] });
   const api = { post: (_url, payload) => { const request = deferred(); requests.push({ ...request, payload }); return request.promise; }, get: (url, config) => url === '/records' && config?.params?.module === 'case' ? side.promise : Promise.resolve({ data: { items: [] } }) };
-  const bindings = { context, api, message: { error: value => messages.push(value), warning: value => messages.push(value) }, buildCaseOrdinarySearchPayload, parseOrdinarySearchResult, loadCaseCapabilities: () => {}, loadCaseRelations: () => {}, consumeCaseDetailTarget: () => null };
+  const bindings = { context, api, optionalRecords: params => api.get('/records', { params }), message: { error: value => messages.push(value), warning: value => messages.push(value) }, buildCaseOrdinarySearchPayload, parseOrdinarySearchResult, loadCaseCapabilities: () => {}, loadCaseRelations: () => {}, consumeCaseDetailTarget: () => null };
   const ordinary = runExpression(variable(service, 'loadOrdinaryCases').initializer, service, bindings);
   const load = runExpression(variable(service, 'load').initializer, service, bindings);
   return { state, requests, messages, side, ordinary, load };

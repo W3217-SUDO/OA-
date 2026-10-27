@@ -14,6 +14,7 @@ import { type FeeTypeCatalogItem } from "../../feeTypeHierarchy.mjs";
 import { noCaseDetailWriteCapability, noCaseEventCapabilities } from "../constants";
 import type { CaseInvoiceBatch } from "../hooks/useCaseInvoiceBatch";
 import type { AttachmentRow, CaseDetailCapabilities, CaseEventCapabilities, CaseEventRow, CaseFileTypeOption, CaseLitigantCandidate, CaseRelationCatalog, CaseRow, CaseTaskAttachment, CaseTaskHistoryItem, CaseTaskPageState, ContractRow, Hearing, ParameterRelation, Profile, TaskRow, WarehouseCatalogOption } from "../types";
+import { optionalRecords } from "../../optionalRecords";
 /** legal queries operations; dependencies are read when each operation runs. */
 export interface CaseQueriesDependencies {
     readonly invoiceBatch: CaseInvoiceBatch;
@@ -334,9 +335,9 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
                 api.get("/hearings"),
                 api.get("/cases/summary"),
                 api.get("/cases/reference-options"),
-                api.get("/records", { params: { module: "customer", page_size: 100 } }),
+                optionalRecords({ module: "customer", page_size: 100 }),
                 // 调查线索只是可选下拉；没有调查中心菜单的律师读不到时按空列表处理，不能连带整页数据加载失败。
-                api.get("/records", { params: { module: "clue", page_size: 100 } }).catch(() => ({ data: { items: [] } })),
+                optionalRecords({ module: "clue", page_size: 100 }),
                 api.get("/system/parameters/options", { params: { category: "fee_type" } }),
             ]);
             setContracts(contractRes.data.items);

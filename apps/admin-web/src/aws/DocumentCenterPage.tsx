@@ -62,6 +62,7 @@ import {
 } from "./DocumentModals";
 import { Form } from "antd";
 import { AttachmentDetailDrawer, TemplateDetailDrawer } from "./DocumentDrawers";
+import { optionalRecords } from "../optionalRecords";
 
 export default function DocumentCenterPage({
   initialView,
@@ -333,8 +334,8 @@ export default function DocumentCenterPage({
       ] = await Promise.all([
         api.get("/records", { params: { module: "document", page_size: 100 } }),
         api.get("/official-outgoing", { params: outgoingQueryOverride }),
-        api.get("/records", { params: { module: "case", page_size: 100 } }),
-        api.get("/records", { params: { module: "contract", page_size: 100 } }),
+        optionalRecords({ module: "case", page_size: 100 }),
+        optionalRecords({ module: "contract", page_size: 100 }),
         api.get("/attachments"),
         api.get("/seals/assets"),
         api.get("/templates"),

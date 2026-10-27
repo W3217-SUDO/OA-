@@ -92,6 +92,7 @@ import { SealPreviewModal } from "./SealPreviewModal";
 import { ensureSealSuccess, postSeal, patchSeal, deleteSeal, postSealBlob } from "./sealRequests";
 import { useSealSourceAttachments } from "./useSealSourceAttachments";
 import { useMobileFilterToggle } from "../components/common/MobileFilterToggle";
+import { optionalRecords } from "../optionalRecords";
 // 查询标签统一三字宽：两三个字一行；四个字拆成上下各两个字，避免“上面两个字、下面一个字”。
 const sealQueryLabel = (text: string) =>
   text.length === 4 ? <span className="seal-query-label-stack">{text.slice(0, 2)}<br />{text.slice(2)}</span> : text;
@@ -295,13 +296,9 @@ export default function SealCenterPage({
           api.get("/seals/assets", {
             params: { keyword: tab === "assets" ? keyword : "" },
           }),
-          api.get("/records", { params: { module: "case", page_size: 100 } }),
-          api.get("/records", {
-            params: { module: "contract", page_size: 100 },
-          }),
-          api.get("/records", {
-            params: { module: "customer", page_size: 100 },
-          }),
+          optionalRecords({ module: "case", page_size: 100 }),
+          optionalRecords({ module: "contract", page_size: 100 }),
+          optionalRecords({ module: "customer", page_size: 100 }),
         ]);
       const items = Array.isArray(apps.data.items) ? apps.data.items : [];
       setRows(items);

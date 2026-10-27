@@ -17,6 +17,7 @@ import { financeRouteResources, loadFinanceQueryResources } from "./queryResourc
 import { incomingPaymentQueryParams } from "./incomingQuery";
 import type { IncomingPaymentPage } from "../hooks/useIncomingPaymentQuery";
 import { financeErrorDetail, financeErrorMessageText } from "../financeErrors";
+import { optionalRecords } from "../../optionalRecords";
 
 const projectionNumericId = (value: unknown) => {
     const raw = String(value ?? "");
@@ -704,7 +705,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                     transactionRequest,
                     api.get("/auth/me"),
                     api.get("/people/options"),
-                    api.get("/records", { params: { module: "case", page_size: 100 } }),
+                    optionalRecords({ module: "case", page_size: 100 }),
                 ]);
                 const paymentItems: Fee[] = contractPaymentSource.active && contractPaymentSource.ok
                     ? [paymentRes.data]
@@ -767,8 +768,8 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                 contractPaymentRes: () => loadContractPaymentRecords(),
                 invoiceRes: () => api.get("/records", { params: { module: "invoice", page_size: 100 } }),
                 refundRes: () => loadRefunds(1, refundMeta.pageSize, activeRefundStatus, isRefundNotRequiredRoute),
-                caseRes: () => api.get("/records", { params: { module: "case", page_size: 100 } }),
-                customerRes: () => api.get("/records", { params: { module: "customer", page_size: 100 } }),
+                caseRes: () => optionalRecords({ module: "case", page_size: 100 }),
+                customerRes: () => optionalRecords({ module: "customer", page_size: 100 }),
                 incomingRes: () => context.activeRouteConfig?.source === "incoming"
                     ? context.loadIncomingPayments(context.originalQuery)
                     : api.get("/finance/incoming-payments", { params: { bank_source: receiptBankCode(initialView) } }),

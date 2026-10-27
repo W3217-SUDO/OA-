@@ -84,6 +84,7 @@ import EditRecordModal from "./EditRecordModal";
 import AssignInvestigatorModal from "./AssignInvestigatorModal";
 import FeeApplicationModal from "./FeeApplicationModal";
 import { useMobileFilterToggle } from "../components/common/MobileFilterToggle";
+import { optionalRecords } from "../optionalRecords";
 
 const clueStatusesByRoute: Record<string, string[]> = {
   "clue-my-draft": ["草稿"],
@@ -1548,7 +1549,7 @@ export default function InvestigationCenterPage({
     try {
       const [{ data }, { data: contractData }] = await Promise.all([
         api.get(`/investigations/${row.id}/tasks`),
-        api.get("/records", { params: { module: "contract", page_size: 100 } }),
+        optionalRecords({ module: "contract", page_size: 100 }),
       ]);
       const authorization = data.record as Row;
       if (!authorization || authorization.module !== "investigation") {
