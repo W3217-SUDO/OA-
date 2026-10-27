@@ -11,7 +11,16 @@ from pathlib import Path
 from github_release_refs import load_snapshot
 
 
-VERSION = re.compile(r"1\.1\.(\d+)")
+VERSION = re.compile(r"1\.([12])\.(\d+)")
+# 用户 2026-10-27：1.1.602 之后改从 1.2.1 起编号；新版本一律 1.2.N，旧的 1.1.N 只用于识别历史。
+CURRENT_MINOR = 2
+
+
+def version_key(number):
+    match = VERSION.fullmatch(number)
+    return int(match[1]), int(match[2])
+
+
 COMMIT = re.compile(r"[0-9a-f]{40}")
 PENDING = {"assigned", "activating"}
 
@@ -46,10 +55,10 @@ def validate_target(target, snapshot, states):
     if not COMMIT.fullmatch(target) or target != snapshot["refs"]["refs/heads/dev"]:
         raise ValueError("目标不是当前已发布的 GitHub dev")
     released = max((number for number, row in states.items() if row[1] == "released"),
-                   key=lambda number: int(VERSION.fullmatch(number)[1]))
+                   key=version_key)
     tags = {ref[len("refs/tags/v"):]: commit for ref, commit in snapshot["refs"].items()
             if ref.startswith("refs/tags/v") and not ref.endswith("^{}")}
-    missing = {number for number in tags if int(VERSION.fullmatch(number)[1]) > int(VERSION.fullmatch(released)[1]) and number not in states}
+    missing = {number for number in tags if version_key(number) > version_key(released) and number not in states}
     if missing:
         raise ValueError(f"GitHub 已占用版本缺少生产队列接管记录: {sorted(missing)}")
     active_tag = f"refs/tags/v{released}"
@@ -66,8 +75,8 @@ def reservation(target, owner, scope, snapshot, states, consolidation):
     pending = {number for number, row in states.items() if row[1] in PENDING}
     if pending - consolidation:
         raise ValueError(f"在先发布仍未完成: {sorted(pending - consolidation)}")
-    highest = max(int(VERSION.fullmatch(number)[1]) for number in set(tags) | set(states))
-    number = f"1.1.{highest + 1}"
+    minor, patch = max(version_key(number) for number in set(tags) | set(states))
+    number = f"1.{CURRENT_MINOR}.{patch + 1 if minor == CURRENT_MINOR else 1}"
     if consolidation:
         scope += ";consolidates=" + ",".join(sorted(consolidation))
     return number, [[number, "assigned", target, owner, scope, datetime.now(timezone.utc).isoformat()]]

@@ -26,7 +26,7 @@ def checked_refs(refs):
     for ref, commit in refs.items():
         if not re.fullmatch(r"[0-9a-f]{40}", commit):
             raise ValueError(f"引用提交号无效: {ref}")
-        if not re.fullmatch(r"refs/heads/(dev|main)|refs/tags/v1\.1\.\d+(\^\{\})?", ref):
+        if not re.fullmatch(r"refs/heads/(dev|main)|refs/tags/v1\.[12]\.\d+(\^\{\})?", ref):
             raise ValueError(f"快照包含非发布引用: {ref}")
         if ref.endswith("^{}") and ref[:-3] not in refs:
             raise ValueError(f"标签解引用缺少原标签: {ref}")
@@ -67,7 +67,7 @@ def capture(repository, remote, output):
     for line in git("ls-remote", source, "refs/heads/dev", "refs/heads/main", "refs/tags/v1.1.*").splitlines():
         commit, ref = line.split("\t")
         # Git 通配符也返回历史安全标签；它们不是正式版本领取记录。
-        if not re.fullmatch(r"refs/heads/(dev|main)|refs/tags/v1\.1\.\d+(\^\{\})?", ref):
+        if not re.fullmatch(r"refs/heads/(dev|main)|refs/tags/v1\.[12]\.\d+(\^\{\})?", ref):
             continue
         if ref in refs:
             raise ValueError(f"重复引用: {ref}")

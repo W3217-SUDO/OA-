@@ -48,10 +48,10 @@ description: OA 正式发布（Mac 发布机 → 生产服务器 oa-production-a
 git switch dev && git fetch origin && git rebase origin/dev   # 线性，冲突就停下解决
 git status --short                                            # 必须为空
 "${OA_SSH[@]}" 'tail -n 3 /opt/sunhold-oa/releases/queue.tsv; readlink -f /opt/sunhold-oa/runtime/enterprise/current'
-git ls-remote --tags origin 'v1.1.*' | sed 's#.*/v##; s#\^{}##' | sort -t. -k3 -n | tail -1
+git ls-remote --tags origin 'v1.*' | sed 's#.*/v##; s#\^{}##' | sort -t. -k2,2n -k3,3n | tail -1
 ```
 
-队列最后一行必须是 `released` 且等于 `current`。下一个版本号 `N` = 队列与 GitHub 标签中最大号 + 1（只沿 `1.1.x`，不进位）。
+队列最后一行必须是 `released` 且等于 `current`。下一个版本号 `N`：1.1.602 之后改从 `1.2.1` 起编号（用户 2026-10-27 要求），之后沿 `1.2.x` 递增，即队列与 GitHub 标签中最大的 `1.2.x` + 1；还没有 `1.2.x` 时 `N=1.2.1`。不再发 `1.1.x`。
 
 ### 2. 写版本号并推送一次（本地，约 1 分钟门禁）
 
