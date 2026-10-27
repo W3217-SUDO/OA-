@@ -3,12 +3,20 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 import logging
+import re
+import sys
 from time import perf_counter
+from urllib.parse import parse_qsl
 
 from sqlalchemy import event
 
 
 logger = logging.getLogger(__name__)
+# 每请求耗时单独一个 INFO 记录器：根记录器默认只放行 WARNING，这里自带输出到 stderr（进 journald）。
+timing_logger = logging.getLogger("app.api_timing")
+# 只回显这些查询参数里的枚举值（如控制台 section），其余参数一律不记。
+_LOGGED_QUERY_KEYS = ("section",)
+_SAFE_QUERY_VALUE = re.compile(r"^[a-z_]{1,32}$")
 
 
 class _WopiAccessLogFilter(logging.Filter):
@@ -43,6 +51,7 @@ class RequestMetrics:
     sql_execute_seconds: float = 0
     headers_seconds: float | None = None
     phases: dict[str, float] = field(default_factory=dict)
+    tags: dict[str, str] = field(default_factory=dict)
     closed: bool = False
 
 
@@ -65,6 +74,13 @@ def add_phase(name, seconds, metrics=None):
     metrics = metrics or _current.get()
     if metrics is not None and not metrics.closed:
         metrics.phases[name] = metrics.phases.get(name, 0) + seconds
+
+
+def tag_request(name, value, metrics=None):
+    """给本次请求的耗时日志附加一个短标记（如控制台缓存 cache=stale）。"""
+    metrics = metrics or _current.get()
+    if metrics is not None and not metrics.closed:
+        metrics.tags[name] = value
 
 
 def current_metrics():
@@ -96,12 +112,33 @@ def install_query_metrics(engine):
         finish(exception_context.execution_context)
 
 
+def _install_timing_handler():
+    if not timing_logger.handlers:
+        handler = logging.StreamHandler(sys.stderr)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        timing_logger.addHandler(handler)
+    timing_logger.setLevel(logging.INFO)
+    timing_logger.propagate = False
+
+
+def _logged_query(scope):
+    raw = scope.get("query_string") or b""
+    if not raw:
+        return {}
+    pairs = parse_qsl(raw.decode("latin-1"), keep_blank_values=False)
+    return {key: value for key, value in pairs
+            if key in _LOGGED_QUERY_KEYS and _SAFE_QUERY_VALUE.match(value)}
+
+
 class RequestMetricsMiddleware:
-    def __init__(self, app, *, api_prefix, threshold_seconds):
+    def __init__(self, app, *, api_prefix, threshold_seconds, log_every_request=False):
         _install_wopi_access_filter(api_prefix)
+        if log_every_request:
+            _install_timing_handler()
         self.app = app
         self.api_prefix = api_prefix
         self.threshold_seconds = threshold_seconds
+        self.log_every_request = log_every_request
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or not scope.get("path", "").startswith(self.api_prefix + "/"):
@@ -128,14 +165,21 @@ class RequestMetricsMiddleware:
             elapsed = elapsed if elapsed is not None else perf_counter() - metrics.started
             metrics.closed = True
             _current.reset(token)
-            if elapsed >= self.threshold_seconds:
+            slow = elapsed >= self.threshold_seconds
+            if slow or self.log_every_request:
                 route = scope.get("route")
                 # 仅输出路由模板，未知入口也不输出可能含客户编号的原始路径。
                 path = getattr(route, "path", "<unmatched>")
-                logger.warning(
-                    "slow_api method=%s route=%s status=%s total_ms=%.1f headers_ms=%s queries=%s sql_execute_ms=%.1f phases_ms=%s",
+                extra = "".join(f" {key}={value}" for key, value in {**_logged_query(scope), **metrics.tags}.items())
+                fields = (
                     scope.get("method"), path, status, elapsed * 1000,
                     round(metrics.headers_seconds * 1000, 1) if metrics.headers_seconds is not None else None,
                     metrics.queries, metrics.sql_execute_seconds * 1000,
                     {name: round(seconds * 1000, 1) for name, seconds in metrics.phases.items()},
+                    extra,
                 )
+                template = "method=%s route=%s status=%s total_ms=%.1f headers_ms=%s queries=%s sql_execute_ms=%.1f phases_ms=%s%s"
+                if slow:
+                    logger.warning("slow_api " + template, *fields)
+                else:
+                    timing_logger.info("api_timing " + template, *fields)

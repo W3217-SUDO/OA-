@@ -17,6 +17,7 @@ from app.config import settings
 from app.core import dashboard_metrics_redis as shared
 from app.core import query_cache_store
 from app.core.query_cache import _cached_query
+from app.core.request_metrics import tag_request
 from redis.exceptions import RedisError
 
 
@@ -182,7 +183,9 @@ async def cached_dashboard_query(db, identity, section, compute, *, compute_in=N
             await db.rollback()
         task = _shared_refresh(key, deepcopy(identity), section, compute_in)
         if stale is not None:
+            tag_request("cache", "stale")
             return {**stale, "stale": True}
+        tag_request("cache", "shared")
         return deepcopy(await asyncio.shield(task))
     # 留存期只控制清理；每次命中仍由共享流程核对当前业务修订号。
     store = SimpleNamespace(

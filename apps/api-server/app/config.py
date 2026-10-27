@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     capability_catalog_path: str = ""
     app_env: str = "development"
     slow_request_log_seconds: float = Field(default=2, gt=0)
+    # 每个接口请求都输出一行 api_timing 精确耗时（超过阈值的仍记 slow_api），便于看控制台各分区速度。
+    request_timing_log: bool = True
     # 本机无 Docker 时默认使用 SQLite；Docker Compose 会通过环境变量覆盖为 PostgreSQL。
     # Resolve the development SQLite database from this module, not the
     # process working directory. This keeps the local web/API pair on one
