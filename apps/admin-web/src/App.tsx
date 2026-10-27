@@ -1432,6 +1432,8 @@ export default function App() {
     if (routeFromUrl === active) return;
     if (active === "dashboard") params.delete("page");
     else params.set("page", active);
+    // id 只属于问题反馈页（直达某个问题），离开后去掉。
+    if (active !== FEEDBACK_ROUTE && active !== FEEDBACK_CENTER_ROUTE) params.delete("id");
     const query = params.toString();
     window.history.pushState(
       null,
@@ -1667,6 +1669,8 @@ export default function App() {
           setPermissionsReady(false);
           setPermissionLoadError("");
           resetWorkspaceForSession();
+          // 从链接进来（如群里发的问题链接 ?page=feedback&id=…）登录后回到该页面，不回工作台。
+          if (new URLSearchParams(window.location.search).get("page")) setActive(routeFromLocation());
           setLoggedIn(true);
         }}
       />

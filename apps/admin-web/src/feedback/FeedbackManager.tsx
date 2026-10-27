@@ -7,7 +7,7 @@ import dayjs from "dayjs";
 import { api } from "../api";
 import FeedbackDetail from "./FeedbackDetail";
 import FeedbackForm from "./FeedbackForm";
-import { consumeFeedbackStatusFilter, consumeFeedbackTarget, type FeedbackPageOption } from "./navigation";
+import { consumeFeedbackStatusFilter, consumeFeedbackTarget, readFeedbackIdFromUrl, syncFeedbackIdToUrl, type FeedbackPageOption } from "./navigation";
 import type { FeedbackPage, FeedbackRecord, FeedbackStatusCounts } from "./types";
 
 type Props = {
@@ -68,6 +68,9 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
       const target = consumeFeedbackTarget();
       if (target) { setCreating(false); setViewingId(target); }
     };
+    // 从问题链接（?page=feedback&id=…）进来直接打开该问题。
+    const linked = readFeedbackIdFromUrl();
+    if (linked) { setCreating(false); setViewingId(linked); }
     openTarget();
     window.addEventListener("sunhold:feedback-target", openTarget);
     return () => window.removeEventListener("sunhold:feedback-target", openTarget);
@@ -89,6 +92,7 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
   }, [center]);
 
   useEffect(() => { if (navKey) setViewingId(null); }, [navKey]);
+  useEffect(() => { syncFeedbackIdToUrl(viewingId); }, [viewingId]);
 
   useEffect(() => {
     if (!listVisible) return;

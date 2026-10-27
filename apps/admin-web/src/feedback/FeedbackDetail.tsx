@@ -35,10 +35,17 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
       const { data } = await api.get<FeedbackDetails>(`/feedback/${feedbackId}`);
       setFeedback(data);
     } catch (failure: any) {
+      // 链接里的问题不存在或没有权限：提示后回到列表。
+      if (failure?.response?.status === 404 || failure?.response?.status === 403) {
+        message.warning("这个问题不存在，或你没有权限查看", 4);
+        onBack();
+        return;
+      }
       setError(failure?.response?.data?.detail || "反馈详情加载失败");
     } finally {
       setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feedbackId]);
 
   useEffect(() => { void load(); }, [load]);

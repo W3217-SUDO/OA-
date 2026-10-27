@@ -70,6 +70,33 @@ export function rememberFeedbackTarget(id: number) {
   window.dispatchEvent(new Event("sunhold:feedback-target"));
 }
 
+// 问题链接：?page=feedback&id=<反馈 ID> 直接打开该问题详情（群提醒里附这个链接，2026-10-27）。
+export const FEEDBACK_ID_PARAM = "id";
+
+export function feedbackLink(id: number, origin = window.location.origin): string {
+  return `${origin}/?page=${FEEDBACK_ROUTE}&${FEEDBACK_ID_PARAM}=${id}`;
+}
+
+export function readFeedbackIdFromUrl(search = window.location.search): number | null {
+  const params = new URLSearchParams(search);
+  const page = params.get("page");
+  if (page !== FEEDBACK_ROUTE && page !== FEEDBACK_CENTER_ROUTE) return null;
+  const id = Number(params.get(FEEDBACK_ID_PARAM));
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+/** 打开或关闭问题详情时同步地址栏的 id，方便复制链接；不新增浏览记录。 */
+export function syncFeedbackIdToUrl(id: number | null) {
+  const params = new URLSearchParams(window.location.search);
+  const page = params.get("page");
+  if (page !== FEEDBACK_ROUTE && page !== FEEDBACK_CENTER_ROUTE) return;
+  if (id) params.set(FEEDBACK_ID_PARAM, String(id));
+  else params.delete(FEEDBACK_ID_PARAM);
+  const query = params.toString();
+  const next = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+  if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) window.history.replaceState(window.history.state, "", next);
+}
+
 export function consumeFeedbackTarget(): number | null {
   const value = sessionStorage.getItem(FEEDBACK_TARGET_KEY);
   sessionStorage.removeItem(FEEDBACK_TARGET_KEY);
