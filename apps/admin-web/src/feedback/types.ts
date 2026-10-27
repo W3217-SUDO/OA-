@@ -24,6 +24,8 @@ export type FeedbackEvent = {
   to_status: string;
   operator: string;
   operator_display_name: string;
+  /** 说话的是谁：提交人、问题处理助手（自动化）、被指派的处理人、其他为管理者。 */
+  operator_role?: "reporter" | "bot" | "assignee" | "admin";
   comment: string;
   created_at: string;
   has_screenshot: boolean;

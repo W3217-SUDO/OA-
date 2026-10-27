@@ -68,3 +68,50 @@
 /* 详情回复用的小号上传区：一行提示，点击或拖拽、粘贴都可以。 */
 .feedback-dropzone.is-compact { flex-direction: row; justify-content: center; gap: 8px; padding: 10px 12px; font-size: 13px; }
 .feedback-dropzone.is-compact .feedback-dropzone-icon { font-size: 18px; }
+
+/* 处理记录聊天框（2026-10-27）：提交人在右、蓝色气泡；处理方在左、白色气泡；状态变化居中灰条；底部固定输入框。
+   钉钉手机内核是 Chrome 100：不用 color-mix、:has、dvh、@container。 */
+.feedback-chat { max-width: 880px; margin-top: 24px; border: 1px solid var(--oa-border, #e5e6eb); border-radius: 8px; background: var(--oa-fill, #f5f7fa); }
+.feedback-chat-title { margin: 0; padding: 12px 16px; font-size: 15px; border-bottom: 1px solid var(--oa-border, #e5e6eb); background: var(--oa-surface, #fff); border-radius: 8px 8px 0 0; }
+.feedback-chat-list { display: flex; flex-direction: column; gap: 14px; padding: 16px; }
+.feedback-chat-status { align-self: center; max-width: 92%; padding: 3px 12px; border-radius: 12px; font-size: 12px; line-height: 1.6; text-align: center; color: var(--oa-text-2, #595959); background: rgba(0, 0, 0, 0.06); }
+.feedback-chat-status-time { margin-left: 8px; color: var(--oa-text-3, #8c8c8c); }
+.feedback-chat-row { display: flex; align-items: flex-start; gap: 10px; }
+.feedback-chat-row.is-reporter { flex-direction: row-reverse; }
+.feedback-chat-avatar { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; font-size: 17px; color: #fff; }
+.feedback-chat-avatar.is-reporter { background: #1677ff; }
+.feedback-chat-avatar.is-admin { background: #fa8c16; }
+.feedback-chat-avatar.is-bot { background: #13a8a8; }
+.feedback-chat-avatar.is-assignee { background: #722ed1; }
+.feedback-chat-body { display: flex; flex-direction: column; min-width: 0; max-width: 78%; }
+.feedback-chat-row.is-reporter .feedback-chat-body { align-items: flex-end; }
+.feedback-chat-meta { display: flex; gap: 8px; margin-bottom: 4px; font-size: 12px; color: var(--oa-text-3, #8c8c8c); }
+.feedback-chat-name { color: var(--oa-text-2, #595959); font-weight: 500; }
+.feedback-chat-bubble { max-width: 100%; padding: 8px 12px; border-radius: 4px 12px 12px 12px; border: 1px solid var(--oa-border, #e5e6eb); background: var(--oa-surface, #fff); color: var(--oa-text, #1f1f1f); }
+.feedback-chat-row.is-reporter .feedback-chat-bubble { border-radius: 12px 4px 12px 12px; border-color: rgba(22, 119, 255, 0.28); background: #dbeafe; color: #1f1f1f; }
+.feedback-chat-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.feedback-chat-bubble .feedback-attachments .ant-image img { width: 108px; height: 80px; }
+.feedback-chat-composer { position: sticky; bottom: 0; z-index: 2; padding: 10px 12px 12px; border-top: 1px solid var(--oa-border, #e5e6eb); background: var(--oa-surface, #fff); border-radius: 0 0 8px 8px; }
+.feedback-chat-hint { margin-bottom: 8px; padding: 6px 10px; border-radius: 6px; font-size: 12px; color: #ad6800; background: #fffbe6; border: 1px solid #ffe58f; }
+.feedback-chat-composer .feedback-dropzone.is-compact { padding: 6px 10px; font-size: 12px; }
+.feedback-chat-composer .feedback-files { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); margin-top: 8px; }
+.feedback-chat-composer .feedback-file img, .feedback-chat-composer .feedback-file-icon { height: 64px; }
+.feedback-chat-input { display: flex; align-items: flex-end; gap: 10px; margin-top: 8px; }
+.feedback-chat-input .ant-input { flex: 1; min-width: 0; }
+.feedback-chat-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+@media (max-width: 640px) {
+  .feedback-chat { margin-left: -4px; margin-right: -4px; }
+  .feedback-chat-list { padding: 12px 10px; }
+  .feedback-chat-body { max-width: 82%; }
+  .feedback-chat-avatar { width: 30px; height: 30px; font-size: 15px; }
+  .feedback-chat-composer { padding: 8px 10px 10px; }
+  /* 手机上不拖文件也很少粘贴，上传区缩成一行“添加截图或附件”。 */
+  .feedback-chat-composer .feedback-dropzone.is-compact { padding: 4px 8px; }
+  .feedback-chat-composer .feedback-dropzone.is-compact > div { display: none; }
+  .feedback-chat-composer .feedback-dropzone.is-compact::after { content: "添加截图或附件"; }
+  .feedback-chat-input { flex-direction: column; align-items: stretch; }
+  .feedback-chat-buttons { justify-content: stretch; }
+  .feedback-chat-buttons .ant-btn { flex: 1 1 auto; }
+}
+/* 滚到最新一条时留出底部固定输入框的高度，最后一条不被挡住。 */
+.feedback-chat-end { height: 0; scroll-margin-bottom: 200px; }

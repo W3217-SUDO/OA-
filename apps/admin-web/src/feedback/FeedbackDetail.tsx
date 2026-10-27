@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
-import { Alert, Button, Descriptions, Input, message, Popconfirm, Space, Spin, Tag, Timeline } from "antd";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Alert, Button, Descriptions, Input, message, Popconfirm, Space, Spin, Tag } from "antd";
+import { SendOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "../api";
 import type { FeedbackDetails } from "./types";
-import FeedbackEventImage from "./FeedbackEventImage";
 import FeedbackFileDrop from "./FeedbackFileDrop";
 import { feedbackErrorText, uploadFeedbackFiles } from "./upload";
 import FeedbackAttachments from "./FeedbackAttachments";
+import FeedbackChatEntry from "./FeedbackChatEntry";
 import "./feedback.css";
 
 type Props = { feedbackId: number; onBack: () => void; onNavigate: (route: string) => void };
@@ -39,6 +40,12 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
   }, [feedbackId]);
 
   useEffect(() => { void load(); }, [load]);
+  // 打开或有新消息时滚到最新一条，和聊天软件一样。
+  const listEnd = useRef<HTMLDivElement>(null);
+  const eventCount = feedback?.events.length ?? 0;
+  useEffect(() => {
+    if (eventCount) listEnd.current?.scrollIntoView({ block: "end" });
+  }, [eventCount]);
 
   // 回复带的截图和附件走回复接口；点状态按钮时如果已经选了文件，先作为一条回复发出，再改状态。
   // 回复文字走 JSON，截图和附件再逐个上传到这条回复（见 upload.ts）；返回没传上去的文件名。
@@ -99,6 +106,14 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
   if (loading && !feedback) return <Spin />;
   if (error && !feedback) return <Alert type="error" showIcon title={error} action={<Button onClick={onBack}>返回列表</Button>} />;
   if (!feedback) return null;
+  const actions = feedback.available_actions;
+  const hint = actions.includes("确认修改")
+    ? "处理方写明了打算怎么改：没问题点“确认修改”，确认后才开始改；有意见直接回复。"
+    : actions.includes("验证通过")
+      ? "已处理完成：解决了点“验证通过”，没解决写明情况后点“未解决，重新打开”。"
+      : actions.includes("处理完成，请验证")
+        ? "改之前先回复打算怎么改，等提交人点“确认修改”后再改；改好后点“处理完成，请验证”。"
+        : "";
 
   return <section aria-label="反馈详情">
     <Space wrap style={{ marginBottom: 16 }}>
@@ -127,39 +142,31 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
         children: <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{feedback.description}</div> },
     ]} />
     <FeedbackAttachments feedbackId={feedbackId} attachments={feedback.attachments || []} />
-    <h3 style={{ marginTop: 24, marginBottom: 16 }}>处理记录</h3>
-    <Timeline items={feedback.events.map((event) => ({
-      key: event.id,
-      children: <div>
-        <Space wrap size={8}>
-          <strong>{event.action}</strong>
-          <span>{event.operator_display_name || event.operator}</span>
-          {event.from_status !== event.to_status && <Tag color={statusColors[event.to_status] || "default"}>{event.to_status}</Tag>}
-          <span style={{ color: "var(--oa-text-2)" }}>{dayjs(event.created_at).format("YYYY-MM-DD HH:mm:ss")}</span>
-        </Space>
-        {event.comment && <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", marginTop: 4 }}>{event.comment}</div>}
-        {event.attachments?.length
-          ? <FeedbackAttachments feedbackId={feedbackId} attachments={event.attachments} compact />
-          : event.has_screenshot && <FeedbackEventImage feedbackId={feedbackId} eventId={event.id} />}
-      </div>,
-    }))} />
-    {feedback.available_actions.includes("确认修改") && <Alert type="warning" showIcon style={{ maxWidth: 850, marginBottom: 12 }}
-      title="处理人会在处理记录里写明打算怎么改：没问题点“确认修改”，确认后才开始改；有意见请在下面写明后发送回复。" />}
-    {feedback.available_actions.includes("验证通过") && <Alert type="info" showIcon style={{ maxWidth: 850, marginBottom: 12 }}
-      title="已处理完成，请验证问题是否已解决：解决了点“验证通过”，没解决写明情况后点“未解决，重新打开”。" />}
-    {feedback.available_actions.includes("处理完成，请验证") && <Alert type="info" showIcon style={{ maxWidth: 850, marginBottom: 12 }}
-      title="改之前先在下面回复打算怎么改，等提交人点“确认修改”后再改；处理完成后点“处理完成，请验证”，会通知提交人验证。" />}
-    <Input.TextArea value={comment} rows={4} aria-label="回复或处理说明"
-      placeholder="回复或填写处理说明（随状态操作一起提交）" onChange={(event) => setComment(event.target.value)}
-      style={{ maxWidth: 850, marginBottom: 12 }} />
-    <div style={{ maxWidth: 850, marginBottom: 12 }}>
-      <FeedbackFileDrop files={files} onChange={setFiles} compact disabled={busy} />
-    </div>
-    <div><Space wrap>
-      {feedback.available_actions.map((action) => <Button key={action}
-        type={primaryActions.has(action) ? "primary" : "default"} danger={action === "未解决，重新打开"} disabled={busy}
-        onClick={() => transition(action)}>{action}</Button>)}
-      <Button disabled={busy || (!comment.trim() && !files.length)} loading={busy} onClick={reply}>发送回复</Button>
-    </Space></div>
+    <section className="feedback-chat" aria-label="处理记录">
+      <h3 className="feedback-chat-title">处理记录</h3>
+      <div className="feedback-chat-list">
+        {feedback.events.map((event) => <FeedbackChatEntry key={event.id} feedbackId={feedbackId} event={event} />)}
+        <div ref={listEnd} className="feedback-chat-end" />
+      </div>
+      <div className="feedback-chat-composer">
+        {hint && <div className="feedback-chat-hint">{hint}</div>}
+        <FeedbackFileDrop files={files} onChange={setFiles} compact disabled={busy} />
+        <div className="feedback-chat-input">
+          <Input.TextArea value={comment} autoSize={{ minRows: 1, maxRows: 6 }} aria-label="回复或处理说明"
+            placeholder="输入回复；截图可直接粘贴或拖进来" onChange={(event) => setComment(event.target.value)}
+            onPressEnter={(event) => {
+              if ((event.ctrlKey || event.metaKey) && !busy) { event.preventDefault(); reply(); }
+            }} />
+          <div className="feedback-chat-buttons">
+            {feedback.available_actions.map((action) => <Button key={action}
+              type={primaryActions.has(action) ? "primary" : "default"} ghost={primaryActions.has(action)}
+              danger={action === "未解决，重新打开"} disabled={busy}
+              onClick={() => transition(action)}>{action}</Button>)}
+            <Button type="primary" icon={<SendOutlined />} disabled={busy || (!comment.trim() && !files.length)}
+              loading={busy} onClick={reply}>发送</Button>
+          </div>
+        </div>
+      </div>
+    </section>
   </section>;
 }

@@ -46,6 +46,9 @@ def _person_reference_display(username: object, users_by_username: dict[str, Use
         return "—", False
     if key == "system":
         return "系统", False
+    if key == "feedback-bot":
+        # 问题处理中心自动化处理用的身份（app/areas/system/feedback.py FEEDBACK_BOT_USERNAME），不是登录账号。
+        return "问题处理助手", False
     user = users_by_username.get(key.lower())
     if not user:
         # 系统里已没有这个账号（多为旧系统导入）：显示原用户名，仍标记为未匹配。

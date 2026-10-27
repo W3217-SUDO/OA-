@@ -96,5 +96,28 @@ class FeedbackConfirmFlowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self._transition("确认修改")).json(), {"status": "待处理"})
 
 
+    async def test_bot_replies_show_as_assistant_and_roles_are_marked(self):
+        """自动化用 feedback-bot 身份回复，显示为“问题处理助手”，与管理者本人区分；权限按管理员。"""
+        self.identity = dict(feedback.FEEDBACK_BOT_IDENTITY)
+        bot_reply = await self.client.post(f"{API}/{self.feedback_id}/replies", json={"content": "打算这样改"})
+        self.assertEqual(bot_reply.status_code, 200, bot_reply.text)
+        self.identity = dict(ADMIN)
+        await self.client.post(f"{API}/{self.feedback_id}/replies", json={"content": "管理者补充"})
+        self.identity = dict(STAFF)
+        await self.client.post(f"{API}/{self.feedback_id}/replies", json={"content": "好的"})
+        self.identity = dict(ADMIN)
+        events = (await self.client.get(f"{API}/{self.feedback_id}")).json()["events"]
+        speakers = [(e["action"], e["operator_display_name"], e["operator_role"]) for e in events]
+        self.assertEqual(speakers, [
+            ("提交反馈", "确认流程提交人", "reporter"),
+            ("回复", "问题处理助手", "bot"),
+            ("回复", "确认流程管理员", "admin"),
+            ("回复", "确认流程提交人", "reporter"),
+        ])
+        self.identity = dict(feedback.FEEDBACK_BOT_IDENTITY)
+        done = await self._transition("处理完成，请验证", "已修复")
+        self.assertEqual(done.json(), {"status": "待验证"})
+
+
 if __name__ == "__main__":
     unittest.main()

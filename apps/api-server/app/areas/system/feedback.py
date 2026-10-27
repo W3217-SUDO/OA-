@@ -48,6 +48,13 @@ def _stored_statuses(status: str) -> set[str]:
     return {status, *(old for old, new in LEGACY_STATUS.items() if new == status)}
 
 
+# 自动化处理（问题巡检会话）写入的回复和状态操作用这个身份，页面显示为“问题处理助手”，
+# 和管理者本人在网页上的回复区分开（用户要求，2026-10-27）。不是登录账号，权限按管理员。
+FEEDBACK_BOT_USERNAME = "feedback-bot"
+FEEDBACK_BOT_DISPLAY_NAME = "问题处理助手"
+FEEDBACK_BOT_IDENTITY = {"username": FEEDBACK_BOT_USERNAME, "display_name": FEEDBACK_BOT_DISPLAY_NAME,
+                         "role": "admin", "role_ids": ["admin"], "_actual_role_ids": ["admin"]}
+
 FEEDBACK_ATTACHMENT_CATEGORIES = ("问题反馈截图", "问题反馈附件")
 # 回复里带的截图和附件，remark 记回复事件 ID。
 FEEDBACK_REPLY_CATEGORIES = ("问题反馈补充截图", "问题反馈补充附件")
@@ -99,6 +106,17 @@ def _can_view(record: BusinessRecord, identity: dict) -> bool:
 
 def _can_handle(record: BusinessRecord, identity: dict) -> bool:
     return _is_admin(identity) or _assignee(record) == identity["username"]
+
+
+def _operator_role(record: BusinessRecord, operator: str) -> str:
+    """处理记录里说话的是谁：提交人（聊天框右侧）、问题处理助手、被指派的处理人、其他（管理者）。"""
+    if operator == record.owner:
+        return "reporter"
+    if operator == FEEDBACK_BOT_USERNAME:
+        return "bot"
+    if operator == _assignee(record):
+        return "assignee"
+    return "admin"
 
 
 async def _get_feedback(db: AsyncSession, feedback_id: int, identity: dict, *, lock: bool = False) -> BusinessRecord:
@@ -419,6 +437,7 @@ async def get_feedback(feedback_id: int, identity: dict = Depends(current_identi
     if missing_names:
         authors = (await db.scalars(select(User).where(User.username.in_(missing_names)))).all()
         names.update({user.username: user.display_name for user in authors})
+    names[FEEDBACK_BOT_USERNAME] = FEEDBACK_BOT_DISPLAY_NAME
     return {
         **_serialize_feedback(record, names.get(record.owner, ""), names.get(_assignee(record), ""), has_screenshot),
         "can_assign": _is_admin(identity), "can_delete": _is_admin(identity),
@@ -430,7 +449,8 @@ async def get_feedback(feedback_id: int, identity: dict = Depends(current_identi
         "events": [{
             "id": event.id, "action": event.action, "from_status": _status(event.from_status),
             "to_status": _status(event.to_status), "operator": event.operator,
-            "operator_display_name": names.get(event.operator, ""), "comment": event.comment,
+            "operator_display_name": names.get(event.operator, ""),
+            "operator_role": _operator_role(record, event.operator), "comment": event.comment,
             "created_at": event.created_at, "has_screenshot": str(event.id) in screenshot_event_ids,
             "attachments": [{
                 "id": item.id, "name": item.original_name, "size": item.size,
