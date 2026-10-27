@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import { message } from "antd";
 import { CloseOutlined, FileOutlined, InboxOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
@@ -32,12 +32,16 @@ type Props = {
   /** 反馈详情里回复用的小号上传区。 */
   compact?: boolean;
   disabled?: boolean;
+  /** 聊天框输入行用：不显示上传区，由外面的“＋”按钮通过 pickerRef 打开文件选择；粘贴、拖拽照常可用。 */
+  inline?: boolean;
+  pickerRef?: MutableRefObject<(() => void) | null>;
 };
 
 // 截图和附件上传区：拖到窗口任意位置、截图后 Ctrl/⌘+V 粘贴或点击选择都可以；提交反馈和详情回复共用。
-export default function FeedbackFileDrop({ files, onChange, compact = false, disabled = false }: Props) {
+export default function FeedbackFileDrop({ files, onChange, compact = false, disabled = false, inline = false, pickerRef }: Props) {
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  if (pickerRef) pickerRef.current = () => fileInput.current?.click();
   const dragDepth = useRef(0);
   const filesRef = useRef(files);
   filesRef.current = files;
@@ -110,16 +114,16 @@ export default function FeedbackFileDrop({ files, onChange, compact = false, dis
 
   return <>
     {dragging && <div className="feedback-drop-mask"><InboxOutlined />松开即可添加截图或附件</div>}
-    <div className={`feedback-dropzone${compact ? " is-compact" : ""}`} role="button" tabIndex={0} aria-label="添加截图或附件"
+    {!inline && <div className={`feedback-dropzone${compact ? " is-compact" : ""}`} role="button" tabIndex={0} aria-label="添加截图或附件"
       onClick={() => fileInput.current?.click()}
       onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") fileInput.current?.click(); }}>
       <InboxOutlined className="feedback-dropzone-icon" />
       <div>把截图或文件<b>拖到这里</b>，或截图后直接 <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>V</kbd> 粘贴{compact ? "，也可点击选择" : ""}</div>
       {!compact && <div className="feedback-hint">也可点击选择 · 图片 PNG/JPG/WebP ≤10MB · PDF/Word/Excel/TXT/ZIP/视频 ≤20MB</div>}
-    </div>
+    </div>}
     <input ref={fileInput} type="file" multiple hidden accept={FEEDBACK_FILE_SUFFIXES.join(",")}
       onChange={(event) => { addFiles(Array.from(event.target.files || [])); event.target.value = ""; }} />
-    {!!files.length && <div className="feedback-files">
+    {!!files.length && <div className={`feedback-files${inline ? " is-inline" : ""}`}>
       {files.map((file, index) => <FilePreview key={`${file.name}-${file.size}-${index}`} file={file}
         onRemove={() => onChange(files.filter((_, i) => i !== index))} />)}
     </div>}

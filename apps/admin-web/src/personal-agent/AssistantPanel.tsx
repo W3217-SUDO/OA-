@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
 import { Alert, Button, Input, List, Tag, Tooltip, message } from "antd";
-import { ApiOutlined, ArrowLeftOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, FileWordOutlined, FolderOpenOutlined, ReloadOutlined } from "@ant-design/icons";
+import { ApiOutlined, ArrowLeftOutlined, LinkOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, FileWordOutlined, FolderOpenOutlined, ReloadOutlined } from "@ant-design/icons";
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
 import AgentAvatar from "./AgentAvatar";
 import { AgentToolResult } from "../AgentToolResult";
@@ -379,7 +379,6 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         }}
       >
         <AssistantWorkspaceTools key={workspace.draftKey} ref={workspaceToolsRef} workspace={workspace} desktopWorkspace={desktopWorkspace} onOpenPersonalAiSpace={() => setPersonalSpaceOpen(true)} onOpenMemory={() => setMemoryOpen(true)} />
-        <div><Button type="text" icon={<ApiOutlined />} disabled={sendBlocked} onClick={() => submit("帮我连接一个 MCP 服务")}>连接我的 MCP</Button><Button type="text" onClick={mcp.show}>管理已有连接</Button><LocalAgentAccess /></div>
         <form className="assistant-composer-input" onSubmit={(event) => { event.preventDefault(); submit(); }}>
           <Input.TextArea
             ref={inputRef}
@@ -418,6 +417,12 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
             </Tooltip>}
           </div>
         </form>
+        {/* 输入框下方一排（用户 2026-10-27：输入区附近的功能按钮排成一排，不竖着堆）；放不下时横向滚动。 */}
+        <div className="assistant-composer-links">
+          <Tooltip title="让智能体帮我连接一个 MCP 服务"><Button type="text" icon={<ApiOutlined />} disabled={sendBlocked} onClick={() => submit("帮我连接一个 MCP 服务")}>连接 MCP</Button></Tooltip>
+          <Tooltip title="管理已有的 MCP 连接"><Button type="text" icon={<LinkOutlined />} onClick={mcp.show}>管理连接</Button></Tooltip>
+          <LocalAgentAccess />
+        </div>
       </div>
       {!desktopWorkspace && <div className="assistant-chips">
         {suggestions.map((item) => (

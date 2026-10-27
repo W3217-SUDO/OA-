@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Button, Descriptions, Input, message, Popconfirm, Space, Spin, Tag } from "antd";
-import { SendOutlined } from "@ant-design/icons";
+import { Alert, Button, Descriptions, Input, message, Popconfirm, Space, Spin, Tag, Tooltip } from "antd";
+import { ArrowUpOutlined, PaperClipOutlined, PictureOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "../api";
 import type { FeedbackDetails } from "./types";
@@ -25,6 +25,8 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
   const [busy, setBusy] = useState(false);
   const [comment, setComment] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  const [composing, setComposing] = useState(false);
+  const openPicker = useRef<(() => void) | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,7 +46,12 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
   const listEnd = useRef<HTMLDivElement>(null);
   const eventCount = feedback?.events.length ?? 0;
   useEffect(() => {
-    if (eventCount) listEnd.current?.scrollIntoView({ block: "end" });
+    if (!eventCount) return;
+    const scroll = () => listEnd.current?.scrollIntoView({ block: "end" });
+    scroll();
+    // 气泡里的截图是异步取回的，加载后内容变高，再滚一次。
+    const timer = window.setTimeout(scroll, 600);
+    return () => window.clearTimeout(timer);
   }, [eventCount]);
 
   // 回复带的截图和附件走回复接口；点状态按钮时如果已经选了文件，先作为一条回复发出，再改状态。
@@ -108,12 +115,8 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
   if (!feedback) return null;
   const actions = feedback.available_actions;
   const hint = actions.includes("确认修改")
-    ? "处理方写明了打算怎么改：没问题点“确认修改”，确认后才开始改；有意见直接回复。"
-    : actions.includes("验证通过")
-      ? "已处理完成：解决了点“验证通过”，没解决写明情况后点“未解决，重新打开”。"
-      : actions.includes("处理完成，请验证")
-        ? "改之前先回复打算怎么改，等提交人点“确认修改”后再改；改好后点“处理完成，请验证”。"
-        : "";
+    ? "没问题点“确认修改”，确认后才开始改；有意见直接回复。"
+    : actions.includes("验证通过") ? "解决了点“验证通过”，没解决写明情况后点“未解决，重新打开”。" : "";
 
   return <section aria-label="反馈详情">
     <Space wrap style={{ marginBottom: 16 }}>
@@ -146,27 +149,36 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
       <h3 className="feedback-chat-title">处理记录</h3>
       <div className="feedback-chat-list">
         {feedback.events.map((event) => <FeedbackChatEntry key={event.id} feedbackId={feedbackId} event={event} />)}
-        <div ref={listEnd} className="feedback-chat-end" />
       </div>
       <div className="feedback-chat-composer">
         {hint && <div className="feedback-chat-hint">{hint}</div>}
-        <FeedbackFileDrop files={files} onChange={setFiles} compact disabled={busy} />
+        <FeedbackFileDrop files={files} onChange={setFiles} disabled={busy} inline pickerRef={openPicker} />
+        {/* 参照钉钉聊天框：第一行输入条（发送在条内），第二行一排工具和状态操作，不竖着堆。 */}
         <div className="feedback-chat-input">
-          <Input.TextArea value={comment} autoSize={{ minRows: 1, maxRows: 6 }} aria-label="回复或处理说明"
-            placeholder="输入回复；截图可直接粘贴或拖进来" onChange={(event) => setComment(event.target.value)}
+          <Input.TextArea value={comment} variant="borderless" autoSize={{ minRows: 1, maxRows: 5 }} aria-label="回复或处理说明"
+            placeholder="输入回复，可粘贴截图" onChange={(event) => setComment(event.target.value)}
+            onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)}
             onPressEnter={(event) => {
-              if ((event.ctrlKey || event.metaKey) && !busy) { event.preventDefault(); reply(); }
+              if (event.shiftKey || event.nativeEvent.isComposing || event.keyCode === 229 || composing) return;
+              event.preventDefault();
+              if (!busy && (comment.trim() || files.length)) reply();
             }} />
-          <div className="feedback-chat-buttons">
-            {feedback.available_actions.map((action) => <Button key={action}
-              type={primaryActions.has(action) ? "primary" : "default"} ghost={primaryActions.has(action)}
-              danger={action === "未解决，重新打开"} disabled={busy}
-              onClick={() => transition(action)}>{action}</Button>)}
-            <Button type="primary" icon={<SendOutlined />} disabled={busy || (!comment.trim() && !files.length)}
-              loading={busy} onClick={reply}>发送</Button>
-          </div>
+          <Button className="feedback-chat-send" shape="circle" type="primary" icon={<ArrowUpOutlined />} aria-label="发送"
+            disabled={busy || (!comment.trim() && !files.length)} loading={busy} onClick={reply} />
+        </div>
+        <div className="feedback-chat-toolbar" role="toolbar" aria-label="回复工具和状态操作">
+          <Tooltip title="添加截图（也可直接粘贴或拖进来）">
+            <Button type="text" shape="circle" icon={<PictureOutlined />} aria-label="添加截图" disabled={busy} onClick={() => openPicker.current?.()} />
+          </Tooltip>
+          <Tooltip title="添加附件">
+            <Button type="text" shape="circle" icon={<PaperClipOutlined />} aria-label="添加附件" disabled={busy} onClick={() => openPicker.current?.()} />
+          </Tooltip>
+          {actions.map((action) => <button key={action} type="button" disabled={busy}
+            className={`feedback-chat-action${primaryActions.has(action) ? " is-primary" : ""}${action === "未解决，重新打开" ? " is-danger" : ""}`}
+            onClick={() => transition(action)}>{action}</button>)}
         </div>
       </div>
+      <div ref={listEnd} className="feedback-chat-end" />
     </section>
   </section>;
 }

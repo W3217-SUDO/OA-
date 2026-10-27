@@ -91,27 +91,35 @@
 .feedback-chat-row.is-reporter .feedback-chat-bubble { border-radius: 12px 4px 12px 12px; border-color: rgba(22, 119, 255, 0.28); background: #dbeafe; color: #1f1f1f; }
 .feedback-chat-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
 .feedback-chat-bubble .feedback-attachments .ant-image img { width: 108px; height: 80px; }
-.feedback-chat-composer { position: sticky; bottom: 0; z-index: 2; padding: 10px 12px 12px; border-top: 1px solid var(--oa-border, #e5e6eb); background: var(--oa-surface, #fff); border-radius: 0 0 8px 8px; }
-.feedback-chat-hint { margin-bottom: 8px; padding: 6px 10px; border-radius: 6px; font-size: 12px; color: #ad6800; background: #fffbe6; border: 1px solid #ffe58f; }
-.feedback-chat-composer .feedback-dropzone.is-compact { padding: 6px 10px; font-size: 12px; }
-.feedback-chat-composer .feedback-files { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); margin-top: 8px; }
-.feedback-chat-composer .feedback-file img, .feedback-chat-composer .feedback-file-icon { height: 64px; }
-.feedback-chat-input { display: flex; align-items: flex-end; gap: 10px; margin-top: 8px; }
-.feedback-chat-input .ant-input { flex: 1; min-width: 0; }
-.feedback-chat-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.feedback-chat-composer { position: sticky; bottom: 0; z-index: 2; padding: 8px 12px 12px; border-top: 1px solid var(--oa-border, #e5e6eb); background: var(--oa-surface, #fff); border-radius: 0 0 8px 8px; }
+.feedback-chat-hint { margin-bottom: 6px; font-size: 12px; line-height: 1.5; color: var(--oa-text-3, #8c8c8c); }
+/* 选好的截图和附件：输入行上方一排小缩略图，可单独删除。 */
+.feedback-files.is-inline { display: flex; flex-wrap: nowrap; gap: 8px; margin: 0 0 8px; overflow-x: auto; }
+.feedback-files.is-inline .feedback-file { flex: none; width: 76px; }
+.feedback-files.is-inline .feedback-file img, .feedback-files.is-inline .feedback-file-icon { height: 56px; }
+.feedback-files.is-inline .feedback-file-size { display: none; }
+/* 参照钉钉聊天框：第一行圆角输入条（右侧圆形发送），第二行一排工具图标和状态操作胶囊，放不下时横向滚动。 */
+.feedback-chat-input { display: flex; align-items: flex-end; gap: 6px; padding: 4px 4px 4px 14px; border: 1px solid var(--oa-border, #d9d9d9); border-radius: 22px; background: var(--oa-surface, #fff); }
+.feedback-chat-input:focus-within { border-color: var(--oa-primary); }
+.feedback-chat-input textarea.ant-input { flex: 1 1 0; min-width: 0; padding: 7px 0; font-size: 15px; line-height: 1.5; resize: none; }
+.feedback-chat-input .feedback-chat-send.ant-btn { flex: none; width: 36px; min-width: 36px; height: 36px; padding: 0; }
+.feedback-chat-toolbar { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; margin-top: 6px; overflow-x: auto; scrollbar-width: none; }
+.feedback-chat-toolbar::-webkit-scrollbar { display: none; }
+.feedback-chat-toolbar > .ant-btn { flex: none; width: 34px; min-width: 34px; height: 34px; font-size: 19px; color: var(--oa-text-2, #595959); }
+.feedback-chat-action { flex: none; display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border: 1px solid var(--oa-border, #d9d9d9); border-radius: 999px; background: var(--oa-surface, #fff); color: var(--oa-text, #1f1f1f); font: inherit; font-size: 13px; white-space: nowrap; cursor: pointer; }
+.feedback-chat-action:hover:not(:disabled) { border-color: var(--oa-primary); color: var(--oa-primary); }
+.feedback-chat-action.is-primary { border-color: var(--oa-primary); background: var(--oa-primary); color: #fff; }
+.feedback-chat-action.is-primary:hover:not(:disabled) { color: #fff; opacity: 0.9; }
+.feedback-chat-action.is-danger { border-color: #ff7875; color: #cf1322; }
+.feedback-chat-action:disabled { cursor: not-allowed; opacity: 0.5; }
 @media (max-width: 640px) {
   .feedback-chat { margin-left: -4px; margin-right: -4px; }
   .feedback-chat-list { padding: 12px 10px; }
   .feedback-chat-body { max-width: 82%; }
   .feedback-chat-avatar { width: 30px; height: 30px; font-size: 15px; }
-  .feedback-chat-composer { padding: 8px 10px 10px; }
-  /* 手机上不拖文件也很少粘贴，上传区缩成一行“添加截图或附件”。 */
-  .feedback-chat-composer .feedback-dropzone.is-compact { padding: 4px 8px; }
-  .feedback-chat-composer .feedback-dropzone.is-compact > div { display: none; }
-  .feedback-chat-composer .feedback-dropzone.is-compact::after { content: "添加截图或附件"; }
-  .feedback-chat-input { flex-direction: column; align-items: stretch; }
-  .feedback-chat-buttons { justify-content: stretch; }
-  .feedback-chat-buttons .ant-btn { flex: 1 1 auto; }
+  .feedback-chat-composer { padding: 8px 8px 10px; }
+  .feedback-chat-input textarea.ant-input { font-size: 16px; }
 }
-/* 滚到最新一条时留出底部固定输入框的高度，最后一条不被挡住。 */
-.feedback-chat-end { height: 0; scroll-margin-bottom: 200px; }
+/* 打开时滚到聊天框底部（输入框下沿），最新一条紧贴在输入区上方；手机再让出底部导航的高度。 */
+.feedback-chat-end { height: 0; scroll-margin-bottom: 16px; }
+@media (max-width: 991px) { .feedback-chat-end { scroll-margin-bottom: 80px; } }

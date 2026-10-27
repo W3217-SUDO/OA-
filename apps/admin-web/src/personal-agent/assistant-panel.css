@@ -94,6 +94,9 @@
 .assistant-composer{display:flex;flex:none;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid color-mix(in srgb, #cfd8e1 var(--oa-tint), var(--oa-surface));border-radius:8px;background:var(--oa-fill);transition:border-color .15s,background .15s}
 .assistant-composer:focus-within{border-color:var(--oa-primary);background:var(--oa-surface)}
 .assistant-composer-input{display:flex;align-items:flex-end;gap:10px;min-width:0}
+.assistant-composer-links{order:3;display:flex;flex-wrap:nowrap;align-items:center;gap:4px;min-width:0;overflow-x:auto;scrollbar-width:none}
+.assistant-composer-links::-webkit-scrollbar{display:none}
+.assistant-composer-links .ant-btn{flex:none;height:30px;padding:0 10px;border-radius:999px;font-size:13px;color:var(--oa-text-2)}
 .assistant-composer textarea.ant-input{min-width:0;padding:8px 0;font-size:15px;line-height:1.6;resize:none}
 .assistant-composer textarea.ant-input.ant-input-borderless:focus-visible{outline:none}
 .assistant-context-tools{display:flex;align-items:center;flex-wrap:wrap;gap:4px;min-width:0}
@@ -180,6 +183,7 @@
   .assistant .assistant-composer textarea.ant-input{flex:1 1 0;min-width:0;padding:8px 0;font-size:16px;line-height:1.5}
   .assistant .assistant-composer-actions{gap:8px;margin-left:0}
   .assistant .assistant-context-items{grid-column:1 / -1;max-height:88px;overflow:auto;overscroll-behavior:contain}
+  .assistant .assistant-composer-links{grid-column:1 / -1;justify-content:space-around}
   .assistant .assistant-chips,.assistant.is-empty .assistant-chips{display:none}
   .assistant .assistant-mobile-control:focus-visible,.assistant .assistant-mobile-suggestions button:focus-visible{outline:2px solid var(--oa-primary);outline-offset:-2px}
   .assistant-conversation-drawer .ant-drawer-header .ant-btn,.assistant-conversation-row>.ant-btn{min-width:44px;min-height:44px}
