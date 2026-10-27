@@ -182,9 +182,9 @@ export function CustomerDetailDrawer({ open, customer, detailTab, detailLoading,
                       <Form.Item label="电话" name="phone"><Input /></Form.Item>
                       <Form.Item label="办公电话" name="office_phone"><Input /></Form.Item>
                       <Form.Item label="IM" name="im_account"><Input /></Form.Item>
-                      <Form.Item label="邮箱" name="email"><Input /></Form.Item>
-                      <Form.Item label="客户服务账号" name="portal_account"><Input placeholder="可选；保存后同步到员工管理" /></Form.Item>
-                      <Form.Item label="客户服务密码" name="portal_password" rules={[{ min: 8, message: "密码至少 8 位" }]}><Input.Password placeholder="填写后可直接登录客户服务端" /></Form.Item>
+                      <Form.Item label="邮箱" name="email"><Input autoComplete="off" /></Form.Item>
+                      <Form.Item label="客户服务账号" name="portal_account"><Input autoComplete="off" placeholder="可选；保存后同步到员工管理" /></Form.Item>
+                      <Form.Item label="客户服务密码" name="portal_password" rules={[{ min: 8, message: "密码至少 8 位" }]}><Input.Password autoComplete="new-password" placeholder="填写后可直接登录客户服务端" /></Form.Item>
                       <Form.Item label="联系状态" name="contact_status" initialValue="正常联系"><Select options={["正常联系", "暂缓联系", "停止联系"].map(value => ({ value, label: value }))} /></Form.Item>
                     </div>
                     <Form.Item name="is_valid" valuePropName="checked" initialValue><Checkbox>有效联系人</Checkbox></Form.Item>

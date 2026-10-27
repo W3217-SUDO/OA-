@@ -160,9 +160,10 @@ export function CustomerModals({ viewingContact, onCloseViewContact, contactPhot
             <Form.Item name="office_phone" label="办公电话"><Input /></Form.Item>
             <Form.Item name="phone" label="移动电话"><Input /></Form.Item>
             <Form.Item name="im_account" label="IM"><Input /></Form.Item>
-            <Form.Item name="email" label="邮箱"><Input /></Form.Item>
-            <Form.Item name="portal_account" label="客户服务账号"><Input placeholder="可选；保存后同步到员工管理" /></Form.Item>
-            <Form.Item name="portal_password" label="客户服务密码" rules={[{ min: 8, message: "密码至少 8 位" }]}><Input.Password placeholder="填写后可直接登录客户服务端" /></Form.Item>
+            {/* 客户服务账号/密码是给客户新开的账号，关掉浏览器自动填充，免得把当前员工的登录账号密码带进邮箱和密码栏。 */}
+            <Form.Item name="email" label="邮箱"><Input autoComplete="off" /></Form.Item>
+            <Form.Item name="portal_account" label="客户服务账号"><Input autoComplete="off" placeholder="可选；保存后同步到员工管理" /></Form.Item>
+            <Form.Item name="portal_password" label="客户服务密码" rules={[{ min: 8, message: "密码至少 8 位" }]}><Input.Password autoComplete="new-password" placeholder="填写后可直接登录客户服务端" /></Form.Item>
             <Form.Item name="contact_status" label="联系状态" initialValue="正常联系"><Select options={["正常联系", "暂缓联系", "停止联系"].map(value => ({ value, label: value }))} /></Form.Item>
           </div>
           <Form.Item name="is_valid" valuePropName="checked" initialValue><Checkbox>是否有效</Checkbox></Form.Item>
