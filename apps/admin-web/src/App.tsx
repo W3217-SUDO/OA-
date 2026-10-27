@@ -1593,7 +1593,8 @@ export default function App() {
     setActive(normalizedRoute);
   };
   const openPersonalAgent = () => {
-    setAssistantFocusRequested(true);
+    // 手机上进智能体中心不自动聚焦输入框（会弹出键盘占满屏幕），点输入框再输入；电脑上照旧直接可输入。
+    setAssistantFocusRequested(!isNarrowViewport);
     navigate("ai-chat");
   };
   const returnToWorkbench = () => {
@@ -1827,7 +1828,7 @@ export default function App() {
     window.dispatchEvent(new CustomEvent("sunhold:menus-updated"));
   };
   return (
-    <Layout ref={chatViewportRef} className={`app-shell${isChatWorkspace ? " is-chat-workspace" : ""}${isDesktopAiWorkspace ? " is-desktop-ai-workspace" : ""}${isDesktopAiWorkspace && aiSystemNavigationOpen ? " is-system-navigation-open" : ""}`}>
+    <Layout ref={chatViewportRef} className={`app-shell${isChatWorkspace ? " is-chat-workspace" : ""}${active === "ai-chat" ? " is-ai-chat-page" : ""}${isDesktopAiWorkspace ? " is-desktop-ai-workspace" : ""}${isDesktopAiWorkspace && aiSystemNavigationOpen ? " is-system-navigation-open" : ""}`}>
       <ConflictReviewHost key={sessionUser?.username || ""} />
       <Header className="topbar">
         <div

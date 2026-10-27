@@ -10,11 +10,18 @@
     overflow: hidden;
   }
 
-  .app-shell.is-chat-workspace > .topbar,
-  .app-shell.is-chat-workspace > .mobile-bottom-nav,
-  .app-shell.is-chat-workspace > .app-body > .sidebar,
-  .app-shell.is-chat-workspace > .app-body > .mobile-sidebar-mask {
+  /* 工作台里的对话独占屏幕；智能体中心页和其他页面一样保留顶部栏和底部导航（用户 2026-10-27：不要自动全屏）。 */
+  .app-shell.is-chat-workspace:not(.is-ai-chat-page) > .topbar,
+  .app-shell.is-chat-workspace:not(.is-ai-chat-page) > .mobile-bottom-nav,
+  .app-shell.is-chat-workspace:not(.is-ai-chat-page) > .app-body > .sidebar,
+  .app-shell.is-chat-workspace:not(.is-ai-chat-page) > .app-body > .mobile-sidebar-mask {
     display: none;
+  }
+
+  /* 底部导航是固定定位，给它留出高度，输入框不被挡住。 */
+  .app-shell.is-chat-workspace.is-ai-chat-page {
+    box-sizing: border-box;
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
   }
 
   .app-shell.is-chat-workspace > .app-body {
