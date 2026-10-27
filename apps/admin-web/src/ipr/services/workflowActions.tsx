@@ -187,6 +187,8 @@ export function createIprWorkflowActions(context: IprWorkflowDependencies) {
             if (payload.case_category !== "litigation") {
                 IPR_LAWSUIT_FIELDS.forEach((field) => delete payload[field]);
             }
+            delete payload.contract_no;
+            if (!payload.contract_record_id) delete payload.contract_record_id;
             if (editing) {
                 await api.patch(`/ipr/cases/${editing.id}`, payload);
                 message.success("Draft updated");

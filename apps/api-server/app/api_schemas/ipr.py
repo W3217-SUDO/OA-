@@ -28,6 +28,8 @@ class IprCaseCreateInput(BaseModel):
     defendant: str = Field(default="", max_length=256)
     third_parties: str = Field(default="", max_length=512)
     description: str = Field(default="", max_length=2000)
+    # 合同中心“新建案件 → 非诉案件”带入的合同（BUG20261027008）。
+    contract_record_id: int | None = Field(default=None, gt=0)
 
 
 class IprCaseUpdateInput(BaseModel):

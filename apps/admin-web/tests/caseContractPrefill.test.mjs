@@ -4,7 +4,10 @@ import {
   CASE_CONTRACT_CONTEXT_KEY,
   buildCaseContractContext,
   buildCaseContractOptions,
+  IPR_CASE_CONTRACT_CONTEXT_KEY,
   rememberCaseContractContext,
+  rememberIprCaseContractContext,
+  takeIprCaseContractContext,
 } from "../src/caseContractPrefill.ts";
 
 const context = buildCaseContractContext({
@@ -39,3 +42,19 @@ assert.deepEqual(buildCaseContractOptions(contracts, null, "客户A"), [
   { value: 1, label: "HT-A-1_A合同一" },
   { value: 3, label: "HT-A-2_A合同二" },
 ]);
+
+// BUG20261027008：合同“新建案件 → 非诉案件”的上下文只用一次，过期不带入。
+const iprEntries = new Map();
+const iprStorage = {
+  setItem: (key, value) => iprEntries.set(key, value),
+  getItem: (key) => iprEntries.get(key) ?? null,
+  removeItem: (key) => iprEntries.delete(key),
+};
+rememberIprCaseContractContext(iprStorage, context);
+assert.ok(iprEntries.has(IPR_CASE_CONTRACT_CONTEXT_KEY));
+assert.deepEqual(takeIprCaseContractContext(iprStorage, () => context.at + 1000), context);
+assert.equal(iprEntries.has(IPR_CASE_CONTRACT_CONTEXT_KEY), false);
+assert.equal(takeIprCaseContractContext(iprStorage, () => context.at + 1000), null);
+rememberIprCaseContractContext(iprStorage, context);
+assert.equal(takeIprCaseContractContext(iprStorage, () => context.at + 31 * 60 * 1000), null);
+assert.equal(iprEntries.has(IPR_CASE_CONTRACT_CONTEXT_KEY), false);

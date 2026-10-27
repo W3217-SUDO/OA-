@@ -39,6 +39,7 @@ isLegacyIprRecord
 } from "./constants";
 import { IprBatchOperations } from "./IprBatchOperations";
 import { IprCaseCreateModal } from "./IprCaseCreateModal";
+import { takeIprCaseContractContext } from "../caseContractPrefill";
 import {
 IprAnnualFeesPanel,
 IprAssistedFeesPanel,
@@ -772,6 +773,20 @@ export default function IprCenterPage({
     });
     setCreateOpen(true);
   };
+  // BUG20261027008：从合同“新建案件 → 非诉案件”进来，带入客户和合同打开新建弹窗。
+  useEffect(() => {
+    if (initialView !== "ipr-patent") return;
+    const context = takeIprCaseContractContext(sessionStorage);
+    if (!context) return;
+    openCreate();
+    form.setFieldsValue({
+      customer: context.customer,
+      title: context.title,
+      contract_record_id: context.id,
+      contract_no: context.serial_no,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialView]);
   const openEdit = (record: IprRecord) => {
     setEditing(record);
     form.resetFields();

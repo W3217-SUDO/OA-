@@ -8,7 +8,7 @@ import { api } from "../api";
 import { buildContractInvoiceRoute, readContractInvoiceRoute, validateInvoiceContracts } from "./contractInvoiceApplication";
 import type { InvoiceApplicationSubject } from "./contractInvoiceApplication";
 import { loadContractInvoiceData } from "./contractInvoiceData";
-import { buildCaseContractContext,rememberCaseContractContext } from "../caseContractPrefill";
+import { buildCaseContractContext,rememberCaseContractContext,rememberIprCaseContractContext,type CaseContractContext } from "../caseContractPrefill";
 import { confirmOperation } from "../components/common/confirmOperation";
 import "../contract-center.css";
 import {
@@ -808,6 +808,7 @@ export default function ContractCenterPage({
     setPaymentTypeCreateOpen(true);
   };
 
+  const [caseKindChoice, setCaseKindChoice] = useState<CaseContractContext | null>(null);
   const startCaseFromContract = (contract: Contract) => {
     if (!contractListActionPolicy(contract.status).canCreateCase) {
       message.warning("只能从审批中、审批通过或已完成的合同新建案件");
@@ -816,6 +817,18 @@ export default function ContractCenterPage({
     const context = buildCaseContractContext(contract);
     if (!context) {
       message.warning("合同缺少可用的合同号或客户信息，无法新建案件");
+      return;
+    }
+    setCaseKindChoice(context);
+  };
+  // BUG20261027008：新建案件先选非诉 / 诉讼。非诉进知识产权中心，诉讼进案件中心，之后按各自体系办理。
+  const chooseCaseKind = (target: "ipr" | "case") => {
+    const context = caseKindChoice;
+    setCaseKindChoice(null);
+    if (!context) return;
+    if (target === "ipr") {
+      rememberIprCaseContractContext(sessionStorage, context);
+      onNavigate?.("ipr-patent");
       return;
     }
     rememberCaseContractContext(sessionStorage, context);
@@ -1777,6 +1790,20 @@ export default function ContractCenterPage({
           ]);
         }}
       />
+      <Modal
+        open={!!caseKindChoice}
+        title="新建案件"
+        width={POPUP_WIDTH.sm}
+        footer={null}
+        onCancel={() => setCaseKindChoice(null)}
+      >
+        <p>合同：{caseKindChoice?.serial_no}　客户：{caseKindChoice?.customer}</p>
+        <p>请选择案件类别：</p>
+        <Space size="middle" wrap>
+          <Button type="primary" onClick={() => chooseCaseKind("ipr")}>非诉案件（知识产权中心）</Button>
+          <Button type="primary" onClick={() => chooseCaseKind("case")}>诉讼案件（案件中心）</Button>
+        </Space>
+      </Modal>
     </>
   );
 }

@@ -83,6 +83,16 @@ export function IprCaseCreateModal({ open, editing, form, customers, deadlineOff
                 }))}
               />
             </Form.Item>
+            <Form.Item name="contract_record_id" hidden>
+              <InputNumber />
+            </Form.Item>
+            <Form.Item noStyle shouldUpdate={(prev, next) => prev.contract_no !== next.contract_no}>
+              {({ getFieldValue }) => getFieldValue("contract_no") ? (
+                <Form.Item name="contract_no" label="关联合同">
+                  <Input disabled />
+                </Form.Item>
+              ) : null}
+            </Form.Item>
             <Form.Item
               name="title"
               label="案件名称"

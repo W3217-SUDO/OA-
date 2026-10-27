@@ -445,5 +445,37 @@ class IprConcreteCBackendContractTest(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(events)
 
 
+    async def test_create_from_contract_links_contract_and_checks_customer(self):
+        """BUG20261027008：合同中心新建非诉案件，带入合同并在知识产权中心立案。"""
+        created = await self.client.post(f"{API}/ipr/cases", json={
+            "case_kind": "专利", "title": "CODEX-合同带入专利", "customer": "IPR C 客户",
+            "contract_record_id": self.contract_id,
+        })
+        self.assertEqual(created.status_code, 201, created.text)
+        data = created.json()["data"]
+        self.assertEqual(data["contract_record_id"], self.contract_id)
+        self.assertEqual(data["contract_no"], "CODEX-IPR-C-CONTRACT-001")
+        self.assertEqual(data["created_from"], "contract_center")
+
+        async with self.sessions() as db:
+            other = BusinessRecord(
+                module="customer", serial_no="CODEX-IPR-C-CUSTOMER-002", title="IPR C 另一客户",
+                customer="", status="合作中", owner=IDENTITY["username"], department=IDENTITY["department"], data={},
+            )
+            db.add(other); await db.commit()
+        mismatched = await self.client.post(f"{API}/ipr/cases", json={
+            "case_kind": "专利", "title": "CODEX-客户不一致", "customer": "IPR C 另一客户",
+            "contract_record_id": self.contract_id,
+        })
+        self.assertEqual(mismatched.status_code, 422, mismatched.text)
+        self.assertIn("客户不一致", mismatched.text)
+
+        not_contract = await self.client.post(f"{API}/ipr/cases", json={
+            "case_kind": "专利", "title": "CODEX-非合同", "customer": "IPR C 客户",
+            "contract_record_id": self.payment_id,
+        })
+        self.assertEqual(not_contract.status_code, 404, not_contract.text)
+
+
 if __name__ == "__main__":
     unittest.main()

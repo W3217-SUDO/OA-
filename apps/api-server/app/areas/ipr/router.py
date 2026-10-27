@@ -496,7 +496,7 @@ async def create_ipr_case(body: IprCaseCreateInput, identity: dict = Depends(cur
         _next_ipr_case_serial,
     )
     from app.core.permissions import (
-        _record_scope_conditions, _require_record_module_menu,
+        _ensure_record_module, _record_scope_conditions, _require_record_module_menu,
     )
     from app.core.system import (
         _allowed_field_keys, _record_dict,
@@ -506,6 +506,8 @@ async def create_ipr_case(body: IprCaseCreateInput, identity: dict = Depends(cur
     if case_kind not in IPR_CASE_KINDS: raise HTTPException(status_code=422, detail="知识产权案件类型仅支持专利或商标")
     customer = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "customer", BusinessRecord.title == body.customer.strip(), *(await _record_scope_conditions(identity, db))))
     if not customer: raise HTTPException(status_code=422, detail="客户不存在或当前账号无权选择")
+    contract = await _ensure_record_module(body.contract_record_id, "contract", identity, db) if body.contract_record_id else None
+    if contract and contract.customer != customer.title: raise HTTPException(status_code=422, detail="合同的客户与所选客户不一致")
     serial_no = await _next_ipr_case_serial(case_kind, db)
     data = {
         "case_kind": case_kind, "case_category": body.case_category,
@@ -514,6 +516,8 @@ async def create_ipr_case(body: IprCaseCreateInput, identity: dict = Depends(cur
         "application_date": str(body.application_date) if body.application_date else "", "deadline": str(body.deadline) if body.deadline else "",
         "annual_fee_year": body.annual_fee_year, "annual_fee_monitoring": False, "rate": body.rate, "created_from": "ipr_case_center",
     }
+    if contract:
+        data.update({"contract_record_id": contract.id, "contract_no": contract.serial_no, "created_from": "contract_center"})
     if body.case_category == "litigation":
         data.update({
             "court_case_no": body.court_case_no.strip(), "court_name": body.court_name.strip(),

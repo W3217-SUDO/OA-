@@ -68,6 +68,30 @@ export function clearCaseContractContext(storage: Pick<Storage, "removeItem">): 
   storage.removeItem(CASE_CONTRACT_CONTEXT_KEY);
 }
 
+// BUG20261027008：合同“新建案件”选“非诉案件”时，带着合同和客户进知识产权中心立案。
+// 只用一次：知识产权中心打开新建弹窗后即清除，超过 30 分钟的不再带入。
+export const IPR_CASE_CONTRACT_CONTEXT_KEY = "sunhold:ipr-case-contract-context";
+const IPR_CASE_CONTRACT_CONTEXT_TTL_MS = 30 * 60 * 1000;
+
+export function rememberIprCaseContractContext(storage: CaseContractStorage, context: CaseContractContext): void {
+  storage.setItem(IPR_CASE_CONTRACT_CONTEXT_KEY, JSON.stringify(context));
+}
+
+export function takeIprCaseContractContext(
+  storage: Pick<Storage, "getItem" | "removeItem">,
+  now: () => number = Date.now,
+): CaseContractContext | null {
+  try {
+    const context = JSON.parse(storage.getItem(IPR_CASE_CONTRACT_CONTEXT_KEY) || "null") as CaseContractContext | null;
+    if (!context?.id || !context.customer || now() - Number(context.at || 0) > IPR_CASE_CONTRACT_CONTEXT_TTL_MS) return null;
+    return context;
+  } catch {
+    return null;
+  } finally {
+    storage.removeItem(IPR_CASE_CONTRACT_CONTEXT_KEY);
+  }
+}
+
 export function resolveCaseSourcePerson(contract: CaseContractOptionSource | null | undefined): string {
   if (!contract) return "";
   return String(
