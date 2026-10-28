@@ -223,3 +223,14 @@
     gap: 0 16px;
   }
 }
+
+/* 案件信息右上角“修改/保存”。 */
+.ipr-case-info-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.ipr-case-info-tools:empty {
+  display: none;
+}

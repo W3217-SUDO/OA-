@@ -1,17 +1,20 @@
-import { Alert,Button,Card,Checkbox,Descriptions,Space,Tag } from "antd";
+import { useState } from "react";
+import { Alert,Button,Card,Checkbox,DatePicker,Descriptions,Input,Select,Space,Tag,message } from "antd";
+import { api } from "../../api";
 import Table from "../../components/ResizableTable";
 import dayjs from "dayjs";
 import { isIprLawsuit,isLegacyIprRecord,personDisplayName } from "../constants";
 import type { CpcApplication,IprRecord } from "../types";
-import { iprCaseFlags,iprCaseInfoItems } from "./iprCaseInfo";
+import { ANNUAL_YEAR_OPTIONS,IPR_CASE_EDIT_FIELDS,IPR_CASE_FLAG_FIELDS,RELIEF_RATE_OPTIONS,iprCaseEditValues,iprCaseFlags,iprCaseInfoItems } from "./iprCaseInfo";
 
 interface IprCaseDetailHeaderProps {
   detail: IprRecord;
   onOpenRebootCase: (caseId: number) => void;
+  onSaved?: (record: IprRecord) => void;
 }
 
-export function IprCaseDetailHeader({ detail, onOpenRebootCase }: IprCaseDetailHeaderProps) {
-  if (!isIprLawsuit(detail)) return <IprCaseInfoGrid detail={detail} onOpenRebootCase={onOpenRebootCase} />;
+export function IprCaseDetailHeader({ detail, onOpenRebootCase, onSaved }: IprCaseDetailHeaderProps) {
+  if (!isIprLawsuit(detail)) return <IprCaseInfoGrid detail={detail} onOpenRebootCase={onOpenRebootCase} onSaved={onSaved} />;
   return (
     <>
       {isLegacyIprRecord(detail) ? (
@@ -303,18 +306,81 @@ export function IprCpcPanel({ detail, cpcApplications, cpcApplicationsLoading, c
   );
 }
 
-/** 非诉案件：按原系统案件页排成四列信息格，右侧一列是优先权等勾选项。 */
-function IprCaseInfoGrid({ detail, onOpenRebootCase }: Pick<IprCaseDetailHeaderProps, "detail" | "onOpenRebootCase">) {
+/** 非诉案件：按原系统案件页排成四列信息格，右侧一列是优先权等勾选项；右上角“修改/保存”（迁移案件也能改）。 */
+function IprCaseInfoGrid({ detail, onOpenRebootCase, onSaved }: Pick<IprCaseDetailHeaderProps, "detail" | "onOpenRebootCase" | "onSaved">) {
   const rebootIds: number[] = Array.isArray(detail.data.reboot_case_ids) ? detail.data.reboot_case_ids : [];
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [flags, setFlags] = useState<Record<string, boolean>>({});
+  const [phaseOptions, setPhaseOptions] = useState<string[]>([]);
+  const canEdit = detail.status !== "已结案";
+  const startEdit = () => {
+    setValues(iprCaseEditValues(detail));
+    setFlags(Object.fromEntries(iprCaseFlags(detail).map((flag) => [flag.key, flag.checked])));
+    setEditing(true);
+    api.get<{ items: string[] }>(`/ipr/cases/${detail.id}/phase-options`)
+      .then(({ data }) => setPhaseOptions(data.items || []))
+      .catch(() => setPhaseOptions([]));
+  };
+  const save = async () => {
+    const before = iprCaseEditValues(detail);
+    const payload: Record<string, unknown> = {};
+    for (const [key, config] of Object.entries(IPR_CASE_EDIT_FIELDS)) {
+      if ((values[key] || "") === (before[key] || "")) continue;
+      const value = (values[key] || "").trim();
+      payload[config.field] = config.type === "annual-year" ? (value ? Number(value) : null)
+        : config.type === "date" ? (value || null) : value;
+    }
+    for (const flag of iprCaseFlags(detail)) {
+      if (Boolean(flags[flag.key]) !== flag.checked) payload[IPR_CASE_FLAG_FIELDS[flag.key]] = Boolean(flags[flag.key]);
+    }
+    if (!Object.keys(payload).length) { setEditing(false); return; }
+    setSaving(true);
+    try {
+      const { data } = await api.patch<IprRecord>(`/ipr/cases/${detail.id}/info`, payload);
+      message.success("案件信息已保存");
+      setEditing(false);
+      onSaved?.(data);
+    } catch (failure: any) {
+      message.error(failure?.response?.data?.detail || "案件信息保存失败");
+    } finally {
+      setSaving(false);
+    }
+  };
+  const control = (key: string, shown: string) => {
+    const config = IPR_CASE_EDIT_FIELDS[key];
+    if (!editing || !config) return shown;
+    const value = values[key] || "";
+    const set = (next: string) => setValues((current) => ({ ...current, [key]: next }));
+    if (config.type === "date") {
+      return <DatePicker size="small" style={{ width: "100%" }} value={value ? dayjs(value) : null}
+        onChange={(next) => set(next ? next.format("YYYY-MM-DD") : "")} />;
+    }
+    if (config.type === "phase" || config.type === "annual-year" || config.type === "relief-rate") {
+      const options = config.type === "phase" ? phaseOptions.map((item) => ({ value: item, label: item }))
+        : config.type === "annual-year" ? ANNUAL_YEAR_OPTIONS : RELIEF_RATE_OPTIONS;
+      return <Select size="small" style={{ width: "100%" }} value={value || undefined} placeholder="请选择" allowClear
+        options={options} onChange={(next) => set(next || "")} showSearch={config.type === "phase"} />;
+    }
+    return <Input size="small" value={value} onChange={(event) => set(event.target.value)} />;
+  };
   return (
     <div className="ipr-case-info">
-      {isLegacyIprRecord(detail) ? <Alert type="info" showIcon message="历史案件，只读" className="ipr-case-info-alert" /> : null}
+      <div className="ipr-case-info-tools">
+        {editing ? (
+          <Space size={8}>
+            <Button size="small" onClick={() => setEditing(false)} disabled={saving}>取消</Button>
+            <Button size="small" type="primary" loading={saving} onClick={() => void save()}>保存</Button>
+          </Space>
+        ) : canEdit ? <Button size="small" type="primary" onClick={startEdit}>修改</Button> : null}
+      </div>
       <div className="ipr-case-info-body">
         <dl className="ipr-case-info-grid">
           {iprCaseInfoItems(detail).map((item) => (
             <div key={item.key} className={`ipr-case-info-cell ipr-case-info-${item.key}`}>
               <dt>{item.label}</dt>
-              <dd title={item.value}>{item.value}</dd>
+              <dd title={editing ? undefined : item.value}>{control(item.key, item.value)}</dd>
             </div>
           ))}
           {detail.data.reboot_source_case_id || rebootIds.length ? (
@@ -339,7 +405,10 @@ function IprCaseInfoGrid({ detail, onOpenRebootCase }: Pick<IprCaseDetailHeaderP
         </dl>
         <ul className="ipr-case-info-flags">
           {iprCaseFlags(detail).map((flag) => (
-            <li key={flag.key}><Checkbox checked={flag.checked} disabled>{flag.label}</Checkbox></li>
+            <li key={flag.key}>
+              <Checkbox checked={editing ? Boolean(flags[flag.key]) : flag.checked} disabled={!editing || saving}
+                onChange={(event) => setFlags((current) => ({ ...current, [flag.key]: event.target.checked }))}>{flag.label}</Checkbox>
+            </li>
           ))}
         </ul>
       </div>

@@ -1412,6 +1412,8 @@ from app.areas.ipr.fees import (
     delete_ipr_case_fee as delete_ipr_case_fee,
 )
 router.include_router(fees_router)
+from app.areas.ipr.case_info import router as case_info_router  # noqa: E402
+router.include_router(case_info_router)
 
 
 from app.areas.ipr.reminders import (

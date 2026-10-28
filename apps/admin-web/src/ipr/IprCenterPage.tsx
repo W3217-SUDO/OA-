@@ -43,13 +43,11 @@ import { IprBatchOperations } from "./IprBatchOperations";
 import { IprCaseCreateModal } from "./IprCaseCreateModal";
 import { takeIprCaseContractContext } from "../caseContractPrefill";
 import {
-IprAnnualFeesPanel,
 IprAssistedFeesPanel,
 IprBusinessLogsPanel,
 IprCaseDetailHeader,
 IprCaseFeesPanel,
 IprContactsPanel,
-IprCpcPanel,
 IprCustomersPanel,
 IprFilesPanel,
 IprLawFirmsPanel,
@@ -201,12 +199,12 @@ export default function IprCenterPage({
     [transactTarget, setTransactTarget] = useState<AssistedFee | null>(null),
     [transactForm] = Form.useForm(),
     [receiptFile, setReceiptFile] = useState<File | null>(null),
-    [annualFees, setAnnualFees] = useState<AnnualFee[]>([]),
+    [, setAnnualFees] = useState<AnnualFee[]>([]),
     [annualFeeYearFilter, setAnnualFeeYearFilter] = useState<
       number | undefined
     >(undefined),
-    [annualFeesCanManage, setAnnualFeesCanManage] = useState(false),
-    [annualFeeOpen, setAnnualFeeOpen] = useState(false),
+    [, setAnnualFeesCanManage] = useState(false),
+    [, setAnnualFeeOpen] = useState(false),
     [editingAnnualFee, setEditingAnnualFee] = useState<AnnualFee | null>(null),
     [annualFeeForm] = Form.useForm(),
     [iprCaseEvents, setIprCaseEvents] = useState<IprCaseEvent[]>([]),
@@ -272,10 +270,10 @@ export default function IprCenterPage({
     [iprOperationLogs, setIprOperationLogs] = useState<IprOperationLog[]>(
       [],
     ),
-    [cpcApplications, setCpcApplications] = useState<CpcApplication[]>([]),
-    [cpcApplicationsLoading, setCpcApplicationsLoading] = useState(false),
-    [cpcApplicationsError, setCpcApplicationsError] = useState(""),
-    [cpcGenerating, setCpcGenerating] = useState(false),
+    [, setCpcApplications] = useState<CpcApplication[]>([]),
+    [, setCpcApplicationsLoading] = useState(false),
+    [, setCpcApplicationsError] = useState(""),
+    [, setCpcGenerating] = useState(false),
     [iprLogOpen, setIprLogOpen] = useState(false),
     [iprBusinessLogDetail, setIprBusinessLogDetail] =
       useState<IprBusinessLog | null>(null),
@@ -866,7 +864,7 @@ export default function IprCenterPage({
 
   // ==================== 诉讼管理 ====================
 
-  const { createLawsuitFee, loadAssistedFees, loadAnnualFees, createAssistedFee, updateAssistedFee, confirmAssistedFee, transactAssistedFee, deleteAssistedFee, saveAnnualFee, deleteAnnualFee } = createIprFinanceActions({
+  const { createLawsuitFee, loadAssistedFees, loadAnnualFees, createAssistedFee, updateAssistedFee, confirmAssistedFee, transactAssistedFee, deleteAssistedFee } = createIprFinanceActions({
     get detail() { return detail; },
     get lawsuitFeeForm() { return lawsuitFeeForm; },
     get setLawsuitFeeOpen() { return setLawsuitFeeOpen; },
@@ -942,14 +940,6 @@ export default function IprCenterPage({
 
   // ==================== 年费 ====================
 
-  const refreshAnnualFees = () => {
-    if (detail)
-      void loadAnnualFees(
-        detail.id,
-        annualFeesPageState.page,
-        annualFeesPageState.pageSize
-      );
-  };
 
   // ==================== 案件事件/提醒 ====================
 
@@ -976,7 +966,7 @@ export default function IprCenterPage({
   // ==================== 提醒抑制 ====================
 
   // ==================== 文档/附件 ====================
-  const { loadIprFiles, loadCpcApplications, generateCpcApplication, downloadCpcApplication, loadIprFileTypes, openCpcApplicationWorkbench, generateDocument, downloadAttachment, previewAttachment, uploadIprFile, uploadIprBatchFile, markIprFileTransmitted, markSelectedIprFilesTransmitted, deleteIprFile } = createIprDocumentsActions({
+  const { loadIprFiles, loadCpcApplications, loadIprFileTypes, openCpcApplicationWorkbench, downloadAttachment, previewAttachment, uploadIprFile, uploadIprBatchFile, markIprFileTransmitted, markSelectedIprFilesTransmitted, deleteIprFile } = createIprDocumentsActions({
     get filesPageState() { return filesPageState; },
     get setAttachments() { return setAttachments; },
     get setFilesPageState() { return setFilesPageState; },
@@ -1096,24 +1086,6 @@ export default function IprCenterPage({
   // ==================== 协助费操作 ====================
 
   // ==================== 年费操作 ====================
-  const openAnnualFeeEditor = (row?: AnnualFee) => {
-    setEditingAnnualFee(row || null);
-    annualFeeForm.resetFields();
-    annualFeeForm.setFieldsValue({
-      fee_year: row?.fee_year ?? dayjs().year(),
-      fee_name: row?.fee_name ?? "年费",
-      amount: row?.amount ?? undefined,
-      currency: row?.currency || "CNY",
-      due_date: row?.due_date ? dayjs(row.due_date) : dayjs(),
-      paid_date: row?.paid_date ? dayjs(row.paid_date) : undefined,
-      status: row?.status || "待缴",
-      reminder_date: row?.reminder_date
-        ? dayjs(row.reminder_date)
-        : undefined,
-      notes: row?.notes || "",
-    });
-    setAnnualFeeOpen(true);
-  };
 
   // ==================== 案件事件操作 ====================
 
@@ -1356,18 +1328,6 @@ export default function IprCenterPage({
     setTransactTarget(row);
   };
 
-  const handleAnnualFeeYearFilterChange = (
-    feeYear: number | undefined
-  ) => {
-    setAnnualFeeYearFilter(feeYear);
-    if (detail)
-      void loadAnnualFees(
-        detail.id,
-        IPR_DETAIL_DEFAULT_PAGE,
-        annualFeesPageState.pageSize,
-        feeYear
-      );
-  };
 
   const handleFilesPageChange = (
     nextPage: number,
@@ -1896,6 +1856,11 @@ export default function IprCenterPage({
               <IprCaseDetailHeader
                 detail={detail}
                 onOpenRebootCase={openRebootCase}
+                onSaved={(saved) => {
+                  setDetail((current) => current && current.id === saved.id ? { ...current, ...saved, data: { ...current.data, ...saved.data } } : current);
+                  void load(page, pageSize);
+                  void loadIprLogs(saved.id);
+                }}
               />
               <Space wrap className="ipr-case-page-actions">
                 {["草稿", "已驳回"].includes(detail.status) && (
@@ -2006,7 +1971,6 @@ export default function IprCenterPage({
                         iprUploadFile={iprUploadFile}
                         selectedIprFileIds={selectedIprFileIds}
                         onRefresh={refreshIprFiles}
-                        onGenerateDocument={generateDocument}
                         onPreviewAttachment={previewAttachment}
                         onDownloadAttachment={downloadAttachment}
                         onOpenUpload={openUploadFile}
@@ -2191,56 +2155,6 @@ export default function IprCenterPage({
                       />
                     ),
                   },
-                  {
-                    key: "annualFees",
-                    label: "年费管理",
-                    children: (
-                      <IprAnnualFeesPanel
-                        detail={detail}
-                        iprSectionErrors={iprSectionErrors}
-                        annualFees={annualFees}
-                        annualFeesPageState={annualFeesPageState}
-                        annualFeeYearFilter={annualFeeYearFilter}
-                        annualFeesCanManage={annualFeesCanManage}
-                        annualFeeOpen={annualFeeOpen}
-                        editingAnnualFee={editingAnnualFee}
-                        annualFeeForm={annualFeeForm}
-                        onRefresh={refreshAnnualFees}
-                        onYearFilterChange={
-                          handleAnnualFeeYearFilterChange
-                        }
-                        onOpenEditor={openAnnualFeeEditor}
-                        onCloseEditor={() => {
-                          setAnnualFeeOpen(false);
-                          setEditingAnnualFee(null);
-                          annualFeeForm.resetFields();
-                        }}
-                        onSave={saveAnnualFee}
-                        onDelete={deleteAnnualFee}
-                        confirmIprDeletion={confirmIprDeletion}
-                      />
-                    ),
-                  },
-                  ...(detail.data?.case_kind === "专利"
-                    ? [
-                        {
-                          key: "cpc",
-                          label: "CPC专利申报",
-                          children: (
-                            <IprCpcPanel
-                              detail={detail}
-                              cpcApplications={cpcApplications}
-                              cpcApplicationsLoading={cpcApplicationsLoading}
-                              cpcApplicationsError={cpcApplicationsError}
-                              cpcGenerating={cpcGenerating}
-                              onLoadCpcApplications={() => void loadCpcApplications(detail.id)}
-                              onGenerateCpcApplication={() => void generateCpcApplication(detail)}
-                              onDownloadCpcApplication={(app) => void downloadCpcApplication(detail, app)}
-                            />
-                          ),
-                        },
-                      ]
-                    : []),
                 ]}
               />
             </div>

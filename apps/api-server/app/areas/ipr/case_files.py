@@ -9,6 +9,45 @@ from app.models_shared import IprCaseFileBatchTransmitInput, IprCaseFileCustomCa
 router = APIRouter()
 
 
+async def _fill_legacy_file_info(items: list, rows: list[dict], db: AsyncSession) -> None:
+    """迁移来的案件文档补上原系统的上传人和上传日期（BUG20261028001：文档日期、上传人按原系统显示）。
+
+    附件 remark 里记着原系统 IPR_Case_File.FileId；镜像表不在（本地库、测试库）时保持原样。
+    """
+    from sqlalchemy import text
+    from sqlalchemy.exc import SQLAlchemyError
+    file_ids = {}
+    for item, row in zip(items, rows):
+        try:
+            legacy_id = int(json.loads(item.remark or "{}").get("legacy_file_id") or 0)
+        except (ValueError, TypeError, AttributeError):
+            legacy_id = 0
+        if legacy_id > 0:
+            file_ids[legacy_id] = row
+    if not file_ids:
+        return
+    try:
+        async with db.begin_nested():
+            legacy = (await db.execute(text(
+                'SELECT "FileId" AS id, "UploadingUser" AS uploader, "UploadingTime" AS uploaded_at '
+                'FROM "IPR_Case_File" WHERE "FileId" = ANY(:ids)'
+            ), {"ids": list(file_ids)})).mappings().all()
+    except SQLAlchemyError:
+        return
+    usernames = {str(row["uploader"] or "").strip() for row in legacy} - {""}
+    names = dict((await db.execute(select(User.username, User.display_name).where(User.username.in_(usernames)))).all()) if usernames else {}
+    for row in legacy:
+        target = file_ids.get(int(row["id"]))
+        if target is None:
+            continue
+        uploader = str(row["uploader"] or "").strip()
+        if uploader:
+            target["uploader"] = uploader
+            target["uploader_display_name"] = names.get(uploader) or uploader
+        if row["uploaded_at"] and not target.get("document_date"):
+            target["document_date"] = str(row["uploaded_at"])[:10]
+
+
 @router.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/files")
 async def list_ipr_case_files(
     case_id: int,
@@ -37,8 +76,10 @@ async def list_ipr_case_files(
         .order_by(FileAttachment.document_date.desc().nullslast(), FileAttachment.created_at.desc(), FileAttachment.id.desc())
         .offset((page - 1) * page_size).limit(page_size)
     )).all())
+    rows = [_attachment_dict(item, record) for item in items]
+    await _fill_legacy_file_info(items, rows, db)
     return {
-        "items": [_attachment_dict(item, record) for item in items],
+        "items": rows,
         "total": total, "page": page, "page_size": page_size,
         "pages": (total + page_size - 1) // page_size if total else 0,
     }
