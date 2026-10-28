@@ -137,6 +137,8 @@ async def clue_import_template(_: dict = Depends(current_identity)):
 
 @router.post(f"{settings.api_prefix}/investigations/records", status_code=status.HTTP_201_CREATED)
 async def create_investigation_record(body: RecordInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.record.create")
     from app.core.clue_audit_scope import investigation_customer_data
     from app.core.contracts import (
         _contract_allows_downstream_creation, _contract_person_values,
@@ -233,6 +235,8 @@ async def create_investigation_record(body: RecordInput, identity: dict = Depend
 
 @router.patch(f"{settings.api_prefix}/investigations/records/{{record_id}}")
 async def update_investigation_record(record_id: int, body: RecordUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.record.update")
     from app.core.legacy_sync import (
         _sync_legacy_projection,
     )
@@ -350,6 +354,8 @@ async def update_investigation_record(record_id: int, body: RecordUpdate, identi
 
 @router.post(f"{settings.api_prefix}/investigations/clues/import")
 async def import_investigation_clues(file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.import")
     from app.core.investigation import (
         _next_investigation_clue_serial,
     )
@@ -434,6 +440,8 @@ async def notary_import_template(_: dict = Depends(current_identity)):
 
 @router.post(f"{settings.api_prefix}/investigations/notaries/import", status_code=status.HTTP_201_CREATED)
 async def import_investigation_notaries(file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.import")
     from app.core.permissions import (
         _record_scope_conditions,
     )
@@ -479,6 +487,8 @@ async def import_investigation_notaries(file: UploadFile = File(...), identity: 
 @router.post(f"{settings.api_prefix}/investigations/notaries/storage/import", status_code=status.HTTP_201_CREATED)
 async def import_notary_storage(file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Update warehouse/certificate/invoice/case fields on existing notary records from UTF-8 CSV."""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.import")
     from app.core.permissions import (
         _record_scope_conditions,
     )
@@ -555,6 +565,8 @@ async def import_notary_storage(file: UploadFile = File(...), identity: dict = D
 
 @router.post(f"{settings.api_prefix}/investigations/notaries/files/import", status_code=status.HTTP_201_CREATED)
 async def import_notary_certificate_file(file: UploadFile = File(...), certificate_no: str = Form(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.import")
     from app.core.investigation import (
         _import_notary_named_file,
     )
@@ -563,6 +575,8 @@ async def import_notary_certificate_file(file: UploadFile = File(...), certifica
 
 @router.post(f"{settings.api_prefix}/investigations/notaries/invoices/import", status_code=status.HTTP_201_CREATED)
 async def import_notary_invoice_file(file: UploadFile = File(...), invoice_no: str = Form(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.import")
     from app.core.investigation import (
         _import_notary_named_file,
     )
@@ -619,6 +633,8 @@ async def list_notary_files(identity: dict = Depends(current_identity), db: Asyn
 
 @router.post(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/submit")
 async def submit_investigation_clue(clue_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.clue.submit")
     from app.core.investigation import (
         _apply_clue_submission, _validate_clue_submission,
     )
@@ -640,6 +656,8 @@ async def submit_investigation_clue(clue_id: int, body: TaskActionInput, identit
 
 @router.post(f"{settings.api_prefix}/investigations/clues/batch-submit")
 async def batch_submit_investigation_clues(body: ClueBatchSubmitInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.clue.submit")
     from app.core.investigation import (
         _apply_clue_submission, _validate_clue_submission,
     )
@@ -687,6 +705,8 @@ async def list_investigation_clue_reviewer_candidates(clue_id: int, identity: di
 
 @router.post(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/turn-on-audit")
 async def turn_on_investigation_clue_audit(clue_id: int, body: ClueTurnOnAuditInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.clue.submit")
     from app.core.permissions import (
         _ensure_record_module, _user_has_job_permission,
     )
@@ -783,6 +803,8 @@ async def customer_review_investigation_clue(clue_id: int, body: ClueReviewInput
 
 @router.post(f"{settings.api_prefix}/investigations/clues/batch-collect")
 async def register_clue_collection_batch(body: ClueBatchCollectionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.clue.collect")
     from app.core.investigation import (
         _register_clue_collection,
     )
@@ -804,6 +826,8 @@ async def register_clue_collection_batch(body: ClueBatchCollectionInput, identit
 
 @router.post(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/collect")
 async def register_clue_collection(clue_id: int, body: ClueCollectionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.clue.collect")
     from app.core.investigation import (
         _register_clue_collection,
     )
@@ -816,6 +840,8 @@ async def register_clue_collection(clue_id: int, body: ClueCollectionInput, iden
 
 @router.post(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/evidence", status_code=status.HTTP_201_CREATED)
 async def create_evidence_from_clue(clue_id: int, body: EvidenceCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.evidence.manage")
     from app.core.investigation import (
         _sync_investigation_relation_links,
     )
@@ -839,6 +865,8 @@ async def create_evidence_from_clue(clue_id: int, body: EvidenceCreateInput, ide
 
 @router.post(f"{settings.api_prefix}/investigations/evidence/{{evidence_id}}/organize")
 async def organize_evidence(evidence_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.evidence.manage")
     from app.core.investigation import (
         _sync_investigation_relation_links,
     )
@@ -856,6 +884,8 @@ async def organize_evidence(evidence_id: int, body: TaskActionInput, identity: d
 
 @router.post(f"{settings.api_prefix}/investigations/evidence/{{evidence_id}}/file")
 async def file_evidence(evidence_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.evidence.manage")
     from app.core.investigation import (
         _sync_investigation_relation_links,
     )
@@ -875,6 +905,8 @@ async def file_evidence(evidence_id: int, body: TaskActionInput, identity: dict 
 
 @router.put(f"{settings.api_prefix}/investigations/evidence/{{evidence_id}}")
 async def update_evidence_record(evidence_id: int, body: EvidenceUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.evidence.manage")
     from app.core.investigation import (
         _sync_investigation_relation_links,
     )
@@ -1028,6 +1060,8 @@ async def get_investigation_clue_workspace(clue_id: int, scope: str = Query("", 
 
 @router.delete(f"{settings.api_prefix}/investigations/evidence/{{evidence_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_investigation_evidence(evidence_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.evidence.delete")
     from app.core.permissions import (
         _ensure_record_module, _require_record_owner_or_manager,
     )
@@ -1086,6 +1120,8 @@ async def list_investigation_parties(record_id: int, identity: dict = Depends(cu
 
 @router.post(f"{settings.api_prefix}/investigations/{{record_id}}/parties")
 async def update_investigation_parties(record_id: int, body: InvestigationPartyInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.record.update")
     from app.core.permissions import (
         _ensure_record_visible, _require_record_owner_or_manager,
     )
@@ -1115,6 +1151,8 @@ async def update_investigation_parties(record_id: int, body: InvestigationPartyI
 
 @router.post(f"{settings.api_prefix}/investigations/{{record_id}}/assign")
 async def assign_investigation_record(record_id: int, body: InvestigationAssignmentInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.assign")
     from app.core.permissions import (
         _ensure_record_visible, _require_investigation_assignment_access, _require_record_owner_or_manager, _require_task_owner_or_initiator,
     )
@@ -1154,6 +1192,8 @@ async def assign_investigation_record(record_id: int, body: InvestigationAssignm
 
 @router.post(f"{settings.api_prefix}/investigations/clues/{{record_id}}/fee-application", status_code=status.HTTP_201_CREATED)
 async def create_investigation_fee_application(record_id: int, body: InvestigationFeeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.fee.apply")
     from app.core.permissions import (
         _ensure_record_module, _require_record_owner_or_manager,
     )
@@ -1174,6 +1214,8 @@ async def create_investigation_fee_application(record_id: int, body: Investigati
 
 @router.post(f"{settings.api_prefix}/investigations/batch-delete")
 async def batch_delete_investigation_records(body: InvestigationBatchDeleteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.delete")
     from app.core.permissions import (
         _identity_role_ids, _record_scope_conditions,
     )
@@ -1278,6 +1320,8 @@ async def list_investigation_tasks(record_id: int, identity: dict = Depends(curr
 
 @router.post(f"{settings.api_prefix}/investigations/{{record_id}}/close")
 async def close_investigation(record_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.close")
     from app.core.permissions import (
         _ensure_record_module, _require_record_owner_or_manager,
     )
@@ -1319,6 +1363,8 @@ async def close_investigation(record_id: int, body: TaskActionInput, identity: d
 
 @router.post(f"{settings.api_prefix}/investigations/{{record_id}}/tasks", status_code=status.HTTP_201_CREATED)
 async def create_investigation_task(record_id: int, body: InvestigationTaskInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.task.create")
     from app.core.contracts import (
         _contract_allows_downstream_creation,
     )
@@ -1521,6 +1567,8 @@ async def bind_clue_source_contract(clue_id: int, body: ClueSourceContractBindin
     from that task inherits the same customer and stable contract identifiers.
     It is deliberately not a contract picker on the case-generation command.
     """
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.case.create")
     from app.core.contracts import (
         _contract_allows_downstream_creation, _resolve_clue_source_contract,
     )
@@ -1578,6 +1626,8 @@ async def bind_clue_source_contract(clue_id: int, body: ClueSourceContractBindin
 
 @router.post(f"{settings.api_prefix}/investigations/clues/batch-cases", status_code=status.HTTP_201_CREATED)
 async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.case.create")
     from app.core.conflict_review import assess_conflict_review, get_conflict_review_gate
     from app.core.cases import (
         _case_team_payload, _next_case_serial, _resolve_active_case_people,
@@ -1741,6 +1791,8 @@ async def list_investigation_materials(record_id: int, identity: dict = Depends(
 
 @router.post(f"{settings.api_prefix}/investigations/{{clue_id}}/notary", status_code=status.HTTP_201_CREATED)
 async def create_notary_from_clue(clue_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "investigation.notary.create")
     from app.core.permissions import (
         _ensure_record_module, _require_record_owner_or_manager,
     )

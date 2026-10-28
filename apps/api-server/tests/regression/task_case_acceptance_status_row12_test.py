@@ -9,6 +9,7 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app.core.constants import TASK_INVESTIGATION_ROLE_ACTIONS
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
@@ -37,6 +38,7 @@ class TaskCaseAcceptanceStatusRow12Test(unittest.IsolatedAsyncioTestCase):
             ])
             db.add(RolePermission(role="user", display_name="案件任务发起人", data_scope="本人及共享数据", menu_keys=[
                 "case-mine", "task", "@action:case.task.create",
+                *(f"@action:{code}" for code, *_ in TASK_INVESTIGATION_ROLE_ACTIONS),
             ], field_keys=[]))
             case = BusinessRecord(
                 module="case", serial_no="CODEX-901-R12-CASE", title="第十二行案件", customer="第十二行客户",

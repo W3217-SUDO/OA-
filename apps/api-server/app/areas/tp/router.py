@@ -754,6 +754,8 @@ async def list_unread_task_messages(
 
 @router.post(f"{settings.api_prefix}/tasks", status_code=status.HTTP_201_CREATED)
 async def create_task(body: TaskInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "task.create")
     from app.core.task_commands import create_task_record
     from app.core.tasks import _task_dict
     task = await create_task_record(body, identity, db)
@@ -764,6 +766,8 @@ async def create_task(body: TaskInput, identity: dict = Depends(current_identity
 
 @router.post(f"{settings.api_prefix}/tasks/batch-update")
 async def batch_update_tasks(body: TaskBatchUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "task.batch.update")
     from app.core.case_automation import requires_phase_completion
     from app.core.permissions import (
         _require_task_owner_or_initiator,
@@ -829,6 +833,8 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
     transition endpoint: task state transitions have different participants,
     automatic deadlines and audit semantics.
     """
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "task.batch.update")
     from app.core.task_lifecycle_policy import validate_task_lifecycle
     from app.core.tasks import (
             _active_task_username, _add_task_message_notifications, _record_task_manual_intervention, _task_dict,
@@ -965,6 +971,8 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/accept")
 async def accept_task(task_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "task.accept")
     from app.core.tasks import (
         _add_task_message_notifications, _record_task_manual_intervention, _task_dict, _task_or_404,
     )
@@ -982,6 +990,8 @@ async def accept_task(task_id: int, body: TaskActionInput, identity: dict = Depe
 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/reject")
 async def reject_task(task_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "task.accept")
     from app.core.tasks import (
         _add_task_message_notifications, _task_dict, _task_or_404,
     )
@@ -1000,6 +1010,8 @@ async def reject_task(task_id: int, body: TaskActionInput, identity: dict = Depe
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/withdraw")
 async def withdraw_task(task_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Withdraw a live task through its dedicated lifecycle, never generic transition."""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "task.withdraw")
     from app.core.tasks import (
             _add_task_message_notifications, _task_dict, _task_or_404,
         )
@@ -1037,6 +1049,8 @@ async def withdraw_task(task_id: int, body: TaskActionInput, identity: dict = De
 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/resend")
 async def resend_task(task_id: int, body: TaskHandoffInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "task.withdraw")
     from app.core.tasks import (
         _active_task_username, _add_task_message_notifications, _task_dict, _task_or_404,
     )
@@ -1054,6 +1068,8 @@ async def resend_task(task_id: int, body: TaskHandoffInput, identity: dict = Dep
 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/comments", status_code=status.HTTP_201_CREATED)
 async def add_task_comment(task_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "task.feedback")
     from app.core.tasks import (
         _add_task_message_notifications, _is_task_participant, _task_or_404,
     )
@@ -1075,6 +1091,8 @@ async def create_task_feedback(
     db: AsyncSession = Depends(get_db),
 ):
     """Create one task feedback message and all selected attachments atomically."""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "task.feedback")
     from app.core.storage import (
         _attachment_dict,
     )
@@ -1165,6 +1183,8 @@ async def upload_task_materials(
     must not be represented as feedback attachments because that would fabricate a
     communication entry and erase their distinct audit meaning.
     """
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "task.feedback")
     from app.core.storage import (
         _attachment_dict,
     )
@@ -1347,6 +1367,8 @@ async def batch_read_task_messages(body: TaskBatchReadInput, identity: dict = De
 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/handoff")
 async def handoff_task(task_id: int, body: TaskHandoffInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "task.handoff")
     from app.core.tasks import (
         _active_task_username, _add_task_message_notifications, _record_task_manual_intervention, _task_dict, _task_or_404,
     )
@@ -1425,6 +1447,8 @@ async def handoff_task(task_id: int, body: TaskHandoffInput, identity: dict = De
 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/restart")
 async def restart_task(task_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "task.restart")
     from app.core.case_automation import requires_phase_completion
     from app.core.tasks import (
         _add_task_message_notifications, _record_task_manual_intervention, _task_dict, _task_or_404,
@@ -1457,6 +1481,8 @@ async def restart_task(task_id: int, body: TaskActionInput, identity: dict = Dep
 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/exception-request")
 async def request_task_exception(task_id: int, body: TaskExceptionRequestInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "task.exception.request")
     from app.core.tasks import (
         _add_task_message_notifications, _record_task_manual_intervention, _task_dict, _task_or_404,
     )
@@ -1510,6 +1536,8 @@ async def review_task_exception(task_id: int, body: TaskExceptionReviewInput, id
 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/complete")
 async def complete_task(task_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "task.complete")
     from app.core.task_lifecycle_policy import validate_task_lifecycle
     from app.core.tasks import (
         _add_task_message_notifications, _record_task_manual_intervention, _task_dict, _task_or_404,
@@ -1529,6 +1557,8 @@ async def complete_task(task_id: int, body: TaskActionInput, identity: dict = De
 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/confirm")
 async def confirm_task(task_id: int, body: TaskActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "task.confirm")
     from app.core.tasks import (
         _add_task_message_notifications, _advance_case_from_fixed_task, _task_dict, _task_or_404,
     )

@@ -1,3 +1,4 @@
+import { roleActionAllowed } from "../roleActions";
 import { StatusTag } from "../components/common/StatusTag";
 import { useEffect, useMemo, useState, useRef } from "react";
 import {
@@ -2695,11 +2696,21 @@ export default function InvestigationCenterPage({
   );
   const selectedRow = selectedRows.length === 1 ? selectedRows[0] : null;
   const isAdminAccount = isActualAdmin;
+  // BUG20261028012 第五批：调查功能按角色权限勾选。
+  const investigationActionCodes: Record<string, string> = {
+    "新增线索": "investigation.record.create", "新增子任务": "investigation.record.create", "修改": "investigation.record.update",
+    "提交": "investigation.clue.submit", "批量提交": "investigation.clue.submit", "取证": "investigation.clue.collect",
+    "建立证据目录": "investigation.evidence.manage", "删除": "investigation.delete", "批量删除": "investigation.delete",
+    "新增调查员": "investigation.assign", "申请费用": "investigation.fee.apply", "关闭任务并生成报告": "investigation.close",
+    "生成案件": "investigation.case.create", "建立公证": "investigation.notary.create", "上传调查资料": "investigation.record.update",
+    "新增文件": "investigation.record.update",
+  };
   const actionLabels = [
     ...(originalButtons[initialTab] || ["查询"]),
     ...(isClue ? ["导出线索", "导出交接清单"] : []),
   ].filter(
     (label) =>
+      (!investigationActionCodes[label] || roleActionAllowed(investigationActionCodes[label])) &&
       (label !== "删除" || initialTab !== "investigation-task-unassigned" || isAdminAccount) &&
       (label !== "审批" ||
         (initialTab === "clue-audit-customer"

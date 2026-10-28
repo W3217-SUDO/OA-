@@ -66,7 +66,7 @@ class FinanceActionPermissionTest(unittest.IsolatedAsyncioTestCase):
     async def keys(self, username):
         async with self.sessions() as db:
             # 只比较财务动作；客户等其他模块功能默认全勾（BUG20261028012），不在本测试范围。
-            return {key for key in await configured_action_keys(username, db) if not key.startswith(("crm.", "contract.", "ipr."))}
+            return {key for key in await configured_action_keys(username, db) if not key.startswith(("crm.", "contract.", "ipr.", "task.", "investigation."))}
 
     def test_catalog(self):
         self.assertEqual(FINANCE_USER_ACTION_KEYS, set(ALL))

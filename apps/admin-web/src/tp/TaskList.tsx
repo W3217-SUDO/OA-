@@ -1,3 +1,4 @@
+import { roleActionAllowed } from "../roleActions";
 import { StatusTag } from "../components/common/StatusTag";
 import type { Key } from "react";
 import {
@@ -305,12 +306,12 @@ export default function TaskList(props: TaskListProps) {
               </Button>
             )}
             {canManageInitiatedTask && statusTab === "finished" && (
-              <Button onClick={() => selected && onConfirmTask(selected)}>
+              roleActionAllowed("task.confirm") && <Button onClick={() => selected && onConfirmTask(selected)}>
                 验收任务
               </Button>
             )}
             {canManageInitiatedTask && statusTab !== "finished" && (
-              <Button
+              roleActionAllowed("task.withdraw") && <Button
                 danger
                 disabled={!canWithdrawTask(selected)}
                 onClick={() => selected && onWithdrawTask(selected)}
@@ -320,7 +321,7 @@ export default function TaskList(props: TaskListProps) {
             )}
             {(canManageInitiatedTask || canManageCompanyCreatedTask) &&
               selected?.status === "已拒绝" && (
-                <Button onClick={() => selected && onResendTask(selected)}>
+                roleActionAllowed("task.withdraw") && <Button onClick={() => selected && onResendTask(selected)}>
                   重新派发
                 </Button>
               )}
@@ -330,18 +331,18 @@ export default function TaskList(props: TaskListProps) {
               ) && (
                 <>
                   {(!selected?.auto_completed || selected.phase_completion_required) && (
-                    <Button onClick={() => selected && onRestartTask(selected)}>
+                    roleActionAllowed("task.restart") && <Button onClick={() => selected && onRestartTask(selected)}>
                       重启任务
                     </Button>
                   )}
                 </>
               )}
             {canManageAcceptedTask && statusTab === "pending" && (
-              <Button onClick={onAcceptSelected}>接受任务</Button>
+              roleActionAllowed("task.accept") && <Button onClick={onAcceptSelected}>接受任务</Button>
             )}
             {canManageAcceptedTask && statusTab === "pending" && (
               <>
-                <Button disabled={selectedRows.some(row => row.phase_completion_required)} onClick={onCompleteSelected}>完成任务</Button>
+                {roleActionAllowed("task.complete") && <Button disabled={selectedRows.some(row => row.phase_completion_required)} onClick={onCompleteSelected}>完成任务</Button>}
                 <Button onClick={() => selected && onOpenHandoff(selected)}>
                   转交任务
                 </Button>
@@ -349,12 +350,12 @@ export default function TaskList(props: TaskListProps) {
             )}
             {canManageAcceptedTask && statusTab === "processing" && (
               <>
-                <Button disabled={selected?.phase_completion_required} onClick={() => selected && onCompleteOne(selected)}>
+                {roleActionAllowed("task.complete") && <Button disabled={selected?.phase_completion_required} onClick={() => selected && onCompleteOne(selected)}>
                   完成任务
-                </Button>
-                <Button onClick={() => selected && onOpenHandoff(selected)}>
+                </Button>}
+                {roleActionAllowed("task.handoff") && <Button onClick={() => selected && onOpenHandoff(selected)}>
                   转交任务
-                </Button>
+                </Button>}
               </>
             )}
             {selectedRows.length > 1 &&
@@ -378,7 +379,9 @@ export default function TaskList(props: TaskListProps) {
                             { key: "withdraw", label: "批量撤回任务", danger: true },
                           ]
                         : []),
-                    ],
+                    ].filter((item) => roleActionAllowed("task.batch.update") && roleActionAllowed(({
+                      accept: "task.accept", complete: "task.complete", handoff: "task.handoff", confirm: "task.confirm", withdraw: "task.withdraw",
+                    } as Record<string, string>)[String(item.key)] || "task.batch.update")),
                     onClick: ({ key }) =>
                       onOpenTaskBatchLifecycle(key as TaskBatchLifecycleAction),
                   }}
@@ -389,7 +392,7 @@ export default function TaskList(props: TaskListProps) {
             {(canManageAcceptedTask || canManageCompanyCreatedTask) &&
               selected?.workflow_status === "已停止" &&
               selected?.exception_request?.action === "挂起" && (
-                <Button onClick={() => selected && onRestartTask(selected)}>
+                roleActionAllowed("task.restart") && <Button onClick={() => selected && onRestartTask(selected)}>
                   恢复挂起任务
                 </Button>
               )}
@@ -409,12 +412,12 @@ export default function TaskList(props: TaskListProps) {
                 </>
               )}
             {selected && canRequestTaskException(selected) && (
-              <Button danger style={{ minHeight: 44, minWidth: 44 }} loading={actionSubmitting} onClick={() => onRequestException(selected, "取消")}>
+              roleActionAllowed("task.exception.request") && <Button danger style={{ minHeight: 44, minWidth: 44 }} loading={actionSubmitting} onClick={() => onRequestException(selected, "取消")}>
                 申请取消任务
               </Button>
             )}
             {selected && props.canMaintainTask(selected) && (
-              <Button style={{ minHeight: 44, minWidth: 44 }} loading={actionSubmitting} onClick={() => props.onMaintainTask(selected)}>维护任务</Button>
+              roleActionAllowed("task.batch.update") && <Button style={{ minHeight: 44, minWidth: 44 }} loading={actionSubmitting} onClick={() => props.onMaintainTask(selected)}>维护任务</Button>
             )}
             {selected?.performance_impact?.overdue && (
               <Tag color="red">
@@ -425,12 +428,12 @@ export default function TaskList(props: TaskListProps) {
             {canManageCompanyCreatedTask &&
               (selected?.workflow_status || selected?.status) === "处理中" && (
                 <>
-                  <Button onClick={() => selected && onCompleteOne(selected)}>
+                  {roleActionAllowed("task.complete") && <Button onClick={() => selected && onCompleteOne(selected)}>
                     完成任务
-                  </Button>
-                  <Button onClick={() => selected && onOpenHandoff(selected)}>
+                  </Button>}
+                  {roleActionAllowed("task.handoff") && <Button onClick={() => selected && onOpenHandoff(selected)}>
                     转交任务
-                  </Button>
+                  </Button>}
                 </>
               )}
             <Dropdown

@@ -934,6 +934,21 @@ IPR_ROLE_ACTIONS = (
     ("ipr.case.fee.delete", "删除知产案件费用", "ipr-patent"), ("ipr.case.assisted_fee.manage", "维护知产资助费用", "ipr-patent"),
     ("ipr.official.manage", "官文导入/处理/转达", "ipr-office-files"), ("ipr.official.delete", "删除官文", "ipr-office-files"),
 )
+# 第五批：任务、调查（审批、异常审核、客户复核等仍按原流程）。
+TASK_INVESTIGATION_ROLE_ACTIONS = (
+    ("task.create", "发布任务", "task-my"), ("task.batch.update", "批量修改任务", "task-my"),
+    ("task.accept", "接受/拒绝任务", "task-my"), ("task.withdraw", "撤回/重新发送任务", "task-my"),
+    ("task.handoff", "任务转交", "task-my"), ("task.restart", "重启任务", "task-my"),
+    ("task.exception.request", "申请任务异常", "task-my"), ("task.complete", "完成任务", "task-my"),
+    ("task.confirm", "确认任务完成", "task-my"), ("task.feedback", "任务评论/反馈/上传材料", "task-my"),
+    ("investigation.record.create", "新建调查记录", "investigation"), ("investigation.record.update", "修改调查记录及当事人", "investigation"),
+    ("investigation.import", "导入线索/公证/文件", "investigation"), ("investigation.clue.submit", "提交线索审核", "investigation"),
+    ("investigation.clue.collect", "登记取证", "investigation"), ("investigation.evidence.manage", "证据整理/归档/修改", "investigation"),
+    ("investigation.evidence.delete", "删除证据", "investigation"), ("investigation.assign", "分配调查", "investigation"),
+    ("investigation.fee.apply", "调查费用申请", "investigation"), ("investigation.delete", "删除调查记录", "investigation"),
+    ("investigation.close", "结束调查", "investigation"), ("investigation.task.create", "新建调查任务", "investigation"),
+    ("investigation.case.create", "线索转案件/绑定合同", "investigation"), ("investigation.notary.create", "线索转公证", "investigation"),
+)
 
 
 SYSTEM_ACTION_OPERATION_LABELS = {
@@ -1010,6 +1025,7 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
         *({"code": code, "menu_key": "customer-mine", "label": label} for code, label in CUSTOMER_ROLE_ACTIONS),
         *({"code": code, "menu_key": "contract-mine", "label": label} for code, label in CONTRACT_ROLE_ACTIONS),
         *({"code": code, "menu_key": menu_key, "label": label} for code, label, menu_key in IPR_ROLE_ACTIONS),
+        *({"code": code, "menu_key": menu_key, "label": label} for code, label, menu_key in TASK_INVESTIGATION_ROLE_ACTIONS),
         *({"code": code, "menu_key": menu_key, "label": label} for code, menu_key, label in FINANCE_EDIT_DELETE_ACTIONS),
     ])
     return definitions
