@@ -1129,7 +1129,10 @@ async def _ensure_unique_dingtalk_user_id(profile: dict, db: AsyncSession, exclu
     allowed_names = _dingtalk_allowed_display_names()
     if allowed_names and str(display_name or "").strip() not in allowed_names:
         raise HTTPException(status_code=403, detail="当前员工未开通钉钉登录，请联系管理员")
-    # 1.2.30 起一个钉钉可以绑定多个 OA 账号（钉钉内退出后选账号），不再拒绝绑定到其他账号。
+    # 一个钉钉只能绑定一个 OA 账号（陶威 2026-10-29）；一个账号仍可绑定多个钉钉。
+    users = (await db.scalars(select(User))).all()
+    if any(user.id != exclude_user_id and ding_user_id in _profile_dingtalk_login_ids(user.profile) for user in users):
+        raise HTTPException(status_code=409, detail="该钉钉账号已绑定其他系统用户")
 
 
 async def _ensure_system_user_lifecycle_safe(user: User, db: AsyncSession, *, action: str) -> None:

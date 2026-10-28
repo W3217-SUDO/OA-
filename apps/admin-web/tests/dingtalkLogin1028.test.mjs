@@ -25,12 +25,15 @@ test("1029：个人设置有“解绑钉钉”（钉钉内解绑当前身份并�
   assert.match(management, /editingUser && <SystemUserDingTalkBindings userId=\{editingUser\.id\} form=\{userForm\} \/>/);
 });
 
-test("1029：钉钉内退出后再打开先选账号，可“登录其他账号”加入列表；选账号页样式兼容 Chrome 100", () => {
+test("1.2.32：钉钉内退出后再打开显示绑定的账号和“登录其他账号”；其他账号凭密码登录、本次有效、不绑定钉钉", () => {
   const app = fs.readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   assert.match(app, /if \(getDingTalkEnvironment\(\)\.platform !== "notInDingTalk"\) localStorage\.setItem\(DINGTALK_CHOOSE_KEY, "1"\);\n    endClientSession\(\);/);
   assert.match(app, /choose: localStorage\.getItem\(DINGTALK_CHOOSE_KEY\) === "1"/);
   assert.match(app, /api\.post\("\/auth\/dingtalk\/choose", \{ ticket: dingtalkChooser\.ticket, username \}\)/);
-  assert.match(app, /api\.post\("\/auth\/dingtalk\/bind", \{ \.\.\.values, ticket: dingtalkChooser\.ticket \}\)/);
+  assert.ok(!app.includes("ticket: dingtalkChooser.ticket }));"), "登录其他账号不再绑定钉钉");
+  assert.ok(!app.includes("last_username"), "不再按上次使用的账号进入");
+  assert.match(app, /if \(dingtalkChooser\) markDingTalkOtherAccountSession\(\);/);
+  assert.match(app, /const \[loggedIn, setLoggedIn\] = useState\(hasStoredSession\);/);
   assert.match(app, />登录其他账号<\/Button>/);
   const styles = fs.readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
   const chooser = styles.slice(styles.indexOf("/* 钉钉选账号页"));

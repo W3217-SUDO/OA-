@@ -54,49 +54,33 @@ class DingTalkSharedAccountBindingTest(unittest.IsolatedAsyncioTestCase):
             admin = await db.scalar(select(User).where(User.username == "admin"))
             self.assertEqual(admin.profile["dingtalk_login_ids"], ["ding-taowei"])
 
-    async def test_one_dingtalk_can_bind_several_accounts_and_choose(self) -> None:
-        """1029：一个钉钉可绑定多个 OA 账号；退出后或没有上次记录时先选账号，点账号直接进入，各账号通知主身份不变。"""
+    async def test_one_dingtalk_binds_only_one_account(self) -> None:
+        """1.2.32（陶威 2026-10-29）：一个钉钉只能绑定一个账号；一个账号仍可绑定多个钉钉。"""
+        async with self.sessions() as db:
+            with self.assertRaises(HTTPException) as caught:
+                await bind_verified_employee({"user_id": "ding-other"}, "admin", "Secret-1028", db)
+            self.assertEqual(caught.exception.status_code, 409)
+            await bind_verified_employee({"user_id": "ding-taowei"}, "admin", "Secret-1028", db)
+            with self.assertRaises(HTTPException) as caught:
+                await bind_verified_employee({"user_id": "ding-taowei"}, "other", "Secret-1028", db)
+            self.assertEqual(caught.exception.status_code, 409, "附加绑定的身份同样不能再绑到别的账号")
+
+    async def test_open_goes_straight_in_and_after_logout_shows_bound_account(self) -> None:
         from app.areas.system.dingtalk_auth import login_chosen_employee
 
         async with self.sessions() as db:
-            await bind_verified_employee({"user_id": "ding-other"}, "admin", "Secret-1028", db)
-            admin = await db.scalar(select(User).where(User.username == "admin"))
-            other = await db.scalar(select(User).where(User.username == "other"))
-            self.assertEqual(admin.profile["dingtalk_user_id"], "ding-tgn", "主身份不被顶掉")
-            self.assertEqual(other.profile["dingtalk_user_id"], "ding-other")
-            ding = {"user_id": "ding-other"}
-            chooser = await login_verified_employee(ding, db, allow_choose=True)
-            self.assertTrue(chooser["choose_account"])
-            self.assertEqual([item["username"] for item in chooser["accounts"]], ["admin", "other"])
-            data = await login_verified_employee(ding, db, preferred="admin", allow_choose=True)
-            self.assertEqual(data["user"]["username"], "admin", "没退出过就进上次用的账号")
-            chooser = await login_verified_employee(ding, db, preferred="admin", choose=True, allow_choose=True)
-            self.assertTrue(chooser["choose_account"], "退出后再打开先选账号")
-            data = await login_chosen_employee(chooser["ticket"], "other", db)
-            self.assertEqual(data["user"]["username"], "other")
+            data = await login_verified_employee({"user_id": "ding-tgn"}, db)
+            self.assertEqual(data["user"]["username"], "admin", "从钉钉打开直接进绑定的账号")
+            chooser = await login_verified_employee({"user_id": "ding-tgn"}, db, choose=True)
+            self.assertTrue(chooser["choose_account"], "退出后再打开先显示绑定的账号")
+            self.assertEqual([item["username"] for item in chooser["accounts"]], ["admin"])
+            chosen = await login_chosen_employee(chooser["ticket"], "admin", db)
+            self.assertEqual(chosen["user"]["username"], "admin")
             with self.assertRaises(HTTPException) as caught:
-                await login_chosen_employee(chooser["ticket"], "nobody", db)
-            self.assertEqual(caught.exception.status_code, 403)
-            single = await login_verified_employee({"user_id": "ding-tgn"}, db, choose=False, allow_choose=True)
-            self.assertEqual(single["user"]["username"], "admin", "只绑定一个账号时直接进入")
-
-    async def test_login_other_account_from_chooser_binds_it(self) -> None:
-        from app.api_schemas.identity import DingTalkBindInput, DingTalkChooseInput
-        from app.areas.system.dingtalk_auth import choose_ticket
-        from app.areas.system import router as system_router
-        from unittest.mock import PropertyMock, patch
-
-        async with self.sessions() as db:
-            ticket = choose_ticket("ding-tgn")
-            with patch.object(type(system_router.dingtalk_client), "configured", new_callable=PropertyMock, return_value=True):
-                data = await system_router.bind_dingtalk_login(DingTalkBindInput(ticket=ticket, username="other", password="Secret-1028"), db)
-            self.assertEqual(data["user"]["username"], "other")
-            other = await db.scalar(select(User).where(User.username == "other"))
-            self.assertEqual(_profile_dingtalk_login_ids(other.profile), ["ding-other", "ding-tgn"])
-            chosen = await system_router.choose_dingtalk_account(DingTalkChooseInput(ticket=ticket, username="other"), db)
-            self.assertEqual(chosen["user"]["username"], "other")
+                await login_chosen_employee(chooser["ticket"], "other", db)
+            self.assertEqual(caught.exception.status_code, 403, "票据不能免密进入没绑定这个钉钉的账号")
             with self.assertRaises(HTTPException) as caught:
-                await system_router.choose_dingtalk_account(DingTalkChooseInput(ticket="bad", username="other"), db)
+                await login_chosen_employee("bad", "admin", db)
             self.assertEqual(caught.exception.status_code, 400)
 
     async def test_remove_single_binding_promotes_next_and_keeps_record(self) -> None:

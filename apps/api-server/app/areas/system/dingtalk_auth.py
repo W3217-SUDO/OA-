@@ -19,7 +19,7 @@ CHOOSE_TICKET_SECONDS = 600
 
 
 def choose_ticket(ding_user_id: str) -> str:
-    """钉钉免登码只能用一次；选账号、登录其他账号时凭这个短时票据证明钉钉身份。"""
+    """钉钉免登码只能用一次；退出后的登录页点绑定账号进入时凭这个短时票据证明钉钉身份。"""
     now = datetime.now(timezone.utc)
     return jwt.encode({"user_id": ding_user_id, "iss": "oa-dingtalk-choose", "aud": "dingtalk-choose", "iat": now,
                        "exp": now + timedelta(seconds=CHOOSE_TICKET_SECONDS), "jti": secrets.token_urlsafe(16)},
@@ -39,7 +39,7 @@ def verify_choose_ticket(value: str) -> str:
 
 
 def _add_dingtalk_binding(user: User, ding_user_id: str) -> None:
-    """一个钉钉可绑定多个 OA 账号、一个账号也可绑定多个钉钉；已有主身份时追加，不顶掉别人。"""
+    """一个账号可绑定多个钉钉（共用账号）；已有主身份时追加，不顶掉别人。一个钉钉只能绑定一个账号，由调用方先校验。"""
     profile = dict(user.profile or {})
     if str(profile.get("dingtalk_user_id") or "").strip() in ("", ding_user_id):
         profile["dingtalk_user_id"] = ding_user_id
@@ -89,20 +89,17 @@ async def login_bound_employee(user: User, ding_user: dict, db: AsyncSession) ->
     return await _login_response(user, db, require_password_change=False)
 
 
-async def login_verified_employee(ding_user: dict, db: AsyncSession, *, preferred: str = "", choose: bool = False,
-                                  allow_choose: bool = False) -> dict | None:
-    """钉钉免登。绑定一个账号直接进；绑定多个时进上次用的账号，退出后或没有上次记录时让用户选账号。"""
+async def login_verified_employee(ding_user: dict, db: AsyncSession, *, choose: bool = False) -> dict | None:
+    """钉钉免登：直接进入绑定的账号；钉钉里点过“退出”后先显示绑定的账号（点一下免密进入）和“登录其他账号”。"""
     matched = await bound_employees(ding_user, db)
     if not matched:
         return None
-    preferred_user = next((user for user in matched if user.username == preferred.strip().lower()), None)
-    if allow_choose and (choose or (len(matched) > 1 and preferred_user is None)):
+    if choose:
         await db.commit()
         return {"choose_account": True, "ticket": choose_ticket(ding_user["user_id"]), "accounts": await _account_options(matched, db)}
-    if preferred_user is None:
-        # 扫码登录等不弹选择的入口：进最近登录过的账号。
-        preferred_user = max(matched, key=lambda user: user.last_login_at.timestamp() if user.last_login_at else 0)
-    return await login_bound_employee(preferred_user, ding_user, db)
+    # 一个钉钉只绑定一个账号；1.2.30 前后若残留多个，进最近登录过的那个。
+    user = max(matched, key=lambda item: item.last_login_at.timestamp() if item.last_login_at else 0)
+    return await login_bound_employee(user, ding_user, db)
 
 
 async def login_chosen_employee(ticket: str, username: str, db: AsyncSession) -> dict:
