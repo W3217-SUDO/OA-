@@ -14,7 +14,8 @@ ADMIN_ROLE_NAMES = {"系统管理员", "SYSTEM-ADMIN"}
 # 待办目录：key、名称、点进去的页面、数字来源（todo=我的待办，metric=提醒指标，extra=本模块计数）、口径说明。
 PORTAL_ITEMS = (
     ("task", "待处理任务", "task-my-accepted", "todo:待处理任务", "我负责、待接收或待处理的任务"),
-    ("fee-unpaid", "待处理缴费", "dashboard-queue-official-fee-unpaid", "metric:official-fee-unpaid", "我的案件里未缴的官费"),
+    # BUG20261028002/003：改名“待缴官费”，点进去是请款单审批，数量同请款单审批列表。
+    ("fee-unpaid", "待缴官费", "finance-payment-audit", "todo:待审批官方费用", "请款单审批列表总数（外部费用和合同付款）"),
     ("internal-fee-audit", "待审批内部费用", "finance-internal-fee-audit", "todo:待审批内部费用", "内部费用待审核列表总数"),
     ("fee-audit", "待审批费用", "finance-payment-audit", "todo:待审批官方费用", "请款单审批列表总数（外部费用和合同付款）"),
     ("settlement-audit", "待审批结算费用", "finance-settlement-audit", "todo:待审批结算费用", "结算待审核列表总数"),
