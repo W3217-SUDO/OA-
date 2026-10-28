@@ -1,7 +1,8 @@
 """财务中心回款/付款/费用的编辑、删除授权（用户 2026-10-28 定）。
 
-1. 页面能看到即拥有该页的操作：能打开回款管理就能编辑、删除回款；能打开付款管理（不含“我的请款单”）
-   就能编辑、删除付款包；能打开费用查询就能编辑、删除费用。
+1. 只有管理页面带出操作（陶威 2026-10-28 改）：能打开“回款管理”才能编辑、删除回款，能打开“付款打包-管理”
+   才能编辑、删除付款包，能打开“请款单审批”才能编辑、删除费用。律师能看回款领取、到账查询、付款单查询、
+   费用查询等页面，但这些页面不带编辑删除。
 2. 员工管理里可以按人勾选或取消：取消的优先于页面可见；角色配置里勾选的仍有效。
 3. 真实管理者默认全部允许。只认账号真实可见的页面，不认 current_identity 的临时提升（它不区分是哪个页面）；
    能看哪些记录仍按数据范围。
@@ -11,25 +12,14 @@ from app.core.constants import FINANCE_EDIT_DELETE_ACTIONS
 from app.core.dependencies import AsyncSession, BusinessRecord, HTTPException, User, select
 
 FINANCE_ACTION_LABELS = {code: label for code, _menu, label in FINANCE_EDIT_DELETE_ACTIONS}
-# 动作前缀 → 打开哪些页面（菜单键前缀）即拥有该动作；“我的…”个人页面只是申请入口，不算。
-FINANCE_ACTION_PAGE_PREFIXES = {
-    "finance.receipt.": ("finance-receipts",),
-    "finance.payment.": ("finance-payment",),
-    "finance.fee.": ("finance-fee-query",),
-}
 # 申请人对自己尚未审批通过的费用申请仍可修改、删除（这是申请流程本身，不是改财务数据）。
 OWN_EDITABLE_FEE_STATUSES = frozenset({"草稿", "已退回", "已驳回"})
 
 
 def page_granted_finance_actions(menu_keys) -> list[str]:
-    """账号可见页面带来的财务动作。"""
-    menus = [str(key) for key in menu_keys or [] if not str(key).endswith("-mine")]
-    granted = []
-    for code, _menu, _label in FINANCE_EDIT_DELETE_ACTIONS:
-        prefixes = next(pages for action, pages in FINANCE_ACTION_PAGE_PREFIXES.items() if code.startswith(action))
-        if any(menu.startswith(prefix) for menu in menus for prefix in prefixes):
-            granted.append(code)
-    return granted
+    """账号可见的管理页面带来的财务动作（页面即 FINANCE_EDIT_DELETE_ACTIONS 的第二列）。"""
+    menus = {str(key) for key in menu_keys or []}
+    return [code for code, menu, _label in FINANCE_EDIT_DELETE_ACTIONS if menu in menus]
 
 
 def granted_action_keys(permission: dict) -> list[str]:

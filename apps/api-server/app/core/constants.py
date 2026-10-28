@@ -892,8 +892,8 @@ FINANCE_EDIT_DELETE_ACTIONS = (
     ("finance.receipt.delete", "finance-receipts-manage", "删除回款"),
     ("finance.payment.update", "finance-payment-package-manage", "编辑付款包"),
     ("finance.payment.delete", "finance-payment-package-manage", "删除付款包"),
-    ("finance.fee.update", "finance-fee-query", "编辑费用"),
-    ("finance.fee.delete", "finance-fee-query", "删除费用"),
+    ("finance.fee.update", "finance-payment-audit", "编辑费用"),
+    ("finance.fee.delete", "finance-payment-audit", "删除费用"),
 )
 
 

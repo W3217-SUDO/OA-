@@ -1,6 +1,7 @@
 """财务回款/付款/费用的编辑、删除（BUG20261027004，用户 2026-10-28 定）。
 
-能打开对应页面即拥有该页的操作；员工管理里可以按人勾选或取消，取消的优先；
+只有回款管理、付款打包-管理、请款单审批这类管理页面带出操作，律师能看的回款领取、到账查询、
+付款单查询、费用查询等不带（陶威 2026-10-28）；员工管理里可以按人勾选或取消，取消的优先；
 范明明这类被授权的人只能给别人配置这 6 项；只认账号真实可见的页面，不认 current_identity 的临时提升。
 """
 import unittest
@@ -42,9 +43,11 @@ class FinanceActionPermissionTest(unittest.IsolatedAsyncioTestCase):
                 # 回款人员：能打开回款管理；角色里单独勾了付款包编辑。
                 User(username="CODEXFAAUDIT", display_name="回款", password_hash="isolated-only", department="CODEXFA", role="auditor"),
                 User(username="CODEXFALAWYER", display_name="律师", password_hash="isolated-only", department="CODEXFA", role="user",
-                     profile=menus("finance-payment-mine", "finance-invoice-mine", "finance-internal-audit")),
+                     profile=menus("finance-payment-mine", "finance-invoice-mine", "finance-internal-audit",
+                                   "finance-receipts-claim", "finance-receipts-pending", "finance-receipts-allocated",
+                                   "finance-receipts-query", "finance-fee-query", "finance-payment-query")),
                 User(username="CODEXFAPAY", display_name="付款", password_hash="isolated-only", department="CODEXFA", role="user",
-                     profile={"permission_overrides": {"menu_keys": ["user-center", "finance-payment-writeoff", "finance-fee-query"],
+                     profile={"permission_overrides": {"menu_keys": ["user-center", "finance-payment-package-manage", "finance-payment-audit"],
                                                        "action_denies": ["finance.fee.delete"]}}),
                 User(username="CODEXFACONF", display_name="范明明", password_hash="isolated-only", department="CODEXFA", role="user",
                      profile={"permission_overrides": {"menu_keys": ["user-center", "hr-all"],
@@ -69,14 +72,19 @@ class FinanceActionPermissionTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue({FINANCE_CONFIGURE_ACTION, *ALL} <= USER_ACTION_KEYS)
         for code in ALL:
             self.assertIn(code, SYSTEM_ACTION_BY_CODE)
-        self.assertEqual(page_granted_finance_actions(["finance-receipts-icbc"]), ["finance.receipt.update", "finance.receipt.delete"])
-        self.assertEqual(page_granted_finance_actions(["finance-payment-mine", "finance-invoice-mine", "finance-internal-audit"]), [])
+        self.assertEqual(page_granted_finance_actions(["finance-receipts-manage"]), ["finance.receipt.update", "finance.receipt.delete"])
+        self.assertEqual(page_granted_finance_actions(["finance-payment-package-manage"]), ["finance.payment.update", "finance.payment.delete"])
+        self.assertEqual(page_granted_finance_actions(["finance-payment-audit"]), ["finance.fee.update", "finance.fee.delete"])
+        self.assertEqual(page_granted_finance_actions([
+            "finance-receipts-icbc", "finance-receipts-claim", "finance-receipts-pending", "finance-receipts-allocated",
+            "finance-receipts-query", "finance-payment-query", "finance-payment-writeoff", "finance-fee-query",
+            "finance-payment-mine", "finance-invoice-mine", "finance-internal-audit"]), [])
 
     async def test_visible_page_grants_and_untick_wins(self):
         self.assertEqual(await self.keys("CODEXFAADMIN"), {"*"})
         self.assertEqual(await self.keys("CODEXFAAUDIT"), {"finance.receipt.update", "finance.receipt.delete", "finance.payment.update"})
         self.assertEqual(await self.keys("CODEXFALAWYER"), set())
-        # 付款+费用查询页面带出 4 项，按人取消的“删除费用”不给。
+        # 付款打包-管理+请款单审批带出 4 项，按人取消的“删除费用”不给。
         self.assertEqual(await self.keys("CODEXFAPAY"),
                          {"finance.payment.update", "finance.payment.delete", "finance.fee.update"})
         async with self.sessions() as db:
