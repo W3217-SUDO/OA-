@@ -16,6 +16,7 @@ from app.core.generated_file_storage import MAX_GENERATED_BYTES, read_generated_
 from app.core.oss_attachments import oss_put_editor_revision
 from app.data_models.documents import FileAttachment
 from app.core.libreoffice_files import validate_docx
+from app.data_models.identity import User
 from app.data_models.records import BusinessRecord, WorkflowEvent
 from app.areas.personal_agent.ai_space_service import space_file_bytes, space_file_record
 from app.areas.personal_agent import dingtalk_office_client as office
@@ -71,7 +72,11 @@ async def _owner(file_id, identity, db):
     user_id = str((user.profile or {}).get("dingtalk_user_id") or "").strip()
     if not user_id:
         raise HTTPException(409, "当前 OA 账号尚未绑定钉钉员工账号，请先维护账号绑定")
-    # 1.2.30 起一个钉钉可绑定多个 OA 账号；编辑归属始终是当前登录的 OA 账号（owner_user_id），不按钉钉身份反查账号。
+    duplicate = await db.scalar(select(User.id).where(
+        User.id != user.id, User.profile["dingtalk_user_id"].as_string() == user_id,
+    ).limit(1))
+    if duplicate is not None:
+        raise HTTPException(409, "钉钉账号绑定了多个 OA 用户，请先核对真实绑定")
     union_id = await office.member_union_id(user_id)
     binding = {"owner_user_id": user.id, "dingtalk_user_id": user_id, "union_id": union_id,
                "corp_id": settings.dingtalk_corp_id,

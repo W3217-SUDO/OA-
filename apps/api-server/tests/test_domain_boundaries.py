@@ -425,14 +425,6 @@ class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
         listing = await list_space_files(identity, self.db, page=1, page_size=20)
         self.assertEqual(listing["total"], 0)
 
-    async def test_office_edit_allowed_when_dingtalk_bound_to_several_accounts(self):
-        """1.2.31：同一个钉钉绑定多个 OA 账号时，个人空间钉钉 Office 编辑按当前登录账号进行，不再拒绝。"""
-        self.users[1].profile = {"dingtalk_user_id": "CODEX-office-member"}
-        await self.db.commit()
-        source, session, _remote, _changed = await self.office_edit()
-        self.assertIsNotNone(session)
-        self.assertEqual(source["file"]["owner_user_id"], self.actor.id)
-
     async def test_office_new_and_unchanged_versions_project_owner_capability_and_link_in_final_transaction(self):
         from app.areas.personal_agent import dingtalk_office_service as office
 
