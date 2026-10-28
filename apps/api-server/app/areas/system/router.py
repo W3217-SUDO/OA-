@@ -3,7 +3,7 @@ from time import monotonic
 from app.core.finance_action_permissions import configured_action_keys, page_granted_finance_actions, user_finance_actions
 from app.core.constants import (
     DEFAULT_HIDDEN_MENU_KEYS, DEFAULT_ROLE_PERMISSIONS,
-    DEFAULT_SYSTEM_MENUS, FIELD_KEYS, MENU_KEYS, ROLE_DATA_SCOPES, SYSTEM_ACTION_BY_CODE,
+    DEFAULT_SYSTEM_MENUS, FIELD_KEYS, MENU_KEYS, ROLE_DATA_SCOPES, ROLE_TREE_HIDDEN_ACTION_CODES, SYSTEM_ACTION_BY_CODE,
     SYSTEM_ACTION_DEFINITIONS, SYSTEM_CACHE_META, SYSTEM_CACHE_REGISTRY, SYSTEM_MENU_ROUTE_KEYS,
     SYSTEM_PARAMETER_CATEGORIES, _LEGACY_CASE_TASK_HISTORY_ENTITIES, logger,
 )
@@ -1297,6 +1297,10 @@ async def update_role_permission(role: str, body: RolePermissionUpdate, identity
     item = await db.scalar(select(RolePermission).where(RolePermission.role == role))
     _, existing_actions = _split_role_permission_keys(item.menu_keys if item else [])
     action_keys = list(dict.fromkeys(body.action_keys if body.action_keys is not None else (existing_actions or ([item["code"] for item in SYSTEM_ACTION_DEFINITIONS] if role == "admin" else []))))
+    if body.action_keys is not None:
+        # 角色权限里不显示的功能按角色原有授权保留，避免保存时被取消。
+        kept = ROLE_TREE_HIDDEN_ACTION_CODES if role == "admin" else set(existing_actions) & ROLE_TREE_HIDDEN_ACTION_CODES
+        action_keys.extend(sorted(key for key in kept if key not in action_keys))
     invalid_actions = sorted(set(action_keys) - set(SYSTEM_ACTION_BY_CODE))
     if invalid_actions:
         raise HTTPException(status_code=422, detail=f"无效动作权限：{', '.join(invalid_actions)}")

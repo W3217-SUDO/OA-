@@ -1267,7 +1267,10 @@ export default function CustomerCenterPage({
       ...customerPortalActions,
     ];
     return (
-      ["customer-mine", "customer-dept", "customer-company", "customer-shared", "customer-recent-contact", "customer-recent-update"].includes(initialView)
+      // BUG20261028017：只有“我的客户”列表去掉客户服务端开通/停用，其他页面不变。
+      initialView === "customer-mine"
+        ? completeCustomerActions.filter((item) => !customerPortalActions.includes(item))
+        : ["customer-dept", "customer-company", "customer-shared", "customer-recent-contact", "customer-recent-update"].includes(initialView)
         ? completeCustomerActions
             : ["customer-recycle", "customer-dept-recycle", "customer-company-recycle"].includes(initialView)
               ? [{ key: "restore", label: "客户恢复" }, { key: "release", label: "进入公海" }]

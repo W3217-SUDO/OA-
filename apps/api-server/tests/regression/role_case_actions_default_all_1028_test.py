@@ -49,6 +49,17 @@ class RoleCaseActionsDefaultAllTest(unittest.IsolatedAsyncioTestCase):
         for code in ("case.task.view", "case.log.view", "case.export.print"):
             self.assertEqual(SYSTEM_ACTION_BY_CODE[code]["menu_key"], "case-mine")
 
+    def test_removed_fee_menu_functions_are_hidden_from_role_tree(self) -> None:
+        """BUG20261028015：费用“其他操作”去掉的入口，角色权限里也不再显示。"""
+        from app.core.constants import ROLE_TREE_HIDDEN_ACTION_CODES
+        from app.core.permissions import _organization_permission_tree
+        from app.models import SystemMenu
+
+        tree = _organization_permission_tree([SystemMenu(id=1, key="case-mine", label="我的案件", parent_key="")], [], set())
+        codes = {child["node_code"] for child in tree[0]["children"]}
+        self.assertIn("case.fee.update", codes)
+        self.assertFalse(codes & ROLE_TREE_HIDDEN_ACTION_CODES)
+
     async def test_all_roles_get_every_case_function_once(self) -> None:
         async with self.sessions() as db:
             await _grant_case_actions_to_all_roles_once(db)

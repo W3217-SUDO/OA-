@@ -1,6 +1,6 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 from app.core.constants import (
-    CASE_ACTIONS_EXPLICIT_MARKER, FIELD_KEYS, HR_SUBRECORD_KINDS, JOB_ROLE_ACTION_KEY_GRANTS, ROLE_DATA_SCOPES, SYSTEM_ACTION_DEFINITIONS, SYSTEM_ADMIN_JOB_PERMISSIONS,
+    CASE_ACTIONS_EXPLICIT_MARKER, FIELD_KEYS, HR_SUBRECORD_KINDS, JOB_ROLE_ACTION_KEY_GRANTS, ROLE_DATA_SCOPES, ROLE_TREE_HIDDEN_ACTION_CODES, SYSTEM_ACTION_DEFINITIONS, SYSTEM_ADMIN_JOB_PERMISSIONS,
     SYSTEM_MENU_ROUTE_KEYS, WORKFLOW_TRANSITIONS,
 )
 from app.core.dependencies import (
@@ -731,6 +731,12 @@ async def update_job_role_permissions(
     if not role:
         raise HTTPException(status_code=404, detail="岗位角色不存在")
     permissions = list(dict.fromkeys(value.strip() for value in body.permissions if value.strip()))
+    # 角色权限里不显示的功能（ROLE_TREE_HIDDEN_ACTION_CODES）按角色原有授权保留。
+    permissions.extend(
+        value for value in (role.permissions or [])
+        if str(value).removeprefix("action:") in ROLE_TREE_HIDDEN_ACTION_CODES and str(value).startswith("action:")
+        and value not in permissions
+    )
     if body.case_actions_explicit and role.code != "SYSTEM-ADMIN":
         permissions = _explicit_case_role_permissions(permissions)
     field_keys = _normalize_job_role_field_keys(body.field_keys) if body.field_keys is not None else list(dict.fromkeys(role.field_keys or []))

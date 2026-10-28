@@ -58,10 +58,7 @@ export const CaseFeesPanel = ({
     counselDetailCapabilities.can_refund_finance,
     counselDetailCapabilities.can_apply_fee_payment,
     counselDetailCapabilities.can_apply_fee_invoice,
-    counselDetailCapabilities.can_manage_fee_notice,
-    counselDetailCapabilities.can_confirm_fee_arrival,
     counselDetailCapabilities.can_edit_finance,
-    counselDetailCapabilities.can_view_fee_receipt,
     counselDetailCapabilities.can_delete_finance,
     counselDetailCapabilities.can_mark_fee_unpaid,
     counselDetailCapabilities.can_move_fee,
@@ -77,11 +74,9 @@ export const CaseFeesPanel = ({
             ...(counselDetailCapabilities.can_apply_fee_payment?[{key:"payment",label:"申请付款"}]:[]),
             ...(counselDetailCapabilities.can_apply_fee_invoice?[{key:"invoice",label:"申请开票"}]:[]),
             // 10.22 第8行：旧系统“移到其他案子”位于“申请开票”之后。
+            // BUG20261028015：费用通知五项、到账确认、查看票据/发票文件已按用户要求去掉。
             ...(counselDetailCapabilities.can_move_fee?[{key:"move-case",label:"移到其他案子"}]:[]),
-            ...(counselDetailCapabilities.can_manage_fee_notice?[{key:"inform",label:"新建费用通知"},{key:"unlock-inform",label:"费用通知解锁"},{key:"link-inform",label:"关联费用信息"},{key:"delete-inform",label:"删除费用通知"},{key:"inform-date",label:"修改通知日期"}]:[]),
-            ...(counselDetailCapabilities.can_confirm_fee_arrival?[{key:"arrival",label:"到账确认"}]:[]),
             ...(counselDetailCapabilities.can_edit_finance?[{key:"bill",label:"上传票据文件"},{key:"edit",label:"修改"}]:[]),
-            ...(counselDetailCapabilities.can_view_fee_receipt?[{key:"download-bill",label:"查看票据文件"},{key:"invoice-files",label:"查看发票文件"}]:[]),
             ...(counselDetailCapabilities.can_delete_finance?[{key:"delete",label:"删除"}]:[]),
             ...(counselDetailCapabilities.can_mark_fee_unpaid?[{key:"no-payment",label:"标记不缴费"}]:[]),
             ...(counselDetailCapabilities.can_refund_finance&&canMarkCaseFeeRefundNotRequired?.(selectedFee)?[{key:"refund-not-required",label:"标记不再办理退费"}]:[]),
@@ -103,11 +98,9 @@ export const CaseFeesPanel = ({
             ...(counselDetailCapabilities.can_apply_fee_payment?[{key:"payment",label:"申请付款"}]:[]),
             ...(counselDetailCapabilities.can_apply_fee_invoice?[{key:"invoice",label:"申请开票"}]:[]),
             // 10.22 第8行：旧系统“移到其他案子”位于“申请开票”之后。
+            // BUG20261028015：费用通知五项、到账确认、查看票据/发票文件已按用户要求去掉。
             ...(counselDetailCapabilities.can_move_fee?[{key:"move-case",label:"移到其他案子"}]:[]),
-            ...(counselDetailCapabilities.can_manage_fee_notice?[{key:"inform",label:"新建费用通知"},{key:"unlock-inform",label:"费用通知解锁"},{key:"link-inform",label:"关联费用信息"},{key:"delete-inform",label:"删除费用通知"},{key:"inform-date",label:"修改通知日期"}]:[]),
-            ...(counselDetailCapabilities.can_confirm_fee_arrival?[{key:"arrival",label:"到账确认"}]:[]),
             ...(counselDetailCapabilities.can_edit_finance?[{key:"bill",label:"上传票据文件"},{key:"edit",label:"修改"}]:[]),
-            ...(counselDetailCapabilities.can_view_fee_receipt?[{key:"download-bill",label:"查看票据文件"},{key:"invoice-files",label:"查看发票文件"}]:[]),
             ...(counselDetailCapabilities.can_delete_finance?[{key:"delete",label:"删除"}]:[]),
             ...(counselDetailCapabilities.can_mark_fee_unpaid?[{key:"no-payment",label:"标记不缴费"}]:[]),
             ...(counselDetailCapabilities.can_refund_finance&&canMarkCaseFeeRefundNotRequired?.(selectedFee)?[{key:"refund-not-required",label:"标记不再办理退费"}]:[]),

@@ -24,12 +24,16 @@ const css = read("../src/case-center.css");
 const systemLogs = read("../src/legal/CaseDetail/CaseSystemLogsPanel.tsx");
 const createPayload = read("../src/caseSecondBatchParity.ts");
 
-test("第4行：内部结算不再显示“通知日期”列和底部“修改通知日期”按钮，律所/平台保留", () => {
+test("第4行：内部结算不再显示“通知日期”列和底部“修改通知日期”按钮", () => {
   const internal = fees.slice(fees.indexOf("// internal"));
   assert.ok(!internal.includes("通知日期"), "内部结算分支不应再出现通知日期");
   assert.match(internal, /scroll=\{\{x:1000\}\}/);
   const external = fees.slice(0, fees.indexOf("// internal"));
-  assert.equal((external.match(/修改通知日期/g) || []).length, 2, "律所、平台“其他操作”里的修改通知日期保留");
+  // BUG20261028015：律所、平台“其他操作”里的修改通知日期等八项也已按用户要求去掉。
+  for (const label of ["新建费用通知", "费用通知解锁", "关联费用信息", "删除费用通知", "修改通知日期", "到账确认", "查看票据文件", "查看发票文件"]) {
+    assert.ok(!external.includes(`label:"${label}"`), `律所、平台“其他操作”不应再有${label}`);
+  }
+  assert.equal((external.match(/label:"移到其他案子"/g) || []).length, 2, "其余功能保留");
 });
 
 test("第5行：标签栏固定、内容区滚动，律所费用与系统日志表头吸顶；手机端关闭吸顶", () => {

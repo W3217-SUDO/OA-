@@ -2,7 +2,7 @@
 from app.core.constants import (
     AGENT_ACTION_CAPABILITY, CASE_ACTIONS_EXPLICIT_MARKER, CASE_CREATABLE_TYPES, CIVIL_CASE_TYPES, CONTRACT_APPROVAL_ACTION_CODE, DEFAULT_MENU_LABEL_BY_KEY,
     DEFAULT_ROLE_PERMISSIONS, EXPENSE_SUBTYPE_FEE_TYPE, FIELD_KEYS, JAR_FEE_TRANSITIONS, JOB_ACTION_MENU_GRANTS,
-    JOB_ROLE_ACTION_KEY_GRANTS, JOB_ROLE_LABEL_MENU_GRANTS, MENU_CHILDREN_BY_KEY, MENU_KEYS, ROLE_DATA_SCOPES,
+    JOB_ROLE_ACTION_KEY_GRANTS, ROLE_TREE_HIDDEN_ACTION_CODES, JOB_ROLE_LABEL_MENU_GRANTS, MENU_CHILDREN_BY_KEY, MENU_KEYS, ROLE_DATA_SCOPES,
     SYSTEM_ACTION_DEFINITIONS, SYSTEM_MENU_ROUTE_KEYS, SYSTEM_USER_ROLE_CODES,
 )
 from app.core.dependencies import (
@@ -166,7 +166,10 @@ async def _system_permission_tree(db: AsyncSession, permission: RolePermission |
     menu_keys, action_keys = _split_role_permission_keys(permission.menu_keys if permission else [])
     rows = list((await db.scalars(select(SystemMenu).order_by(SystemMenu.sort_order, SystemMenu.id))).all())
     by_key = {item.key: item for item in rows}
-    action_definitions = _system_action_definitions(set(by_key))
+    action_definitions = [
+        definition for definition in _system_action_definitions(set(by_key))
+        if definition["code"] not in ROLE_TREE_HIDDEN_ACTION_CODES
+    ]
     action_by_menu: dict[str, list[dict]] = {}
     for definition in action_definitions:
         action_by_menu.setdefault(definition["menu_key"], []).append(definition)
@@ -2073,7 +2076,7 @@ def _organization_permission_tree(menus: list[SystemMenu], actions: list[str], s
     for definition in SYSTEM_ACTION_DEFINITIONS:
         key = f"action:{definition['code']}"
         catalog_keys.add(key)
-        if definition["menu_key"] in menu_keys:
+        if definition["menu_key"] in menu_keys and definition["code"] not in ROLE_TREE_HIDDEN_ACTION_CODES:
             by_menu_actions.setdefault(definition["menu_key"], []).append({
                 "key": key, "node_type": "A", "node_original_id": definition["code"],
                 "node_id": definition["code"], "node_code": definition["code"],

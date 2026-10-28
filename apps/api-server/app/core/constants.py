@@ -976,6 +976,11 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
 SYSTEM_ACTION_DEFINITIONS = _system_action_definitions()
 
 
+# BUG20261028015：案件详情费用“其他操作”已去掉这些入口，角色权限里不再显示勾选框；
+# 财务页面仍按这些功能码授权，保存角色时保留角色原有的授权，不因看不到而被取消。
+ROLE_TREE_HIDDEN_ACTION_CODES = frozenset({"case.fee.notice", "case.fee.arrival", "case.fee.receipt.view"})
+
+
 SYSTEM_ACTION_BY_CODE = {item["code"]: item for item in SYSTEM_ACTION_DEFINITIONS}
 
 
