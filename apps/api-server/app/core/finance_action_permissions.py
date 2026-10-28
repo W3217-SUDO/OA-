@@ -3,7 +3,9 @@
 1. 只有管理页面带出操作（陶威 2026-10-28 改）：能打开“回款管理”才能编辑、删除回款，能打开“付款打包-管理”
    才能编辑、删除付款包，能打开“请款单审批”才能编辑、删除费用。律师能看回款领取、到账查询、付款单查询、
    费用查询等页面，但这些页面不带编辑删除。
-2. 员工管理里可以按人勾选或取消：取消的优先于页面可见；角色配置里勾选的仍有效。
+2. 角色权限里按角色取消（BUG20261028012，陶威 2026-10-28 17:09/17:15）：页面默认带全部功能（上线时所有角色一次性全勾），
+   管理员在角色权限里取消的该角色就没有；角色勾选也只在能打开对应管理页面时生效。
+   员工管理里按人勾选或取消优先于角色。
 3. 真实管理者默认全部允许。只认账号真实可见的页面，不认 current_identity 的临时提升（它不区分是哪个页面）；
    能看哪些记录仍按数据范围。
 """
@@ -23,10 +25,11 @@ def page_granted_finance_actions(menu_keys) -> list[str]:
 
 
 def granted_action_keys(permission: dict) -> list[str]:
-    """角色勾选 + 员工管理按人勾选 + 可见页面带来的动作，去掉按人取消的；登录返回、/auth/me 和后端校验都用它。"""
+    """角色勾选（财务编辑删除须能打开对应管理页面）+ 员工管理按人勾选，去掉按人取消的；登录返回、/auth/me 和后端校验都用它。"""
     denied = set(permission.get("user_action_denies") or [])
-    keys = [*(permission.get("action_keys") or []), *(permission.get("user_action_keys") or []),
-            *page_granted_finance_actions(permission.get("menu_keys"))]
+    page_codes = set(page_granted_finance_actions(permission.get("menu_keys")))
+    role_keys = [key for key in permission.get("action_keys") or [] if key not in FINANCE_ACTION_LABELS or key in page_codes]
+    keys = [*role_keys, *(permission.get("user_action_keys") or [])]
     return [key for key in dict.fromkeys(keys) if key not in denied]
 
 

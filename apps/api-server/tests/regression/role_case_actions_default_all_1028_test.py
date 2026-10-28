@@ -83,6 +83,8 @@ class RoleCaseActionsDefaultAllTest(unittest.IsolatedAsyncioTestCase):
             self.assertTrue({f"@action:{code}" for code, _ in CONTRACT_ROLE_ACTIONS} <= set(user_permission.menu_keys))
             self.assertTrue({f"@action:{code}" for code, *_ in IPR_ROLE_ACTIONS} <= set(user_permission.menu_keys))
             self.assertTrue({f"@action:{code}" for code, *_ in TASK_INVESTIGATION_ROLE_ACTIONS} <= set(user_permission.menu_keys))
+            from app.core.constants import FINANCE_EDIT_DELETE_ACTIONS
+            self.assertTrue({f"@action:{code}" for code, *_ in FINANCE_EDIT_DELETE_ACTIONS} <= set(user_permission.menu_keys))
             jobs = {role.code: role for role in (await db.scalars(select(JobRole))).all()}
             for code in ("CODEX-1028-12-ASSISTANT", "CODEX-1028-12-LAWYER"):
                 role = jobs[code]

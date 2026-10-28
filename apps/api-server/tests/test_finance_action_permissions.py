@@ -53,7 +53,9 @@ class FinanceActionPermissionTest(unittest.IsolatedAsyncioTestCase):
                      profile={"permission_overrides": {"menu_keys": ["user-center", "hr-all"],
                                                        "action_keys": [FINANCE_CONFIGURE_ACTION, *ALL]}}),
                 RolePermission(role="auditor", display_name="回款人员", data_scope="全所数据",
-                               menu_keys=["finance-receipts-manage", "@action:finance.payment.update"], field_keys=[]),
+                               # 上线一次性全勾后的状态：角色带回款两项；付款包编辑没有对应管理页面，不生效。
+                               menu_keys=["finance-receipts-manage", "@action:finance.receipt.update",
+                                          "@action:finance.receipt.delete", "@action:finance.payment.update"], field_keys=[]),
             ])
             await db.commit()
 
@@ -83,7 +85,7 @@ class FinanceActionPermissionTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_visible_page_grants_and_untick_wins(self):
         self.assertEqual(await self.keys("CODEXFAADMIN"), {"*"})
-        self.assertEqual(await self.keys("CODEXFAAUDIT"), {"finance.receipt.update", "finance.receipt.delete", "finance.payment.update"})
+        self.assertEqual(await self.keys("CODEXFAAUDIT"), {"finance.receipt.update", "finance.receipt.delete"})
         self.assertEqual(await self.keys("CODEXFALAWYER"), set())
         # 付款打包-管理+请款单审批带出 4 项，按人取消的“删除费用”不给。
         self.assertEqual(await self.keys("CODEXFAPAY"),
@@ -94,6 +96,19 @@ class FinanceActionPermissionTest(unittest.IsolatedAsyncioTestCase):
                 await require_finance_action(self.identity("CODEXFALAWYER"), db, "finance.receipt.delete")
             self.assertEqual(raised.exception.status_code, 403)
             self.assertIn("删除回款", raised.exception.detail)
+
+    async def test_role_untick_removes_and_person_tick_wins(self):
+        """BUG20261028012：页面默认全有 → 角色取消即没有 → 员工管理按人勾选优先。"""
+        async with self.sessions() as db:
+            role = await db.scalar(select(RolePermission).where(RolePermission.role == "auditor"))
+            role.menu_keys = [key for key in role.menu_keys if key != "@action:finance.receipt.delete"]
+            await db.commit()
+        self.assertEqual(await self.keys("CODEXFAAUDIT"), {"finance.receipt.update"})
+        async with self.sessions() as db:
+            auditor = await db.scalar(select(User).where(User.username == "CODEXFAAUDIT"))
+            await set_user_finance_actions(auditor.id, ["finance.receipt.update", "finance.receipt.delete"], db, actor="CODEXFACONF", source="test")
+            await db.commit()
+        self.assertEqual(await self.keys("CODEXFAAUDIT"), {"finance.receipt.update", "finance.receipt.delete"})
 
     async def test_login_payload_matches(self):
         from app.core.system import _login_response
