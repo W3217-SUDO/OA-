@@ -1112,6 +1112,13 @@ def _require_actual_system_admin(identity: dict) -> None:
         raise HTTPException(status_code=403, detail="仅系统管理员可以管理用户授权")
 
 
+def _profile_dingtalk_login_ids(profile: dict | None) -> list[str]:
+    """一个 OA 账号可绑定多个钉钉身份免登（如多人共用管理员账号）；dingtalk_user_id 仍是接收通知的主身份。"""
+    profile = profile or {}
+    values = [profile.get("dingtalk_user_id"), *(profile.get("dingtalk_login_ids") or [])]
+    return list(dict.fromkeys(text for text in (str(value or "").strip() for value in values) if text))
+
+
 async def _ensure_unique_dingtalk_user_id(profile: dict, db: AsyncSession, exclude_user_id: int | None = None, display_name: str = "") -> None:
     from app.core.formatters import (
         _dingtalk_allowed_display_names,
@@ -1123,7 +1130,7 @@ async def _ensure_unique_dingtalk_user_id(profile: dict, db: AsyncSession, exclu
     if allowed_names and str(display_name or "").strip() not in allowed_names:
         raise HTTPException(status_code=403, detail="当前员工未开通钉钉登录，请联系管理员")
     users = (await db.scalars(select(User))).all()
-    if any(user.id != exclude_user_id and str((user.profile or {}).get("dingtalk_user_id") or "").strip() == ding_user_id for user in users):
+    if any(user.id != exclude_user_id and ding_user_id in _profile_dingtalk_login_ids(user.profile) for user in users):
         raise HTTPException(status_code=409, detail="该钉钉账号已绑定其他系统用户")
 
 

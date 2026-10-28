@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.formatters import _dingtalk_allowed_display_names
-from app.core.permissions import _ensure_unique_dingtalk_user_id, _require_dingtalk_access
+from app.core.permissions import _ensure_unique_dingtalk_user_id, _profile_dingtalk_login_ids, _require_dingtalk_access
 from app.models import User
 from app.security import verify_password
 
@@ -16,7 +16,7 @@ async def login_verified_employee(ding_user: dict, db: AsyncSession) -> dict | N
     from app.core.system import _login_response
 
     users = (await db.scalars(select(User).where(User.is_active.is_(True)))).all()
-    matched = [user for user in users if str((user.profile or {}).get("dingtalk_user_id") or "").strip() == ding_user["user_id"]]
+    matched = [user for user in users if ding_user["user_id"] in _profile_dingtalk_login_ids(user.profile)]
     if not matched and ding_user.get("mobile"):
         matched = [user for user in users if str((user.profile or {}).get("mobile") or "").strip() == ding_user["mobile"]]
         if len(matched) == 1:
@@ -42,8 +42,13 @@ async def bind_verified_employee(ding_user: dict, username: str, password: str, 
     if not user or not verify_password(password, user.password_hash):
         raise HTTPException(status_code=401, detail="OA 账号或密码错误")
     _require_dingtalk_access(user)
-    profile = {**(user.profile or {}), "dingtalk_user_id": ding_user["user_id"]}
-    await _ensure_unique_dingtalk_user_id(profile, db, user.id, user.display_name)
+    profile = dict(user.profile or {})
+    if str(profile.get("dingtalk_user_id") or "").strip() in ("", ding_user["user_id"]):
+        profile["dingtalk_user_id"] = ding_user["user_id"]
+    else:
+        # 共用账号的另一位绑定时追加，不顶掉已有绑定，否则两人会轮流被要求重新绑定。
+        profile["dingtalk_login_ids"] = list(dict.fromkeys([*(profile.get("dingtalk_login_ids") or []), ding_user["user_id"]]))
+    await _ensure_unique_dingtalk_user_id({"dingtalk_user_id": ding_user["user_id"]}, db, user.id, user.display_name)
     user.profile = profile
     user.last_login_at = datetime.now()
     await db.commit()

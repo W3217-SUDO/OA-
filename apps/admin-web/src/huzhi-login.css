@@ -124,7 +124,8 @@
   background: var(--huzhi-ink);
   font-size: 15px;
   font-weight: 600;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--huzhi-ink) 86%, #fff), var(--huzhi-ink));
+  /* 钉钉手机内核 Chrome 100 不支持 color-mix，含 var() 的无效值会让按钮背景变透明、白字看不见。 */
+  background: linear-gradient(180deg, #4672be, var(--huzhi-ink));
   box-shadow: 0 8px 20px rgba(40, 91, 180, 0.13);
 }
 

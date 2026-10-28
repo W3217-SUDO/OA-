@@ -238,7 +238,7 @@ async def list_system_users(keyword: str = "", identity: dict = Depends(current_
 @router.patch(f"{settings.api_prefix}/system/users/{{user_id}}/dingtalk")
 async def bind_system_user_dingtalk(user_id: int, body: DingTalkBindingInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _require_admin, _require_dingtalk_access,
+        _profile_dingtalk_login_ids, _require_admin, _require_dingtalk_access,
     )
     from app.core.system import (
         _system_user_dict,
@@ -251,13 +251,18 @@ async def bind_system_user_dingtalk(user_id: int, body: DingTalkBindingInput, id
     if ding_user_id:
         _require_dingtalk_access(user)
         users = (await db.scalars(select(User).where(User.id != user_id))).all()
-        if any(str((item.profile or {}).get("dingtalk_user_id") or "").strip() == ding_user_id for item in users):
+        if any(ding_user_id in _profile_dingtalk_login_ids(item.profile) for item in users):
             raise HTTPException(status_code=409, detail="该钉钉账号已绑定其他系统用户")
     profile = dict(user.profile or {})
     if ding_user_id:
         profile["dingtalk_user_id"] = ding_user_id
+        extra = [value for value in _profile_dingtalk_login_ids(profile) if value != ding_user_id]
+        if extra: profile["dingtalk_login_ids"] = extra
+        else: profile.pop("dingtalk_login_ids", None)
     else:
+        # 管理员解除绑定：该账号的钉钉免登身份全部解除。
         profile.pop("dingtalk_user_id", None)
+        profile.pop("dingtalk_login_ids", None)
     user.profile = profile
     await db.commit(); await db.refresh(user)
     return _system_user_dict(user)
