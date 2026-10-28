@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app.core.constants import CONTRACT_ROLE_ACTIONS
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
@@ -33,7 +34,7 @@ class ContractEventBackendD9Contract(unittest.IsolatedAsyncioTestCase):
             db.add_all([
                 User(username=ADMIN["username"], display_name=ADMIN["display_name"], department=ADMIN["department"], role="admin", password_hash="test", is_active=True),
                 User(username=USER["username"], display_name=USER["display_name"], department=USER["department"], role="user", password_hash="test", is_active=True),
-                RolePermission(role="user", display_name="普通用户", data_scope="本人及共享数据", menu_keys=["user-center"], field_keys=[]),
+                RolePermission(role="user", display_name="普通用户", data_scope="本人及共享数据", menu_keys=["user-center", *(f"@action:{code}" for code, _ in CONTRACT_ROLE_ACTIONS)], field_keys=[]),
                 BusinessRecord(module="customer", serial_no="CUS-D9-001", title="D9 客户", customer="D9 客户", status="正常", owner=ADMIN["username"], department=ADMIN["department"], data={}),
             ])
             contract = BusinessRecord(

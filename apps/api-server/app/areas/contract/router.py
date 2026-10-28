@@ -184,6 +184,8 @@ async def create_contract_draft(body: ContractDraftInput, identity: dict = Depen
 
 @router.patch(f"{settings.api_prefix}/contracts/{{contract_id}}")
 async def update_contract_draft(contract_id: int, body: ContractDraftInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "contract.application.update")
     from app.core.contract_commands import update_contract_draft_record
     result = await update_contract_draft_record(contract_id, body, identity, db)
     await db.commit()
@@ -198,6 +200,8 @@ async def revoke_contract_draft(contract_id: int, identity: dict = Depends(curre
     can be withdrawn only before it has approval, receivables, incoming payments,
     or downstream records; otherwise the related workflow is the source of truth.
     """
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "contract.delete")
     from app.core.permissions import (
         _ensure_record_module, _require_record_owner_or_manager,
     )
@@ -237,6 +241,8 @@ async def revoke_contract_draft(contract_id: int, identity: dict = Depends(curre
 
 @router.post(f"{settings.api_prefix}/contracts/delete")
 async def delete_contract_records(body: ContractWholeDeleteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "contract.delete")
     from app.core.contracts import (
         _delete_contract_records,
     )
@@ -245,6 +251,8 @@ async def delete_contract_records(body: ContractWholeDeleteInput, identity: dict
 
 @router.post(f"{settings.api_prefix}/contracts/company/delete")
 async def delete_company_contract_records(body: ContractWholeDeleteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "contract.delete")
     from app.core.contracts import (
         _delete_contract_records,
     )
@@ -378,6 +386,8 @@ async def approve_contract(contract_id: int, body: ContractApprovalInput, identi
 
 @router.post(f"{settings.api_prefix}/contracts/{{contract_id}}/seal-application", status_code=status.HTTP_201_CREATED)
 async def create_contract_seal_application(contract_id: int, body: ContractSealApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "contract.seal.apply")
     from app.core.conflict_review import assess_conflict_review
     from app.core.contracts import (
         _single_linked_case_for_contract,
@@ -505,6 +515,8 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
 
 @router.post(f"{settings.api_prefix}/contracts/{{contract_id}}/investigation", status_code=status.HTTP_201_CREATED)
 async def create_contract_investigation(contract_id: int, body: ContractInvestigationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "contract.investigation.create")
     from app.core.contracts import (
         _contract_allows_downstream_creation, _contract_customer_manager_values, _contract_investigation_source_data,
     )
@@ -707,6 +719,8 @@ async def list_contract_events_by_guid(
 
 @router.post(f"{settings.api_prefix}/contracts/{{contract_id}}/events", status_code=status.HTTP_201_CREATED)
 async def create_contract_event(contract_id: int, body: ContractEventInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "contract.event.create")
     from app.core.contracts import (
         _create_contract_event_for_record,
     )
@@ -719,6 +733,8 @@ async def create_contract_event(contract_id: int, body: ContractEventInput, iden
 
 @router.post(f"{settings.api_prefix}/contracts/guid/{{contract_guid}}/events", status_code=status.HTTP_201_CREATED)
 async def create_contract_event_by_guid(contract_guid: str, body: ContractEventInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "contract.event.create")
     from app.core.contracts import (
         _create_contract_event_for_record,
     )
@@ -1396,6 +1412,8 @@ async def review_contract_change(contract_id: int, body: ContractChangeReviewInp
 @router.post(f"{settings.api_prefix}/contracts/{{contract_id}}/attachments/delete")
 async def batch_delete_contract_attachments(contract_id: int, body: ContractAttachmentBatchDeleteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Legacy FCM-style batch delete for contract files with a 200 envelope."""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "contract.attachment.delete")
     from app.core.permissions import (
         _ensure_record_module, _require_contract_attachment_write_access,
     )
@@ -1495,12 +1513,16 @@ async def update_contract_payment_application(payment_id: int, body: ContractPay
 
 @router.post(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}/submit")
 async def submit_contract_payment_application(payment_id: int, body: FinancePaymentRollbackInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "contract.payment.create")
     from app.core.contract_payment_lifecycle import change_payment_state
     return await change_payment_state(payment_id, "submit", body.comment, identity, db)
 
 
 @router.post(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}/cancel")
 async def cancel_contract_payment_application(payment_id: int, body: FinancePaymentCancelInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "contract.payment.create")
     from app.core.contract_payment_lifecycle import change_payment_state
     return await change_payment_state(payment_id, "cancel", body.reason, identity, db)
 

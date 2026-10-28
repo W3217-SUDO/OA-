@@ -1332,7 +1332,7 @@ export default function ContractCenterPage({
                 导出Excel
               </Button>
             )}
-            <Button onClick={() => viewing && openContractEvent(viewing)}>新增事项</Button>
+            {contractCapabilities(viewing).canAddEvent && <Button onClick={() => viewing && openContractEvent(viewing)}>新增事项</Button>}
             <Button onClick={returnFromDetail}>关闭</Button>
           </Space>
         }

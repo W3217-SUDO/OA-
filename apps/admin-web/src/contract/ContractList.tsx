@@ -292,7 +292,7 @@ export function ContractList({
         const actions = [
           capabilities.canEdit && { key: "edit", label: "编辑合同", onClick: () => onEdit(r) },
           canSubmit && { key: "submit", label: "提交审批", onClick: () => onSubmitWizard(r) },
-          CONTRACT_SEAL_READY_STATUSES.includes(r.status) && { key: "seal", label: "合同用印", onClick: () => onSeal(r) },
+          CONTRACT_SEAL_READY_STATUSES.includes(r.status) && capabilities.canSeal && { key: "seal", label: "合同用印", onClick: () => onSeal(r) },
           { key: "attachments", label: "合同附件", onClick: () => onOpenAttachments(r) },
           { key: "approval", label: "审批信息", onClick: () => onOpenApprovalInfo(r) },
           { key: "related-case", label: "关联案件", onClick: () => onOpenRelatedCase(r) },
@@ -602,12 +602,12 @@ export function ContractList({
             <Button onClick={() => needSelected(() => onView(selected!))}>合同查看</Button>
             <Button
               danger
-              disabled={!selected || selected.status !== "草稿"}
+              disabled={!selected || selected.status !== "草稿" || !selectedContractCapabilities.canDelete}
               onClick={() => needSelected(() => onRevokeDraft(selected!))}
             >
               撤销草稿
             </Button>
-            {initialView === "contract-company" ? (
+            {selectedContractCapabilities.canDelete && (initialView === "contract-company" ? (
               <Button
                 danger
                 disabled={!selected}
@@ -631,14 +631,14 @@ export function ContractList({
               >
                 删除合同
               </Button>
-            )}
+            ))}
             <Button
               disabled={!selectedContractCapabilities.canChange}
               onClick={() => needSelected(() => onChangeContract(selected!))}
             >
               合同变更
             </Button>
-            <Button onClick={() => needSelected(() => onSeal(selected!))}>合同用印</Button>
+            {selectedContractCapabilities.canSeal && <Button onClick={() => needSelected(() => onSeal(selected!))}>合同用印</Button>}
             {initialView === "contract-mine" && (
               <Button
                 disabled={!selected || !selectedContractCapabilities.canArchive}

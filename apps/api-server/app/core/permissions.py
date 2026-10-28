@@ -2,7 +2,7 @@
 from app.core.constants import (
     AGENT_ACTION_CAPABILITY, CASE_ACTIONS_EXPLICIT_MARKER, CASE_CREATABLE_TYPES, CIVIL_CASE_TYPES, CONTRACT_APPROVAL_ACTION_CODE, DEFAULT_MENU_LABEL_BY_KEY,
     DEFAULT_ROLE_PERMISSIONS, EXPENSE_SUBTYPE_FEE_TYPE, FIELD_KEYS, JAR_FEE_TRANSITIONS, JOB_ACTION_MENU_GRANTS,
-    CUSTOMER_ROLE_ACTIONS, JOB_ROLE_ACTION_KEY_GRANTS, ROLE_TREE_HIDDEN_ACTION_CODES, JOB_ROLE_LABEL_MENU_GRANTS, MENU_CHILDREN_BY_KEY, MENU_KEYS, ROLE_DATA_SCOPES,
+    CONTRACT_ROLE_ACTION_CODES, CONTRACT_ROLE_ACTIONS, CUSTOMER_ROLE_ACTIONS, JOB_ROLE_ACTION_KEY_GRANTS, ROLE_TREE_HIDDEN_ACTION_CODES, JOB_ROLE_LABEL_MENU_GRANTS, MENU_CHILDREN_BY_KEY, MENU_KEYS, ROLE_DATA_SCOPES,
     SYSTEM_ACTION_DEFINITIONS, SYSTEM_MENU_ROUTE_KEYS, SYSTEM_USER_ROLE_CODES,
 )
 from app.core.dependencies import (
@@ -270,8 +270,8 @@ def _role_permission_projection(role: str, permission: RolePermission | None) ->
         }
     menu_keys, action_keys = _split_role_permission_keys(permission.menu_keys if permission else config["menu_keys"])
     if permission is None:
-        # 还没保存过的系统角色按默认全勾客户功能（BUG20261028012），保存后以勾选为准。
-        action_keys = [*action_keys, *(code for code, _ in CUSTOMER_ROLE_ACTIONS if code not in action_keys)]
+        # 还没保存过的系统角色按默认全勾客户、合同功能（BUG20261028012），保存后以勾选为准。
+        action_keys = [*action_keys, *(code for code, _ in (*CUSTOMER_ROLE_ACTIONS, *CONTRACT_ROLE_ACTIONS) if code not in action_keys)]
     return {
         "menu_keys": _expand_menu_permission_keys(menu_keys),
         "action_keys": action_keys,
@@ -412,6 +412,8 @@ async def _require_system_parameter_menu(
 async def _require_contract_action(identity: dict, db: AsyncSession, action_key: str, action: str) -> None:
     """Allow visible contract workbenches while preserving workflow/data guards."""
     await _require_record_module_menu("contract", identity, db, action=action)
+    if action_key in CONTRACT_ROLE_ACTION_CODES:
+        await _require_role_action(identity, db, action_key)
 
 
 async def _require_hr_employee_action(identity: dict, db: AsyncSession, action_key: str, action: str) -> None:

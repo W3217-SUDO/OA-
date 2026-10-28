@@ -233,6 +233,20 @@ export const contractSecondaryActionPolicy = (status) => {
   const terminal = ["归档中", "归档审核中", "已归档", "已回收", "已删除", "已作废", "Archived", "archived"].includes(normalized);
   return { canEdit: !terminal, canInvestigation: !terminal, canArchive: !terminal };
 };
+// BUG20261028012 第三批：合同功能按角色权限勾选（/auth/me 的 configured_action_keys）；
+// 身份还没加载时先按可用显示，后台仍会校验。
+const CONTRACT_ROLE_ACTION_CODES = {
+  create: "contract.application.create", update: "contract.application.update", submit: "contract.application.submit",
+  change: "contract.application.change", payment: "contract.payment.create", archive: "contract.archive.close",
+  seal: "contract.seal.apply", delete: "contract.delete", event: "contract.event.create",
+};
+export const contractRoleActionAllowed = (profile = {}, action) => {
+  const code = CONTRACT_ROLE_ACTION_CODES[action];
+  const keys = profile?.configured_action_keys;
+  if (!code || !Array.isArray(keys)) return true;
+  return keys.includes("*") || keys.includes(code);
+};
+
 export const contractWorkflowActionPolicy = (profile = {}, contract = {}, options = {}) => {
   const status = String(contract?.status || options.status || "").trim();
   const data = contract?.data || {};
@@ -247,11 +261,15 @@ export const contractWorkflowActionPolicy = (profile = {}, contract = {}, option
   const isCurrentApprover = currentApprover && currentApprover.toLowerCase() === currentUser.toLowerCase();
   const approvalAssignmentAllowed = isAdministrator(profile)
     || (typeof serverApprovalCapability === "boolean" ? serverApprovalCapability : isCurrentApprover);
-  const allowed = (_action, stateAllowed, audit = false) => stateAllowed
-    && hasMenuAccess(profile, audit ? CONTRACT_AUDIT_MENUS : CONTRACT_WORKSPACE_MENUS);
+  const allowed = (action, stateAllowed, audit = false) => stateAllowed
+    && hasMenuAccess(profile, audit ? CONTRACT_AUDIT_MENUS : CONTRACT_WORKSPACE_MENUS)
+    && contractRoleActionAllowed(profile, action);
 
   return {
-    canCreate: hasMenuAccess(profile, CONTRACT_WORKSPACE_MENUS),
+    canCreate: allowed("create", true),
+    canSeal: contractRoleActionAllowed(profile, "seal"),
+    canDelete: contractRoleActionAllowed(profile, "delete"),
+    canAddEvent: contractRoleActionAllowed(profile, "event"),
     canEdit: allowed("update", editable),
     canSubmit: allowed("submit", editable),
     // Contract changes are applied immediately; an old pending_change payload

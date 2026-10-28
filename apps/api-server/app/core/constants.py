@@ -908,6 +908,19 @@ CUSTOMER_ROLE_ACTIONS = (
 )
 
 
+# 第三批：合同管理功能（审批类按审批人流程控制，不在这里）。
+CONTRACT_ROLE_ACTIONS = (
+    ("contract.application.create", "新建合同"), ("contract.application.update", "编辑合同/维护合同标的"),
+    ("contract.application.submit", "提交合同审批"), ("contract.application.change", "发起合同变更"),
+    ("contract.delete", "删除合同/撤销草稿"), ("contract.archive.close", "合同归档"),
+    ("contract.seal.apply", "合同用印"), ("contract.investigation.create", "合同发起调查"),
+    ("contract.event.create", "新增合同事项"), ("contract.attachment.delete", "删除合同附件"),
+    ("contract.payment.create", "合同付款申请"), ("contract.payment.pay", "办理合同付款"),
+    ("contract.payment.writeoff", "核销合同付款"),
+)
+CONTRACT_ROLE_ACTION_CODES = frozenset(code for code, _ in CONTRACT_ROLE_ACTIONS)
+
+
 SYSTEM_ACTION_OPERATION_LABELS = {
     "query": "查询", "create": "新增", "update": "编辑", "delete": "删除",
     "clear": "清理", "reset": "重置", "permissions": "维护权限", "restore": "恢复",
@@ -980,6 +993,7 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
         )),
         {"code": "case.fee.receipt.upload", "menu_key": "case-files-receipt", "label": "上传案件票据文件"},
         *({"code": code, "menu_key": "customer-mine", "label": label} for code, label in CUSTOMER_ROLE_ACTIONS),
+        *({"code": code, "menu_key": "contract-mine", "label": label} for code, label in CONTRACT_ROLE_ACTIONS),
         *({"code": code, "menu_key": menu_key, "label": label} for code, menu_key, label in FINANCE_EDIT_DELETE_ACTIONS),
     ])
     return definitions

@@ -90,10 +90,14 @@ export type Profile = {
   action_keys?: string[];
   menuKeys?: string[];
   actionKeys?: string[];
+  configured_action_keys?: string[];
 };
 
 export type ContractWorkflowCapabilities = {
   canCreate: boolean;
+  canSeal: boolean;
+  canDelete: boolean;
+  canAddEvent: boolean;
   canEdit: boolean;
   canSubmit: boolean;
   canChange: boolean;
