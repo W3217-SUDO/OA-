@@ -20,23 +20,26 @@ from app.models import BusinessRecord, FileAttachment, Notification, User, Workf
 router = APIRouter()
 
 FEEDBACK_TZ = ZoneInfo("Asia/Shanghai")
-# 状态只有三个（用户要求，2026-10-24）：管理员/处理人处理完发给提交人验证，提交人验证通过即已解决，没解决就重新打开。
-FEEDBACK_STATUSES = ("待处理", "待验证", "已解决")
+# 状态（用户要求，2026-10-24；2026-10-28 加“待确认”）：处理人先写打算怎么改，交提交人确认（待确认）；
+# 确认后回到待处理开始改，改完发给提交人验证，验证通过即已解决，没解决就重新打开。
+FEEDBACK_STATUSES = ("待处理", "待确认", "待验证", "已解决")
 # 旧状态读出时按新流程归类，不改库里的历史数据：处理中/待补充仍算待处理，已处理等提交人验证。
 LEGACY_STATUS = {"处理中": "待处理", "待补充": "待处理", "已处理": "待验证"}
 HANDLER_ACTIONS = {
+    # 处理说明里写打算怎么改，交给提交人确认。
+    "请确认修改方案": ({"待处理"}, "待确认"),
     "处理完成，请验证": ({"待处理"}, "待验证"),
 }
 REPORTER_ACTIONS = {
-    # 修改前要提交人点“确认修改”（用户要求，2026-10-27）：处理人先回复打算怎么改，提交人确认后才动手；
-    # 只记一条处理记录并通知，状态不变。有意见直接回复继续沟通。
-    "确认修改": ({"待处理"}, "待处理"),
+    # 修改前要提交人点“确认修改”（用户要求，2026-10-27）：确认后回到待处理开始改；
+    # 有意见直接回复继续沟通，状态留在待确认。
+    "确认修改": ({"待确认"}, "待处理"),
     "验证通过": ({"待验证"}, "已解决"),
     "未解决，重新打开": ({"待验证", "已解决"}, "待处理"),
 }
 # 被指派的处理人也能替提交人确认（如非诉问题由指定的人确认）。
 ASSIGNEE_CONFIRM_ACTIONS = {"确认修改"}
-COMMENT_REQUIRED_ACTIONS = {"未解决，重新打开"}
+COMMENT_REQUIRED_ACTIONS = {"未解决，重新打开", "请确认修改方案"}
 
 
 def _status(value: str | None) -> str:
@@ -514,7 +517,7 @@ async def transition_feedback(
         raise HTTPException(409, "反馈状态已变化，请刷新后重试")
     comment = body.comment.strip()
     if action in COMMENT_REQUIRED_ACTIONS and not comment:
-        raise HTTPException(422, "请写明哪里还没解决")
+        raise HTTPException(422, "请写明打算怎么改" if action == "请确认修改方案" else "请写明哪里还没解决")
     record.status = next_status
     record.updated_at = func.now()
     event = WorkflowEvent(

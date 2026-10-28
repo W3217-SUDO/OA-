@@ -25,10 +25,11 @@ type Props = {
   navKey?: number;
   onChanged?: () => void;
 };
-// 处理流程：待处理 →（处理人处理完）待验证 →（提交人验证通过）已解决；没解决可重新打开回到待处理。
-const statuses = ["待处理", "待验证", "已解决"];
+// 处理流程：待处理 →（处理人写好怎么改）待确认 →（提交人确认修改）待处理 →（处理完）待验证 →（验证通过）已解决；
+// 没解决可重新打开回到待处理。
+const statuses = ["待处理", "待确认", "待验证", "已解决"];
 const statusColors: Record<string, string> = {
-  待处理: "warning", 待验证: "processing", 已解决: "success",
+  待处理: "warning", 待确认: "gold", 待验证: "processing", 已解决: "success",
 };
 
 export default function FeedbackManager({ sourceRoute, pageControls, openPages, menuPages, onNavigate, center = false, view, onViewChange, navKey = 0, onChanged }: Props) {
@@ -62,6 +63,8 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
   // 管理员在问题处理中心可以删除问题（逻辑删除，回收站可恢复）。
   const [canDelete, setCanDelete] = useState(false);
   const listVisible = !viewingId && !creating;
+  // 问题处理中心和“我的反馈”都在列表上方显示带数量的状态页签。
+  const statusTabs = center || view === "mine";
 
   useEffect(() => {
     const openTarget = () => {
@@ -117,13 +120,13 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
 
   // 状态页签上的数量随列表一起刷新（处理完回到列表也会更新）。
   useEffect(() => {
-    if (!center || !listVisible) return;
+    if (!statusTabs || !listVisible) return;
     let cancelled = false;
-    void api.get<FeedbackStatusCounts>("/feedback/status-counts", { params: dateParams }).then(({ data }) => {
+    void api.get<FeedbackStatusCounts>("/feedback/status-counts", { params: { ...dateParams, mine: mine || undefined } }).then(({ data }) => {
       if (!cancelled) setStatusCounts(data);
     }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [center, listVisible, reload, dateKey]);
+  }, [statusTabs, mine, listVisible, reload, dateKey]);
 
   const removeFeedback = async (row: FeedbackRecord) => {
     try {
@@ -167,7 +170,7 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
           aria-label="搜索问题反馈" style={{ width: 320 }} enterButton="查询"
           onChange={(event) => setKeyword(event.target.value)}
           onSearch={(value) => { setQuery(value.trim()); setPage(1); setReload((current) => current + 1); }} />
-        {!center && <Select aria-label="筛选反馈状态" value={status} style={{ width: 130 }} options={[
+        {!statusTabs && <Select aria-label="筛选反馈状态" value={status} style={{ width: 130 }} options={[
           { value: "", label: "全部状态" }, ...statuses.map((value) => ({ value, label: value })),
         ]} onChange={(value) => { setStatus(value); setPage(1); }} />}
         <DatePicker.RangePicker aria-label="按提交日期筛选" value={dateRange} allowEmpty={[true, true]}
@@ -176,7 +179,7 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
         <Button onClick={() => setReload((current) => current + 1)} loading={loading}>刷新</Button>
         {!center && !view && <Button type="primary" onClick={() => setCreating(true)}>提交反馈</Button>}
       </Space>
-      {center && <Segmented aria-label="按状态筛选反馈" style={{ marginBottom: 12 }} value={status}
+      {statusTabs && <Segmented aria-label="按状态筛选反馈" className="feedback-status-tabs" style={{ marginBottom: 12 }} value={status}
         onChange={(value) => { setStatus(String(value)); setPage(1); }}
         options={[{ value: "", label: `全部 ${statusCounts?.total ?? ""}` },
           ...statuses.map((value) => ({ value, label: `${value} ${statusCounts?.counts[value] ?? ""}` }))]} />}

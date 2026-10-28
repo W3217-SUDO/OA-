@@ -12,10 +12,14 @@ import "./feedback.css";
 
 type Props = { feedbackId: number; onBack: () => void; onNavigate: (route: string) => void };
 
-const requiresComment = new Set(["未解决，重新打开"]);
+// 必须先在输入框写内容的操作，以及没写时的提示。
+const requiresComment: Record<string, string> = {
+  "未解决，重新打开": "请在上面写明哪里还没解决",
+  "请确认修改方案": "请在上面写明打算怎么改",
+};
 const primaryActions = new Set(["确认修改", "处理完成，请验证", "验证通过"]);
 const statusColors: Record<string, string> = {
-  待处理: "warning", 待验证: "processing", 已解决: "success",
+  待处理: "warning", 待确认: "gold", 待验证: "processing", 已解决: "success",
 };
 
 export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props) {
@@ -110,8 +114,8 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
     void perform("messages", null, "回复已发送");
   };
   const transition = (action: string) => {
-    if (requiresComment.has(action) && !comment.trim()) {
-      message.warning("请在上面写明哪里还没解决");
+    if (requiresComment[action] && !comment.trim()) {
+      message.warning(requiresComment[action]);
       return;
     }
     void perform("transitions", { action, comment: comment.trim() }, "状态已更新");
@@ -123,7 +127,8 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
   const actions = feedback.available_actions;
   const hint = actions.includes("确认修改")
     ? "没问题点“确认修改”，确认后才开始改；有意见直接回复。"
-    : actions.includes("验证通过") ? "解决了点“验证通过”，没解决写明情况后点“未解决，重新打开”。" : "";
+    : actions.includes("验证通过") ? "解决了点“验证通过”，没解决写明情况后点“未解决，重新打开”。"
+    : actions.includes("请确认修改方案") ? "改之前先写好打算怎么改，点“请确认修改方案”交提交人确认。" : "";
 
   return <section aria-label="反馈详情">
     <Space wrap style={{ marginBottom: 16 }}>

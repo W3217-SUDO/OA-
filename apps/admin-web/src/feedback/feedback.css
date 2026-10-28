@@ -123,3 +123,26 @@
 /* 打开时滚到聊天框底部（输入框下沿），最新一条紧贴在输入区上方；手机再让出底部导航的高度。 */
 .feedback-chat-end { height: 0; scroll-margin-bottom: 16px; }
 @media (max-width: 991px) { .feedback-chat-end { scroll-margin-bottom: 80px; } }
+
+/* 状态页签（全部、待处理、待确认、待验证、已解决）：手机上一行放不下时横向滑动，不换行挤压。 */
+.feedback-status-tabs {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.feedback-status-tabs .ant-segmented-group {
+  flex-wrap: nowrap;
+}
+
+.feedback-status-tabs .ant-segmented-item-label {
+  white-space: nowrap;
+}
+
+.feedback-status-tabs {
+  scrollbar-width: none;
+}
+
+.feedback-status-tabs::-webkit-scrollbar {
+  display: none;
+}

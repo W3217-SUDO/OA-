@@ -1,7 +1,7 @@
-"""问题处理中心：修改前提交人点“确认修改”（2026-10-27 用户要求）。
+"""问题处理中心：修改前提交人确认（2026-10-27 用户要求；2026-10-28 加“待确认”状态）。
 
-状态仍是 待处理 → 待验证 → 已解决；“确认修改”只记一条处理记录并通知，状态不变。
-被指派的处理人也能替提交人确认（如非诉问题由指定的人确认）。
+待处理 →（处理人“请确认修改方案”，写明怎么改）待确认 →（提交人“确认修改”）待处理 →（处理完成）待验证 → 已解决。
+提交人在待确认时有意见直接回复，状态留在待确认；被指派的处理人也能替提交人确认（如非诉问题由指定的人确认）。
 """
 import unittest
 
@@ -63,21 +63,35 @@ class FeedbackConfirmFlowTest(unittest.IsolatedAsyncioTestCase):
     async def _transition(self, action, comment=""):
         return await self.client.post(f"{API}/{self.feedback_id}/transitions", json={"action": action, "comment": comment})
 
-    async def test_reporter_confirms_without_changing_status_then_handler_finishes(self):
+    async def test_plan_waits_for_reporter_confirmation_then_handler_finishes(self):
+        self.identity = dict(STAFF)
+        self.assertEqual(await self._actions(), [])
+        self.assertEqual((await self._transition("确认修改")).status_code, 409)
+
+        self.identity = dict(ADMIN)
+        self.assertEqual(await self._actions(), ["请确认修改方案", "处理完成，请验证"])
+        self.assertEqual((await self._transition("请确认修改方案")).status_code, 422)
+        planned = await self._transition("请确认修改方案", "表头一律单行")
+        self.assertEqual(planned.json(), {"status": "待确认"})
+        self.assertEqual(await self._actions(), [])
+
+        # 提交人有意见直接回复，状态还是待确认。
         self.identity = dict(STAFF)
         self.assertEqual(await self._actions(), ["确认修改"])
+        replied = await self.client.post(f"{API}/{self.feedback_id}/replies", json={"content": "四个字的可以两行"})
+        self.assertEqual(replied.json()["status"], "待确认")
         confirmed = await self._transition("确认修改")
-        self.assertEqual(confirmed.status_code, 200, confirmed.text)
         self.assertEqual(confirmed.json(), {"status": "待处理"})
         async with self.sessions() as db:
             events = (await db.scalars(select(WorkflowEvent).where(
-                WorkflowEvent.record_id == self.feedback_id, WorkflowEvent.action == "确认修改"))).all()
-            self.assertEqual([(e.from_status, e.to_status, e.operator) for e in events], [("待处理", "待处理", STAFF["username"])])
+                WorkflowEvent.record_id == self.feedback_id, WorkflowEvent.action.in_(["请确认修改方案", "确认修改"]))
+                .order_by(WorkflowEvent.id))).all()
+            self.assertEqual([(e.action, e.from_status, e.to_status) for e in events],
+                             [("请确认修改方案", "待处理", "待确认"), ("确认修改", "待确认", "待处理")])
             notices = (await db.scalars(select(Notification).where(Notification.source_id == self.feedback_id))).all()
             self.assertTrue(any(n.recipient == ADMIN["username"] and "确认修改" in n.title for n in notices))
 
         self.identity = dict(ADMIN)
-        self.assertEqual(await self._actions(), ["处理完成，请验证"])
         self.assertEqual((await self._transition("确认修改")).status_code, 403)
         self.assertEqual((await self._transition("处理完成，请验证", "已修复")).json(), {"status": "待验证"})
 
@@ -85,14 +99,27 @@ class FeedbackConfirmFlowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self._actions(), ["验证通过", "未解决，重新打开"])
         self.assertEqual((await self._transition("确认修改")).status_code, 409)
 
+    async def test_status_counts_include_pending_confirmation(self):
+        self.identity = dict(ADMIN)
+        await self._transition("请确认修改方案", "打算这样改")
+        counts = (await self.client.get(f"{API}/status-counts")).json()
+        self.assertEqual(list(counts["counts"]), ["待处理", "待确认", "待验证", "已解决"])
+        self.assertEqual(counts["counts"]["待确认"], 1)
+        self.identity = dict(STAFF)
+        mine = (await self.client.get(f"{API}/status-counts", params={"mine": True})).json()
+        self.assertEqual(mine["counts"]["待确认"], 1)
+        listed = (await self.client.get(API, params={"status": "待确认", "mine": True})).json()
+        self.assertEqual([item["id"] for item in listed["items"]], [self.feedback_id])
+
     async def test_assignee_can_confirm_for_reporter(self):
         self.identity = dict(DECIDER)
         self.assertEqual((await self.client.get(f"{API}/{self.feedback_id}")).status_code, 404)
         self.identity = dict(ADMIN)
         assigned = await self.client.put(f"{API}/{self.feedback_id}/assignee", json={"username": DECIDER["username"]})
         self.assertEqual(assigned.status_code, 200, assigned.text)
+        await self._transition("请确认修改方案", "打算这样改")
         self.identity = dict(DECIDER)
-        self.assertEqual(await self._actions(), ["处理完成，请验证", "确认修改"])
+        self.assertEqual(await self._actions(), ["确认修改"])
         self.assertEqual((await self._transition("确认修改")).json(), {"status": "待处理"})
 
 
