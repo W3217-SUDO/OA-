@@ -59,9 +59,9 @@ async def create_ipr_case_reminder(case_id: int, body: IprCaseReminderInput, ide
         _ipr_case_reminder_dict,
     )
     from app.core.permissions import (
-        _ensure_active_ipr_case_write,
+        _ensure_ipr_case_note_write,
     )
-    record = await _ensure_active_ipr_case_write(case_id, identity, db)
+    record = await _ensure_ipr_case_note_write(case_id, identity, db)
     event_date = body.event_date or body.reminder_date
     if event_date is None:
         raise HTTPException(status_code=422, detail="事件日期不能为空")
@@ -83,9 +83,9 @@ async def update_ipr_case_reminder(case_id: int, event_id: int, body: IprCaseRem
         _ipr_case_reminder_dict,
     )
     from app.core.permissions import (
-        _ensure_active_ipr_case_write,
+        _ensure_ipr_case_note_write,
     )
-    record = await _ensure_active_ipr_case_write(case_id, identity, db)
+    record = await _ensure_ipr_case_note_write(case_id, identity, db)
     row = await db.scalar(select(IprCaseReminder).where(IprCaseReminder.id == event_id, IprCaseReminder.case_record_id == record.id))
     if not row:
         raise HTTPException(status_code=404, detail="知识产权案件事件不存在")
@@ -117,9 +117,9 @@ async def update_ipr_case_reminder(case_id: int, event_id: int, body: IprCaseRem
 @router.delete(f"{settings.api_prefix}/ipr/cases/{{case_id}}/reminders/{{reminder_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_ipr_case_reminder(case_id: int, reminder_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _ensure_active_ipr_case_write,
+        _ensure_ipr_case_note_write,
     )
-    record = await _ensure_active_ipr_case_write(case_id, identity, db)
+    record = await _ensure_ipr_case_note_write(case_id, identity, db)
     row = await db.scalar(select(IprCaseReminder).where(IprCaseReminder.id == reminder_id, IprCaseReminder.case_record_id == record.id))
     if not row:
         raise HTTPException(status_code=404, detail="知识产权案件事件不存在")
@@ -141,9 +141,9 @@ async def get_ipr_case_reminder_suppressions(case_id: int, identity: dict = Depe
 @router.put(f"{settings.api_prefix}/ipr/cases/{{case_id}}/reminder-suppressions")
 async def replace_ipr_case_reminder_suppressions(case_id: int, body: IprCaseReminderSuppressionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _ensure_active_ipr_case_write,
+        _ensure_ipr_case_note_write,
     )
-    record = await _ensure_active_ipr_case_write(case_id, identity, db)
+    record = await _ensure_ipr_case_note_write(case_id, identity, db)
     requested = set(body.event_type_ids)
     invalid = requested - set(IPR_REMINDER_EVENT_TYPE_BY_ID)
     if invalid:

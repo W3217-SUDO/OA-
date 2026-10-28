@@ -9,7 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.areas.ipr import case_files, case_info
+from app.areas.ipr import case_files, case_info, reminders
+from app.areas.ipr.router import create_ipr_case_log
 from app.config import settings
 from app.database import Base, get_db
 from app.models import BusinessRecord, WorkflowEvent
@@ -21,6 +22,8 @@ IDENTITY = {"username": "ipr-info-admin", "role": "admin", "role_ids": ["admin"]
 app = FastAPI()
 app.include_router(case_info.router)
 app.include_router(case_files.router)
+app.include_router(reminders.router)
+app.add_api_route(f"{settings.api_prefix}/ipr/cases/{{case_id}}/logs", create_ipr_case_log, methods=["POST"], status_code=201)
 
 
 class IprCaseInfoEditTest(unittest.IsolatedAsyncioTestCase):
@@ -81,6 +84,20 @@ class IprCaseInfoEditTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(options.json(), {"items": ["受理"]})
         files = await self.client.get(f"{API}/ipr/cases/{self.case_id}/files")
         self.assertEqual(files.status_code, 200, files.text)
+
+
+    async def test_side_panel_log_and_reminder_on_legacy_case(self):
+        """BUG20261028013：迁移案件（受理等阶段）也能新增案件日志和案件提醒，已结案不行。"""
+        log = await self.client.post(f"{API}/ipr/cases/{self.case_id}/logs", json={"content": "已通知客户"})
+        self.assertEqual(log.status_code, 201, log.text)
+        suppress = await self.client.put(f"{API}/ipr/cases/{self.case_id}/reminder-suppressions", json={"reminder_type_ids": []})
+        self.assertNotEqual(suppress.status_code, 409, suppress.text)
+        async with self.sessions() as db:
+            record = await db.get(BusinessRecord, self.case_id)
+            record.status = "已结案"
+            await db.commit()
+        closed = await self.client.post(f"{API}/ipr/cases/{self.case_id}/logs", json={"content": "x"})
+        self.assertEqual(closed.status_code, 409)
 
 
 if __name__ == "__main__":

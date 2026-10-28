@@ -51,14 +51,15 @@ export function IprRemindersPanel({ detail, iprSectionErrors, iprCaseEvents, rem
             <Button size="small" onClick={onRefresh}>
               刷新
             </Button>
-            {detail.status === "在办" && (
+            {/* 按原系统“新增”“设定”；迁移来的历史案件也能用，只有已结案不行（BUG20261028013）。 */}
+            {detail.status !== "已结案" && (
               <Button size="small" type="primary" onClick={() => onOpenEvent()}>
-                新增事件
+                新增
               </Button>
             )}
-            {detail.status === "在办" && (
+            {detail.status !== "已结案" && (
               <Button size="small" onClick={onOpenSuppression}>
-                设定不监控
+                设定
               </Button>
             )}
           </Space>
@@ -102,7 +103,7 @@ export function IprRemindersPanel({ detail, iprSectionErrors, iprCaseEvents, rem
               title: "操作",
               width: 130,
               render: (_, row: IprCaseEvent) =>
-                detail.status === "在办" && canManageIprCaseEvent(row) ? (
+                detail.status !== "已结案" && canManageIprCaseEvent(row) ? (
                   <Space size={0}>
                     <Button type="link" onClick={() => onOpenEvent(row)}>
                       编辑

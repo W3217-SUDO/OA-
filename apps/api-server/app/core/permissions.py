@@ -2244,6 +2244,15 @@ async def _ensure_active_ipr_case_write(case_id: int, identity: dict, db: AsyncS
     return record
 
 
+async def _ensure_ipr_case_note_write(case_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    """案件提醒、案件日志的新增和维护（BUG20261028013）：迁移来的历史案件（受理、年费监控等阶段）也能写，只有已结案不行。"""
+    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    await _require_record_owner_or_manager(record, identity, db)
+    if record.status == "已结案":
+        raise HTTPException(status_code=409, detail="已结案的案件不能维护提醒和日志")
+    return record
+
+
 async def _ipr_annual_fee_capabilities(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> dict:
     if case_record.status != "在办":
         return {"can_manage": False}

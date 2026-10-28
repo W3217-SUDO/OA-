@@ -38,7 +38,8 @@ export function IprBusinessLogsPanel({
   onSetBusinessLogDetail,
   confirmIprDeletion,
 }: IprBusinessLogsPanelProps) {
-  const canWrite = ["草稿", "已驳回", "在办"].includes(detail.status);
+  // 迁移来的历史案件也能写日志，只有已结案不行（BUG20261028013）。
+  const canWrite = detail.status !== "已结案";
   const canDelete = (row: IprBusinessLog) =>
     row.created_by === profile.username || ["admin", "manager"].includes(profile.role || "");
   return (

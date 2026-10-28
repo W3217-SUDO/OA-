@@ -1364,9 +1364,9 @@ async def create_ipr_case_log(case_id: int, body: IprCaseLogInput, identity: dic
         _ipr_case_log_dict,
     )
     from app.core.permissions import (
-        _ensure_active_ipr_case_write,
+        _ensure_ipr_case_note_write,
     )
-    record = await _ensure_active_ipr_case_write(case_id, identity, db)
+    record = await _ensure_ipr_case_note_write(case_id, identity, db)
     item = IprCaseLog(case_record_id=record.id, content=body.content.strip(), created_by=identity["username"])
     db.add(item); await db.flush()
     db.add(WorkflowEvent(record_id=record.id, action="新增知识产权案件业务日志", from_status=record.status, to_status=record.status, operator=identity["username"], comment=item.content[:500]))
