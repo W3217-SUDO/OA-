@@ -101,8 +101,40 @@ export const LEGACY_CRIMINAL_PHASE_CHILDREN = {
   "归档阶段": ["归档审核", "已归档", "归档拒绝", "亏损内审", "亏损审核", "亏损归档", "亏损拒绝"],
 };
 
+export const ADMINISTRATIVE_CASE_TYPE = "行政案件及国家赔偿";
+
+// BUG20261028018（范文玲 2026-10-28）：行政案件及国家赔偿的案件阶段树按旧系统截图一比一。
+// “文书准备”下挂“客户盖章”；再审目录旧系统就叫“再审立案受理”（取值仍是再审阶段）；
+// 根上的“归档审核”“已归档”与归档阶段下的同名阶段在旧系统里都有，照搬。
+export const LEGACY_ADMINISTRATIVE_PHASE_ROOT_ITEMS = [
+  { label: "待分配", value: "新案待分配" },
+  { label: "文书准备", value: "文书准备" },
+  { label: "一审阶段", value: "一审阶段" },
+  { label: "二审阶段", value: "二审阶段" },
+  { label: "再审立案受理", value: "再审阶段" },
+  { label: "执行阶段", value: "执行阶段" },
+  { label: "和解中", value: "和解中" },
+  { label: "和解结案", value: "和解结案" },
+  { label: "归档审核", value: "归档审核" },
+  { label: "已归档", value: "已归档" },
+  { label: "归档阶段", value: "归档阶段" },
+];
+
+// 目录子项按取值索引（再审目录取值是再审阶段）。
+export const LEGACY_ADMINISTRATIVE_PHASE_CHILDREN = {
+  "文书准备": ["客户盖章"],
+  "一审阶段": ["一审立案受理", "一审补充证据", "一审准备开庭", "一审再次开庭", "一审庭后待判", "一审等待上诉", "一审待执行", "一审上诉准备", "一审补充代理意见"],
+  "二审阶段": ["二审立案受理", "二审补充证据", "二审通知开庭", "二审再次开庭", "二审庭后待判", "二审待执行", "二审补充代理意见"],
+  "再审阶段": ["再审立案受理", "再审补充证据", "再审通知开庭", "再审庭后待判", "再审待执行"],
+  "执行阶段": ["执行立案", "执行受理", "执行中止", "执行结案"],
+  "归档阶段": ["归档审核", "已归档", "归档拒绝", "亏损内审", "亏损审核", "亏损归档", "亏损拒绝"],
+};
+
+export const isAdministrativeCaseType = (caseType) => normalizeText(caseType) === ADMINISTRATIVE_CASE_TYPE;
+
 export const casePhaseChildrenForCaseType = (caseType) => (isCriminalCaseType(caseType)
   ? LEGACY_CRIMINAL_PHASE_CHILDREN
+  : isAdministrativeCaseType(caseType) ? LEGACY_ADMINISTRATIVE_PHASE_CHILDREN
   : LEGACY_PHASE_CHILDREN);
 
 const LEGACY_PHASE_COUNT_ALIASES = {
@@ -119,16 +151,24 @@ const LEGACY_PHASE_COUNT_ALIASES = {
   "归档阶段": ["归档"],
 };
 
-const phaseCount = (counts, phase) => [phase, ...(LEGACY_PHASE_COUNT_ALIASES[phase] || [])]
+// 行政案件迁移数据里有旧阶段名“待分配”，和“新案待分配”一起计入“待分配”（旧系统显示【5】）。
+// 只用于行政案件，其他类型的计数不变。
+const ADMINISTRATIVE_PHASE_COUNT_ALIASES = { ...LEGACY_PHASE_COUNT_ALIASES, "新案待分配": ["待分配"] };
+
+export const casePhaseAliasesForCaseType = (caseType) => (isAdministrativeCaseType(caseType)
+  ? ADMINISTRATIVE_PHASE_COUNT_ALIASES
+  : LEGACY_PHASE_COUNT_ALIASES);
+
+const phaseCount = (counts, phase, aliases = LEGACY_PHASE_COUNT_ALIASES) => [phase, ...(aliases[phase] || [])]
   .reduce((total, name) => total + Number(counts[name] || 0), 0);
 
-export const legacyCasePhaseFilterValues = (phase, childrenByGroup = LEGACY_PHASE_CHILDREN) => {
+export const legacyCasePhaseFilterValues = (phase, childrenByGroup = LEGACY_PHASE_CHILDREN, aliases = LEGACY_PHASE_COUNT_ALIASES) => {
   const normalized = normalizeText(phase);
   const children = childrenByGroup[normalized] || [];
   return [...new Set([
     normalized,
-    ...(LEGACY_PHASE_COUNT_ALIASES[normalized] || []),
-    ...children.flatMap((child) => [child, ...(LEGACY_PHASE_COUNT_ALIASES[child] || [])]),
+    ...(aliases[normalized] || []),
+    ...children.flatMap((child) => [child, ...(aliases[child] || [])]),
   ].filter(Boolean))];
 };
 
@@ -145,23 +185,25 @@ export const dashboardCaseQueryForView = (view) => {
   return caseQueue ? { case_queue: caseQueue, sort_order: "updated_desc" } : {};
 };
 
-export const buildLegacyCasePhaseTree = (items = [], catalog = [], phaseCounts = {}, childrenByGroup = LEGACY_PHASE_CHILDREN) => {
+export const buildLegacyCasePhaseTree = (items = [], catalog = [], phaseCounts = {}, childrenByGroup = LEGACY_PHASE_CHILDREN, aliases = LEGACY_PHASE_COUNT_ALIASES) => {
   const counts = normalizePhaseCounts(phaseCounts);
   const hasAuthoritativeCounts = Object.keys(counts).length > 0;
   const groupNames = new Set(LEGACY_CASE_PHASE_GROUPS);
 
   return items.map((item) => {
-    if (!groupNames.has(item.label)) return {
+    // 目录按取值找子项（行政案件的“文书准备”“再审立案受理”也是目录）；民事、刑事目录名与取值相同。
+    const groupChildren = childrenByGroup[item.value] || childrenByGroup[item.label];
+    if (!groupNames.has(item.label) && !groupChildren) return {
       ...item,
-      count: hasAuthoritativeCounts ? phaseCount(counts, item.value) : Number(item.count || 0),
+      count: hasAuthoritativeCounts ? phaseCount(counts, item.value, aliases) : Number(item.count || 0),
       children: [],
     };
-    const children = (childrenByGroup[item.label] || []).map((phase) => ({
+    const children = (groupChildren || []).map((phase) => ({
       label: phase,
       value: phase,
-      count: phaseCount(counts, phase),
+      count: phaseCount(counts, phase, aliases),
     }));
-    const directCount = phaseCount(counts, item.value);
+    const directCount = phaseCount(counts, item.value, aliases);
     return {
       ...item,
       count: directCount + children.reduce((total, child) => total + child.count, 0),

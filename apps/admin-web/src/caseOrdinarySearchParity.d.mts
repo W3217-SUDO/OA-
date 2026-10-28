@@ -101,8 +101,13 @@ export function casePhaseRootItemsForCaseType(caseType?: unknown): Array<{ label
 export const LEGACY_DEFAULT_EXPANDED_PHASE_GROUPS: string[];
 export const LEGACY_PHASE_CHILDREN: Record<string, string[]>;
 export const LEGACY_CRIMINAL_PHASE_CHILDREN: Record<string, string[]>;
+export const ADMINISTRATIVE_CASE_TYPE: string;
+export const LEGACY_ADMINISTRATIVE_PHASE_ROOT_ITEMS: Array<{ label: string; value: string }>;
+export const LEGACY_ADMINISTRATIVE_PHASE_CHILDREN: Record<string, string[]>;
+export function isAdministrativeCaseType(caseType?: unknown): boolean;
 export function casePhaseChildrenForCaseType(caseType?: unknown): Record<string, string[]>;
-export function legacyCasePhaseFilterValues(phase?: unknown, childrenByGroup?: Record<string, string[]>): string[];
+export function casePhaseAliasesForCaseType(caseType?: unknown): Record<string, string[]>;
+export function legacyCasePhaseFilterValues(phase?: unknown, childrenByGroup?: Record<string, string[]>, aliases?: Record<string, string[]>): string[];
 export function dashboardCaseQueryForView(view?: unknown): CaseOrdinarySearchValues;
 
 export function buildLegacyCasePhaseTree(
@@ -110,6 +115,7 @@ export function buildLegacyCasePhaseTree(
   catalog?: CasePhaseOption[],
   phaseCounts?: Record<string, number>,
   childrenByGroup?: Record<string, string[]>,
+  aliases?: Record<string, string[]>,
 ): CasePhaseTreeItem[];
 
 export function createLatestRequestGuard(): LatestRequestGuard;

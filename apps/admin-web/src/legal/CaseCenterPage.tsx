@@ -84,6 +84,7 @@ getLegacyCaseListOperationLabels,
 } from "../caseLegacyParity";
 import {
 buildLegacyCasePhaseTree,
+casePhaseAliasesForCaseType,
 casePhaseChildrenForCaseType,
 createLatestRequestGuard,
 dashboardCaseQueryForView,
@@ -1073,10 +1074,13 @@ export default function CaseCenterPage({
   const ordinaryCaseQueue = ordinaryCaseQueueForView(initialView);
   const ordinaryCaseTypes = ordinaryCaseTypesForView(initialView);
 
-  // 10.22 新增第 11 行：刑事案件列表左侧阶段树按旧系统刑事子阶段展示与筛选。
-  const phaseChildrenByGroup = casePhaseChildrenForCaseType(initialView.includes("criminal") ? "刑事案件" : "");
+  // 10.22 新增第 11 行：刑事案件列表左侧阶段树按旧系统刑事子阶段展示与筛选；
+  // BUG20261028018：行政案件及国家赔偿也按旧系统自己的阶段树。
+  const phaseTreeCaseType = initialView.includes("criminal") ? "刑事案件" : initialView.includes("administrative") ? "行政案件及国家赔偿" : "";
+  const phaseChildrenByGroup = casePhaseChildrenForCaseType(phaseTreeCaseType);
+  const phaseCountAliases = casePhaseAliasesForCaseType(phaseTreeCaseType);
   const searchByPhase = (status: string) => {
-    const nextQuery = { ...caseQuery, status, case_statuses: legacyCasePhaseFilterValues(status, phaseChildrenByGroup), sort_order: "updated_desc" };
+    const nextQuery = { ...caseQuery, status, case_statuses: legacyCasePhaseFilterValues(status, phaseChildrenByGroup, phaseCountAliases), sort_order: "updated_desc" };
     caseQueryForm.setFieldValue("status", status);
     setCaseQuery(nextQuery);
     setOriginalPage(1);
@@ -2612,7 +2616,7 @@ export default function CaseCenterPage({
   const phaseItems = counselListMode
     ? buildCasePhaseItems(scopedCases,initialView,phaseDefinitions)
     : buildCasePhaseItemsFromCounts(ordinaryPhaseCounts,phaseDefinitions);
-  const phaseTreeItems = buildLegacyCasePhaseTree(phaseItems, phaseCatalog, ordinaryPhaseCounts, phaseChildrenByGroup) as CasePhaseTreeItem[];
+  const phaseTreeItems = buildLegacyCasePhaseTree(phaseItems, phaseCatalog, ordinaryPhaseCounts, phaseChildrenByGroup, phaseCountAliases) as CasePhaseTreeItem[];
   const originalArchiveMode=initialView.startsWith("case-archive-");
   const archivePendingMode=initialView==="case-archive-pending";
   const archiveTableScroll = useArchiveTableScroll(originalArchiveMode && !isPhoneViewport, initialView);

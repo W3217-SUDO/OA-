@@ -8,6 +8,7 @@ import {
 CRIMINAL_CASE_TYPE,
 LEGACY_CASE_PHASE_GROUPS,
 LEGACY_CIVIL_PHASE_ROOTS,
+LEGACY_ADMINISTRATIVE_PHASE_ROOT_ITEMS,
 LEGACY_CRIMINAL_PHASE_ROOT_ITEMS,
 buildLegacyCasePhaseTree,
 casePhaseChildrenForCaseType,
@@ -457,6 +458,8 @@ export const getCasePhaseDefinitions = (initialView: string, defaultItems: {labe
     {label:"已过期",value:"已过期"},
     {label:"归档阶段",value:"归档阶段"},
   ];
+  // BUG20261028018：行政案件及国家赔偿按旧系统阶段树（我的/部门/公司案件）。
+  if (initialView.includes("administrative")) return LEGACY_ADMINISTRATIVE_PHASE_ROOT_ITEMS.map((item) => ({ ...item }));
   return initialView.includes("criminal") ? criminalItems : defaultItems;
 };
 
