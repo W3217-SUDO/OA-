@@ -103,7 +103,7 @@ class FeedbackConfirmFlowTest(unittest.IsolatedAsyncioTestCase):
         self.identity = dict(ADMIN)
         await self._transition("请确认修改方案", "打算这样改")
         counts = (await self.client.get(f"{API}/status-counts")).json()
-        self.assertEqual(list(counts["counts"]), ["待处理", "待确认", "待验证", "已解决"])
+        self.assertEqual(list(counts["counts"]), ["待处理", "待确认", "待验证", "已解决", "已撤回"])
         self.assertEqual(counts["counts"]["待确认"], 1)
         self.identity = dict(STAFF)
         mine = (await self.client.get(f"{API}/status-counts", params={"mine": True})).json()

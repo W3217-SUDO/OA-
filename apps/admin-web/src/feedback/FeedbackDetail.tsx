@@ -19,7 +19,7 @@ const requiresComment: Record<string, string> = {
 };
 const primaryActions = new Set(["确认修改", "处理完成，请验证", "验证通过"]);
 const statusColors: Record<string, string> = {
-  待处理: "warning", 待确认: "gold", 待验证: "processing", 已解决: "success",
+  待处理: "warning", 待确认: "gold", 待验证: "processing", 已解决: "success", 已撤回: "default",
 };
 
 export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props) {
@@ -30,6 +30,7 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
   const [comment, setComment] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [composing, setComposing] = useState(false);
+  const [withdrawNote, setWithdrawNote] = useState("");
   const openPicker = useRef<(() => void) | null>(null);
 
   const load = useCallback(async () => {
@@ -116,6 +117,22 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
     }
   };
 
+  // 提交人撤回（解决前）：撤回后不再处理，页面只读；可以写一句撤回说明。
+  const withdraw = async () => {
+    setBusy(true);
+    try {
+      await api.post(`/feedback/${feedbackId}/transitions`, { action: "撤回", comment: withdrawNote.trim() });
+      setWithdrawNote("");
+      message.success("问题已撤回");
+      window.dispatchEvent(new Event("sunhold:notifications-updated"));
+    } catch (failure: any) {
+      message.error(feedbackErrorText(failure, "撤回失败"));
+    } finally {
+      setBusy(false);
+      await load();
+    }
+  };
+
   const reply = () => {
     if (!comment.trim() && !files.length) { message.warning("请填写回复内容或添加截图、附件"); return; }
     void perform("messages", null, "回复已发送");
@@ -132,22 +149,31 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
   if (error && !feedback) return <Alert type="error" showIcon title={error} action={<Button onClick={onBack}>返回列表</Button>} />;
   if (!feedback) return null;
   const actions = feedback.available_actions;
+  const withdrawn = feedback.status === "已撤回";
   const hint = actions.includes("确认修改")
     ? "没问题点“确认修改”，确认后才开始改；有意见直接回复。"
     : actions.includes("验证通过") ? "解决了点“验证通过”，没解决写明情况后点“未解决，重新打开”。"
     : actions.includes("请确认修改方案") ? "改之前先写好打算怎么改，点“请确认修改方案”交提交人确认。" : "";
 
   return <section aria-label="反馈详情">
-    <Space wrap style={{ marginBottom: 16 }}>
+    {/* 页头按钮排一排（手机上放不下时横向滑动，不换行）。 */}
+    <div className="feedback-detail-head" role="toolbar" aria-label="反馈操作">
       <Button onClick={onBack}>返回列表</Button>
       <Button onClick={() => void load()} loading={loading}>刷新</Button>
       <Tag color={statusColors[feedback.status] || "default"}>{feedback.status}</Tag>
+      {feedback.can_withdraw && <Popconfirm title="撤回后这个问题将不再处理，确定撤回？" okText="撤回" cancelText="取消"
+        okButtonProps={{ danger: true }} onConfirm={() => withdraw()}
+        description={<Input.TextArea value={withdrawNote} maxLength={2000} autoSize={{ minRows: 2, maxRows: 4 }}
+          aria-label="撤回说明" placeholder="撤回说明（可不填）" style={{ width: 240, marginTop: 4 }}
+          onChange={(event) => setWithdrawNote(event.target.value)} />}>
+        <Button danger loading={busy}>撤回</Button>
+      </Popconfirm>}
       {feedback.can_delete && <Popconfirm title={`删除问题 ${feedback.serial_no}？`}
         description="删除后可由管理员在“系统管理 → 回收站”恢复。" okText="删除" cancelText="取消"
         okButtonProps={{ danger: true }} onConfirm={() => remove()}>
         <Button danger loading={busy}>删除问题</Button>
       </Popconfirm>}
-    </Space>
+    </div>
     {error && <Alert type="error" showIcon title={error} style={{ marginBottom: 16 }} />}
     <Descriptions bordered size="small" column={{ xs: 1, sm: 2, md: 2 }} items={[
       { key: "serial", label: "反馈编号", children: feedback.legacy_serial_no
@@ -169,7 +195,8 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
       <div className="feedback-chat-list">
         {feedback.events.map((event) => <FeedbackChatEntry key={event.id} feedbackId={feedbackId} event={event} />)}
       </div>
-      <div className="feedback-chat-composer">
+      {withdrawn ? <div className="feedback-chat-closed">提交人已撤回这个问题，不再处理。</div>
+      : <div className="feedback-chat-composer">
         {hint && <div className="feedback-chat-hint">{hint}</div>}
         <FeedbackFileDrop files={files} onChange={setFiles} disabled={busy} inline pickerRef={openPicker} />
         {/* 参照钉钉聊天框：第一行输入条（发送在条内），第二行一排工具和状态操作，不竖着堆。 */}
@@ -196,7 +223,7 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
             className={`feedback-chat-action${primaryActions.has(action) ? " is-primary" : ""}${action === "未解决，重新打开" ? " is-danger" : ""}`}
             onClick={() => transition(action)}>{action}</button>)}
         </div>
-      </div>
+      </div>}
       <div ref={listEnd} className="feedback-chat-end" />
     </section>
   </section>;

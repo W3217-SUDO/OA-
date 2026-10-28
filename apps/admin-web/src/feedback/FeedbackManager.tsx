@@ -26,10 +26,10 @@ type Props = {
   onChanged?: () => void;
 };
 // 处理流程：待处理 →（处理人写好怎么改）待确认 →（提交人确认修改）待处理 →（处理完）待验证 →（验证通过）已解决；
-// 没解决可重新打开回到待处理。
-const statuses = ["待处理", "待确认", "待验证", "已解决"];
+// 没解决可重新打开回到待处理；解决前提交人可以撤回（已撤回，不再处理，2026-10-28）。
+const statuses = ["待处理", "待确认", "待验证", "已解决", "已撤回"];
 const statusColors: Record<string, string> = {
-  待处理: "warning", 待确认: "gold", 待验证: "processing", 已解决: "success",
+  待处理: "warning", 待确认: "gold", 待验证: "processing", 已解决: "success", 已撤回: "default",
 };
 
 export default function FeedbackManager({ sourceRoute, pageControls, openPages, menuPages, onNavigate, center = false, view, onViewChange, navKey = 0, onChanged }: Props) {

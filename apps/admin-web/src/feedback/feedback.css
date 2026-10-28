@@ -126,11 +126,22 @@
   .feedback-chat-composer { padding: 8px 8px 10px; }
   .feedback-chat-input textarea.ant-input { font-size: 16px; }
 }
+/* 详情页头：返回、刷新、状态、撤回、删除排成一排，不换行；放不下横向滑动（钉钉旧内核也支持 flex gap）。 */
+.feedback-detail-head { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; margin-bottom: 16px; overflow-x: auto; scrollbar-width: none; }
+.feedback-detail-head::-webkit-scrollbar { display: none; }
+.feedback-detail-head > * { flex: none; }
+.feedback-detail-head .ant-tag { margin-inline-end: 0; }
+@media (max-width: 640px) {
+  .feedback-detail-head { gap: 6px; }
+  .feedback-detail-head .ant-btn { padding-inline: 10px; }
+}
+/* 已撤回：聊天框下方不再显示输入区，只留一行说明。 */
+.feedback-chat-closed { padding: 12px 16px; border-top: 1px solid var(--oa-border, #e5e6eb); color: var(--oa-text-3, #8c8c8c); text-align: center; }
 /* 打开时滚到聊天框底部（输入框下沿），最新一条紧贴在输入区上方；手机再让出底部导航的高度。 */
 .feedback-chat-end { height: 0; scroll-margin-bottom: 16px; }
 @media (max-width: 991px) { .feedback-chat-end { scroll-margin-bottom: 80px; } }
 
-/* 状态页签（全部、待处理、待确认、待验证、已解决）：手机上一行放不下时横向滑动，不换行挤压。 */
+/* 状态页签（全部、待处理、待确认、待验证、已解决、已撤回）：手机上一行放不下时横向滑动，不换行挤压。 */
 .feedback-status-tabs {
   max-width: 100%;
   overflow-x: auto;

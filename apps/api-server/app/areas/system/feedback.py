@@ -22,7 +22,11 @@ router = APIRouter()
 FEEDBACK_TZ = ZoneInfo("Asia/Shanghai")
 # 状态（用户要求，2026-10-24；2026-10-28 加“待确认”）：处理人先写打算怎么改，交提交人确认（待确认）；
 # 确认后回到待处理开始改，改完发给提交人验证，验证通过即已解决，没解决就重新打开。
-FEEDBACK_STATUSES = ("待处理", "待确认", "待验证", "已解决")
+# 2026-10-28 加“已撤回”（陶威）：提交人在问题解决前可以撤回，撤回后不再处理，页面只读，暂不支持重新打开。
+FEEDBACK_STATUSES = ("待处理", "待确认", "待验证", "已解决", "已撤回")
+WITHDRAW_ACTION = "撤回"
+WITHDRAWN_STATUS = "已撤回"
+WITHDRAWABLE_STATUSES = frozenset({"待处理", "待确认", "待验证"})
 # 旧状态读出时按新流程归类，不改库里的历史数据：处理中/待补充仍算待处理，已处理等提交人验证。
 LEGACY_STATUS = {"处理中": "待处理", "待补充": "待处理", "已处理": "待验证"}
 HANDLER_ACTIONS = {
@@ -142,7 +146,20 @@ def _reporter_actions(record: BusinessRecord, identity: dict) -> set[str]:
     return set()
 
 
+def _can_withdraw(record: BusinessRecord, identity: dict) -> bool:
+    """只有提交人本人能撤回自己的问题（管理员也不能替别人撤回），且问题还没解决。"""
+    return record.owner == identity["username"] and _status(record.status) in WITHDRAWABLE_STATUSES
+
+
+def _require_open(record: BusinessRecord) -> None:
+    """已撤回的问题只读：不能再回复、上传、指派或改状态。"""
+    if _status(record.status) == WITHDRAWN_STATUS:
+        raise HTTPException(409, "提交人已撤回这个问题，不再处理")
+
+
 def _action_definition(record: BusinessRecord, identity: dict, action: str) -> tuple[set[str], str] | None:
+    if action == WITHDRAW_ACTION:
+        return (set(WITHDRAWABLE_STATUSES), WITHDRAWN_STATUS) if record.owner == identity["username"] else None
     if _can_handle(record, identity) and action in HANDLER_ACTIONS:
         return HANDLER_ACTIONS[action]
     if action in _reporter_actions(record, identity):
@@ -445,6 +462,7 @@ async def get_feedback(feedback_id: int, identity: dict = Depends(current_identi
         **_serialize_feedback(record, names.get(record.owner, ""), names.get(_assignee(record), ""), has_screenshot),
         "can_assign": _is_admin(identity), "can_delete": _is_admin(identity),
         "available_actions": _available_actions(record, identity),
+        "can_withdraw": _can_withdraw(record, identity),
         "attachments": [{
             "id": item.id, "name": item.original_name, "size": item.size,
             "content_type": item.content_type, "is_image": item.category == "问题反馈截图",
@@ -477,6 +495,7 @@ async def add_feedback_message(
         raise HTTPException(422, f"截图和附件合计最多 {FEEDBACK_MAX_FILES} 个")
     contents = [(upload, *await _read_feedback_file(upload)) for upload in uploads]
     record = await _get_feedback(db, feedback_id, identity, lock=True)
+    _require_open(record)
     stored_paths: list[Path] = []
     try:
         current = _status(record.status)
@@ -513,6 +532,7 @@ async def transition_feedback(
         raise HTTPException(403, "无权执行此操作")
     allowed_statuses, next_status = definition
     previous_status = _status(record.status)
+    _require_open(record)
     if previous_status not in allowed_statuses:
         raise HTTPException(409, "反馈状态已变化，请刷新后重试")
     comment = body.comment.strip()
@@ -539,6 +559,7 @@ async def assign_feedback(
     if not _is_admin(identity):
         raise HTTPException(403, "仅管理员可以指派处理人")
     record = await _get_feedback(db, feedback_id, identity, lock=True)
+    _require_open(record)
     username = body.username.strip()
     user = await db.scalar(select(User).where(User.username == username, User.is_active.is_(True)))
     if not user:
@@ -643,6 +664,7 @@ async def reply_feedback(
     if not content and not body.file_count:
         raise HTTPException(422, "请填写回复内容或添加截图、附件")
     record = await _get_feedback(db, feedback_id, identity, lock=True)
+    _require_open(record)
     current = _status(record.status)
     record.updated_at = func.now()
     event = WorkflowEvent(
@@ -664,6 +686,7 @@ async def upload_feedback_file(
     """上传一个文件（请求体就是文件内容）。不带 event_id 是反馈本身的截图/附件，只能提交人在提交后 30 分钟内上传；
     带 event_id 是某条回复的文件，只能该回复的发送人上传。"""
     record = await _get_feedback(db, feedback_id, identity, lock=True)
+    _require_open(record)
     if event_id is None:
         if record.owner != identity["username"]:
             raise HTTPException(403, "只有提交人可以给反馈添加截图和附件")
