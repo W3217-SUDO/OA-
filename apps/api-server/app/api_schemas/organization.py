@@ -77,6 +77,8 @@ class JobRoleUpdate(BaseModel):
 class JobRolePermissionUpdate(BaseModel):
     permissions: list[str] = Field(default_factory=list)
     case_actions_explicit: bool = False
+    # 只按岗位页面授权：None 保持岗位原设置（页面保存不会丢），True/False 打开或关闭。
+    menus_exact: bool | None = None
     field_keys: list[str] | None = Field(default=None, max_length=50)
     field_keys_configured: bool | None = None
     data_scope: str | None = Field(default=None, max_length=64)

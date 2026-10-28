@@ -1,6 +1,6 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 from app.core.constants import (
-    CASE_ACTIONS_EXPLICIT_MARKER, FIELD_KEYS, HR_SUBRECORD_KINDS, JOB_ROLE_ACTION_KEY_GRANTS, ROLE_DATA_SCOPES, ROLE_TREE_HIDDEN_ACTION_CODES, SYSTEM_ACTION_DEFINITIONS, SYSTEM_ADMIN_JOB_PERMISSIONS,
+    CASE_ACTIONS_EXPLICIT_MARKER, MENUS_EXACT_MARKER, FIELD_KEYS, HR_SUBRECORD_KINDS, JOB_ROLE_ACTION_KEY_GRANTS, ROLE_DATA_SCOPES, ROLE_TREE_HIDDEN_ACTION_CODES, SYSTEM_ACTION_DEFINITIONS, SYSTEM_ADMIN_JOB_PERMISSIONS,
     SYSTEM_MENU_ROUTE_KEYS, WORKFLOW_TRANSITIONS,
 )
 from app.core.dependencies import (
@@ -739,6 +739,10 @@ async def update_job_role_permissions(
     )
     if body.case_actions_explicit and role.code != "SYSTEM-ADMIN":
         permissions = _explicit_case_role_permissions(permissions)
+    menus_exact = (MENUS_EXACT_MARKER in (role.permissions or [])) if body.menus_exact is None else body.menus_exact
+    permissions = [value for value in permissions if value != MENUS_EXACT_MARKER]
+    if menus_exact and role.code != "SYSTEM-ADMIN":
+        permissions.append(MENUS_EXACT_MARKER)
     field_keys = _normalize_job_role_field_keys(body.field_keys) if body.field_keys is not None else list(dict.fromkeys(role.field_keys or []))
     field_keys_configured = body.field_keys_configured if body.field_keys_configured is not None else role.field_keys_configured
     data_scope = _normalize_job_role_data_scope(body.data_scope) if "data_scope" in body.model_fields_set else role.data_scope
@@ -753,7 +757,7 @@ async def update_job_role_permissions(
             | set(SYSTEM_ADMIN_JOB_PERMISSIONS)
         ) - configured_menu_keys
         allowed = configured_menu_keys | allowed_actions | {f"action:{key}" for values in JOB_ROLE_ACTION_KEY_GRANTS.values() for key in values}
-        allowed |= {f"action:{definition['code']}" for definition in SYSTEM_ACTION_DEFINITIONS} | {CASE_ACTIONS_EXPLICIT_MARKER}
+        allowed |= {f"action:{definition['code']}" for definition in SYSTEM_ACTION_DEFINITIONS} | {CASE_ACTIONS_EXPLICIT_MARKER, MENUS_EXACT_MARKER}
         invalid = sorted(set(permissions) - allowed)
         if invalid:
             raise HTTPException(status_code=422, detail=f"无效菜单或业务动作权限：{', '.join(invalid)}")

@@ -881,6 +881,9 @@ JOB_ROLE_ACTION_KEY_GRANTS: dict[str, tuple[str, ...]] = {
 
 
 CASE_ACTIONS_EXPLICIT_MARKER = "config:case-actions-explicit"
+# 岗位只按自己勾的页面授权（陶威 2026-10-28）：打了这个标记的岗位，不再合入系统角色（如普通用户）的页面；
+# 员工管理里按人设置的页面仍然优先（冲突时以个人设置为准）。默认不打，已有岗位不受影响。
+MENUS_EXACT_MARKER = "config:menus-exact"
 
 INTERNAL_REVIEW_APPROVE_ACTION = "finance.internal.review.approve"
 INTERNAL_REVIEW_REJECT_ACTION = "finance.internal.review.reject"

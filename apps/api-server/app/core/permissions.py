@@ -1,6 +1,6 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 from app.core.constants import (
-    AGENT_ACTION_CAPABILITY, CASE_ACTIONS_EXPLICIT_MARKER, CASE_CREATABLE_TYPES, CIVIL_CASE_TYPES, CONTRACT_APPROVAL_ACTION_CODE, DEFAULT_MENU_LABEL_BY_KEY,
+    AGENT_ACTION_CAPABILITY, CASE_ACTIONS_EXPLICIT_MARKER, MENUS_EXACT_MARKER, CASE_CREATABLE_TYPES, CIVIL_CASE_TYPES, CONTRACT_APPROVAL_ACTION_CODE, DEFAULT_MENU_LABEL_BY_KEY,
     DEFAULT_ROLE_PERMISSIONS, EXPENSE_SUBTYPE_FEE_TYPE, FIELD_KEYS, JAR_FEE_TRANSITIONS, JOB_ACTION_MENU_GRANTS,
     CONTRACT_ROLE_ACTION_CODES, CONTRACT_ROLE_ACTIONS, CUSTOMER_ROLE_ACTIONS, IPR_ROLE_ACTIONS, JOB_ROLE_ACTION_KEY_GRANTS, ROLE_TREE_HIDDEN_ACTION_CODES, JOB_ROLE_LABEL_MENU_GRANTS, MENU_CHILDREN_BY_KEY, MENU_KEYS, ROLE_DATA_SCOPES,
     SYSTEM_ACTION_DEFINITIONS, SYSTEM_MENU_ROUTE_KEYS, SYSTEM_USER_ROLE_CODES,
@@ -104,7 +104,7 @@ def _job_role_tree_checked_permissions(role: JobRole) -> list[str]:
     for value in role.permissions or []:
         if value in _CASE_LEGACY_PERMISSION_LABELS:
             selected.extend(JOB_ROLE_LABEL_MENU_GRANTS.get(value, ()))
-        elif value != CASE_ACTIONS_EXPLICIT_MARKER:
+        elif value not in {CASE_ACTIONS_EXPLICIT_MARKER, MENUS_EXACT_MARKER}:
             selected.append(str(value).removeprefix("menu:"))
     selected.extend(
         f"action:{code}" for code in _effective_job_role_action_keys(role)
@@ -546,7 +546,8 @@ async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
             permission = _apply_job_role_policy(permission, job_role)
     overrides = _user_permission_overrides(user)
     user_actions = [] if "admin" in role_ids else personal_action_keys(overrides)
-    if explicit_role_name and "admin" not in role_ids and overrides.get("menu_keys") is None:
+    menus_exact = bool(job_role and MENUS_EXACT_MARKER in (job_role.permissions or []))
+    if explicit_role_name and "admin" not in role_ids and overrides.get("menu_keys") is None and not menus_exact:
         explicit_system_menus = await _explicit_system_role_menu_keys(role_ids, db)
         permission["menu_keys"] = _expand_menu_permission_keys([*permission["menu_keys"], *explicit_system_menus])
     if overrides.get("menu_keys") is not None:
@@ -2099,7 +2100,7 @@ def _organization_permission_tree(menus: list[SystemMenu], actions: list[str], s
 
     unmatched_actions = []
     for action in actions:
-        if action in _CASE_LEGACY_PERMISSION_LABELS or action in catalog_keys or action == CASE_ACTIONS_EXPLICIT_MARKER:
+        if action in _CASE_LEGACY_PERMISSION_LABELS or action in catalog_keys or action in {CASE_ACTIONS_EXPLICIT_MARKER, MENUS_EXACT_MARKER}:
             continue
         node = {
             "key": action, "node_type": "A", "node_original_id": action,
