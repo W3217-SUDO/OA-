@@ -24,6 +24,18 @@ const BASE_MENU_KEYS = ["dashboard", "user-center"];
 const AGENT_GLOBAL_MANAGE_ACTION = "agent.settings.global.manage";
 const MCP_PERSONAL_TOKEN_ACTION = "agent.mcp.personal_token";
 const MCP_PERSONAL_TOKEN_WRITE_ACTION = "agent.mcp.personal_token.write";
+// 财务编辑、删除按人勾选（用户 2026-10-28 要求）；没勾的人看得到财务页面也不能改、删。
+const FINANCE_ACTIONS = [
+  { value: "finance.receipt.update", label: "编辑回款" },
+  { value: "finance.receipt.delete", label: "删除回款" },
+  { value: "finance.payment.update", label: "编辑付款包" },
+  { value: "finance.payment.delete", label: "删除付款包" },
+  { value: "finance.fee.update", label: "编辑费用" },
+  { value: "finance.fee.delete", label: "删除费用" },
+];
+const FINANCE_ACTION_KEYS = FINANCE_ACTIONS.map((item) => item.value);
+const financeActionsOf = (keys: string[]) => FINANCE_ACTION_KEYS.filter((key) => keys.includes(key));
+const sameKeys = (left: string[], right: string[]) => left.length === right.length && left.every((key) => right.includes(key));
 
 function menuTreeKeys(nodes: PagePermissionNode[]): string[] {
   return nodes.flatMap((node) => [String(node.key), ...menuTreeKeys(node.children || [])]);
@@ -101,6 +113,7 @@ export function UserPagePermissionEditor({
   const [agentGlobalManagement, setAgentGlobalManagement] = useState(false);
   const [mcpPersonalToken, setMcpPersonalToken] = useState(false);
   const [mcpTokenWrite, setMcpTokenWrite] = useState(false);
+  const [financeActions, setFinanceActions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -159,6 +172,7 @@ export function UserPagePermissionEditor({
         setAgentGlobalManagement(permissionResponse.data.effective.user_action_keys.includes(AGENT_GLOBAL_MANAGE_ACTION));
         setMcpPersonalToken(permissionResponse.data.effective.user_action_keys.includes(MCP_PERSONAL_TOKEN_ACTION));
         setMcpTokenWrite(permissionResponse.data.effective.user_action_keys.includes(MCP_PERSONAL_TOKEN_WRITE_ACTION));
+        setFinanceActions(financeActionsOf(permissionResponse.data.effective.user_action_keys));
         setMenuRows(menuResponse.data.items);
         const nextMenuTree = buildMenuTreeData(menuResponse.data.items.filter((item) => item.is_active));
         setSelectedKeys(effectiveSelectedPageKeys(permissionResponse.data.effective.menu_keys, nextMenuTree));
@@ -185,12 +199,13 @@ export function UserPagePermissionEditor({
       // 菜单保存只在明确切换复选框时提交动作授权，恢复菜单继承不改变动作授权。
       const actionChanged = agentGlobalManagement !== snapshot.effective.user_action_keys.includes(AGENT_GLOBAL_MANAGE_ACTION)
         || mcpPersonalToken !== snapshot.effective.user_action_keys.includes(MCP_PERSONAL_TOKEN_ACTION)
-        || mcpTokenWrite !== snapshot.effective.user_action_keys.includes(MCP_PERSONAL_TOKEN_WRITE_ACTION);
+        || mcpTokenWrite !== snapshot.effective.user_action_keys.includes(MCP_PERSONAL_TOKEN_WRITE_ACTION)
+        || !sameKeys(financeActions, financeActionsOf(snapshot.effective.user_action_keys));
       const payload = inherit
         ? { clear_menu_keys: true }
         : {
           menu_keys: selectedPagePermissionKeys(selectedKeys, menuTree),
-          ...(actionChanged ? { action_keys: [...(agentGlobalManagement ? [AGENT_GLOBAL_MANAGE_ACTION] : []), ...(mcpPersonalToken ? [MCP_PERSONAL_TOKEN_ACTION] : []), ...(mcpPersonalToken && mcpTokenWrite ? [MCP_PERSONAL_TOKEN_WRITE_ACTION] : [])] } : {}),
+          ...(actionChanged ? { action_keys: [...(agentGlobalManagement ? [AGENT_GLOBAL_MANAGE_ACTION] : []), ...(mcpPersonalToken ? [MCP_PERSONAL_TOKEN_ACTION] : []), ...(mcpPersonalToken && mcpTokenWrite ? [MCP_PERSONAL_TOKEN_WRITE_ACTION] : []), ...financeActions] } : {}),
         };
       const { data } = await api.patch<UserPagePermissions>(
         `/system/users/${snapshot.user_id}/permissions`,
@@ -203,6 +218,7 @@ export function UserPagePermissionEditor({
       setAgentGlobalManagement(data.effective.user_action_keys.includes(AGENT_GLOBAL_MANAGE_ACTION));
       setMcpPersonalToken(data.effective.user_action_keys.includes(MCP_PERSONAL_TOKEN_ACTION));
       setMcpTokenWrite(data.effective.user_action_keys.includes(MCP_PERSONAL_TOKEN_WRITE_ACTION));
+      setFinanceActions(financeActionsOf(data.effective.user_action_keys));
       setSelectedKeys(effectiveSelectedPageKeys(data.effective.menu_keys, menuTree));
       notifyPermissionsUpdated();
       message.success(inherit ? "已恢复岗位/角色页面授权" : "用户页面授权已保存");
@@ -271,6 +287,11 @@ export function UserPagePermissionEditor({
                   同时允许新增、修改、删除（直接执行，确认由本地 agent 向使用者负责）
                 </Checkbox>
               </div>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ marginBottom: 4 }}>财务操作（能看到财务页面也要勾选才可编辑、删除）：</div>
+              <Checkbox.Group options={FINANCE_ACTIONS} value={financeActions} disabled={saving}
+                onChange={(values) => setFinanceActions((values as string[]).filter((key) => FINANCE_ACTION_KEYS.includes(key)))} />
             </div>
             <div style={{ maxHeight: "55vh", overflow: "auto" }}>
               <Tree

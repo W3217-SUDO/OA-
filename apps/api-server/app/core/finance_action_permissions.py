@@ -1,7 +1,8 @@
 """财务中心回款/付款/费用的编辑、删除按角色配置的动作授权。
 
 页面可见时身份会被临时提升为全部动作（见 security.current_identity），这里绕开提升，
-只认账号真实角色、岗位和角色配置里勾选的动作；真实管理者角色默认全部允许。
+只认账号真实角色、岗位和角色配置里勾选的动作，以及员工管理里按人勾选的动作（用户 2026-10-28 要求）；
+真实管理者角色默认全部允许。
 """
 from app.core.constants import FINANCE_EDIT_DELETE_ACTIONS
 from app.core.dependencies import AsyncSession, BusinessRecord, HTTPException, User, select
@@ -18,7 +19,12 @@ async def configured_action_keys(username: str, db: AsyncSession) -> list[str]:
         return []
     if "admin" in _system_user_role_ids(user):
         return ["*"]
-    return list((await _user_permission_payload(user, db)).get("action_keys") or [])
+    return granted_action_keys(await _user_permission_payload(user, db))
+
+
+def granted_action_keys(permission: dict) -> list[str]:
+    """角色勾选的动作加上员工管理里按人勾选的动作；登录返回、/auth/me 和后端校验都用它。"""
+    return list(dict.fromkeys([*(permission.get("action_keys") or []), *(permission.get("user_action_keys") or [])]))
 
 
 async def finance_action_granted(identity: dict, db: AsyncSession, code: str) -> bool:

@@ -159,7 +159,7 @@ async def current_user_profile(identity: dict = Depends(current_identity), db: A
         "actual_role": role_ids[0],
         "actual_role_ids": role_ids,
         "action_keys": ["*"],
-        # 财务编辑/删除等需单独授权的动作按角色配置显示按钮，不受上面页面级全开的影响。
+        # 财务编辑/删除等需单独授权的动作按角色和员工管理里的勾选显示按钮，不受上面页面级全开的影响。
         "configured_action_keys": await configured_action_keys(user.username, db),
         "field_keys": list(FIELD_KEYS),
         "data_scope": "全所数据",
@@ -211,7 +211,7 @@ async def update_current_user_profile(body: CurrentUserUpdate, identity: dict = 
         "actual_role": role_ids[0],
         "actual_role_ids": role_ids,
         "action_keys": ["*"],
-        # 财务编辑/删除等需单独授权的动作按角色配置显示按钮，不受上面页面级全开的影响。
+        # 财务编辑/删除等需单独授权的动作按角色和员工管理里的勾选显示按钮，不受上面页面级全开的影响。
         "configured_action_keys": await configured_action_keys(user.username, db),
         "field_keys": list(FIELD_KEYS),
         "data_scope": "全所数据",

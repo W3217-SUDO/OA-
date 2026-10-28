@@ -6,7 +6,13 @@ AGENT_GLOBAL_MANAGE_ACTION = "agent.settings.global.manage"
 MCP_PERSONAL_TOKEN_ACTION = "agent.mcp.personal_token"
 # 允许生成“读写”令牌：本地 agent 可新增/修改/删除，确认由本地 agent 负责；系统管理员默认拥有。
 MCP_PERSONAL_TOKEN_WRITE_ACTION = "agent.mcp.personal_token.write"
-USER_ACTION_KEYS = frozenset({AGENT_GLOBAL_MANAGE_ACTION, MCP_PERSONAL_TOKEN_ACTION, MCP_PERSONAL_TOKEN_WRITE_ACTION})
+# 财务回款/付款/费用的编辑、删除也可以在员工管理里按人勾选（用户 2026-10-28 要求）。
+FINANCE_USER_ACTION_KEYS = frozenset({
+    "finance.receipt.update", "finance.receipt.delete", "finance.payment.update",
+    "finance.payment.delete", "finance.fee.update", "finance.fee.delete",
+})
+USER_ACTION_KEYS = frozenset({AGENT_GLOBAL_MANAGE_ACTION, MCP_PERSONAL_TOKEN_ACTION, MCP_PERSONAL_TOKEN_WRITE_ACTION,
+                              *FINANCE_USER_ACTION_KEYS})
 
 
 def personal_action_keys(overrides: dict) -> list[str]:
