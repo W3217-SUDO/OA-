@@ -32,7 +32,7 @@ GitHub `origin` 是唯一源码权威；生产服务器是版本队列、锁和�
 
 `releases/formal-release.lock`、`runtime/enterprise/formal-release.lock`、`runtime/enterprise/release-queue.tsv`（停在 1.1.450）是历史遗留，不是锁也不是队列，不读不写。
 
-2026-10-20：`current` 为 `1.1.493`（`eeae41673a4e7e6eca4185143adc44ade7aaf6b2`），队列无未收口预留，下一号 `1.1.494`。
+2026-10-28：`current` 为 `1.2.28`。版本号以队列和 GitHub 标签为准，每次发布前重新读取，不凭这里的记录。
 
 ## 连接方式
 
@@ -48,8 +48,9 @@ OA_SCP=(scp -i ~/.ssh/id_ed25519_oa -o IdentitiesOnly=yes -o BatchMode=yes -o St
 
 ## 版本号与分配器
 
-- 沿生产序列 `1.1.x` 递增（`1.1.493` → `1.1.494`），不进位到 `1.2.x`（用户 2026-10-20 决定）。
-- 生产 `/opt/sunhold-oa/scripts/` 中的 `reserve_oa_version.sh`、`reassign_oa_version.sh`、`release_queue.py`、`github_release_refs.py` 与仓库 `docs/skills/oa-fast-deploy/scripts/` 同名文件一致（`release_queue.py` SHA256 `f927c749e8a82310d13084a83c3f3903fd2a1248e49061d4c88bc840e83c3aa7`）。替换前两边核哈希，一起安装。
+- `1.1.602` 之后改从 `1.2.1` 起编号（用户 2026-10-27 要求），此后沿 `1.2.x` 递增：下一号 = 队列与 GitHub 标签中最大的 `1.2.x` + 1，不再发 `1.1.x`。`release_queue.py` 同时认 `1.1.N`（只用于识别历史）和 `1.2.N`（`CURRENT_MINOR = 2`），`github_release_refs.py` 抓取 `v1.1.*`、`v1.2.*` 两种标签。
+- 生产 `/opt/sunhold-oa/scripts/` 中的 `reserve_oa_version.sh`、`reassign_oa_version.sh`、`release_queue.py`、`github_release_refs.py` 与仓库 `docs/skills/oa-fast-deploy/scripts/` 同名文件一致（2026-10-28 核对，四个文件 SHA256 全部相同；`release_queue.py` 为 `d210b4d8cedc5d20353057ade202bf5ba9e1a7d481f9ddc01848b37b02387ce3`）。替换前两边核哈希，一起安装。
+- 本地运行这些脚本（生成 refs 快照等）要用**发布 worktree 里**的副本：共享工作区的 `dev` 可能停在旧提交，旧副本只认 `v1.1.*` 标签，领号会报“生产已发布基线与 GitHub 标签不一致”。
 - `reserve` 要求：目标提交等于 GitHub `dev`、已发布基线与其标签一致、GitHub 上没有队列不认识的更高版本、队列无 `assigned`/`activating`。输出即本次版本号。
 - `reassign` 只用于把自己 `assigned` 且尚无正式标签的版本改绑到新提交。
 - 生产机访问 GitHub 曾出现 GnuTLS 错误，所以 refs 由 Mac 用 `github_release_refs.py capture --remote origin` 生成快照（45 秒上限，拒绝覆盖已有文件），连同 SHA256 传到生产；快照超过 5 分钟作废重做。环境变量：`OA_RELEASE_SOURCE_URL=https://github.com/W3217-SUDO/OA-.git`、`OA_RELEASE_PYTHON`（运行环境 python 绝对路径）、`OA_RELEASE_REFS_FILE`、`OA_RELEASE_REFS_SHA256`。
