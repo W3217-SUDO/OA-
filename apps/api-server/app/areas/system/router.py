@@ -1,6 +1,6 @@
 """系统管理路由编排。"""
 from time import monotonic
-from app.core.finance_action_permissions import configured_action_keys
+from app.core.finance_action_permissions import configured_action_keys, page_granted_finance_actions, user_finance_actions
 from app.core.constants import (
     DEFAULT_HIDDEN_MENU_KEYS, DEFAULT_ROLE_PERMISSIONS,
     DEFAULT_SYSTEM_MENUS, FIELD_KEYS, MENU_KEYS, ROLE_DATA_SCOPES, SYSTEM_ACTION_BY_CODE,
@@ -395,7 +395,10 @@ async def get_system_user_permissions(user_id: int, identity: dict = Depends(cur
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
-    return {"user_id": user.id, "username": user.username, "overrides": _user_permission_overrides(user), "effective": await _user_permission_payload(user, db)}
+    effective = await _user_permission_payload(user, db)
+    return {"user_id": user.id, "username": user.username, "overrides": _user_permission_overrides(user), "effective": effective,
+            "finance_action_keys": await user_finance_actions(user, db),
+            "page_finance_action_keys": page_granted_finance_actions(effective.get("menu_keys"))}
 
 
 @router.patch(f"{settings.api_prefix}/system/users/{{user_id}}/permissions")
@@ -412,7 +415,45 @@ async def update_system_user_permissions(user_id: int, body: UserPermissionOverr
         authorization_source=f"API PATCH {settings.api_prefix}/system/users/{user_id}/permissions",
     )
     await db.commit(); await db.refresh(user)
-    return {"user_id": user.id, "username": user.username, "overrides": _user_permission_overrides(user), "effective": await _user_permission_payload(user, db)}
+    effective = await _user_permission_payload(user, db)
+    return {"user_id": user.id, "username": user.username, "overrides": _user_permission_overrides(user), "effective": effective,
+            "finance_action_keys": await user_finance_actions(user, db),
+            "page_finance_action_keys": page_granted_finance_actions(effective.get("menu_keys"))}
+
+
+@router.get(f"{settings.api_prefix}/system/finance-actions/{{username}}")
+async def get_user_finance_actions(username: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """员工管理里的“财务权限”：管理者或被授权的人（如范明明）查看某人的 6 个财务编辑、删除动作。"""
+    from app.core.finance_action_permissions import can_configure_finance_actions, page_granted_finance_actions, user_finance_actions
+    from app.core.permissions import _system_user_role_ids, _user_permission_payload
+    if not await can_configure_finance_actions(identity, db):
+        raise HTTPException(status_code=403, detail="当前账号不能配置财务操作权限")
+    user = await db.scalar(select(User).where(User.username == username))
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    is_admin = "admin" in _system_user_role_ids(user)
+    return {
+        "user_id": user.id, "username": user.username, "display_name": user.display_name, "is_admin": is_admin,
+        "action_keys": await user_finance_actions(user, db),
+        "page_action_keys": [] if is_admin else page_granted_finance_actions((await _user_permission_payload(user, db)).get("menu_keys")),
+    }
+
+
+@router.put(f"{settings.api_prefix}/system/finance-actions/{{username}}")
+async def update_user_finance_actions(username: str, body: dict, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.finance_action_permissions import can_configure_finance_actions, set_user_finance_actions, user_finance_actions
+    if not await can_configure_finance_actions(identity, db):
+        raise HTTPException(status_code=403, detail="当前账号不能配置财务操作权限")
+    checked = body.get("action_keys")
+    if not isinstance(checked, list) or any(not isinstance(key, str) for key in checked):
+        raise HTTPException(status_code=422, detail="action_keys 必须是动作列表")
+    target = await db.scalar(select(User).where(User.username == username))
+    if not target:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    user = await set_user_finance_actions(target.id, checked, db, actor=identity["username"],
+                                          source=f"API PUT {settings.api_prefix}/system/finance-actions/{username}")
+    await db.commit(); await db.refresh(user)
+    return {"user_id": user.id, "username": user.username, "action_keys": await user_finance_actions(user, db)}
 
 
 @router.delete(f"{settings.api_prefix}/system/users/{{user_id}}", status_code=status.HTTP_204_NO_CONTENT)

@@ -42,6 +42,7 @@ class UserPermissionOverrideUpdate(BaseModel):
 
     menu_keys: list[str] | None = None
     action_keys: list[str] | None = None
+    action_denies: list[str] | None = None
     field_keys: list[str] | None = None
     data_scope: str | None = None
     clear: bool = False

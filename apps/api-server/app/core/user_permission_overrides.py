@@ -3,7 +3,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_permissions import USER_ACTION_KEYS
+from app.agent_permissions import FINANCE_USER_ACTION_KEYS, USER_ACTION_KEYS
 from app.api_schemas.identity import UserPermissionOverrideUpdate
 from app.core.constants import FIELD_KEYS, MENU_KEYS, ROLE_DATA_SCOPES, SYSTEM_MENU_ROUTE_KEYS
 from app.models import SystemMenu, User
@@ -39,6 +39,12 @@ async def update_user_permission_overrides(
             raise HTTPException(422, f"无效个人动作权限：{', '.join(invalid_actions)}")
         if body.clear:
             raise HTTPException(422, "清除全部授权不能同时设置个人动作权限")
+    if body.action_denies is not None:
+        invalid_denies = sorted(set(body.action_denies) - FINANCE_USER_ACTION_KEYS)
+        if invalid_denies:
+            raise HTTPException(422, f"只能取消财务编辑、删除动作：{', '.join(invalid_denies)}")
+        if body.clear:
+            raise HTTPException(422, "清除全部授权不能同时设置个人动作权限")
     profile = dict(user.profile or {})
     if body.clear:
         profile.pop("permission_overrides", None)
@@ -50,6 +56,8 @@ async def update_user_permission_overrides(
         overrides = dict(stored_overrides)
         if body.action_keys is not None:
             overrides["action_keys"] = list(dict.fromkeys(body.action_keys))
+        if body.action_denies is not None:
+            overrides["action_denies"] = list(dict.fromkeys(body.action_denies))
         if body.clear_menu_keys:
             overrides.pop("menu_keys", None)
         if body.menu_keys is not None:

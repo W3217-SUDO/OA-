@@ -306,6 +306,8 @@ async def current_identity(request: Request, token: str = Depends(oauth2_scheme)
         "_actual_role": role_ids[0],
         "_actual_role_ids": role_ids,
         "_page_menu_capability": page_capability,
+        # 发起请求的页面（前端 X-OA-Page），详情读取按“从哪个有权页面点进来”判断时用。
+        "_request_page": next((page for page in _page_header_candidates(request) if not page.startswith("@")), ""),
         "_request_path": request.url.path,
         "_request_method": request.method,
     }

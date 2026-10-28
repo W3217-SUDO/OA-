@@ -11,8 +11,10 @@ FINANCE_USER_ACTION_KEYS = frozenset({
     "finance.receipt.update", "finance.receipt.delete", "finance.payment.update",
     "finance.payment.delete", "finance.fee.update", "finance.fee.delete",
 })
+# 可以在员工管理里给别人勾选上面 6 个财务动作（只这 6 项，不含其他权限；用户 2026-10-28 要求给范明明）。
+FINANCE_CONFIGURE_ACTION = "finance.actions.configure"
 USER_ACTION_KEYS = frozenset({AGENT_GLOBAL_MANAGE_ACTION, MCP_PERSONAL_TOKEN_ACTION, MCP_PERSONAL_TOKEN_WRITE_ACTION,
-                              *FINANCE_USER_ACTION_KEYS})
+                              FINANCE_CONFIGURE_ACTION, *FINANCE_USER_ACTION_KEYS})
 
 
 def personal_action_keys(overrides: dict) -> list[str]:

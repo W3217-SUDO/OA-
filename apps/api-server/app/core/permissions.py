@@ -427,7 +427,7 @@ def _user_permission_overrides(user: User) -> dict:
     overrides = (user.profile or {}).get("permission_overrides")
     if not isinstance(overrides, dict):
         return {}
-    return {key: overrides[key] for key in ("menu_keys", "field_keys", "data_scope", "action_keys") if key in overrides and overrides[key] not in (None, "")}
+    return {key: overrides[key] for key in ("menu_keys", "field_keys", "data_scope", "action_keys", "action_denies") if key in overrides and overrides[key] not in (None, "")}
 
 
 def _configured_user_job_role_name(user: User) -> str:
@@ -559,6 +559,9 @@ async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
         "menu_keys": _expand_menu_permission_keys(menu_keys),
         "action_keys": list(dict.fromkeys(permission.get("action_keys", []))),
         "user_action_keys": user_actions,
+        # 员工管理里按人取消勾选的财务动作，优先于页面可见带来的授权。
+        "user_action_denies": [] if "admin" in role_ids else [
+            key for key in overrides.get("action_denies") or [] if isinstance(key, str)],
         "can_manage_agent_settings": "admin" in role_ids or AGENT_GLOBAL_MANAGE_ACTION in user_actions,
         "can_approve_contract": can_approve_contract,
     }
@@ -1236,10 +1239,25 @@ async def _can_search_all_cases_from_global_search(identity: dict, db: AsyncSess
     return bool(role and role.code in _CASE_ALL_READ_JOB_ROLE_CODES)
 
 
+def _request_page_opens_record(identity: dict, record: BusinessRecord) -> bool:
+    """非案件记录（请款单、费用等）从本人有权打开的业务页面点进来时，按该页面授权读取，和该页列表一致。
+
+    BUG20261028006：审核人员在“请款单审批”里能看到、能审批的请款单，点开却按“授权审批数据”
+    再查一次，提示“记录不存在或无权访问”。“我的…”个人页面不放宽；案件仍按数据范围。
+    """
+    from app.security import _MODULE_MENU_ROOTS
+    page = str(identity.get("_request_page") or "")
+    if not page or page.endswith("-mine") or record.module == "case" or page not in set(identity.get("menu_keys") or []):
+        return False
+    return any(page == root or page.startswith(f"{root}-") for root in _MODULE_MENU_ROOTS.get(record.module, ()))
+
+
 async def _ensure_case_read_visible(record_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
     """仅案件读取入口使用；写入和其他业务仍按原数据范围校验。"""
     record = await db.get(BusinessRecord, record_id)
     if record and record.module == "case" and await _can_search_all_cases_from_global_search(identity, db):
+        return record
+    if record and _request_page_opens_record(identity, record):
         return record
     # 页面菜单带来的临时管理员身份不能放宽非全所用户的案件数据范围。
     from app.core.investigation_access import _actual_identity

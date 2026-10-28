@@ -1,22 +1,33 @@
-"""问题反馈 BUG20261027004：财务回款/付款/费用的编辑、删除只认角色配置或员工管理里按人勾选的动作，不随页面可见全开。"""
+"""财务回款/付款/费用的编辑、删除（BUG20261027004，用户 2026-10-28 定）。
+
+能打开对应页面即拥有该页的操作；员工管理里可以按人勾选或取消，取消的优先；
+范明明这类被授权的人只能给别人配置这 6 项；只认账号真实可见的页面，不认 current_identity 的临时提升。
+"""
 import unittest
 
-from fastapi import HTTPException
+import httpx
+from fastapi import FastAPI, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.core.constants import SYSTEM_ACTION_BY_CODE
+from app.agent_permissions import FINANCE_CONFIGURE_ACTION, FINANCE_USER_ACTION_KEYS, USER_ACTION_KEYS
+from app.core.constants import FINANCE_EDIT_DELETE_ACTIONS, SYSTEM_ACTION_BY_CODE
+from app.core.dependencies import current_identity, get_db
 from app.core.finance_action_permissions import (
-    configured_action_keys, finance_action_granted, require_fee_action, require_finance_action,
+    configured_action_keys, finance_action_granted, page_granted_finance_actions, require_fee_action,
+    require_finance_action, set_user_finance_actions,
 )
 from app.database import Base
-from sqlalchemy import select
-
-from app.core.constants import FINANCE_EDIT_DELETE_ACTIONS as FINANCE_EDIT_DELETE_ACTIONS_ALL
 from app.models import BusinessRecord, RolePermission, User
 
+ALL = [code for code, _menu, _label in FINANCE_EDIT_DELETE_ACTIONS]
 # 页面可见时 current_identity 会把身份提升成 admin 和 "*"；这里模拟提升后的身份，检查不被它带过。
 ELEVATED = {"role": "admin", "role_ids": ["admin", "auditor"], "action_keys": ["*"], "_page_menu_capability": True}
+
+
+def menus(*keys):
+    return {"permission_overrides": {"menu_keys": ["user-center", *keys]}}
 
 
 class FinanceActionPermissionTest(unittest.IsolatedAsyncioTestCase):
@@ -28,13 +39,18 @@ class FinanceActionPermissionTest(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             db.add_all([
                 User(username="CODEXFAADMIN", display_name="管理者", password_hash="isolated-only", department="CODEXFA", role="admin"),
-                User(username="CODEXFAAUDIT", display_name="审核", password_hash="isolated-only", department="CODEXFA", role="auditor"),
-                User(username="CODEXFAUSER", display_name="员工", password_hash="isolated-only", department="CODEXFA", role="user"),
-                # 员工管理里按人勾选（2026-10-28）：存在 permission_overrides.action_keys。
-                User(username="CODEXFAPERSON", display_name="按人授权", password_hash="isolated-only", department="CODEXFA", role="user",
-                     profile={"permission_overrides": {"action_keys": ["finance.payment.delete", "finance.fee.update"]}}),
-                RolePermission(role="auditor", display_name="审批人员", data_scope="全所数据",
-                               menu_keys=["finance", "finance-receipts-manage", "@action:finance.receipt.update"], field_keys=[]),
+                # 回款人员：能打开回款管理；角色里单独勾了付款包编辑。
+                User(username="CODEXFAAUDIT", display_name="回款", password_hash="isolated-only", department="CODEXFA", role="auditor"),
+                User(username="CODEXFALAWYER", display_name="律师", password_hash="isolated-only", department="CODEXFA", role="user",
+                     profile=menus("finance-payment-mine", "finance-invoice-mine", "finance-internal-audit")),
+                User(username="CODEXFAPAY", display_name="付款", password_hash="isolated-only", department="CODEXFA", role="user",
+                     profile={"permission_overrides": {"menu_keys": ["user-center", "finance-payment-writeoff", "finance-fee-query"],
+                                                       "action_denies": ["finance.fee.delete"]}}),
+                User(username="CODEXFACONF", display_name="范明明", password_hash="isolated-only", department="CODEXFA", role="user",
+                     profile={"permission_overrides": {"menu_keys": ["user-center", "hr-all"],
+                                                       "action_keys": [FINANCE_CONFIGURE_ACTION, *ALL]}}),
+                RolePermission(role="auditor", display_name="回款人员", data_scope="全所数据",
+                               menu_keys=["finance-receipts-manage", "@action:finance.payment.update"], field_keys=[]),
             ])
             await db.commit()
 
@@ -42,65 +58,105 @@ class FinanceActionPermissionTest(unittest.IsolatedAsyncioTestCase):
         await self.engine.dispose()
 
     def identity(self, username):
-        return {**ELEVATED, "username": username}
+        return {**ELEVATED, "username": username, "_actual_role_ids": ["admin"] if username == "CODEXFAADMIN" else ["user"]}
 
-    async def test_actions_are_listed_in_role_configuration(self):
-        for code in ("finance.receipt.update", "finance.receipt.delete", "finance.payment.update",
-                     "finance.payment.delete", "finance.fee.update", "finance.fee.delete"):
-            self.assertIn(code, SYSTEM_ACTION_BY_CODE)
-
-    async def test_real_admin_keeps_everything_and_others_only_configured(self):
+    async def keys(self, username):
         async with self.sessions() as db:
-            self.assertEqual(await configured_action_keys("CODEXFAADMIN", db), ["*"])
-            self.assertTrue(await finance_action_granted(self.identity("CODEXFAADMIN"), db, "finance.receipt.delete"))
-            self.assertTrue(await finance_action_granted(self.identity("CODEXFAAUDIT"), db, "finance.receipt.update"))
-            self.assertFalse(await finance_action_granted(self.identity("CODEXFAAUDIT"), db, "finance.receipt.delete"))
-            self.assertFalse(await finance_action_granted(self.identity("CODEXFAUSER"), db, "finance.fee.update"))
+            return set(await configured_action_keys(username, db))
+
+    def test_catalog(self):
+        self.assertEqual(FINANCE_USER_ACTION_KEYS, set(ALL))
+        self.assertTrue({FINANCE_CONFIGURE_ACTION, *ALL} <= USER_ACTION_KEYS)
+        for code in ALL:
+            self.assertIn(code, SYSTEM_ACTION_BY_CODE)
+        self.assertEqual(page_granted_finance_actions(["finance-receipts-icbc"]), ["finance.receipt.update", "finance.receipt.delete"])
+        self.assertEqual(page_granted_finance_actions(["finance-payment-mine", "finance-invoice-mine", "finance-internal-audit"]), [])
+
+    async def test_visible_page_grants_and_untick_wins(self):
+        self.assertEqual(await self.keys("CODEXFAADMIN"), {"*"})
+        self.assertEqual(await self.keys("CODEXFAAUDIT"), {"finance.receipt.update", "finance.receipt.delete", "finance.payment.update"})
+        self.assertEqual(await self.keys("CODEXFALAWYER"), set())
+        # 付款+费用查询页面带出 4 项，按人取消的“删除费用”不给。
+        self.assertEqual(await self.keys("CODEXFAPAY"),
+                         {"finance.payment.update", "finance.payment.delete", "finance.fee.update"})
+        async with self.sessions() as db:
+            self.assertFalse(await finance_action_granted(self.identity("CODEXFAPAY"), db, "finance.fee.delete"))
             with self.assertRaises(HTTPException) as raised:
-                await require_finance_action(self.identity("CODEXFAAUDIT"), db, "finance.receipt.delete")
+                await require_finance_action(self.identity("CODEXFALAWYER"), db, "finance.receipt.delete")
             self.assertEqual(raised.exception.status_code, 403)
             self.assertIn("删除回款", raised.exception.detail)
 
+    async def test_login_payload_matches(self):
+        from app.core.system import _login_response
+        async with self.sessions() as db:
+            user = await db.scalar(select(User).where(User.username == "CODEXFAPAY"))
+            login = await _login_response(user, db)
+        self.assertEqual(set(login["user"]["configured_action_keys"]) & set(ALL),
+                         {"finance.payment.update", "finance.payment.delete", "finance.fee.update"})
+
+    async def test_set_user_finance_actions_stores_grants_and_denies(self):
+        async with self.sessions() as db:
+            lawyer = await db.scalar(select(User).where(User.username == "CODEXFALAWYER"))
+            await set_user_finance_actions(lawyer.id, ["finance.fee.update"], db, actor="CODEXFACONF", source="test")
+            await db.commit()
+            payer = await db.scalar(select(User).where(User.username == "CODEXFAPAY"))
+            await set_user_finance_actions(payer.id, ["finance.payment.update"], db, actor="CODEXFACONF", source="test")
+            await db.commit()
+        self.assertEqual(await self.keys("CODEXFALAWYER"), {"finance.fee.update"})
+        self.assertEqual(await self.keys("CODEXFAPAY"), {"finance.payment.update"})
+
+    async def test_configure_endpoint_only_for_admin_or_granted(self):
+        from app.areas.system import router as system_router
+        app = FastAPI()
+        app.include_router(system_router.router)
+        holder = {}
+
+        async def session():
+            async with self.sessions() as db:
+                yield db
+        app.dependency_overrides[get_db] = session
+        app.dependency_overrides[current_identity] = lambda: holder["identity"]
+        async with self.sessions() as db:
+            lawyer_id = (await db.scalar(select(User).where(User.username == "CODEXFALAWYER"))).id
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://isolated") as client:
+            url = "/api/v1/system/finance-actions/CODEXFALAWYER"
+            holder["identity"] = {"username": "CODEXFAPAY", "role": "user", "role_ids": ["user"], "_actual_role_ids": ["user"]}
+            self.assertEqual((await client.get(url)).status_code, 403)
+            self.assertEqual((await client.put(url, json={"action_keys": ALL})).status_code, 403)
+            holder["identity"] = {"username": "CODEXFACONF", "role": "user", "role_ids": ["user"], "_actual_role_ids": ["user"]}
+            self.assertEqual((await client.get(url)).json()["action_keys"], [])
+            saved = await client.put(url, json={"action_keys": ["finance.receipt.update", "finance.receipt.delete"]})
+            self.assertEqual(saved.status_code, 200, saved.text)
+            self.assertEqual(saved.json()["action_keys"], ["finance.receipt.update", "finance.receipt.delete"])
+            self.assertEqual((await client.put(url, json={"action_keys": ["system.users.delete"]})).status_code, 422)
+            # 只给了配置财务动作，不能动别人的页面授权。
+            self.assertEqual((await client.get(f"/api/v1/system/users/{lawyer_id}/permissions")).status_code, 403)
+
     async def test_own_unapproved_fee_stays_editable_without_configuration(self):
         own_draft = BusinessRecord(module="finance", serial_no="CODEXFA1", title="草稿", customer="", status="草稿",
-                                   owner="CODEXFAUSER", department="CODEXFA", description="", data={})
+                                   owner="CODEXFALAWYER", department="CODEXFA", description="", data={})
         approved = BusinessRecord(module="finance", serial_no="CODEXFA2", title="已审批", customer="", status="已审批",
-                                  owner="CODEXFAUSER", department="CODEXFA", description="", data={})
-        others = BusinessRecord(module="finance", serial_no="CODEXFA3", title="他人草稿", customer="", status="草稿",
-                                owner="CODEXFAADMIN", department="CODEXFA", description="", data={})
+                                  owner="CODEXFALAWYER", department="CODEXFA", description="", data={})
         async with self.sessions() as db:
-            await require_fee_action(own_draft, self.identity("CODEXFAUSER"), db, "finance.fee.update")
-            for item in (approved, others):
-                with self.assertRaises(HTTPException):
-                    await require_fee_action(item, self.identity("CODEXFAUSER"), db, "finance.fee.delete")
+            await require_fee_action(own_draft, self.identity("CODEXFALAWYER"), db, "finance.fee.update")
+            with self.assertRaises(HTTPException):
+                await require_fee_action(approved, self.identity("CODEXFALAWYER"), db, "finance.fee.delete")
 
 
-    async def test_per_user_grant_from_employee_page(self):
-        from app.agent_permissions import FINANCE_USER_ACTION_KEYS, USER_ACTION_KEYS
-        from app.core.constants import FINANCE_EDIT_DELETE_ACTIONS
-        from app.core.system import _login_response
-        self.assertEqual(FINANCE_USER_ACTION_KEYS, {code for code, _menu, _label in FINANCE_EDIT_DELETE_ACTIONS})
-        self.assertTrue(FINANCE_USER_ACTION_KEYS <= USER_ACTION_KEYS)
-        async with self.sessions() as db:
-            keys = await configured_action_keys("CODEXFAPERSON", db)
-            self.assertTrue({"finance.payment.delete", "finance.fee.update"} <= set(keys))
-            self.assertTrue(await finance_action_granted(self.identity("CODEXFAPERSON"), db, "finance.payment.delete"))
-            self.assertFalse(await finance_action_granted(self.identity("CODEXFAPERSON"), db, "finance.receipt.delete"))
-            user = await db.scalar(select(User).where(User.username == "CODEXFAPERSON"))
-            login = await _login_response(user, db)
-            self.assertIn("finance.payment.delete", login["user"]["configured_action_keys"])
+class RecordFromAuthorizedPageTest(unittest.TestCase):
+    """BUG20261028006：从有权打开的业务页面点开的非案件记录按页面授权读取。"""
 
-    async def test_employee_page_saves_finance_actions(self):
-        from app.api_schemas.identity import UserPermissionOverrideUpdate
-        from app.core.user_permission_overrides import update_user_permission_overrides
-        async with self.sessions() as db:
-            user = await db.scalar(select(User).where(User.username == "CODEXFAUSER"))
-            codes = sorted(code for code, _menu, _label in FINANCE_EDIT_DELETE_ACTIONS_ALL)
-            await update_user_permission_overrides(user.id, UserPermissionOverrideUpdate(action_keys=codes), db,
-                                                   actor="CODEXFAADMIN", authorization_source="test")
-            await db.commit()
-        async with self.sessions() as db:
-            self.assertTrue(set(codes) <= set(await configured_action_keys("CODEXFAUSER", db)))
+    def test_request_page_opens_record(self):
+        from app.core.permissions import _request_page_opens_record
+        fee = BusinessRecord(module="finance", serial_no="FY1", title="", customer="", status="待审批", owner="x", department="", data={})
+        case = BusinessRecord(module="case", serial_no="AJ1", title="", customer="", status="", owner="x", department="", data={})
+        auditor = {"_request_page": "finance-payment-audit", "menu_keys": ["finance-payment-audit", "finance-payment-mine", "case-mine"]}
+        self.assertTrue(_request_page_opens_record(auditor, fee))
+        self.assertFalse(_request_page_opens_record({**auditor, "_request_page": "finance-payment-mine"}, fee))
+        self.assertFalse(_request_page_opens_record({**auditor, "_request_page": "finance-settlement-audit"}, fee))
+        self.assertFalse(_request_page_opens_record({**auditor, "_request_page": "case-mine"}, fee))
+        self.assertFalse(_request_page_opens_record({**auditor, "_request_page": "case-mine"}, case))
+        self.assertFalse(_request_page_opens_record({"menu_keys": ["finance-payment-audit"]}, fee))
 
 
 if __name__ == "__main__":
