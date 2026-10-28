@@ -6,7 +6,6 @@ import {
   DatePicker,
   Form,
   Input,
-  InputNumber,
   message,
   Modal,
   Popconfirm,
@@ -157,7 +156,6 @@ export default function SealCenterPage({
   const [applicationPageSize, setApplicationPageSize] = useState(
     usesLegacyApplicationPagination ? 15 : 20,
   );
-  const [applicationGoPage, setApplicationGoPage] = useState(1);
   const [editingApplication, setEditingApplication] = useState<SealRow | null>(
     null,
   );
@@ -461,7 +459,6 @@ export default function SealCenterPage({
     queryForm.resetFields();
     setQuery({});
     setApplicationPage(1);
-    setApplicationGoPage(1);
     setApplicationPageSize(
       [
         "seal-my-pending",
@@ -479,7 +476,6 @@ export default function SealCenterPage({
   useEffect(() => {
     setSelectedKeys([]);
     setApplicationPage(1);
-    setApplicationGoPage(1);
   }, [initialView, tab, query]);
   useEffect(() => {
     load();
@@ -514,14 +510,6 @@ export default function SealCenterPage({
     1,
     Math.ceil(visibleRows.length / applicationPageSize),
   );
-  const goToApplicationPage = () => {
-    const page = Math.min(
-      applicationPageCount,
-      Math.max(1, Math.floor(Number(applicationGoPage) || 1)),
-    );
-    setApplicationPage(page);
-    setApplicationGoPage(page);
-  };
   const applicationPagination = usesLegacyApplicationPagination
     ? {
         current: applicationPage,
@@ -534,7 +522,6 @@ export default function SealCenterPage({
         showTotal: (n: number) => `共 ${n} 条记录`,
         onChange: (page: number, pageSize: number) => {
           setApplicationPage(page);
-          setApplicationGoPage(page);
           setApplicationPageSize(pageSize);
         },
       }
@@ -544,14 +531,12 @@ export default function SealCenterPage({
         showTotal: (n: number) => `共 ${n} 条记录`,
         onChange: (page: number, pageSize: number) => {
           setApplicationPage(page);
-          setApplicationGoPage(page);
           setApplicationPageSize(pageSize);
         },
       };
   useEffect(() => {
     if (applicationPage > applicationPageCount) {
       setApplicationPage(applicationPageCount);
-      setApplicationGoPage(applicationPageCount);
     }
   }, [applicationPage, applicationPageCount]);
   const auditRows = useMemo(() => toSealAuditRows(history), [history]);
@@ -2090,25 +2075,6 @@ export default function SealCenterPage({
               ].includes(initialView)
                 ? () => (
                     <div className="seal-table-actions">
-                      {initialView === "seal-my-pending" && (
-                        <Space size={4} aria-label="分页跳转">
-                          <InputNumber
-                            aria-label="跳转页码"
-                            min={1}
-                            max={applicationPageCount}
-                            value={applicationGoPage}
-                            controls={false}
-                            size="small"
-                            style={{ width: 52 }}
-                            onChange={(page) =>
-                              setApplicationGoPage(Number(page) || 1)
-                            }
-                          />
-                          <Button size="small" onClick={goToApplicationPage}>
-                            GO
-                          </Button>
-                        </Space>
-                      )}
                       {initialView === "seal-my-pending" && (
                         <>
                           <Button onClick={() => openApplication()}>
