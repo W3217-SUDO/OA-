@@ -226,10 +226,22 @@ const rolePermissionTreeMenuCodes = (
   });
   return menuCodes;
 };
+const rolePermissionTreeActionKeys = (nodes: TreeDataNode[] = [], keys: string[] = []) => {
+  nodes.forEach((node) => {
+    const key = String(node.key);
+    if (key.startsWith("action:")) keys.push(key);
+    if (Array.isArray(node.children)) rolePermissionTreeActionKeys(node.children as TreeDataNode[], keys);
+  });
+  return keys;
+};
 const rolePermissionMenuBranch = (nodes: TreeDataNode[], target: string): string[] => {
   for (const node of nodes) {
     if (String(node.key) === target) {
-      return Array.from(rolePermissionTreeMenuCodes([node])).map((code) => `menu:${code}`);
+      // 勾选页面时连同它下面的具体功能一起勾上，管理员再按角色取消不需要的功能。
+      return [
+        ...Array.from(rolePermissionTreeMenuCodes([node])).map((code) => `menu:${code}`),
+        ...rolePermissionTreeActionKeys([node]),
+      ];
     }
     const branch = rolePermissionMenuBranch((node.children || []) as TreeDataNode[], target);
     if (branch.length) return branch;

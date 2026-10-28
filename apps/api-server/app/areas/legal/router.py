@@ -4247,7 +4247,9 @@ async def export_selected_case_print_table(ids: str = "", identity: dict = Depen
     from app.core.cases import _selected_ordinary_case_export_records
     from app.areas.legal.case_export_projection import case_export_projections
     from app.areas.legal.template_documents import render_case_print_tables
+    from app.core.permissions import _require_case_action
 
+    await _require_case_action(identity, db, "case.export.print")
     records = await _selected_ordinary_case_export_records(ids, identity, db)
     projections = await case_export_projections(records, identity, db, include_courts=False)
     content = render_case_print_tables(records, projections)

@@ -385,6 +385,9 @@ export type CaseDetailCapabilities = {
   can_change_phase: boolean;
   can_manage_hearing: boolean;
   can_create_case_task: boolean;
+  can_view_case_tasks?: boolean;
+  can_view_case_logs?: boolean;
+  can_export_print_table?: boolean;
   can_delete_case: boolean;
   can_duplicate_case: boolean;
   can_merge_case: boolean;

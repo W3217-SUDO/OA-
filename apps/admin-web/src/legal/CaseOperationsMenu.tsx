@@ -36,9 +36,10 @@ export function CaseOperationsMenu({ selected, capabilities, canAssignTeam, canC
       { key: "document-identity-certificate", label: "生成身份证明" },
       { key: "document-settlement-list", label: "生成结算提成表" },
     ] : []),
-    { key: "case-tasks", label: "案件任务" },
-    { key: "case-logs", label: "案件日志" },
-    { key: "export-print-table", label: "导出案件打印表" },
+    // 未配置该功能的旧接口数据（字段缺失）按可见处理，只有角色明确取消时才隐藏。
+    ...(capabilities.can_view_case_tasks !== false ? [{ key: "case-tasks", label: "案件任务" }] : []),
+    ...(capabilities.can_view_case_logs !== false ? [{ key: "case-logs", label: "案件日志" }] : []),
+    ...(capabilities.can_export_print_table !== false ? [{ key: "export-print-table", label: "导出案件打印表" }] : []),
   ] : [{ key: "select", label: "请先选择案件", disabled: true }];
 
   return <Dropdown trigger={["click"]} menu={{
