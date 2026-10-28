@@ -616,13 +616,8 @@ export function ContractList({
                 删除合同
               </Button>
             ) : initialView === "contract-mine" ? (
-              <Button
-                danger
-                disabled={!selected || ["归档中", "归档审核中", "已归档", "已回收", "已删除"].includes(selected.status)}
-                onClick={() => needSelected(() => onDeleteCompany(selected!))}
-              >
-                删除合同
-              </Button>
+              // BUG20261028014（范文玲）：我的合同底部不放“删除合同”；公司合同、回收站不变。
+              null
             ) : (
               <Button
                 danger
