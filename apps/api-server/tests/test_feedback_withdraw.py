@@ -1,7 +1,8 @@
-"""问题反馈撤回（陶威 2026-10-28）：提交人在问题解决前可以撤回，撤回后不再处理。
+"""问题反馈撤回（陶威 2026-10-28）：“没有动手改之前可以撤回，改了就不能撤回”。
 
-只有提交人本人能撤回（管理员、被指派的处理人都不能替别人撤回）；待处理、待确认、待验证都能撤回，
-已解决不能；撤回记一条“撤回”处理记录并通知其他参与人，不删数据；撤回后只读，也不能重新打开。
+只有提交人本人能撤回（管理员、被指派的处理人都不能替别人撤回）；待确认、从未确认修改过的待处理能撤回，
+确认修改后的待处理、待验证（含旧“已处理”）、已解决不能（409“已开始修改，不能撤回”）；
+撤回记一条“撤回”处理记录并通知其他参与人，不删数据；撤回后只读，也不能重新打开。
 """
 import unittest
 
@@ -110,20 +111,40 @@ class FeedbackWithdrawTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue((await self._detail(own_id))["can_withdraw"])
         self.assertEqual((await self._transition("撤回", feedback_id=own_id)).json(), {"status": "已撤回"})
 
-    async def test_withdraw_allowed_only_before_resolved(self):
-        for status in ("待确认", "待验证"):
-            feedback_id = await self._create()
-            await self._set_status(status, feedback_id)
-            self.assertTrue((await self._detail(feedback_id))["can_withdraw"])
-            self.assertEqual((await self._transition("撤回", feedback_id=feedback_id)).json(), {"status": "已撤回"})
-        # 旧状态“已处理”按待验证算，也能撤回。
+    async def _assert_cannot_withdraw(self, feedback_id=None):
+        self.identity = dict(STAFF)
+        self.assertFalse((await self._detail(feedback_id))["can_withdraw"])
+        refused = await self._transition("撤回", feedback_id=feedback_id)
+        self.assertEqual((refused.status_code, refused.json()["detail"]), (409, "已开始修改，不能撤回"))
+
+    async def test_withdraw_only_before_work_starts(self):
+        # 处理人写了方案待确认：还没动手，可以撤回。
+        self.identity = dict(ADMIN)
+        self.assertEqual((await self._transition("请确认修改方案", "表头改单行")).status_code, 200)
+        self.identity = dict(STAFF)
+        self.assertTrue((await self._detail())["can_withdraw"])
+        # 提交人确认修改后回到待处理，已经开始改了，不能撤回。
+        self.assertEqual((await self._transition("确认修改")).status_code, 200)
+        await self._assert_cannot_withdraw()
+        # 处理完成待验证、验证通过已解决都不能撤回。
+        self.identity = dict(ADMIN)
+        self.assertEqual((await self._transition("处理完成，请验证")).status_code, 200)
+        await self._assert_cannot_withdraw()
+        self.assertEqual((await self._transition("验证通过")).status_code, 200)
+        await self._assert_cannot_withdraw()
+
+    async def test_reopened_or_legacy_handled_cannot_withdraw(self):
+        # 处理人没写方案直接报处理完成，提交人重新打开回到待处理：改过了，不能撤回。
+        self.identity = dict(ADMIN)
+        self.assertEqual((await self._transition("处理完成，请验证")).status_code, 200)
+        self.identity = dict(STAFF)
+        self.assertEqual((await self._transition("未解决，重新打开", "还是错位")).status_code, 200)
+        self.assertEqual((await self._detail())["status"], "待处理")
+        await self._assert_cannot_withdraw()
+        # 旧状态“已处理”按待验证算，不能撤回。
         legacy_id = await self._create()
         await self._set_status("已处理", legacy_id)
-        self.assertEqual((await self._transition("撤回", feedback_id=legacy_id)).json(), {"status": "已撤回"})
-
-        await self._set_status("已解决")
-        self.assertFalse((await self._detail())["can_withdraw"])
-        self.assertEqual((await self._transition("撤回")).status_code, 409)
+        await self._assert_cannot_withdraw(legacy_id)
 
     async def test_withdrawn_is_read_only_and_cannot_reopen(self):
         self.assertEqual((await self._transition("撤回")).status_code, 200)

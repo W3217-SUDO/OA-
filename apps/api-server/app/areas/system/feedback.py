@@ -22,11 +22,16 @@ router = APIRouter()
 FEEDBACK_TZ = ZoneInfo("Asia/Shanghai")
 # 状态（用户要求，2026-10-24；2026-10-28 加“待确认”）：处理人先写打算怎么改，交提交人确认（待确认）；
 # 确认后回到待处理开始改，改完发给提交人验证，验证通过即已解决，没解决就重新打开。
-# 2026-10-28 加“已撤回”（陶威）：提交人在问题解决前可以撤回，撤回后不再处理，页面只读，暂不支持重新打开。
+# 2026-10-28 加“已撤回”（陶威）：提交人在动手修改之前可以撤回（“没有动手改之前可以撤回，改了就不能撤回”），
+# 撤回后不再处理，页面只读，暂不支持重新打开。
 FEEDBACK_STATUSES = ("待处理", "待确认", "待验证", "已解决", "已撤回")
 WITHDRAW_ACTION = "撤回"
 WITHDRAWN_STATUS = "已撤回"
-WITHDRAWABLE_STATUSES = frozenset({"待处理", "待确认", "待验证"})
+# 待确认随时可撤；待处理只在还没动手时可撤；待验证、已解决都已改过，不能撤。
+WITHDRAWABLE_STATUSES = frozenset({"待处理", "待确认"})
+# 出现过这些就算已经动手改了：提交人确认修改，或处理人直接报了处理完成（含旧流程的“已处理”）。
+WORK_STARTED_ACTIONS = frozenset({"确认修改", "处理完成，请验证"})
+WORK_STARTED_STATUSES = frozenset({"待验证", "已处理"})
 # 旧状态读出时按新流程归类，不改库里的历史数据：处理中/待补充仍算待处理，已处理等提交人验证。
 LEGACY_STATUS = {"处理中": "待处理", "待补充": "待处理", "已处理": "待验证"}
 HANDLER_ACTIONS = {
@@ -146,9 +151,18 @@ def _reporter_actions(record: BusinessRecord, identity: dict) -> set[str]:
     return set()
 
 
-def _can_withdraw(record: BusinessRecord, identity: dict) -> bool:
-    """只有提交人本人能撤回自己的问题（管理员也不能替别人撤回），且问题还没解决。"""
-    return record.owner == identity["username"] and _status(record.status) in WITHDRAWABLE_STATUSES
+def _work_started(events) -> bool:
+    return any(event.action in WORK_STARTED_ACTIONS or event.to_status in WORK_STARTED_STATUSES for event in events)
+
+
+def _withdrawable(record: BusinessRecord, events) -> bool:
+    status = _status(record.status)
+    return status == "待确认" or (status == "待处理" and not _work_started(events))
+
+
+def _can_withdraw(record: BusinessRecord, identity: dict, events) -> bool:
+    """只有提交人本人能撤回自己的问题（管理员也不能替别人撤回），且还没动手修改。"""
+    return record.owner == identity["username"] and _withdrawable(record, events)
 
 
 def _require_open(record: BusinessRecord) -> None:
@@ -462,7 +476,7 @@ async def get_feedback(feedback_id: int, identity: dict = Depends(current_identi
         **_serialize_feedback(record, names.get(record.owner, ""), names.get(_assignee(record), ""), has_screenshot),
         "can_assign": _is_admin(identity), "can_delete": _is_admin(identity),
         "available_actions": _available_actions(record, identity),
-        "can_withdraw": _can_withdraw(record, identity),
+        "can_withdraw": _can_withdraw(record, identity, events),
         "attachments": [{
             "id": item.id, "name": item.original_name, "size": item.size,
             "content_type": item.content_type, "is_image": item.category == "问题反馈截图",
@@ -533,6 +547,9 @@ async def transition_feedback(
     allowed_statuses, next_status = definition
     previous_status = _status(record.status)
     _require_open(record)
+    if action == WITHDRAW_ACTION and not _withdrawable(record, (await db.scalars(select(WorkflowEvent).where(
+            WorkflowEvent.record_id == record.id))).all()):
+        raise HTTPException(409, "已开始修改，不能撤回")
     if previous_status not in allowed_statuses:
         raise HTTPException(409, "反馈状态已变化，请刷新后重试")
     comment = body.comment.strip()

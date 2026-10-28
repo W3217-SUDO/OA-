@@ -47,7 +47,7 @@ export type FeedbackDetails = FeedbackRecord & {
   /** 管理员可以删除问题（逻辑删除，可在回收站恢复）。 */
   can_delete?: boolean;
   available_actions: string[];
-  /** 提交人本人、问题还没解决时可以撤回（撤回后不再处理，页面只读）。 */
+  /** 提交人本人、还没动手修改时可以撤回（待确认，或从未确认修改过的待处理；撤回后不再处理，页面只读）。 */
   can_withdraw?: boolean;
 };
 
