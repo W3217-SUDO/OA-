@@ -1,5 +1,9 @@
 """知识产权案件费用接口。"""
+from decimal import Decimal
+
 from fastapi import APIRouter
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from app.core.constants import EXPENSE_SCOPE_FEE_TYPES, FINANCE_FEE_TYPES, UPLOAD_ROOT
 from app.core.dependencies import AsyncSession, BusinessRecord, Depends, File, FileAttachment, Form, HTTPException, IncomingPayment, IprCaseAssistedFee, Path, Query, Response, UploadFile, User, WorkflowEvent, current_identity, date, datetime, func, get_db, select, settings, status, uuid4
 from app.models_shared import FinancePaymentTypeCreateInput, IprCaseAssistedFeeConfirmInput, IprCaseAssistedFeeCreateInput, IprCaseAssistedFeeUpdateInput, IprCaseFeeActionInput, IprCaseFeeArrivalInput, IprCaseFeeCreateInput, IprCaseFeeInvoiceInput, IprCaseFeePaymentApplicationInput
@@ -202,6 +206,37 @@ async def list_ipr_case_fees(
             "paid_amount": round(sum(float((row.get("data") or {}).get("paid_amount") or 0) for row in rows), 2),
         },
     }
+
+@router.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/legacy-fee-items")
+async def list_ipr_case_legacy_fee_items(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """原沪知系统的案件费用明细（IPR_Case_FeeItem 原样镜像，只读）。
+
+    只有迁移来的案件有；镜像表不在（本地库、测试库）时返回空列表，不影响案件页其他部分。
+    """
+    from app.core.permissions import (
+        _ensure_record_module,
+    )
+    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    legacy_case_id = int((record.data or {}).get("legacy_ipr_case_id") or 0)
+    if legacy_case_id <= 0:
+        return {"items": []}
+    try:
+        async with db.begin_nested():
+            rows = (await db.execute(text("""
+                SELECT i."FeeItemId" AS id, t."FeeTypeName" AS fee_type, i."Yearly" AS yearly,
+                       i."IsFeeMitigation" AS fee_mitigation, i."Amount" AS amount, i."ActualAmount" AS actual_amount,
+                       i."InformDate" AS inform_date, i."GainedDate" AS gained_date, i."PaymentBank" AS payment_bank,
+                       i."BillNo" AS bill_no, i."BillDate" AS bill_date, i."BillAmount" AS bill_amount,
+                       i."BillFileName" AS bill_file_name
+                FROM "IPR_Case_FeeItem" i
+                LEFT JOIN "IPR_Case_FeeType" t ON t."FeeTypeId" = i."FeeTypeId"
+                WHERE i."CaseId" = :legacy_case_id AND COALESCE(i."IsActive", 'T') <> 'F'
+                ORDER BY i."InformDate" DESC NULLS LAST, i."FeeItemId" DESC
+            """), {"legacy_case_id": legacy_case_id})).mappings().all()
+    except SQLAlchemyError:
+        return {"items": []}
+    return {"items": [{key: float(value) if isinstance(value, Decimal) else value for key, value in row.items()} for row in rows]}
+
 
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/fees", status_code=status.HTTP_201_CREATED)
 async def create_ipr_case_fee(case_id: int, body: IprCaseFeeCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):

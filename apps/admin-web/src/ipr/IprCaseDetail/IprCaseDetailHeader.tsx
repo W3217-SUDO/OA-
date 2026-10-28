@@ -1,25 +1,17 @@
-import { Alert,Button,Card,Descriptions,Space,Tag } from "antd";
+import { Alert,Button,Card,Checkbox,Descriptions,Space,Tag } from "antd";
 import Table from "../../components/ResizableTable";
 import dayjs from "dayjs";
 import { isIprLawsuit,isLegacyIprRecord,personDisplayName } from "../constants";
 import type { CpcApplication,IprRecord } from "../types";
+import { iprCaseFlags,iprCaseInfoItems } from "./iprCaseInfo";
 
 interface IprCaseDetailHeaderProps {
   detail: IprRecord;
-  cpcApplications: CpcApplication[];
-  cpcApplicationsLoading: boolean;
-  cpcApplicationsError: string;
-  cpcGenerating: boolean;
-  onCopyCase: () => void;
-  onIprReboot: () => void;
-  onOpenCaseTask: () => void;
   onOpenRebootCase: (caseId: number) => void;
-  onLoadCpcApplications: () => void;
-  onGenerateCpcApplication: () => void;
-  onDownloadCpcApplication: (application: CpcApplication) => void;
 }
 
-export function IprCaseDetailHeader({ detail, cpcApplications, cpcApplicationsLoading, cpcApplicationsError, cpcGenerating, onOpenRebootCase, onLoadCpcApplications, onGenerateCpcApplication, onDownloadCpcApplication }: IprCaseDetailHeaderProps) {
+export function IprCaseDetailHeader({ detail, onOpenRebootCase }: IprCaseDetailHeaderProps) {
+  if (!isIprLawsuit(detail)) return <IprCaseInfoGrid detail={detail} onOpenRebootCase={onOpenRebootCase} />;
   return (
     <>
       {isLegacyIprRecord(detail) ? (
@@ -187,11 +179,28 @@ export function IprCaseDetailHeader({ detail, cpcApplications, cpcApplicationsLo
           },
         ]}
       />
-      {detail.data?.case_kind === "专利" && (
+    </>
+  );
+}
+
+
+interface IprCpcPanelProps {
+  detail: IprRecord;
+  cpcApplications: CpcApplication[];
+  cpcApplicationsLoading: boolean;
+  cpcApplicationsError: string;
+  cpcGenerating: boolean;
+  onLoadCpcApplications: () => void;
+  onGenerateCpcApplication: () => void;
+  onDownloadCpcApplication: (application: CpcApplication) => void;
+}
+
+/** 专利案件的 CPC 申报，案件页里单独一个页签。 */
+export function IprCpcPanel({ detail, cpcApplications, cpcApplicationsLoading, cpcApplicationsError, cpcGenerating, onLoadCpcApplications, onGenerateCpcApplication, onDownloadCpcApplication }: IprCpcPanelProps) {
+  return (
         <Card
           size="small"
           title="CPC专利申报"
-          style={{ marginTop: 16 }}
           extra={
             !isLegacyIprRecord(detail) ? (
               <Space>
@@ -291,7 +300,50 @@ export function IprCaseDetailHeader({ detail, cpcApplications, cpcApplicationsLo
             ]}
           />
         </Card>
-      )}
-    </>
+  );
+}
+
+/** 非诉案件：按原系统案件页排成四列信息格，右侧一列是优先权等勾选项。 */
+function IprCaseInfoGrid({ detail, onOpenRebootCase }: Pick<IprCaseDetailHeaderProps, "detail" | "onOpenRebootCase">) {
+  const rebootIds: number[] = Array.isArray(detail.data.reboot_case_ids) ? detail.data.reboot_case_ids : [];
+  return (
+    <div className="ipr-case-info">
+      {isLegacyIprRecord(detail) ? <Alert type="info" showIcon message="历史案件，只读" className="ipr-case-info-alert" /> : null}
+      <div className="ipr-case-info-body">
+        <dl className="ipr-case-info-grid">
+          {iprCaseInfoItems(detail).map((item) => (
+            <div key={item.key} className={`ipr-case-info-cell ipr-case-info-${item.key}`}>
+              <dt>{item.label}</dt>
+              <dd title={item.value}>{item.value}</dd>
+            </div>
+          ))}
+          {detail.data.reboot_source_case_id || rebootIds.length ? (
+            <div className="ipr-case-info-cell ipr-case-info-reboot">
+              <dt>重提案件</dt>
+              <dd>
+                <Space size={0} wrap>
+                  {detail.data.reboot_source_case_id ? (
+                    <Button type="link" size="small" onClick={() => onOpenRebootCase(detail.data.reboot_source_case_id)}>
+                      原案件 {detail.data.reboot_source_case_no || detail.data.reboot_source_case_id}
+                    </Button>
+                  ) : null}
+                  {rebootIds.map((caseId, index) => (
+                    <Button key={caseId} type="link" size="small" onClick={() => onOpenRebootCase(caseId)}>
+                      {detail.data.reboot_case_nos?.[index] || caseId}
+                    </Button>
+                  ))}
+                </Space>
+              </dd>
+            </div>
+          ) : null}
+        </dl>
+        <ul className="ipr-case-info-flags">
+          {iprCaseFlags(detail).map((flag) => (
+            <li key={flag.key}><Checkbox checked={flag.checked} disabled>{flag.label}</Checkbox></li>
+          ))}
+        </ul>
+      </div>
+      {detail.description ? <p className="ipr-case-info-note">说明：{detail.description}</p> : null}
+    </div>
   );
 }

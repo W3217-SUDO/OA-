@@ -3,7 +3,7 @@ import { api } from "../../api";
 import { rememberCustomerDetailTarget, resolveCustomerDetailTarget, } from "../../customerDetailNavigation";
 import { getIprApiErrorMessage } from "../../iprCaseDetailParity.mjs";
 import { IPR_DETAIL_DEFAULT_PAGE, IPR_DETAIL_DEFAULT_PAGE_SIZE, isIprLawsuit, lawsuitFeeFromRecord } from "../constants";
-import type { AnnualFee, AssistedFee, Attachment, CpcApplication, IprBusinessLog, IprCaseContact, IprCaseCustomer, IprCaseEvent, IprCaseTask, IprDetailPagePayload, IprDetailPageState, IprHistoryItem, IprLawFirm, IprLawsuitCourt, IprLawsuitFee, IprLawsuitParty, IprOperationLog, IprRecord, IprReminderEventOption, IprReminderType, IprWarning, IprWarningRule, LegacyIprCaseListItem, ReminderEventType } from "../types";
+import type { AnnualFee, AssistedFee, Attachment, CpcApplication, IprBusinessLog, IprCaseContact, IprCaseCustomer, IprCaseEvent, IprCaseTask, IprDetailPagePayload, IprDetailPageState, IprLawFirm, IprLawsuitCourt, IprLawsuitFee, IprLawsuitParty, IprOperationLog, IprRecord, IprReminderEventOption, IprReminderType, IprWarning, IprWarningRule, LegacyIprCaseListItem, ReminderEventType } from "../types";
 /** ipr queries operations; dependencies are read when each operation runs. */
 export interface IprQueriesDependencies {
     readonly page: number;
@@ -50,7 +50,6 @@ export interface IprQueriesDependencies {
     readonly setCaseContacts: React.Dispatch<React.SetStateAction<IprCaseContact[]>>;
     readonly setIprBusinessLogs: React.Dispatch<React.SetStateAction<IprBusinessLog[]>>;
     readonly setIprOperationLogs: React.Dispatch<React.SetStateAction<IprOperationLog[]>>;
-    readonly setIprHistory: React.Dispatch<React.SetStateAction<IprHistoryItem[]>>;
     readonly onNavigate: ((route: string) => void) | undefined;
     readonly activeIprDetailId: React.RefObject<number | null>;
     readonly cpcHistoryRequest: React.RefObject<number>;
@@ -314,19 +313,6 @@ export function createIprQueriesActions(context: IprQueriesDependencies) {
             setIprSectionError("logs", error);
         }
     };
-    const loadIprHistory = async (caseId: number) => {
-        const { setIprHistory } = context;
-        try {
-            const { data } = await api.get<{
-                items: IprHistoryItem[];
-            }>(`/records/${caseId}/history`);
-            setIprHistory(data.items || []);
-        }
-        catch (e: any) {
-            setIprHistory([]);
-            message.error(e?.response?.data?.detail || "案件事项记录加载失败");
-        }
-    };
     const openLinkedCaseCustomer = async (customer: IprCaseCustomer) => {
         const { onNavigate } = context;
         try {
@@ -429,7 +415,6 @@ export function createIprQueriesActions(context: IprQueriesDependencies) {
                 loadCaseCustomers(record.id),
                 loadCaseContacts(record.id),
                 loadIprLogs(record.id),
-                loadIprHistory(record.id),
                 ...(record.data?.case_kind === "专利"
                     ? [loadCpcApplications(record.id)]
                     : []),
@@ -544,5 +529,5 @@ export function createIprQueriesActions(context: IprQueriesDependencies) {
             message.error("关联案件不可查看或已不存在");
         }
     };
-    return { load, loadLegacyHistory, loadReminderTypes, loadReminderEventTypes, loadLawsuitManagement, loadIprCaseEvents, loadIprCaseTasks, loadReminderSuppressions, loadCaseLawFirms, loadCaseCustomers, loadCaseContacts, loadIprLogs, loadIprHistory, openLinkedCaseCustomer, openLegacyIprCurrentCustomer, openDetail, exportExcel, loadWarningRules, loadWarnings, openWarningCase, openRebootCase };
+    return { load, loadLegacyHistory, loadReminderTypes, loadReminderEventTypes, loadLawsuitManagement, loadIprCaseEvents, loadIprCaseTasks, loadReminderSuppressions, loadCaseLawFirms, loadCaseCustomers, loadCaseContacts, loadIprLogs, openLinkedCaseCustomer, openLegacyIprCurrentCustomer, openDetail, exportExcel, loadWarningRules, loadWarnings, openWarningCase, openRebootCase };
 }

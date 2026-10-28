@@ -1,3 +1,4 @@
+import { ArrowLeftOutlined } from "@ant-design/icons";
 import { POPUP_WIDTH } from "../components/common/popupSize";
 import {
 Alert,
@@ -28,6 +29,7 @@ getIprCompatibleFileCategory,
 getIprSectionLoadError
 } from "../iprCaseDetailParity.mjs";
 import { IprLegacyHistoryRelations } from "../IprLegacyHistoryRelations";
+import "./ipr-case-page.css";
 import {
 IPR_DETAIL_DEFAULT_PAGE,
 IPR_DETAIL_DEFAULT_PAGE_SIZE,
@@ -43,14 +45,18 @@ import { takeIprCaseContractContext } from "../caseContractPrefill";
 import {
 IprAnnualFeesPanel,
 IprAssistedFeesPanel,
+IprBusinessLogsPanel,
 IprCaseDetailHeader,
+IprCaseFeesPanel,
 IprContactsPanel,
+IprCpcPanel,
 IprCustomersPanel,
 IprFilesPanel,
 IprLawFirmsPanel,
+IprInvoiceFilesPanel,
 IprLawsuitPanel,
-IprLogsPanel,
 IprMaintenancePanel,
+IprOperationLogsPanel,
 IprRemindersPanel,
 IprTasksPanel,
 } from "./IprCaseDetail";
@@ -76,7 +82,6 @@ IprCaseEvent,
 IprCaseTask,
 IprDetailPageState,
 IprFileType,
-IprHistoryItem,
 IprLawFirm,
 IprLawFirmCandidate,
 IprLawsuitCourt,
@@ -267,7 +272,6 @@ export default function IprCenterPage({
     [iprOperationLogs, setIprOperationLogs] = useState<IprOperationLog[]>(
       [],
     ),
-    [iprHistory, setIprHistory] = useState<IprHistoryItem[]>([]),
     [cpcApplications, setCpcApplications] = useState<CpcApplication[]>([]),
     [cpcApplicationsLoading, setCpcApplicationsLoading] = useState(false),
     [cpcApplicationsError, setCpcApplicationsError] = useState(""),
@@ -277,8 +281,6 @@ export default function IprCenterPage({
       useState<IprBusinessLog | null>(null),
     [iprOperationLogDetail, setIprOperationLogDetail] =
       useState<IprOperationLog | null>(null),
-    [iprHistoryDetail, setIprHistoryDetail] =
-      useState<IprHistoryItem | null>(null),
     [iprLogForm] = Form.useForm();
   const [deadlineOffsetOpen, setDeadlineOffsetOpen] = useState(false);
   const [deadlineOffsetForm] = Form.useForm();
@@ -448,7 +450,6 @@ export default function IprCenterPage({
     get setCaseContacts() { return setCaseContacts; },
     get setIprBusinessLogs() { return setIprBusinessLogs; },
     get setIprOperationLogs() { return setIprOperationLogs; },
-    get setIprHistory() { return setIprHistory; },
     get onNavigate() { return onNavigate; },
     get activeIprDetailId() { return activeIprDetailId; },
     get cpcHistoryRequest() { return cpcHistoryRequest; },
@@ -1395,8 +1396,19 @@ export default function IprCenterPage({
     void load(1, pageSize, keyword, null);
   };
 
+  const closeIprDetail = () => {
+    activeIprDetailId.current = null;
+    cpcHistoryRequest.current += 1;
+    setDetail(null);
+  };
+  // 案件页替换列表显示，打开时回到页面顶部。
+  const openedIprDetailId = detail?.id;
+  useEffect(() => {
+    if (openedIprDetailId) document.querySelector(".ipr-case-page")?.scrollIntoView({ block: "start" });
+  }, [openedIprDetailId]);
+
   return (
-    <div className="page-shell">
+    <div className={detail ? "page-shell is-ipr-case-open" : "page-shell"}>
       <IprCaseList
         items={items}
         total={total}
@@ -1856,409 +1868,440 @@ export default function IprCenterPage({
         </Form>
       </Modal>
 
-      {/* 案件详情 Drawer */}
-      <Drawer
-        open={!!detail}
-        title={
-          detail
-            ? `${detail.data.case_kind}案件详情：${detail.serial_no}`
-            : ""
-        }
-        size={POPUP_WIDTH.lg}
-        extra={
-          detail && !isLegacyIprRecord(detail) ? (
-            <Space size={0}>
-              <Button onClick={() => openCopy(detail)}>复制案件</Button>
-              <Button onClick={() => void openIprReboot(detail)}>
-                案件重提
-              </Button>
-              <Button onClick={() => openIprCaseTask(detail)}>
-                案件任务
-              </Button>
-            </Space>
-          ) : null
-        }
-        onClose={() => {
-          activeIprDetailId.current = null;
-          cpcHistoryRequest.current += 1;
-          setDetail(null);
-        }}
-      >
-        {detail && (
-          <>
-            <IprCaseDetailHeader
-              detail={detail}
-              cpcApplications={cpcApplications}
-              cpcApplicationsLoading={cpcApplicationsLoading}
-              cpcApplicationsError={cpcApplicationsError}
-              cpcGenerating={cpcGenerating}
-              onCopyCase={() => openCopy(detail)}
-              onIprReboot={() => void openIprReboot(detail)}
-              onOpenCaseTask={() => openIprCaseTask(detail)}
-              onOpenRebootCase={openRebootCase}
-              onLoadCpcApplications={() =>
-                void loadCpcApplications(detail.id)
-              }
-              onGenerateCpcApplication={() =>
-                void generateCpcApplication(detail)
-              }
-              onDownloadCpcApplication={(app) =>
-                void downloadCpcApplication(detail, app)
-              }
-            />
-
-            <IprLogsPanel
-              detail={detail}
-              iprSectionErrors={iprSectionErrors}
-              iprBusinessLogs={iprBusinessLogs}
-              iprOperationLogs={iprOperationLogs}
-              iprHistory={iprHistory}
-              profile={profile}
-              iprLogOpen={iprLogOpen}
-              iprLogForm={iprLogForm}
-              iprBusinessLogDetail={iprBusinessLogDetail}
-              iprOperationLogDetail={iprOperationLogDetail}
-              iprHistoryDetail={iprHistoryDetail}
-              onOpenLog={() => {
-                iprLogForm.resetFields();
-                setIprLogOpen(true);
-              }}
-              onCloseLog={() => setIprLogOpen(false)}
-              onCreateLog={createIprLog}
-              onDeleteLog={deleteIprLog}
-              onSetBusinessLogDetail={setIprBusinessLogDetail}
-              onSetOperationLogDetail={setIprOperationLogDetail}
-              onSetHistoryDetail={setIprHistoryDetail}
-              confirmIprDeletion={confirmIprDeletion}
-            />
-
-            <IprCustomersPanel
-              detail={detail}
-              caseCustomers={caseCustomers}
-              customerOpen={customerOpen}
-              customerCandidates={customerCandidates}
-              customerSelection={customerSelection}
-              primaryCustomerId={primaryCustomerId}
-              onOpenCustomerSelector={openCustomerSelector}
-              onCloseCustomerSelector={() => setCustomerOpen(false)}
-              onSaveCustomers={saveCaseCustomers}
-              onCustomerSelectionChange={(selected) => {
-                setCustomerSelection(selected);
-                if (!selected.includes(Number(primaryCustomerId)))
-                  setPrimaryCustomerId(selected[0] || null);
-              }}
-              onPrimaryCustomerChange={setPrimaryCustomerId}
-              onOpenLinkedCustomer={openLinkedCaseCustomer}
-              onOpenLinkedCustomerCases={openLinkedCaseCustomerCases}
-              onOpenContactSelector={openContactSelector}
-            />
-
-            <IprContactsPanel
-              detail={detail}
-              caseContacts={caseContacts}
-              contactOpen={contactOpen}
-              contactCustomer={contactCustomer}
-              contactCandidates={contactCandidates}
-              documentContactIds={documentContactIds}
-              technologyContactIds={technologyContactIds}
-              onCloseContactSelector={() => setContactOpen(false)}
-              onSaveContacts={saveCaseContacts}
-              onDocumentContactChange={setDocumentContactIds}
-              onTechnologyContactChange={setTechnologyContactIds}
-            />
-
-            <IprLawFirmsPanel
-              detail={detail}
-              caseLawFirms={caseLawFirms}
-              lawFirmOpen={lawFirmOpen}
-              lawFirmCandidates={lawFirmCandidates}
-              lawFirmSelection={lawFirmSelection}
-              onOpenLawFirmSelector={openLawFirmSelector}
-              onCloseLawFirmSelector={() => setLawFirmOpen(false)}
-              onSaveLawFirms={saveCaseLawFirms}
-              onLawFirmSelectionChange={setLawFirmSelection}
-            />
-
-            {Number(
-              detail.data?.legacy_ipr_case_id ||
-                detail.data?.legacy_case_id ||
-                0
-            ) > 0 ? (
-              <div style={{ marginTop: 16 }}>
-                <IprLegacyHistoryRelations
-                  legacyCaseId={Number(
-                    detail.data?.legacy_ipr_case_id ||
-                      detail.data?.legacy_case_id
-                  )}
-                  onOpenCurrentCustomer={(customerRecordId) =>
-                    void openLegacyIprCurrentCustomer(customerRecordId)
-                  }
-                />
-              </div>
+      {/* 案件详情：按原系统做成完整案件页（BUG20261028001），打开时列表隐藏，返回后列表和筛选条件不变。 */}
+      {detail && (
+        <section className="ipr-case-page">
+          <header className="ipr-case-page-bar">
+            <Button icon={<ArrowLeftOutlined />} onClick={closeIprDetail}>
+              返回列表
+            </Button>
+            <h2 className="ipr-case-page-title">
+              {detail.data.case_kind}案件：{detail.serial_no}
+              <span className="ipr-case-page-status">{detail.status}</span>
+            </h2>
+            {!isLegacyIprRecord(detail) ? (
+              <Space size={8} wrap className="ipr-case-page-tools">
+                <Button onClick={() => openCopy(detail)}>复制案件</Button>
+                <Button onClick={() => void openIprReboot(detail)}>
+                  案件重提
+                </Button>
+                <Button onClick={() => openIprCaseTask(detail)}>
+                  案件任务
+                </Button>
+              </Space>
             ) : null}
-
-            <DetailTabs
-              activeKey={iprDetailTab}
-              onChange={setIprDetailTab}
-              sections={[
-                ...(isIprLawsuit(detail)
-                  ? [
-                      {
-                        key: "lawsuit",
-                        label: "诉讼管理",
-                        children: (
-                          <IprLawsuitPanel
-                            detail={detail}
-                            lawsuitCourts={lawsuitCourts}
-                            lawsuitParties={lawsuitParties}
-                            lawsuitFees={lawsuitFees}
-                            courtInfoOpen={courtInfoOpen}
-                            lawsuitCourtOpen={lawsuitCourtOpen}
-                            lawsuitPartyOpen={lawsuitPartyOpen}
-                            lawsuitFeeOpen={lawsuitFeeOpen}
-                            editingLawsuitCourt={editingLawsuitCourt}
-                            editingLawsuitParty={editingLawsuitParty}
-                            courtInfoForm={courtInfoForm}
-                            lawsuitCourtForm={lawsuitCourtForm}
-                            lawsuitPartyForm={lawsuitPartyForm}
-                            lawsuitFeeForm={lawsuitFeeForm}
-                            onLoadManagement={() =>
-                              void loadLawsuitManagement(detail.id)
-                            }
-                            onSaveCourtInfo={saveCourtInfo}
-                            onCloseCourtInfo={() =>
-                              setCourtInfoOpen(false)
-                            }
-                            onSaveLawsuitCourt={saveLawsuitCourt}
-                            onCloseLawsuitCourt={() => {
-                              setLawsuitCourtOpen(false);
-                              setEditingLawsuitCourt(null);
-                            }}
-                            onSaveLawsuitParty={saveLawsuitParty}
-                            onCloseLawsuitParty={() => {
-                              setLawsuitPartyOpen(false);
-                              setEditingLawsuitParty(null);
-                            }}
-                            onCreateLawsuitFee={createLawsuitFee}
-                            onCloseLawsuitFee={() =>
-                              setLawsuitFeeOpen(false)
-                            }
-                            onDeleteLawsuitCourt={deleteLawsuitCourt}
-                            onDeleteLawsuitParty={deleteLawsuitParty}
-                            onOpenEditCourt={openEditCourt}
-                            onOpenEditParty={openEditParty}
-                            onOpenAddCourt={openAddCourt}
-                            onOpenAddParty={openAddParty}
-                            onOpenAddFee={openAddFee}
-                            onOpenCourtInfo={openCourtInfoEditor}
-                          />
-                        ),
-                      },
-                    ]
-                  : []),
-                {
-                  key: "files",
-                  label: "文档信息",
-                  children: (
-                    <IprFilesPanel
-                      detail={detail}
-                      iprSectionErrors={iprSectionErrors}
-                      attachments={attachments}
-                      filesPageState={filesPageState}
-                      iprFileTypes={iprFileTypes}
-                      iprFileOpen={iprFileOpen}
-                      iprFileForm={iprFileForm}
-                      iprUploadFile={iprUploadFile}
-                      selectedIprFileIds={selectedIprFileIds}
-                      onRefresh={refreshIprFiles}
-                      onGenerateDocument={generateDocument}
-                      onPreviewAttachment={previewAttachment}
-                      onDownloadAttachment={downloadAttachment}
-                      onOpenUpload={openUploadFile}
-                      onCloseUpload={() => {
-                        setIprFileOpen(false);
-                        setIprUploadFile(null);
-                      }}
-                      onUploadFile={uploadIprFile}
-                      onUploadFileChange={setIprUploadFile}
-                      onMarkTransmitted={markIprFileTransmitted}
-                      onMarkSelectedTransmitted={
-                        markSelectedIprFilesTransmitted
-                      }
-                      onDeleteFile={deleteIprFile}
-                      onSelectedFileIdsChange={setSelectedIprFileIds}
-                      confirmIprDeletion={confirmIprDeletion}
-                      onPageChange={handleFilesPageChange}
-                    />
-                  ),
-                },
-                {
-                  key: "assistedFees",
-                  label: "协助费",
-                  children: (
-                    <IprAssistedFeesPanel
-                      detail={detail}
-                      iprSectionErrors={iprSectionErrors}
-                      assistedFees={assistedFees}
-                      assistedFeesPageState={assistedFeesPageState}
-                      canManageAssistedFees={canManageAssistedFees}
-                      assistedOpen={assistedOpen}
-                      assistedForm={assistedForm}
-                      editingAssistedFee={editingAssistedFee}
-                      assistedEditForm={assistedEditForm}
-                      transactTarget={transactTarget}
-                      transactForm={transactForm}
-                      receiptFile={receiptFile}
-                      onRefresh={refreshAssistedFees}
-                      onOpenCreate={() => {
-                        assistedForm.resetFields();
-                        setAssistedOpen(true);
-                      }}
-                      onCloseCreate={() => setAssistedOpen(false)}
-                      onCreate={createAssistedFee}
-                      onOpenEdit={openEditAssistedFee}
-                      onCloseEdit={() => {
-                        setEditingAssistedFee(null);
-                        assistedEditForm.resetFields();
-                      }}
-                      onUpdate={updateAssistedFee}
-                      onConfirm={confirmAssistedFee}
-                      onOpenTransact={openTransactAssistedFee}
-                      onCloseTransact={() => {
-                        setTransactTarget(null);
-                        setReceiptFile(null);
-                      }}
-                      onTransact={transactAssistedFee}
-                      onReceiptFileChange={setReceiptFile}
-                      onDelete={deleteAssistedFee}
-                      onPreviewAttachment={previewAttachment}
-                      onDownloadAttachment={downloadAttachment}
-                      confirmIprDeletion={confirmIprDeletion}
-                      onPageChange={handleAssistedFeesPageChange}
-                    />
-                  ),
-                },
-                {
-                  key: "annualFees",
-                  label: "年费管理",
-                  children: (
-                    <IprAnnualFeesPanel
-                      detail={detail}
-                      iprSectionErrors={iprSectionErrors}
-                      annualFees={annualFees}
-                      annualFeesPageState={annualFeesPageState}
-                      annualFeeYearFilter={annualFeeYearFilter}
-                      annualFeesCanManage={annualFeesCanManage}
-                      annualFeeOpen={annualFeeOpen}
-                      editingAnnualFee={editingAnnualFee}
-                      annualFeeForm={annualFeeForm}
-                      onRefresh={refreshAnnualFees}
-                      onYearFilterChange={
-                        handleAnnualFeeYearFilterChange
-                      }
-                      onOpenEditor={openAnnualFeeEditor}
-                      onCloseEditor={() => {
-                        setAnnualFeeOpen(false);
-                        setEditingAnnualFee(null);
-                        annualFeeForm.resetFields();
-                      }}
-                      onSave={saveAnnualFee}
-                      onDelete={deleteAnnualFee}
-                      confirmIprDeletion={confirmIprDeletion}
-                    />
-                  ),
-                },
-              ]}
-            />
-
-            <IprRemindersPanel
-              detail={detail}
-              iprSectionErrors={iprSectionErrors}
-              iprCaseEvents={iprCaseEvents}
-              remindersPageState={remindersPageState}
-              reminderEventTypes={reminderEventTypes}
-              suppressedIds={suppressedIds}
-              iprEventOpen={iprEventOpen}
-              editingIprEvent={editingIprEvent}
-              iprEventDetail={iprEventDetail}
-              iprEventForm={iprEventForm}
-              suppressionOpen={suppressionOpen}
-              profile={profile}
-              onRefresh={() => detail && void loadIprCaseEvents(detail.id)}
-              onOpenEvent={openIprCaseEvent}
-              onCloseEvent={() => {
-                setIprEventOpen(false);
-                setEditingIprEvent(null);
-              }}
-              onSaveEvent={saveIprCaseEvent}
-              onDeleteEvent={deleteIprCaseEvent}
-              onSetEventDetail={setIprEventDetail}
-              onOpenSuppression={() => setSuppressionOpen(true)}
-              onCloseSuppression={() => setSuppressionOpen(false)}
-              onSaveSuppressions={saveSuppressions}
-              onSuppressedIdsChange={setSuppressedIds}
-              canManageIprCaseEvent={canManageIprCaseEvent}
-              confirmIprDeletion={confirmIprDeletion}
-            />
-
-            <IprTasksPanel
-              detail={detail}
-              iprSectionErrors={iprSectionErrors}
-              iprCaseTasks={iprCaseTasks}
-              iprTasksPageState={iprTasksPageState}
-              iprTaskOpen={iprTaskOpen}
-              iprTaskForm={iprTaskForm}
-              peopleOptions={peopleOptions}
-              onRefresh={() => detail && void loadIprCaseTasks(detail.id)}
-              onOpenTask={openIprCaseTask}
-              onCloseTask={() => setIprTaskOpen(false)}
-              onCreateTask={createIprCaseTask}
-            />
-
-            <IprMaintenancePanel
-              maintenanceTarget={maintenanceTarget}
-              maintenanceForm={maintenanceForm}
-              onClose={() => setMaintenanceTarget(null)}
-              onSave={saveMaintenance}
-            />
-
-            <Space style={{ marginTop: 16 }}>
-              {["草稿", "已驳回"].includes(detail.status) && (
-                <Button
-                  onClick={() => {
-                    openEdit(detail);
-                    setDetail(null);
-                  }}
-                >
-                  编辑草稿
-                </Button>
-              )}
-              {["草稿", "已驳回"].includes(detail.status) && (
-                <IprConflictActions recordId={detail.id} mode="submit" detail onSubmit={() => action(detail, "submit")} />
-              )}
-              {detail.status === "在办" && (
-                <Button onClick={() => openMaintenance(detail)}>
-                  维护期限/年费/费率
-                </Button>
-              )}
-              {detail.status === "在办" && (
-                <Button
-                  danger
-                  onClick={() => action(detail, "close")}
-                >
-                  结案
-                </Button>
-              )}
-              {detail.status === "已结案" &&
-                ["admin", "manager"].includes(profile.role || "") && (
-                  <Button onClick={() => action(detail, "reopen")}>
-                    重新开启
+          </header>
+          <div className="ipr-case-page-body">
+            <div className="ipr-case-page-main">
+              <IprCaseDetailHeader
+                detail={detail}
+                onOpenRebootCase={openRebootCase}
+              />
+              <Space wrap className="ipr-case-page-actions">
+                {["草稿", "已驳回"].includes(detail.status) && (
+                  <Button
+                    onClick={() => {
+                      openEdit(detail);
+                      setDetail(null);
+                    }}
+                  >
+                    编辑草稿
                   </Button>
                 )}
-            </Space>
-          </>
-        )}
-      </Drawer>
+                {["草稿", "已驳回"].includes(detail.status) && (
+                  <IprConflictActions recordId={detail.id} mode="submit" detail onSubmit={() => action(detail, "submit")} />
+                )}
+                {detail.status === "在办" && (
+                  <Button onClick={() => openMaintenance(detail)}>
+                    维护期限/年费/费率
+                  </Button>
+                )}
+                {detail.status === "在办" && (
+                  <Button
+                    danger
+                    onClick={() => action(detail, "close")}
+                  >
+                    结案
+                  </Button>
+                )}
+                {detail.status === "已结案" &&
+                  ["admin", "manager"].includes(profile.role || "") && (
+                    <Button onClick={() => action(detail, "reopen")}>
+                      重新开启
+                    </Button>
+                  )}
+              </Space>
+              <DetailTabs
+                className="ipr-case-page-tabs"
+                activeKey={iprDetailTab}
+                onChange={setIprDetailTab}
+                sections={[
+                  ...(isIprLawsuit(detail)
+                    ? [
+                        {
+                          key: "lawsuit",
+                          label: "诉讼管理",
+                          children: (
+                            <IprLawsuitPanel
+                              detail={detail}
+                              lawsuitCourts={lawsuitCourts}
+                              lawsuitParties={lawsuitParties}
+                              lawsuitFees={lawsuitFees}
+                              courtInfoOpen={courtInfoOpen}
+                              lawsuitCourtOpen={lawsuitCourtOpen}
+                              lawsuitPartyOpen={lawsuitPartyOpen}
+                              lawsuitFeeOpen={lawsuitFeeOpen}
+                              editingLawsuitCourt={editingLawsuitCourt}
+                              editingLawsuitParty={editingLawsuitParty}
+                              courtInfoForm={courtInfoForm}
+                              lawsuitCourtForm={lawsuitCourtForm}
+                              lawsuitPartyForm={lawsuitPartyForm}
+                              lawsuitFeeForm={lawsuitFeeForm}
+                              onLoadManagement={() =>
+                                void loadLawsuitManagement(detail.id)
+                              }
+                              onSaveCourtInfo={saveCourtInfo}
+                              onCloseCourtInfo={() =>
+                                setCourtInfoOpen(false)
+                              }
+                              onSaveLawsuitCourt={saveLawsuitCourt}
+                              onCloseLawsuitCourt={() => {
+                                setLawsuitCourtOpen(false);
+                                setEditingLawsuitCourt(null);
+                              }}
+                              onSaveLawsuitParty={saveLawsuitParty}
+                              onCloseLawsuitParty={() => {
+                                setLawsuitPartyOpen(false);
+                                setEditingLawsuitParty(null);
+                              }}
+                              onCreateLawsuitFee={createLawsuitFee}
+                              onCloseLawsuitFee={() =>
+                                setLawsuitFeeOpen(false)
+                              }
+                              onDeleteLawsuitCourt={deleteLawsuitCourt}
+                              onDeleteLawsuitParty={deleteLawsuitParty}
+                              onOpenEditCourt={openEditCourt}
+                              onOpenEditParty={openEditParty}
+                              onOpenAddCourt={openAddCourt}
+                              onOpenAddParty={openAddParty}
+                              onOpenAddFee={openAddFee}
+                              onOpenCourtInfo={openCourtInfoEditor}
+                            />
+                          ),
+                        },
+                      ]
+                    : []),
+                  {
+                    key: "files",
+                    label: "文档信息",
+                    children: (
+                      <IprFilesPanel
+                        detail={detail}
+                        iprSectionErrors={iprSectionErrors}
+                        attachments={attachments}
+                        filesPageState={filesPageState}
+                        iprFileTypes={iprFileTypes}
+                        iprFileOpen={iprFileOpen}
+                        iprFileForm={iprFileForm}
+                        iprUploadFile={iprUploadFile}
+                        selectedIprFileIds={selectedIprFileIds}
+                        onRefresh={refreshIprFiles}
+                        onGenerateDocument={generateDocument}
+                        onPreviewAttachment={previewAttachment}
+                        onDownloadAttachment={downloadAttachment}
+                        onOpenUpload={openUploadFile}
+                        onCloseUpload={() => {
+                          setIprFileOpen(false);
+                          setIprUploadFile(null);
+                        }}
+                        onUploadFile={uploadIprFile}
+                        onUploadFileChange={setIprUploadFile}
+                        onMarkTransmitted={markIprFileTransmitted}
+                        onMarkSelectedTransmitted={
+                          markSelectedIprFilesTransmitted
+                        }
+                        onDeleteFile={deleteIprFile}
+                        onSelectedFileIdsChange={setSelectedIprFileIds}
+                        confirmIprDeletion={confirmIprDeletion}
+                        onPageChange={handleFilesPageChange}
+                      />
+                    ),
+                  },
+                  {
+                    key: "fees",
+                    label: "费用明细",
+                    children: (
+                      <IprCaseFeesPanel detail={detail} />
+                    ),
+                  },
+                  {
+                    key: "assistedFees",
+                    label: "资助明细",
+                    children: (
+                      <IprAssistedFeesPanel
+                        detail={detail}
+                        iprSectionErrors={iprSectionErrors}
+                        assistedFees={assistedFees}
+                        assistedFeesPageState={assistedFeesPageState}
+                        canManageAssistedFees={canManageAssistedFees}
+                        assistedOpen={assistedOpen}
+                        assistedForm={assistedForm}
+                        editingAssistedFee={editingAssistedFee}
+                        assistedEditForm={assistedEditForm}
+                        transactTarget={transactTarget}
+                        transactForm={transactForm}
+                        receiptFile={receiptFile}
+                        onRefresh={refreshAssistedFees}
+                        onOpenCreate={() => {
+                          assistedForm.resetFields();
+                          setAssistedOpen(true);
+                        }}
+                        onCloseCreate={() => setAssistedOpen(false)}
+                        onCreate={createAssistedFee}
+                        onOpenEdit={openEditAssistedFee}
+                        onCloseEdit={() => {
+                          setEditingAssistedFee(null);
+                          assistedEditForm.resetFields();
+                        }}
+                        onUpdate={updateAssistedFee}
+                        onConfirm={confirmAssistedFee}
+                        onOpenTransact={openTransactAssistedFee}
+                        onCloseTransact={() => {
+                          setTransactTarget(null);
+                          setReceiptFile(null);
+                        }}
+                        onTransact={transactAssistedFee}
+                        onReceiptFileChange={setReceiptFile}
+                        onDelete={deleteAssistedFee}
+                        onPreviewAttachment={previewAttachment}
+                        onDownloadAttachment={downloadAttachment}
+                        confirmIprDeletion={confirmIprDeletion}
+                        onPageChange={handleAssistedFeesPageChange}
+                      />
+                    ),
+                  },
+                  {
+                    key: "contacts",
+                    label: "案件联系人",
+                    children: (
+                      <>
+                        <IprCustomersPanel
+                          detail={detail}
+                          caseCustomers={caseCustomers}
+                          customerOpen={customerOpen}
+                          customerCandidates={customerCandidates}
+                          customerSelection={customerSelection}
+                          primaryCustomerId={primaryCustomerId}
+                          onOpenCustomerSelector={openCustomerSelector}
+                          onCloseCustomerSelector={() => setCustomerOpen(false)}
+                          onSaveCustomers={saveCaseCustomers}
+                          onCustomerSelectionChange={(selected) => {
+                            setCustomerSelection(selected);
+                            if (!selected.includes(Number(primaryCustomerId)))
+                              setPrimaryCustomerId(selected[0] || null);
+                          }}
+                          onPrimaryCustomerChange={setPrimaryCustomerId}
+                          onOpenLinkedCustomer={openLinkedCaseCustomer}
+                          onOpenLinkedCustomerCases={openLinkedCaseCustomerCases}
+                          onOpenContactSelector={openContactSelector}
+                        />
+                        <IprContactsPanel
+                          detail={detail}
+                          caseContacts={caseContacts}
+                          contactOpen={contactOpen}
+                          contactCustomer={contactCustomer}
+                          contactCandidates={contactCandidates}
+                          documentContactIds={documentContactIds}
+                          technologyContactIds={technologyContactIds}
+                          onCloseContactSelector={() => setContactOpen(false)}
+                          onSaveContacts={saveCaseContacts}
+                          onDocumentContactChange={setDocumentContactIds}
+                          onTechnologyContactChange={setTechnologyContactIds}
+                        />
+                        <IprLawFirmsPanel
+                          detail={detail}
+                          caseLawFirms={caseLawFirms}
+                          lawFirmOpen={lawFirmOpen}
+                          lawFirmCandidates={lawFirmCandidates}
+                          lawFirmSelection={lawFirmSelection}
+                          onOpenLawFirmSelector={openLawFirmSelector}
+                          onCloseLawFirmSelector={() => setLawFirmOpen(false)}
+                          onSaveLawFirms={saveCaseLawFirms}
+                          onLawFirmSelectionChange={setLawFirmSelection}
+                        />
+                        {Number(
+                          detail.data?.legacy_ipr_case_id ||
+                            detail.data?.legacy_case_id ||
+                            0
+                        ) > 0 ? (
+                          <div style={{ marginTop: 16 }}>
+                            <IprLegacyHistoryRelations
+                              legacyCaseId={Number(
+                                detail.data?.legacy_ipr_case_id ||
+                                  detail.data?.legacy_case_id
+                              )}
+                              onOpenCurrentCustomer={(customerRecordId) =>
+                                void openLegacyIprCurrentCustomer(customerRecordId)
+                              }
+                            />
+                          </div>
+                        ) : null}
+                      </>
+                    ),
+                  },
+                  {
+                    key: "operationLogs",
+                    label: "系统日志",
+                    children: (
+                      <IprOperationLogsPanel
+                        iprSectionErrors={iprSectionErrors}
+                        iprOperationLogs={iprOperationLogs}
+                        iprOperationLogDetail={iprOperationLogDetail}
+                        onSetOperationLogDetail={setIprOperationLogDetail}
+                      />
+                    ),
+                  },
+                  {
+                    key: "tasks",
+                    label: "案件任务",
+                    children: (
+                      <IprTasksPanel
+                        detail={detail}
+                        iprSectionErrors={iprSectionErrors}
+                        iprCaseTasks={iprCaseTasks}
+                        iprTasksPageState={iprTasksPageState}
+                        iprTaskOpen={iprTaskOpen}
+                        iprTaskForm={iprTaskForm}
+                        peopleOptions={peopleOptions}
+                        onRefresh={() => detail && void loadIprCaseTasks(detail.id)}
+                        onOpenTask={openIprCaseTask}
+                        onCloseTask={() => setIprTaskOpen(false)}
+                        onCreateTask={createIprCaseTask}
+                      />
+                    ),
+                  },
+                  {
+                    key: "invoices",
+                    label: "发票文件",
+                    children: (
+                      <IprInvoiceFilesPanel
+                        detail={detail}
+                        onPreviewAttachment={previewAttachment}
+                        onDownloadAttachment={downloadAttachment}
+                      />
+                    ),
+                  },
+                  {
+                    key: "annualFees",
+                    label: "年费管理",
+                    children: (
+                      <IprAnnualFeesPanel
+                        detail={detail}
+                        iprSectionErrors={iprSectionErrors}
+                        annualFees={annualFees}
+                        annualFeesPageState={annualFeesPageState}
+                        annualFeeYearFilter={annualFeeYearFilter}
+                        annualFeesCanManage={annualFeesCanManage}
+                        annualFeeOpen={annualFeeOpen}
+                        editingAnnualFee={editingAnnualFee}
+                        annualFeeForm={annualFeeForm}
+                        onRefresh={refreshAnnualFees}
+                        onYearFilterChange={
+                          handleAnnualFeeYearFilterChange
+                        }
+                        onOpenEditor={openAnnualFeeEditor}
+                        onCloseEditor={() => {
+                          setAnnualFeeOpen(false);
+                          setEditingAnnualFee(null);
+                          annualFeeForm.resetFields();
+                        }}
+                        onSave={saveAnnualFee}
+                        onDelete={deleteAnnualFee}
+                        confirmIprDeletion={confirmIprDeletion}
+                      />
+                    ),
+                  },
+                  ...(detail.data?.case_kind === "专利"
+                    ? [
+                        {
+                          key: "cpc",
+                          label: "CPC专利申报",
+                          children: (
+                            <IprCpcPanel
+                              detail={detail}
+                              cpcApplications={cpcApplications}
+                              cpcApplicationsLoading={cpcApplicationsLoading}
+                              cpcApplicationsError={cpcApplicationsError}
+                              cpcGenerating={cpcGenerating}
+                              onLoadCpcApplications={() => void loadCpcApplications(detail.id)}
+                              onGenerateCpcApplication={() => void generateCpcApplication(detail)}
+                              onDownloadCpcApplication={(app) => void downloadCpcApplication(detail, app)}
+                            />
+                          ),
+                        },
+                      ]
+                    : []),
+                ]}
+              />
+            </div>
+            <aside className="ipr-case-page-side">
+              <IprRemindersPanel
+                detail={detail}
+                iprSectionErrors={iprSectionErrors}
+                iprCaseEvents={iprCaseEvents}
+                remindersPageState={remindersPageState}
+                reminderEventTypes={reminderEventTypes}
+                suppressedIds={suppressedIds}
+                iprEventOpen={iprEventOpen}
+                editingIprEvent={editingIprEvent}
+                iprEventDetail={iprEventDetail}
+                iprEventForm={iprEventForm}
+                suppressionOpen={suppressionOpen}
+                profile={profile}
+                onRefresh={() => detail && void loadIprCaseEvents(detail.id)}
+                onOpenEvent={openIprCaseEvent}
+                onCloseEvent={() => {
+                  setIprEventOpen(false);
+                  setEditingIprEvent(null);
+                }}
+                onSaveEvent={saveIprCaseEvent}
+                onDeleteEvent={deleteIprCaseEvent}
+                onSetEventDetail={setIprEventDetail}
+                onOpenSuppression={() => setSuppressionOpen(true)}
+                onCloseSuppression={() => setSuppressionOpen(false)}
+                onSaveSuppressions={saveSuppressions}
+                onSuppressedIdsChange={setSuppressedIds}
+                canManageIprCaseEvent={canManageIprCaseEvent}
+                confirmIprDeletion={confirmIprDeletion}
+              />
+              <IprBusinessLogsPanel
+                detail={detail}
+                iprSectionErrors={iprSectionErrors}
+                iprBusinessLogs={iprBusinessLogs}
+                profile={profile}
+                iprLogOpen={iprLogOpen}
+                iprLogForm={iprLogForm}
+                iprBusinessLogDetail={iprBusinessLogDetail}
+                onOpenLog={() => {
+                  iprLogForm.resetFields();
+                  setIprLogOpen(true);
+                }}
+                onCloseLog={() => setIprLogOpen(false)}
+                onCreateLog={createIprLog}
+                onDeleteLog={deleteIprLog}
+                onSetBusinessLogDetail={setIprBusinessLogDetail}
+                confirmIprDeletion={confirmIprDeletion}
+              />
+            </aside>
+          </div>
+          <IprMaintenancePanel
+            maintenanceTarget={maintenanceTarget}
+            maintenanceForm={maintenanceForm}
+            onClose={() => setMaintenanceTarget(null)}
+            onSave={saveMaintenance}
+          />
+        </section>
+      )}
     </div>
   );
 }

@@ -44,7 +44,7 @@ export function IprRemindersPanel({ detail, iprSectionErrors, iprCaseEvents, rem
     <>
       <Card
         size="small"
-        title="案件事件"
+        title="案件提醒"
         style={{ marginTop: 16 }}
         extra={
           <Space>

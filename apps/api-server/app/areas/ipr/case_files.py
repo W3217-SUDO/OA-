@@ -14,6 +14,7 @@ async def list_ipr_case_files(
     case_id: int,
     page: int = Query(1, ge=1),
     page_size: int = Query(15, ge=1, le=200),
+    category_keywords: str = Query("", max_length=100),
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
 ):
@@ -24,10 +25,15 @@ async def list_ipr_case_files(
         _attachment_dict,
     )
     record = await _ensure_record_module(case_id, "ipr_case", identity, db)
-    total = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(FileAttachment.record_id == record.id)) or 0)
+    conditions = [FileAttachment.record_id == record.id]
+    # 案件页“发票文件”页签：文档类型里含任一关键词（逗号分隔，如“发票,收据”）。
+    keywords = [item.strip() for item in category_keywords.split(",") if item.strip()]
+    if keywords:
+        conditions.append(or_(*[FileAttachment.category.contains(item) for item in keywords]))
+    total = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(*conditions)) or 0)
     items = list((await db.scalars(
         select(FileAttachment)
-        .where(FileAttachment.record_id == record.id)
+        .where(*conditions)
         .order_by(FileAttachment.document_date.desc().nullslast(), FileAttachment.created_at.desc(), FileAttachment.id.desc())
         .offset((page - 1) * page_size).limit(page_size)
     )).all())

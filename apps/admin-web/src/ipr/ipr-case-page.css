@@ -1,0 +1,225 @@
+/* 知识产权案件页（BUG20261028001）：按原系统排版，上方案件信息、右侧案件提醒和案件日志、下方页签。
+   钉钉手机内核是 Chrome 100，只用 flex/grid，不用 :has、color-mix、@container。 */
+
+.page-shell.is-ipr-case-open > :not(.ipr-case-page) {
+  display: none;
+}
+
+.ipr-case-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ipr-case-page-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 10px 16px;
+  background: var(--ant-color-bg-container, #fff);
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-radius: 8px;
+}
+
+.ipr-case-page-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.ipr-case-page-status {
+  margin-left: 10px;
+  padding: 1px 8px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.65));
+  background: var(--ant-color-fill-tertiary, #f5f5f5);
+  border-radius: 10px;
+}
+
+.ipr-case-page-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.ipr-case-page-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 12px 16px 16px;
+  background: var(--ant-color-bg-container, #fff);
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-radius: 8px;
+}
+
+.ipr-case-page-side {
+  flex: 0 0 340px;
+  width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ipr-case-page-actions {
+  margin: 12px 0 4px;
+}
+
+.ipr-case-page-actions:empty {
+  display: none;
+}
+
+.ipr-case-page-tabs {
+  margin-top: 4px;
+}
+
+/* 案件信息：四列“标签 | 值”，右侧一列勾选项。 */
+.ipr-case-info-alert {
+  margin-bottom: 12px;
+}
+
+.ipr-case-info-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.ipr-case-info-grid {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  border-top: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-left: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+
+.ipr-case-info-cell {
+  display: flex;
+  min-width: 0;
+  border-right: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-bottom: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+
+.ipr-case-info-cell dt {
+  flex: 0 0 98px;
+  padding: 6px 8px;
+  font-weight: 400;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.65));
+  background: var(--ant-color-fill-quaternary, #fafafa);
+}
+
+.ipr-case-info-cell dd {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 6px 8px;
+  overflow-wrap: break-word;
+}
+
+/* 申请人、发明人、客户、案件管理人名字长，各占两格。 */
+.ipr-case-info-applicant,
+.ipr-case-info-inventor,
+.ipr-case-info-customer,
+.ipr-case-info-manager,
+.ipr-case-info-reboot {
+  grid-column: span 2;
+}
+
+.ipr-case-info-flags {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ipr-case-info-flags li {
+  padding: 4px 0;
+}
+
+.ipr-case-info-note {
+  margin: 8px 0 0;
+  color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.65));
+}
+
+/* 宽屏四列（同原系统）；屏幕窄一些时三列、两列，避免案号、证件号被拆行。 */
+@media (max-width: 1680px) {
+  .ipr-case-info-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .ipr-case-info-applicant,
+  .ipr-case-info-inventor,
+  .ipr-case-info-reboot {
+    grid-column: 1 / -1;
+  }
+
+  .ipr-case-info-manager {
+    grid-column: auto;
+  }
+
+  /* 前 16 格三列排完剩一格，补满这一行。 */
+  .ipr-case-info-relief-rate {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 1360px) {
+  .ipr-case-info-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ipr-case-info-customer {
+    grid-column: 1 / -1;
+  }
+
+  .ipr-case-info-relief-rate {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 1100px) {
+  .ipr-case-page-body {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ipr-case-page-side {
+    flex-basis: auto;
+    width: auto;
+  }
+}
+
+@media (max-width: 767px) {
+  .ipr-case-page-main {
+    padding: 8px 10px 12px;
+  }
+
+  .ipr-case-info-body {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ipr-case-info-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ipr-case-info-applicant,
+  .ipr-case-info-inventor,
+  .ipr-case-info-customer,
+  .ipr-case-info-manager,
+  .ipr-case-info-reboot {
+    grid-column: auto;
+  }
+
+
+  .ipr-case-info-flags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 16px;
+  }
+}
