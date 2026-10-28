@@ -1,10 +1,12 @@
 import {useEffect, useMemo, useState} from 'react'
-import {Alert, Button, Card, Form, Input, message, Select, Tabs} from 'antd'
-import {SaveOutlined} from '@ant-design/icons'
+import {Alert, Button, Card, Form, Input, message, Popconfirm, Select, Tabs} from 'antd'
+import {DisconnectOutlined, SaveOutlined} from '@ant-design/icons'
+import requestDingTalkAuthCode from 'dingtalk-jsapi/api/runtime/permission/requestAuthCode'
+import {getENV as getDingTalkEnvironment} from 'dingtalk-jsapi/lib/env'
 import {api} from './api'
 import './user-center.css'
 
-type Profile={id:number;username:string;display_name:string;department:string;role:string;actual_role?:string;is_active:boolean;created_at:string;email?:string;office_phone?:string;mobile?:string;menu_auto_collapse?:'yes'|'no'}
+type Profile={id:number;username:string;display_name:string;department:string;role:string;actual_role?:string;is_active:boolean;created_at:string;email?:string;office_phone?:string;mobile?:string;menu_auto_collapse?:'yes'|'no';dingtalk_binding_count?:number}
 type BasicProfile={email:string;office_phone:string;mobile:string}
 type Preferences={auto_collapse:'yes'|'no'}
 
@@ -60,6 +62,22 @@ export default function UserCenterPage(){
     }catch(error:any){message.error(error?.response?.data?.detail||'个性配置保存失败')}
   }
 
+  const inDingTalk=getDingTalkEnvironment().platform!=='notInDingTalk'
+  const dingtalkCount=profile?.dingtalk_binding_count||0
+  const unbindDingTalk=async()=>{
+    try{
+      let auth_code=''
+      if(inDingTalk){
+        const {data:config}=await api.get('/auth/dingtalk/config')
+        auth_code=(await requestDingTalkAuthCode({corpId:config.corp_id})).code
+      }
+      const {data}=await api.post('/auth/me/dingtalk/unbind',{auth_code})
+      message.success('已解绑钉钉')
+      if(inDingTalk){window.dispatchEvent(new Event('sunhold:session-end'));return}
+      setProfile(current=>current&&{...current,dingtalk_binding_count:data.dingtalk_binding_count})
+    }catch(error:any){message.error(error?.response?.data?.detail||error?.message||'解绑钉钉失败')}
+  }
+
   const tabItems=[
     {key:'basic',label:'基本资料',children:<section className="account-setting-section">
       <div className="account-setting-title">基本资料设置</div>
@@ -88,6 +106,16 @@ export default function UserCenterPage(){
         <Form.Item label="左侧菜单自动收缩" name="auto_collapse" rules={[{required:true}]}><Select options={[{value:'yes',label:'是'},{value:'no',label:'否'}]}/></Form.Item>
         <Form.Item label=" "><Button type="primary" icon={<SaveOutlined/>} onClick={savePreferences}>保存</Button></Form.Item>
       </Form>
+    </section>},
+    {key:'dingtalk',label:'钉钉绑定',children:<section className="account-setting-section">
+      <div className="account-setting-title">钉钉绑定</div>
+      <div className="account-setting-help">{dingtalkCount?(inDingTalk?'解绑后会退出登录，再从钉钉工作台打开时需要重新输入账号密码绑定。':dingtalkCount>1?'该账号绑定了多个钉钉，请在钉钉里打开个人设置，只解绑你自己的。':'解绑后从钉钉工作台打开需要重新输入账号密码绑定。'):'当前账号没有绑定钉钉。从钉钉工作台打开系统时按提示输入账号密码即可绑定。'}</div>
+      <div className="account-setting-form">
+        <span className="account-dingtalk-status">{dingtalkCount?`已绑定${dingtalkCount>1?` ${dingtalkCount} 个钉钉`:''}`:'未绑定'}</span>
+        {dingtalkCount>0&&(inDingTalk||dingtalkCount===1)&&<Popconfirm title="解绑钉钉" description={inDingTalk?'解绑你当前使用的钉钉并退出登录？':'确定解绑钉钉？'} okText="解绑" cancelText="取消" okButtonProps={{danger:true}} onConfirm={unbindDingTalk}>
+          <Button danger icon={<DisconnectOutlined/>} style={{marginLeft:12}}>解绑钉钉</Button>
+        </Popconfirm>}
+      </div>
     </section>},
   ]
 

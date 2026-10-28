@@ -79,6 +79,18 @@ class DingTalkClient:
         result = user_payload.get("result") or {}
         return {"user_id": user_id, "name": str(result.get("name") or "").strip(), "mobile": str(result.get("mobile") or "").strip()}
 
+    async def user_name(self, user_id: str) -> str:
+        token = await self.access_token()
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(
+                f"https://oapi.dingtalk.com/topapi/v2/user/get?access_token={token}",
+                json={"userid": user_id, "language": "zh_CN"},
+            )
+            payload = response.json()
+        if int(payload.get("errcode") or 0) != 0:
+            raise DingTalkError(str(payload.get("errmsg") or "钉钉用户查询失败"))
+        return str((payload.get("result") or {}).get("name") or "").strip()
+
     async def user_by_web_auth_code(self, auth_code: str) -> dict:
         """网页授权码与端内免登码不同，先换用户凭证再核验企业员工身份。"""
         async with httpx.AsyncClient(timeout=10) as client:

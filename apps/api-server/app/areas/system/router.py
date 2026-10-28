@@ -27,6 +27,7 @@ from app.models_shared import (
     UserPermissionOverrideUpdate,
 )
 from fastapi import APIRouter, Request
+from app.api_schemas.identity import DingTalkSelfUnbindInput
 from app.core import query_prewarm
 
 router = APIRouter()
@@ -139,6 +140,36 @@ async def bind_dingtalk_login(body: DingTalkBindInput, db: AsyncSession = Depend
     return await bind_verified_employee(ding_user, body.username, body.password, db)
 
 
+@router.post(f"{settings.api_prefix}/auth/me/dingtalk/unbind")
+async def unbind_own_dingtalk(body: DingTalkSelfUnbindInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """个人设置“解绑钉钉”。钉钉内只解绑本人正在用的钉钉身份，共用账号不会顶掉别人的；电脑上只在只有一个绑定时可解。"""
+    from app.core.permissions import _profile_dingtalk_login_ids
+    from .dingtalk_auth import remove_dingtalk_binding
+    user = await db.scalar(select(User).where(User.username == identity["username"]))
+    if not user or not user.is_active:
+        raise HTTPException(status_code=404, detail="当前用户不存在")
+    bound = _profile_dingtalk_login_ids(user.profile)
+    if not bound:
+        raise HTTPException(status_code=404, detail="当前账号没有绑定钉钉")
+    if body.auth_code.strip():
+        if not dingtalk_client.configured:
+            raise HTTPException(status_code=503, detail="钉钉免登尚未配置")
+        try:
+            ding_user = await dingtalk_client.user_by_auth_code(body.auth_code.strip())
+        except (DingTalkError, httpx.HTTPError) as exc:
+            raise HTTPException(status_code=502, detail="钉钉身份校验失败，请稍后重试") from exc
+        if ding_user["user_id"] not in bound:
+            raise HTTPException(status_code=409, detail="你当前的钉钉没有绑定这个账号")
+        target = ding_user["user_id"]
+    elif len(bound) == 1:
+        target = bound[0]
+    else:
+        raise HTTPException(status_code=409, detail="该账号绑定了多个钉钉，请在钉钉里打开个人设置解绑你自己的")
+    remove_dingtalk_binding(user, target, identity["username"])
+    await db.commit()
+    return {"dingtalk_binding_count": len(_profile_dingtalk_login_ids(user.profile))}
+
+
 @router.get(f"{settings.api_prefix}/auth/me")
 async def current_user_profile(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
@@ -233,6 +264,30 @@ async def list_system_users(keyword: str = "", identity: dict = Depends(current_
         statement = statement.where(or_(User.username.ilike(like), User.display_name.ilike(like)))
     users = (await db.scalars(statement.order_by(User.id))).all()
     return {"items": [_system_user_dict(user) for user in users], "total": len(users)}
+
+
+@router.get(f"{settings.api_prefix}/system/users/{{user_id}}/dingtalk-bindings")
+async def list_system_user_dingtalk_bindings(user_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_admin
+    from .dingtalk_auth import dingtalk_bindings
+    _require_admin(identity)
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="系统用户不存在")
+    return {"items": await dingtalk_bindings(user)}
+
+
+@router.delete(f"{settings.api_prefix}/system/users/{{user_id}}/dingtalk-bindings/{{ding_user_id}}")
+async def remove_system_user_dingtalk_binding(user_id: int, ding_user_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_admin
+    from .dingtalk_auth import dingtalk_bindings, remove_dingtalk_binding
+    _require_admin(identity)
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="系统用户不存在")
+    remove_dingtalk_binding(user, ding_user_id.strip(), identity["username"])
+    await db.commit()
+    return {"items": await dingtalk_bindings(user)}
 
 
 @router.patch(f"{settings.api_prefix}/system/users/{{user_id}}/dingtalk")

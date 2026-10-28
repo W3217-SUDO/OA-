@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.areas.system.dingtalk_auth import bind_verified_employee, login_verified_employee
+from app.areas.system.dingtalk_auth import bind_verified_employee, dingtalk_bindings, login_verified_employee, remove_dingtalk_binding
 from app.core.permissions import _profile_dingtalk_login_ids
 from app.database import Base
 from app.models import User
@@ -63,6 +63,52 @@ class DingTalkSharedAccountBindingTest(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(HTTPException) as caught:
                 await bind_verified_employee({"user_id": "ding-taowei"}, "other", "Secret-1028", db)
             self.assertEqual(caught.exception.status_code, 409, "附加绑定的身份同样不能再绑到别的账号")
+
+    async def test_remove_single_binding_promotes_next_and_keeps_record(self) -> None:
+        """1029：个人设置/员工账号里逐个解绑；主身份被解绑时由下一个接替，解绑记录保留。"""
+        async with self.sessions() as db:
+            await bind_verified_employee({"user_id": "ding-taowei", "name": "陶威"}, "admin", "Secret-1028", db)
+            admin = await db.scalar(select(User).where(User.username == "admin"))
+            self.assertEqual([item["name"] for item in await dingtalk_bindings(admin)], ["", "陶威"])
+            remove_dingtalk_binding(admin, "ding-tgn", "admin")
+            await db.commit()
+            self.assertEqual(admin.profile["dingtalk_user_id"], "ding-taowei")
+            self.assertNotIn("dingtalk_login_ids", admin.profile)
+            self.assertEqual(admin.profile["dingtalk_unbound"][0]["user_id"], "ding-tgn")
+            self.assertIsNone(await login_verified_employee({"user_id": "ding-tgn"}, db), "解绑后再从钉钉打开需要重新绑定")
+            self.assertIsNotNone(await login_verified_employee({"user_id": "ding-taowei"}, db))
+            remove_dingtalk_binding(admin, "ding-taowei", "admin")
+            self.assertNotIn("dingtalk_user_id", admin.profile)
+            with self.assertRaises(HTTPException) as caught:
+                remove_dingtalk_binding(admin, "ding-taowei", "admin")
+            self.assertEqual(caught.exception.status_code, 404)
+
+    async def test_self_unbind_outside_dingtalk_only_when_single_binding(self) -> None:
+        from app.api_schemas.identity import DingTalkSelfUnbindInput
+        from app.areas.system.router import unbind_own_dingtalk
+
+        async with self.sessions() as db:
+            await bind_verified_employee({"user_id": "ding-taowei"}, "admin", "Secret-1028", db)
+            with self.assertRaises(HTTPException) as caught:
+                await unbind_own_dingtalk(DingTalkSelfUnbindInput(), {"username": "admin"}, db)
+            self.assertEqual(caught.exception.status_code, 409, "共用账号在电脑上不能一键解绑，免得顶掉别人")
+            result = await unbind_own_dingtalk(DingTalkSelfUnbindInput(), {"username": "other"}, db)
+            self.assertEqual(result, {"dingtalk_binding_count": 0})
+
+    async def test_self_unbind_in_dingtalk_removes_only_current_identity(self) -> None:
+        from unittest.mock import AsyncMock, PropertyMock, patch
+        from app.api_schemas.identity import DingTalkSelfUnbindInput
+        from app.areas.system import router as system_router
+
+        async with self.sessions() as db:
+            await bind_verified_employee({"user_id": "ding-taowei"}, "admin", "Secret-1028", db)
+            client = system_router.dingtalk_client
+            with patch.object(type(client), "configured", new_callable=PropertyMock, return_value=True), \
+                    patch.object(client, "user_by_auth_code", AsyncMock(return_value={"user_id": "ding-taowei"})):
+                result = await system_router.unbind_own_dingtalk(DingTalkSelfUnbindInput(auth_code="code"), {"username": "admin"}, db)
+            self.assertEqual(result, {"dingtalk_binding_count": 1})
+            admin = await db.scalar(select(User).where(User.username == "admin"))
+            self.assertEqual(_profile_dingtalk_login_ids(admin.profile), ["ding-tgn"], "共用账号另一人的绑定不受影响")
 
 
 if __name__ == "__main__":

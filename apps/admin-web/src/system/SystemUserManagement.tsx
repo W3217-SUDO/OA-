@@ -16,6 +16,7 @@ import {
 import Table from "../components/ResizableTable";
 import { ReloadOutlined, PlusOutlined } from "@ant-design/icons";
 import type { SystemUser } from "./types";
+import { SystemUserDingTalkBindings } from "./SystemUserDingTalkBindings";
 import {
   formatTime,
   PERSON_NAME_PLACEHOLDER,
@@ -301,6 +302,7 @@ export function SystemUserManagement({
             <Form.Item label="钉钉 UserId" name={["profile", "dingtalk_user_id"]} tooltip="在钉钉开发者后台的通讯录中查看；每个 UserId 只能绑定一个系统员工。">
               <Input allowClear placeholder="留空表示未绑定" />
             </Form.Item>
+            {editingUser && <SystemUserDingTalkBindings userId={editingUser.id} form={userForm} />}
             <Form.Item
               label={
                 editingUser

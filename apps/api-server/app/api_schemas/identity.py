@@ -78,6 +78,11 @@ class DingTalkBindingInput(BaseModel):
     user_id: str = Field(default="", max_length=128)
 
 
+class DingTalkSelfUnbindInput(BaseModel):
+    # 钉钉内打开时带上新取的免登码，只解绑本人正在用的钉钉身份；电脑浏览器里不带。
+    auth_code: str = Field(default="", max_length=512)
+
+
 class RolePermissionUpdate(BaseModel):
     data_scope: str = Field(min_length=1, max_length=64)
     menu_keys: list[str]

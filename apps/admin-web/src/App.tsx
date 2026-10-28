@@ -1457,11 +1457,14 @@ export default function App() {
       if (detail?.auto_collapse) setCollapsed(detail.auto_collapse === "yes");
     };
     window.addEventListener(AUTH_EXPIRED_EVENT, expired);
+    // 个人设置里解绑当前钉钉后退出，再从钉钉打开会重新出现绑定页。
+    window.addEventListener("sunhold:session-end", endClientSession);
     window.addEventListener("storage", synchronizeLogout);
     window.addEventListener("sunhold:profile-updated", profileUpdated);
     window.addEventListener("sunhold:preferences-updated", preferencesUpdated);
     return () => {
       window.removeEventListener(AUTH_EXPIRED_EVENT, expired);
+      window.removeEventListener("sunhold:session-end", endClientSession);
       window.removeEventListener("storage", synchronizeLogout);
       window.removeEventListener("sunhold:profile-updated", profileUpdated);
       window.removeEventListener(
