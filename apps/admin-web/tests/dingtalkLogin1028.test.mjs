@@ -24,3 +24,15 @@ test("1029：个人设置有“解绑钉钉”（钉钉内解绑当前身份并�
   const management = fs.readFileSync(new URL("../src/system/SystemUserManagement.tsx", import.meta.url), "utf8");
   assert.match(management, /editingUser && <SystemUserDingTalkBindings userId=\{editingUser\.id\} form=\{userForm\} \/>/);
 });
+
+test("1029：钉钉内退出后再打开先选账号，可“登录其他账号”加入列表；选账号页样式兼容 Chrome 100", () => {
+  const app = fs.readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+  assert.match(app, /if \(getDingTalkEnvironment\(\)\.platform !== "notInDingTalk"\) localStorage\.setItem\(DINGTALK_CHOOSE_KEY, "1"\);\n    endClientSession\(\);/);
+  assert.match(app, /choose: localStorage\.getItem\(DINGTALK_CHOOSE_KEY\) === "1"/);
+  assert.match(app, /api\.post\("\/auth\/dingtalk\/choose", \{ ticket: dingtalkChooser\.ticket, username \}\)/);
+  assert.match(app, /api\.post\("\/auth\/dingtalk\/bind", \{ \.\.\.values, ticket: dingtalkChooser\.ticket \}\)/);
+  assert.match(app, />登录其他账号<\/Button>/);
+  const styles = fs.readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  const chooser = styles.slice(styles.indexOf("/* 钉钉选账号页"));
+  assert.ok(!/color-mix\(|:has\(|@container|dvh/.test(chooser));
+});

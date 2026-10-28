@@ -1364,3 +1364,29 @@ body {
 :root[data-theme="dark"] .ant-table-wrapper .ant-table-tbody > tr.ant-table-row.ant-table-row-selected:hover > td {
   background: #4d4a12 !important;
 }
+
+/* 钉钉选账号页：每个已绑定账号一行，点一下直接进入（兼容钉钉 Chrome 100 内核，不用 color-mix/:has）。 */
+.dingtalk-account-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dingtalk-account-list .dingtalk-account-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  height: auto;
+  min-height: 56px;
+  padding: 8px 16px;
+  text-align: left;
+  white-space: normal;
+}
+.dingtalk-account-option .dingtalk-account-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+.dingtalk-account-option .dingtalk-account-meta {
+  font-size: 12px;
+  color: var(--oa-text-3, #8c8c8c);
+}

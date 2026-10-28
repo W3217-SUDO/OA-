@@ -27,7 +27,7 @@ from app.models_shared import (
     UserPermissionOverrideUpdate,
 )
 from fastapi import APIRouter, Request
-from app.api_schemas.identity import DingTalkSelfUnbindInput
+from app.api_schemas.identity import DingTalkChooseInput, DingTalkSelfUnbindInput
 from app.core import query_prewarm
 
 router = APIRouter()
@@ -122,10 +122,17 @@ async def dingtalk_login(body: DingTalkLoginInput, db: AsyncSession = Depends(ge
     except (DingTalkError, httpx.HTTPError) as exc:
         logger.warning("DingTalk login failed: %s", exc)
         raise HTTPException(status_code=502, detail="钉钉身份校验失败，请稍后重试") from exc
-    data = await login_verified_employee(ding_user, db)
+    data = await login_verified_employee(ding_user, db, preferred=body.last_username, choose=body.choose, allow_choose=True)
     if data is None:
         raise HTTPException(status_code=403, detail="钉钉账号尚未绑定系统员工，请联系管理员在员工账号中绑定")
     return data
+
+
+@router.post(f"{settings.api_prefix}/auth/dingtalk/choose")
+async def choose_dingtalk_account(body: DingTalkChooseInput, db: AsyncSession = Depends(get_db)):
+    """钉钉选账号页：点一个已绑定的账号直接进入，不用密码。"""
+    from .dingtalk_auth import login_chosen_employee
+    return await login_chosen_employee(body.ticket, body.username, db)
 
 
 @router.post(f"{settings.api_prefix}/auth/dingtalk/bind")
@@ -133,10 +140,16 @@ async def bind_dingtalk_login(body: DingTalkBindInput, db: AsyncSession = Depend
     from .dingtalk_auth import bind_verified_employee
     if not dingtalk_client.configured:
         raise HTTPException(status_code=503, detail="钉钉免登尚未配置")
-    try:
-        ding_user = await dingtalk_client.user_by_auth_code(body.auth_code.strip())
-    except (DingTalkError, httpx.HTTPError) as exc:
-        raise HTTPException(status_code=502, detail="钉钉身份校验失败，请从工作台重新打开系统") from exc
+    if body.ticket.strip():
+        from .dingtalk_auth import verify_choose_ticket
+        ding_user = {"user_id": verify_choose_ticket(body.ticket.strip())}
+    else:
+        if not body.auth_code.strip():
+            raise HTTPException(status_code=422, detail="缺少钉钉身份，请从钉钉工作台重新打开系统")
+        try:
+            ding_user = await dingtalk_client.user_by_auth_code(body.auth_code.strip())
+        except (DingTalkError, httpx.HTTPError) as exc:
+            raise HTTPException(status_code=502, detail="钉钉身份校验失败，请从工作台重新打开系统") from exc
     return await bind_verified_employee(ding_user, body.username, body.password, db)
 
 
@@ -305,9 +318,6 @@ async def bind_system_user_dingtalk(user_id: int, body: DingTalkBindingInput, id
     ding_user_id = body.user_id.strip()
     if ding_user_id:
         _require_dingtalk_access(user)
-        users = (await db.scalars(select(User).where(User.id != user_id))).all()
-        if any(ding_user_id in _profile_dingtalk_login_ids(item.profile) for item in users):
-            raise HTTPException(status_code=409, detail="该钉钉账号已绑定其他系统用户")
     profile = dict(user.profile or {})
     if ding_user_id:
         profile["dingtalk_user_id"] = ding_user_id

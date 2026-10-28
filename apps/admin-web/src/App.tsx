@@ -1074,6 +1074,15 @@ function readStoredUser(): SessionUser | null {
   }
 }
 
+type DingTalkChooser = { ticket: string; accounts: { username: string; display_name: string; department: string; role: string }[] };
+// 钉钉内免登：记住本机上次进入的账号；点“退出”后下次从钉钉打开先选账号。退出登录不清这两个键。
+const DINGTALK_LAST_ACCOUNT_KEY = "sunhold:dingtalk-last-account";
+const DINGTALK_CHOOSE_KEY = "sunhold:dingtalk-choose-account";
+function rememberDingTalkAccount(user: SessionUser) {
+  localStorage.setItem(DINGTALK_LAST_ACCOUNT_KEY, user.username);
+  localStorage.removeItem(DINGTALK_CHOOSE_KEY);
+}
+
 function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
   const siteBrand = resolveSiteBrand(window.location.hostname);
   const isHuzhi = siteBrand.code === "huzhi";
@@ -1081,6 +1090,8 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
   const [dingtalkEnabled, setDingtalkEnabled] = useState(false);
   const [dingtalkAuthCode, setDingtalkAuthCode] = useState("");
   const [dingtalkWebBinding, setDingtalkWebBinding] = useState(false);
+  const [dingtalkChooser, setDingtalkChooser] = useState<DingTalkChooser | null>(null);
+  const [dingtalkOtherAccount, setDingtalkOtherAccount] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
   const [pendingUser, setPendingUser] = useState<SessionUser | null>(null);
   const [passwordForm] = Form.useForm();
@@ -1123,10 +1134,20 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
         }
         setLoading(true);
         const result = await requestDingTalkAuthCode({ corpId: config.corp_id });
-        const { data } = await api.post("/auth/dingtalk/login", { auth_code: result.code });
+        const { data } = await api.post("/auth/dingtalk/login", {
+          auth_code: result.code,
+          last_username: localStorage.getItem(DINGTALK_LAST_ACCOUNT_KEY) || "",
+          choose: localStorage.getItem(DINGTALK_CHOOSE_KEY) === "1",
+        });
+        if (!active) return;
+        if (data.choose_account) {
+          setDingtalkChooser({ ticket: data.ticket, accounts: data.accounts || [] });
+          return;
+        }
+        rememberDingTalkAccount(data.user);
         localStorage.setItem("access_token", data.access_token);
         localStorage.setItem("user", JSON.stringify(data.user));
-        if (active) onSuccess(data.user);
+        onSuccess(data.user);
       } catch (error: any) {
         if (active && webCallback) {
           clearDingTalkWebCallback();
@@ -1151,12 +1172,17 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
       let data: any;
       if (dingtalkWebBinding) {
         data = await bindDingTalkWebLogin(values);
+      } else if (dingtalkChooser) {
+        // 选账号页“登录其他账号”：验证一次账号密码，同时把这个账号绑定到当前钉钉。
+        ({ data } = await api.post("/auth/dingtalk/bind", { ...values, ticket: dingtalkChooser.ticket }));
+        rememberDingTalkAccount(data.user);
       } else if (dingtalkAuthCode) {
         // DingTalk auth codes are single-use. The initial SSO probe consumes its
         // code before an unbound user reaches this form, so binding needs a new one.
         const { data: config } = await api.get("/auth/dingtalk/config");
         const result = await requestDingTalkAuthCode({ corpId: config.corp_id });
         ({ data } = await api.post("/auth/dingtalk/bind", { ...values, auth_code: result.code }));
+        rememberDingTalkAccount(data.user);
       } else {
         ({ data } = await api.post("/auth/login", form, {
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -1206,11 +1232,44 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
     await prompt.userChoice;
     setInstallPrompt(null);
   };
-  const loginCard = (
+  const chooseDingTalkAccount = async (username: string) => {
+    if (!dingtalkChooser) return;
+    setLoading(true);
+    try {
+      const { data } = await api.post("/auth/dingtalk/choose", { ticket: dingtalkChooser.ticket, username });
+      rememberDingTalkAccount(data.user);
+      localStorage.setItem("access_token", data.access_token);
+      localStorage.setItem("user", JSON.stringify(data.user));
+      onSuccess(data.user);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "登录失败，请从钉钉工作台重新打开");
+    } finally {
+      setLoading(false);
+    }
+  };
+  const chooserCard = dingtalkChooser && !dingtalkOtherAccount && (
+    <Card className="login-card">
+      <h2>选择登录账号</h2>
+      <p>当前钉钉已绑定以下账号，点一下直接进入</p>
+      <div className="dingtalk-account-list">
+        {dingtalkChooser.accounts.map((account) => (
+          <Button key={account.username} block size="large" className="dingtalk-account-option" disabled={loading} onClick={() => void chooseDingTalkAccount(account.username)}>
+            <span className="dingtalk-account-name">{account.display_name}</span>
+            <span className="dingtalk-account-meta">{[account.username, account.department, account.role].filter(Boolean).join(" · ")}</span>
+          </Button>
+        ))}
+      </div>
+      <div className="login-secondary-actions">
+        <Button type="link" onClick={() => setDingtalkOtherAccount(true)}>登录其他账号</Button>
+      </div>
+    </Card>
+  );
+  const loginCard = chooserCard || (
     <Card className="login-card">
       <h2>{isHuzhi ? "登录沪知工作台" : "系统登录"}</h2>
       <p>{isHuzhi ? "请输入 OA 账号与密码" : siteBrand.welcome}</p>
-      {(dingtalkAuthCode || dingtalkWebBinding) && <Alert type="info" showIcon title="首次钉钉登录" description={dingtalkWebBinding ? "输入本人 OA 账号和密码完成绑定，以后可扫码登录。" : "输入一次现有 OA 账号和密码完成绑定；以后从钉钉工作台打开将直接登录。"} style={{marginBottom:16}} />}
+      {dingtalkChooser && <Alert type="info" showIcon title="登录其他账号" description="输入账号和密码登录一次，这个账号会加入当前钉钉的账号列表，以后点一下就能进入。" action={<Button size="small" onClick={() => setDingtalkOtherAccount(false)}>返回选择</Button>} style={{marginBottom:16}} />}
+      {!dingtalkChooser && (dingtalkAuthCode || dingtalkWebBinding) && <Alert type="info" showIcon title="首次钉钉登录" description={dingtalkWebBinding ? "输入本人 OA 账号和密码完成绑定，以后可扫码登录。" : "输入一次现有 OA 账号和密码完成绑定；以后从钉钉工作台打开将直接登录。"} style={{marginBottom:16}} />}
       <Form onFinish={submit} layout="vertical">
         <Form.Item name="username" label="账号" rules={[{ required: true }]}>
           <Input size="large" autoComplete="username" prefix={<UserOutlined />} />
@@ -1226,7 +1285,7 @@ function Login({ onSuccess }: { onSuccess: (user: SessionUser) => void }) {
           htmlType="submit"
           loading={loading}
         >
-          {dingtalkAuthCode || dingtalkWebBinding ? "绑定钉钉并登录" : isHuzhi ? "登录" : "登 录"}
+          {dingtalkChooser ? "登录并加入列表" : dingtalkAuthCode || dingtalkWebBinding ? "绑定钉钉并登录" : isHuzhi ? "登录" : "登 录"}
         </Button>
         <div className="login-secondary-actions">
           {dingtalkEnabled && getDingTalkEnvironment().platform === "notInDingTalk" && (
@@ -1657,6 +1716,7 @@ export default function App() {
     setCollapsedOpenKeys([]);
   }, [active, effectiveMenuItems]);
   const logout = () => {
+    if (getDingTalkEnvironment().platform !== "notInDingTalk") localStorage.setItem(DINGTALK_CHOOSE_KEY, "1");
     endClientSession();
   };
   if (new URLSearchParams(window.location.search).get("page") === "customer-portal")

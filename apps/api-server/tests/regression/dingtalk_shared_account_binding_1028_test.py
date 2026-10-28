@@ -54,15 +54,50 @@ class DingTalkSharedAccountBindingTest(unittest.IsolatedAsyncioTestCase):
             admin = await db.scalar(select(User).where(User.username == "admin"))
             self.assertEqual(admin.profile["dingtalk_login_ids"], ["ding-taowei"])
 
-    async def test_dingtalk_identity_bound_elsewhere_is_rejected(self) -> None:
+    async def test_one_dingtalk_can_bind_several_accounts_and_choose(self) -> None:
+        """1029：一个钉钉可绑定多个 OA 账号；退出后或没有上次记录时先选账号，点账号直接进入，各账号通知主身份不变。"""
+        from app.areas.system.dingtalk_auth import login_chosen_employee
+
         async with self.sessions() as db:
+            await bind_verified_employee({"user_id": "ding-other"}, "admin", "Secret-1028", db)
+            admin = await db.scalar(select(User).where(User.username == "admin"))
+            other = await db.scalar(select(User).where(User.username == "other"))
+            self.assertEqual(admin.profile["dingtalk_user_id"], "ding-tgn", "主身份不被顶掉")
+            self.assertEqual(other.profile["dingtalk_user_id"], "ding-other")
+            ding = {"user_id": "ding-other"}
+            chooser = await login_verified_employee(ding, db, allow_choose=True)
+            self.assertTrue(chooser["choose_account"])
+            self.assertEqual([item["username"] for item in chooser["accounts"]], ["admin", "other"])
+            data = await login_verified_employee(ding, db, preferred="admin", allow_choose=True)
+            self.assertEqual(data["user"]["username"], "admin", "没退出过就进上次用的账号")
+            chooser = await login_verified_employee(ding, db, preferred="admin", choose=True, allow_choose=True)
+            self.assertTrue(chooser["choose_account"], "退出后再打开先选账号")
+            data = await login_chosen_employee(chooser["ticket"], "other", db)
+            self.assertEqual(data["user"]["username"], "other")
             with self.assertRaises(HTTPException) as caught:
-                await bind_verified_employee({"user_id": "ding-other"}, "admin", "Secret-1028", db)
-            self.assertEqual(caught.exception.status_code, 409)
-            await bind_verified_employee({"user_id": "ding-taowei"}, "admin", "Secret-1028", db)
+                await login_chosen_employee(chooser["ticket"], "nobody", db)
+            self.assertEqual(caught.exception.status_code, 403)
+            single = await login_verified_employee({"user_id": "ding-tgn"}, db, choose=False, allow_choose=True)
+            self.assertEqual(single["user"]["username"], "admin", "只绑定一个账号时直接进入")
+
+    async def test_login_other_account_from_chooser_binds_it(self) -> None:
+        from app.api_schemas.identity import DingTalkBindInput, DingTalkChooseInput
+        from app.areas.system.dingtalk_auth import choose_ticket
+        from app.areas.system import router as system_router
+        from unittest.mock import PropertyMock, patch
+
+        async with self.sessions() as db:
+            ticket = choose_ticket("ding-tgn")
+            with patch.object(type(system_router.dingtalk_client), "configured", new_callable=PropertyMock, return_value=True):
+                data = await system_router.bind_dingtalk_login(DingTalkBindInput(ticket=ticket, username="other", password="Secret-1028"), db)
+            self.assertEqual(data["user"]["username"], "other")
+            other = await db.scalar(select(User).where(User.username == "other"))
+            self.assertEqual(_profile_dingtalk_login_ids(other.profile), ["ding-other", "ding-tgn"])
+            chosen = await system_router.choose_dingtalk_account(DingTalkChooseInput(ticket=ticket, username="other"), db)
+            self.assertEqual(chosen["user"]["username"], "other")
             with self.assertRaises(HTTPException) as caught:
-                await bind_verified_employee({"user_id": "ding-taowei"}, "other", "Secret-1028", db)
-            self.assertEqual(caught.exception.status_code, 409, "附加绑定的身份同样不能再绑到别的账号")
+                await system_router.choose_dingtalk_account(DingTalkChooseInput(ticket="bad", username="other"), db)
+            self.assertEqual(caught.exception.status_code, 400)
 
     async def test_remove_single_binding_promotes_next_and_keeps_record(self) -> None:
         """1029：个人设置/员工账号里逐个解绑；主身份被解绑时由下一个接替，解绑记录保留。"""

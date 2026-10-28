@@ -67,11 +67,22 @@ class CurrentUserUpdate(BaseModel):
 
 class DingTalkLoginInput(BaseModel):
     auth_code: str = Field(min_length=1, max_length=512)
+    # 本机上次用钉钉进入的账号；绑定多个账号时直接进这个。choose=True 表示刚退出过，要让用户选账号。
+    last_username: str = Field(default="", max_length=64)
+    choose: bool = False
 
 
-class DingTalkBindInput(DingTalkLoginInput):
+class DingTalkBindInput(BaseModel):
+    # 首次绑定带新取的免登码；选账号页里“登录其他账号”带选账号票据。
+    auth_code: str = Field(default="", max_length=512)
+    ticket: str = Field(default="", max_length=2048)
     username: str = Field(min_length=2, max_length=64)
     password: str = Field(min_length=1, max_length=128)
+
+
+class DingTalkChooseInput(BaseModel):
+    ticket: str = Field(min_length=1, max_length=2048)
+    username: str = Field(min_length=1, max_length=64)
 
 
 class DingTalkBindingInput(BaseModel):
