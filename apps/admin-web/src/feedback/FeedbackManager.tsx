@@ -3,7 +3,7 @@ import { Alert, Button, DatePicker, Input, message, Popconfirm, Segmented, Selec
 import type { Dayjs } from "dayjs";
 import Table from "../components/ResizableTable";
 import type { TableColumnsType } from "antd";
-import dayjs from "dayjs";
+import { beijingTime } from "./time";
 import { api } from "../api";
 import FeedbackDetail from "./FeedbackDetail";
 import FeedbackForm from "./FeedbackForm";
@@ -147,7 +147,7 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
     { title: "状态", dataIndex: "status", width: 100,
       render: (value: string) => <Tag color={statusColors[value] || "default"}>{value}</Tag> },
     { title: "提交人", width: 105, ellipsis: true, render: (_, row) => row.owner_display_name || row.owner },
-    { title: "最近更新", width: 160, render: (_, row) => dayjs(row.updated_at || row.created_at).format("YYYY-MM-DD HH:mm") },
+    { title: "最近更新", width: 160, render: (_, row) => beijingTime(row.updated_at || row.created_at, "YYYY-MM-DD HH:mm") },
     { title: "提交页面", dataIndex: "page", width: 180, ellipsis: true },
     ...(center ? [{ title: "涉及按钮", key: "controls", width: 160, ellipsis: true,
       render: (_: unknown, row: FeedbackRecord) => row.controls?.length ? row.controls.join("、") : "—" }] : []),

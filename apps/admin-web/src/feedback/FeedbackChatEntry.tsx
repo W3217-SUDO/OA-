@@ -1,5 +1,5 @@
 import { RobotOutlined, SafetyCertificateOutlined, SolutionOutlined, UserOutlined } from "@ant-design/icons";
-import dayjs from "dayjs";
+import { beijingTime } from "./time";
 import type { ReactNode } from "react";
 import FeedbackAttachments from "./FeedbackAttachments";
 import FeedbackEventImage from "./FeedbackEventImage";
@@ -13,7 +13,7 @@ const AVATAR_ICONS: Record<FeedbackSpeaker, ReactNode> = {
 // 处理记录里的一条：状态变化是居中小灰条；回复（以及状态变化附带的说明、截图）是气泡，提交人在右、处理方在左。
 export default function FeedbackChatEntry({ feedbackId, event }: { feedbackId: number; event: FeedbackEvent }) {
   const speaker = feedbackSpeaker(event);
-  const time = dayjs(event.created_at).format("MM-DD HH:mm");
+  const time = beijingTime(event.created_at, "MM-DD HH:mm");
   return <>
     {isFeedbackStatusEvent(event) && <div className="feedback-chat-status" role="note">
       <span>{feedbackStatusText(event)}</span>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Button, Descriptions, Input, message, Popconfirm, Space, Spin, Tag, Tooltip } from "antd";
 import { ArrowUpOutlined, PaperClipOutlined, PictureOutlined } from "@ant-design/icons";
-import dayjs from "dayjs";
+import { beijingTime } from "./time";
 import { api } from "../api";
 import type { FeedbackDetails } from "./types";
 import FeedbackFileDrop from "./FeedbackFileDrop";
@@ -153,7 +153,7 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
       { key: "serial", label: "反馈编号", children: feedback.legacy_serial_no
         ? `${feedback.serial_no}（原编号 ${feedback.legacy_serial_no}）` : feedback.serial_no },
       { key: "owner", label: "提交人", children: feedback.owner_display_name || feedback.owner },
-      { key: "date", label: "提交时间", children: dayjs(feedback.created_at).format("YYYY-MM-DD HH:mm:ss") },
+      { key: "date", label: "提交时间", children: beijingTime(feedback.created_at, "YYYY-MM-DD HH:mm:ss") },
       { key: "page", label: "问题页面", span: 2, children: <Space wrap size={4}>
         <span style={{ overflowWrap: "anywhere" }}>{feedback.page || "—"}</span>
         {feedback.route && <Button type="link" size="small" onClick={() => onNavigate(feedback.route)}>前往该页面</Button>}

@@ -100,8 +100,14 @@
 .feedback-files.is-inline .feedback-file-size { display: none; }
 /* 参照钉钉聊天框：第一行圆角输入条（右侧圆形发送），第二行一排工具图标和状态操作胶囊，放不下时横向滚动。 */
 .feedback-chat-input { display: flex; align-items: flex-end; gap: 6px; padding: 4px 4px 4px 14px; border: 1px solid var(--oa-border, #d9d9d9); border-radius: 22px; background: var(--oa-surface, #fff); }
-.feedback-chat-input:focus-within { border-color: var(--oa-primary); }
+.feedback-chat-input:focus-within { border-color: var(--oa-primary); box-shadow: none; }
 .feedback-chat-input textarea.ant-input { flex: 1 1 0; min-width: 0; padding: 7px 0; font-size: 15px; line-height: 1.5; resize: none; }
+/* 只留外层输入条一圈边框：内层输入框在悬停、聚焦、禁用时都不再画自己的边框和阴影（否则两圈绿色圆角重叠）。 */
+.feedback-chat-input textarea.ant-input,
+.feedback-chat-input textarea.ant-input:hover,
+.feedback-chat-input textarea.ant-input:focus,
+.feedback-chat-input textarea.ant-input-focused,
+.feedback-chat-input textarea.ant-input[disabled] { border: 0 !important; border-radius: 0; outline: none; box-shadow: none !important; background: transparent !important; }
 .feedback-chat-input .feedback-chat-send.ant-btn { flex: none; width: 36px; min-width: 36px; height: 36px; padding: 0; }
 .feedback-chat-toolbar { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; margin-top: 6px; overflow-x: auto; scrollbar-width: none; }
 .feedback-chat-toolbar::-webkit-scrollbar { display: none; }
