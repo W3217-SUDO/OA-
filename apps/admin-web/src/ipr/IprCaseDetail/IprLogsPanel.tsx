@@ -46,9 +46,10 @@ export function IprBusinessLogsPanel({
   return (
     <>
       <Card
+        // 和“案件提醒”的“新增”同样是小号绿色按钮（BUG20261028021）。
         size="small"
         title="案件日志"
-        extra={canWrite && roleActionAllowed("ipr.case.log.manage") ? <Button size="small" type="link" onClick={onOpenLog}>新增日志</Button> : null}
+        extra={canWrite && roleActionAllowed("ipr.case.log.manage") ? <Button size="small" type="primary" onClick={onOpenLog}>新增日志</Button> : null}
       >
         {iprSectionErrors.logs ? (
           <Alert type="error" showIcon message={iprSectionErrors.logs} style={{ marginBottom: 12 }} />
