@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app.core.constants import CUSTOMER_ROLE_ACTIONS
 from app.config import settings
 from app.areas.crm import router as crm_router
 from app.database import Base, get_db
@@ -337,7 +338,7 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
                 role="user",
                 display_name="Test User",
                 data_scope="本人及共享数据",
-                menu_keys=["customer", "@action:record.customer.update"],
+                menu_keys=["customer", "@action:record.customer.update", *(f"@action:{code}" for code, _ in CUSTOMER_ROLE_ACTIONS)],
                 field_keys=["customer.legal"],
             ))
             customer = BusinessRecord(
@@ -380,7 +381,7 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             db.add(RolePermission(
                 role="user", display_name="Test User", data_scope="本人及共享数据",
-                menu_keys=["customer-dept"], field_keys=["customer.legal"],
+                menu_keys=["customer-dept", *(f"@action:{code}" for code, _ in CUSTOMER_ROLE_ACTIONS)], field_keys=["customer.legal"],
             ))
             await db.commit()
 

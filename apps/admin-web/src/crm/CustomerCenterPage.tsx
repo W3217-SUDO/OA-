@@ -72,7 +72,7 @@ import {
   type Note,
   type Profile,
 } from "./types";
-import {
+import { customerActionAllowed,
   initialProfile,
 } from "./constants";
 
@@ -1247,6 +1247,12 @@ export default function CustomerCenterPage({
     });
   };
 
+  const customerActionCodes: Record<string, string> = {
+    edit: "crm.customer.update", delete: "crm.customer.recycle", restore: "crm.customer.restore",
+    assign: "crm.customer.assign", release: "crm.customer.release", claim: "crm.customer.claim",
+    share: "crm.customer.share", "portal-open": "crm.customer.portal", "portal-close": "crm.customer.portal",
+    "contact-management": "crm.customer.contact.manage",
+  };
   const originalActionItems = (() => {
     const customerNavigationActions = [
       { key: "communication", label: "新增沟通记录" },
@@ -1279,7 +1285,7 @@ export default function CustomerCenterPage({
                     ? [{ key: "edit", label: "客户编辑" }, { key: "claim", label: "拾回" }]
                     : [{ key: "claim", label: "拾回" }]
                   : []
-    );
+    ).filter((item) => !customerActionCodes[item.key] || customerActionAllowed(profile, customerActionCodes[item.key]));
   })();
 
   const runOriginalAction = (key: string) => {
@@ -1393,6 +1399,8 @@ export default function CustomerCenterPage({
           customerLicenseAttachment={customerLicenseAttachment}
           customerLicenseThumb={customerLicenseThumb}
           canManage={canManageCurrentCustomer}
+          canManageContacts={canManageCurrentCustomer && customerActionAllowed(profile, "crm.customer.contact.manage")}
+          canManageNotes={canManageCurrentCustomer && customerActionAllowed(profile, "crm.customer.note.manage")}
           customerEventForm={customerEventForm}
           onTabChange={handleCustomerDetailTabChange}
           onClose={handleDetailViewClose}
@@ -1557,6 +1565,8 @@ export default function CustomerCenterPage({
         attachments={attachments}
         sharedObjects={sharedObjects}
         canManage={canManageCurrentCustomer}
+        canManageContacts={canManageCurrentCustomer && customerActionAllowed(profile, "crm.customer.contact.manage")}
+        canManageNotes={canManageCurrentCustomer && customerActionAllowed(profile, "crm.customer.note.manage")}
         directory={directory}
         contactForm={contactForm}
         noteForm={noteForm}

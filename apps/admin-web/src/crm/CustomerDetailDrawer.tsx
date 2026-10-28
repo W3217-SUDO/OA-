@@ -46,6 +46,8 @@ interface CustomerDetailDrawerProps {
   attachments: Attachment[];
   sharedObjects: string[];
   canManage: boolean;
+  canManageContacts?: boolean;
+  canManageNotes?: boolean;
   directory: DirectoryUser[];
   contactForm: FormInstance;
   noteForm: FormInstance;
@@ -78,11 +80,11 @@ interface CustomerDetailDrawerProps {
   onCreateCustomerEvent: () => void;
 }
 
-export function CustomerDetailDrawer({ open, customer, detailTab, detailLoading, historyError, attachmentError, customerEventError, sharedObjectsError, contactPage, contactPageSize, contactTotal, customerEvents, events, attachments, sharedObjects, canManage, directory, contactForm, noteForm, customerEventForm, documentForm, documentFileRef, onClose, onTabChange, onRefreshContacts, onContactPageChange, onAddContact, onViewContact, onEditContact, onDeleteContact, onSetContactPrimary, onSetContactActive, onSetContactInactive, onUploadContactPhoto, onViewContactPhoto, onAddNote, onDeleteNote, onViewDocument, onDownloadDocument, onDeleteDocument, onUploadDocument, onDocumentFileChange, onOpenContracts, onNewContract, onCreateCustomerEvent }: CustomerDetailDrawerProps) {
+export function CustomerDetailDrawer({ open, customer, detailTab, detailLoading, historyError, attachmentError, customerEventError, sharedObjectsError, contactPage, contactPageSize, contactTotal, customerEvents, events, attachments, sharedObjects, canManage, canManageContacts = canManage, canManageNotes = canManage, directory, contactForm, noteForm, customerEventForm, documentForm, documentFileRef, onClose, onTabChange, onRefreshContacts, onContactPageChange, onAddContact, onViewContact, onEditContact, onDeleteContact, onSetContactPrimary, onSetContactActive, onSetContactInactive, onUploadContactPhoto, onViewContactPhoto, onAddNote, onDeleteNote, onViewDocument, onDownloadDocument, onDeleteDocument, onUploadDocument, onDocumentFileChange, onOpenContracts, onNewContract, onCreateCustomerEvent }: CustomerDetailDrawerProps) {
 
   const userLabel = (value: string) => displayChinesePersonName(value, directory);
 
-  const contactPhotoActions = (contact: Contact) => canManage ? (
+  const contactPhotoActions = (contact: Contact) => canManageContacts ? (
     <Space size={0}>
       <Upload accept=".jpg,.jpeg,.png,.gif,.webp" showUploadList={false} customRequest={option => void onUploadContactPhoto(contact, option)}>
         <Button type="link">{contact.photo_attachment_id ? "替换照片" : "上传照片"}</Button>
@@ -153,7 +155,7 @@ export function CustomerDetailDrawer({ open, customer, detailTab, detailLoading,
                     { title: "照片", width: 150, render: (_: unknown, r: Contact) => contactPhotoActions(r) },
                     {
                       title: "操作",
-                      render: (_: unknown, r: Contact) => canManage ? (
+                      render: (_: unknown, r: Contact) => canManageContacts ? (
                         <Space size={0}>
                           <Button type="link" onClick={() => onViewContact(r)}>查看</Button>
                           <Button type="link" onClick={() => onEditContact(r)}>编辑</Button>
@@ -168,7 +170,7 @@ export function CustomerDetailDrawer({ open, customer, detailTab, detailLoading,
                     },
                   ]}
                 />
-                <Card
+                {canManageContacts && <Card
                   size="small"
                   title="新增联系人"
                   style={{ marginTop: 16 }}
@@ -191,7 +193,7 @@ export function CustomerDetailDrawer({ open, customer, detailTab, detailLoading,
                     <Form.Item name="is_primary" valuePropName="checked"><Checkbox>设为主要联系人</Checkbox></Form.Item>
                     <Button type="primary" onClick={onAddContact}>添加联系人</Button>
                   </Form>
-                </Card>
+                </Card>}
               </>
             ),
           },
@@ -237,7 +239,7 @@ export function CustomerDetailDrawer({ open, customer, detailTab, detailLoading,
                     },
                   ]}
                 />
-                <Card size="small" title="新增跟进记录" style={{ marginTop: 16 }}>
+                {canManageNotes && <Card size="small" title="新增跟进记录" style={{ marginTop: 16 }}>
                   <Form form={noteForm} layout="vertical" initialValues={{ note_type: "跟进记录" }}>
                     <Form.Item label="记录类型" name="note_type">
                       <Select options={["跟进记录", "会议纪要", "电话沟通", "风险提示", "客户备注"].map((v) => ({ value: v, label: v }))} />
@@ -247,7 +249,7 @@ export function CustomerDetailDrawer({ open, customer, detailTab, detailLoading,
                     </Form.Item>
                     <Button type="primary" onClick={onAddNote}>保存跟进记录</Button>
                   </Form>
-                </Card>
+                </Card>}
               </>
             ),
           },
@@ -263,7 +265,7 @@ export function CustomerDetailDrawer({ open, customer, detailTab, detailLoading,
                   { title: "操作人", dataIndex: "operator", width: 100, render: (value: string) => userLabel(value) },
                   { title: "时间", dataIndex: "created_at", width: 165 },
                 ]} />
-                {canManage && (
+                {canManageNotes && (
                   <Card size="small" title="新增客户注意事项" style={{ marginTop: 16 }}>
                     <Form form={customerEventForm} layout="vertical">
                       <Form.Item label="事项内容" name="content" rules={[{ required: true, message: "请输入客户注意事项" }]}>

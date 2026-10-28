@@ -145,6 +145,7 @@ export type Profile = {
   display_name: string;
   department: string;
   role?: string;
+  configured_action_keys?: string[];
 };
 
 export type DirectoryUser = {

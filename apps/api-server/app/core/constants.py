@@ -897,6 +897,17 @@ FINANCE_EDIT_DELETE_ACTIONS = (
 )
 
 
+# BUG20261028012 第二批：客户管理各页面“更多操作”及客户详情里的功能，按角色勾选（上线默认全勾）。
+CUSTOMER_ROLE_ACTIONS = (
+    ("crm.customer.update", "客户编辑"), ("crm.customer.recycle", "客户删除"),
+    ("crm.customer.restore", "客户恢复"), ("crm.customer.assign", "分配客户"),
+    ("crm.customer.release", "释放到公海"), ("crm.customer.claim", "公海客户拾回"),
+    ("crm.customer.share", "共享客户"), ("crm.customer.portal", "开通/停用客户服务端"),
+    ("crm.customer.contact.manage", "维护客户联系人"), ("crm.customer.note.manage", "维护事项记录及注意事项"),
+    ("crm.customer.change.apply", "申请客户分级/关键信息变更"),
+)
+
+
 SYSTEM_ACTION_OPERATION_LABELS = {
     "query": "查询", "create": "新增", "update": "编辑", "delete": "删除",
     "clear": "清理", "reset": "重置", "permissions": "维护权限", "restore": "恢复",
@@ -968,6 +979,7 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
             ("case.assisted_fee.manage", "维护资助费用"),
         )),
         {"code": "case.fee.receipt.upload", "menu_key": "case-files-receipt", "label": "上传案件票据文件"},
+        *({"code": code, "menu_key": "customer-mine", "label": label} for code, label in CUSTOMER_ROLE_ACTIONS),
         *({"code": code, "menu_key": menu_key, "label": label} for code, menu_key, label in FINANCE_EDIT_DELETE_ACTIONS),
     ])
     return definitions

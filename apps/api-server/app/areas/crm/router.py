@@ -576,6 +576,8 @@ async def list_customer_events_by_guid(customer_guid: str, identity: dict = Depe
 
 @router.post(f"{settings.api_prefix}/customers/guid/{{customer_guid}}/events", status_code=status.HTTP_201_CREATED)
 async def create_customer_event_by_guid(customer_guid: str, body: CustomerEventInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.note.manage")
     from app.core.crm import (
         _customer_by_guid, _customer_event, _customer_guid,
     )
@@ -669,6 +671,8 @@ async def list_customer_contacts(customer_id: int, page: int = Query(1, ge=1), p
 
 @router.patch(f"{settings.api_prefix}/customers/{{customer_id}}/contacts/{{contact_id}}/status")
 async def update_customer_contact_status(customer_id: int, contact_id: str, body: CustomerContactStatusInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.contact.manage")
     from app.core.crm import (
         _customer_contact_dict, _customer_event, _customer_or_404,
     )
@@ -705,6 +709,8 @@ async def update_customer_contact_status(customer_id: int, contact_id: str, body
 
 @router.patch(f"{settings.api_prefix}/customers/{{customer_id}}")
 async def patch_customer(customer_id: int, body: CustomerPatchInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.update")
     from app.core.customer_commands import patch_customer_record
     result = await patch_customer_record(customer_id, body, identity, db)
     await db.commit()
@@ -713,6 +719,8 @@ async def patch_customer(customer_id: int, body: CustomerPatchInput, identity: d
 
 @router.post(f"{settings.api_prefix}/customers/{{customer_id}}/claim")
 async def claim_customer(customer_id: int, body: CustomerActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.claim")
     from app.core.crm import (
         _customer_event, _locked_customer_or_404,
     )
@@ -746,6 +754,8 @@ async def claim_customer(customer_id: int, body: CustomerActionInput, identity: 
 
 @router.post(f"{settings.api_prefix}/customers/{{customer_id}}/release")
 async def release_customer(customer_id: int, body: CustomerActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.release")
     from app.core.crm import (
         _customer_event, _locked_customer_or_404,
     )
@@ -774,6 +784,8 @@ async def release_customer(customer_id: int, body: CustomerActionInput, identity
 
 @router.post(f"{settings.api_prefix}/customers/{{customer_id}}/share")
 async def share_customer(customer_id: int, body: CustomerShareInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.share")
     from app.core.crm import (
         _customer_event, _locked_customer_or_404, _resolve_active_customer_managers,
     )
@@ -821,6 +833,8 @@ async def share_customer(customer_id: int, body: CustomerShareInput, identity: d
 
 @router.post(f"{settings.api_prefix}/customers/{{customer_id}}/recycle")
 async def recycle_customer(customer_id: int, body: CustomerActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.recycle")
     from app.core.crm import (
         _customer_event, _customer_linked_business_counts, _locked_customer_or_404,
     )
@@ -860,6 +874,8 @@ async def recycle_customer(customer_id: int, body: CustomerActionInput, identity
 
 @router.post(f"{settings.api_prefix}/customers/{{customer_id}}/restore")
 async def restore_customer(customer_id: int, body: CustomerActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.restore")
     from app.core.crm import (
         _customer_event, _locked_customer_or_404,
     )
@@ -884,6 +900,8 @@ async def restore_customer(customer_id: int, body: CustomerActionInput, identity
 
 @router.post(f"{settings.api_prefix}/customers/{{customer_id}}/contacts", status_code=status.HTTP_201_CREATED)
 async def add_customer_contact(customer_id: int, body: CustomerContactInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.contact.manage")
     from app.core.crm import (
         _customer_event, _customer_or_404,
     )
@@ -918,6 +936,8 @@ async def add_customer_contact(customer_id: int, body: CustomerContactInput, ide
 @router.put(f"{settings.api_prefix}/customers/{{customer_id}}/contacts/{{contact_id}}")
 async def update_customer_contact(customer_id: int, contact_id: str, body: CustomerContactInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Update an existing contact in place; customer scope and edit authority are never bypassed."""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.contact.manage")
     from app.core.crm import (
         _customer_event, _customer_or_404,
     )
@@ -979,6 +999,8 @@ async def update_customer_contact(customer_id: int, contact_id: str, body: Custo
 
 @router.delete(f"{settings.api_prefix}/customers/{{customer_id}}/contacts/{{contact_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_customer_contact(customer_id: int, contact_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.contact.manage")
     from app.core.crm import (
         _customer_event, _customer_or_404,
     )
@@ -1002,6 +1024,8 @@ async def delete_customer_contact(customer_id: int, contact_id: str, identity: d
 
 @router.post(f"{settings.api_prefix}/customers/{{customer_id}}/contacts/{{contact_id}}/photo", status_code=status.HTTP_201_CREATED)
 async def upload_customer_contact_photo(customer_id: int, contact_id: str, file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.contact.manage")
     from app.core.crm import (
         _customer_contact_or_404, _customer_event,
     )
@@ -1044,6 +1068,8 @@ async def download_customer_contact_photo(customer_id: int, contact_id: str, ide
 
 @router.put(f"{settings.api_prefix}/customers/{{customer_id}}/managers")
 async def update_customer_managers(customer_id: int, body: CustomerManagersInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.assign")
     from app.core.crm import (
         _cascade_customer_owner_change, _customer_event, _customer_or_404,
         _prioritize_new_customer_managers, _resolve_active_customer_managers,
@@ -1092,6 +1118,8 @@ async def update_customer_managers(customer_id: int, body: CustomerManagersInput
 
 @router.post(f"{settings.api_prefix}/customers/{{customer_id}}/notes", status_code=status.HTTP_201_CREATED)
 async def add_customer_note(customer_id: int, body: CustomerNoteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.note.manage")
     from app.core.crm import (
         _customer_event, _customer_or_404, _sync_customer_contact_metrics,
     )
@@ -1114,6 +1142,8 @@ async def add_customer_note(customer_id: int, body: CustomerNoteInput, identity:
 @router.put(f"{settings.api_prefix}/customers/{{customer_id}}/notes/{{note_id}}")
 async def update_customer_note(customer_id: int, note_id: str, body: CustomerNoteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Update one customer note in place without changing its identity or audit origin."""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.note.manage")
     from app.core.crm import (
         _customer_event, _customer_or_404, _sync_customer_contact_metrics,
     )
@@ -1146,6 +1176,8 @@ async def update_customer_note(customer_id: int, note_id: str, body: CustomerNot
 
 @router.delete(f"{settings.api_prefix}/customers/{{customer_id}}/notes/{{note_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_customer_note(customer_id: int, note_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.note.manage")
     from app.core.crm import (
         _customer_event, _customer_or_404, _sync_customer_contact_metrics,
     )
@@ -1166,6 +1198,8 @@ async def delete_customer_note(customer_id: int, note_id: str, identity: dict = 
 
 @router.post(f"{settings.api_prefix}/customers/{{customer_id}}/level-change")
 async def submit_customer_level_change(customer_id: int, body: CustomerLevelChangeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.change.apply")
     from app.core.crm import (
         _customer_event, _customer_or_404,
     )
@@ -1233,6 +1267,8 @@ async def review_customer_level_change(customer_id: int, body: CustomerLevelRevi
 
 @router.post(f"{settings.api_prefix}/customers/{{customer_id}}/key-change")
 async def submit_customer_key_change(customer_id: int, body: CustomerKeyChangeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.change.apply")
     from app.core.crm import (
         _customer_event, _customer_or_404,
     )
@@ -1293,6 +1329,8 @@ async def review_customer_key_change(customer_id: int, body: CustomerKeyChangeRe
 
 @router.post(f"{settings.api_prefix}/customers/{{customer_id}}/portal/open")
 async def open_customer_portal(customer_id: int, body: CustomerPortalActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.portal")
     from app.core.contracts import (
         _contract_person_values,
     )
@@ -1366,6 +1404,8 @@ async def activate_customer_portal(body: CustomerPortalActivationInput, db: Asyn
 
 @router.post(f"{settings.api_prefix}/customers/{{customer_id}}/portal/close")
 async def close_customer_portal(customer_id: int, body: CustomerPortalActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.portal")
     from app.core.crm import (
         _customer_event, _customer_or_404,
     )

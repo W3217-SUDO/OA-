@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app.core.constants import CUSTOMER_ROLE_ACTIONS
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
@@ -26,9 +27,9 @@ class CustomerRecycleReleaseTest(unittest.IsolatedAsyncioTestCase):
                 db.add(User(username=f"CODEX-{name}", display_name=name, role=role,
                             department=department, password_hash="test-only", is_active=True))
             db.add(RolePermission(role="user", display_name="CODEX-user", data_scope="本人及共享数据",
-                                  menu_keys=["customer-recycle", "customer-mine", "customer-public"], field_keys=["*"]))
+                                  menu_keys=["customer-recycle", "customer-mine", "customer-public", *(f"@action:{code}" for code, _ in CUSTOMER_ROLE_ACTIONS)], field_keys=["*"]))
             db.add(RolePermission(role="manager", display_name="CODEX-manager", data_scope="本部门数据",
-                                  menu_keys=["customer-dept-recycle", "customer-public"], field_keys=["*"]))
+                                  menu_keys=["customer-dept-recycle", "customer-public", *(f"@action:{code}" for code, _ in CUSTOMER_ROLE_ACTIONS)], field_keys=["*"]))
             db.add(SystemParameter(category="customer_type", code="customer", name="客户", is_active=True))
             customer = BusinessRecord(module="customer", serial_no="CODEX-RECYCLE-RELEASE", title="CODEX recycle release",
                                       customer="CODEX recycle release", status="已回收", owner="CODEX-owner", department="CODEX-A",

@@ -2,7 +2,7 @@
 from app.core.constants import (
     AGENT_ACTION_CAPABILITY, CASE_ACTIONS_EXPLICIT_MARKER, CASE_CREATABLE_TYPES, CIVIL_CASE_TYPES, CONTRACT_APPROVAL_ACTION_CODE, DEFAULT_MENU_LABEL_BY_KEY,
     DEFAULT_ROLE_PERMISSIONS, EXPENSE_SUBTYPE_FEE_TYPE, FIELD_KEYS, JAR_FEE_TRANSITIONS, JOB_ACTION_MENU_GRANTS,
-    JOB_ROLE_ACTION_KEY_GRANTS, ROLE_TREE_HIDDEN_ACTION_CODES, JOB_ROLE_LABEL_MENU_GRANTS, MENU_CHILDREN_BY_KEY, MENU_KEYS, ROLE_DATA_SCOPES,
+    CUSTOMER_ROLE_ACTIONS, JOB_ROLE_ACTION_KEY_GRANTS, ROLE_TREE_HIDDEN_ACTION_CODES, JOB_ROLE_LABEL_MENU_GRANTS, MENU_CHILDREN_BY_KEY, MENU_KEYS, ROLE_DATA_SCOPES,
     SYSTEM_ACTION_DEFINITIONS, SYSTEM_MENU_ROUTE_KEYS, SYSTEM_USER_ROLE_CODES,
 )
 from app.core.dependencies import (
@@ -269,6 +269,9 @@ def _role_permission_projection(role: str, permission: RolePermission | None) ->
             "field_keys": list(FIELD_KEYS),
         }
     menu_keys, action_keys = _split_role_permission_keys(permission.menu_keys if permission else config["menu_keys"])
+    if permission is None:
+        # 还没保存过的系统角色按默认全勾客户功能（BUG20261028012），保存后以勾选为准。
+        action_keys = [*action_keys, *(code for code, _ in CUSTOMER_ROLE_ACTIONS if code not in action_keys)]
     return {
         "menu_keys": _expand_menu_permission_keys(menu_keys),
         "action_keys": action_keys,
@@ -1562,6 +1565,13 @@ async def _require_case_document_write_access(case_record: BusinessRecord, ident
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}:
         raise HTTPException(status_code=409, detail="归档中、已归档或已合并案件不能生成办理文书")
     await _require_case_action(identity, db, "case.document.generate")
+
+
+async def _require_role_action(identity: dict, db: AsyncSession, action_code: str) -> None:
+    """按角色权限里勾选的功能拦截（与案件功能同一套授权）。"""
+    from app.core.cases import _case_action_granted
+    if not await _case_action_granted(identity, db, action_code):
+        raise HTTPException(status_code=403, detail="当前角色没有执行该操作的权限")
 
 
 async def _require_case_action(identity: dict, db: AsyncSession, action_code: str) -> None:

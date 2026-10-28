@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app.core.constants import CUSTOMER_ROLE_ACTIONS
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
@@ -29,7 +30,7 @@ class CustomerShareReplacementTest(unittest.IsolatedAsyncioTestCase):
                 db.add(BusinessRecord(module="hr", serial_no=f"CODEX-HR-{name}", title=name,
                                       owner=name, status="离职" if name == "share-left" else "在职", data={"username": name}))
             db.add(RolePermission(role="user", display_name="CODEX", data_scope="本人及共享数据",
-                                  menu_keys=["customer-shared"], field_keys=["*"]))
+                                  menu_keys=["customer-shared", *(f"@action:{code}" for code, _ in CUSTOMER_ROLE_ACTIONS)], field_keys=["*"]))
             db.add(SystemParameter(category="customer_type", code="customer", name="客户", is_active=True))
             customer = BusinessRecord(module="customer", serial_no="CODEX-SHARE-REPLACE", title="CODEX shared customer",
                                       owner="share-owner", status="正常", data={"customer_type": "客户",

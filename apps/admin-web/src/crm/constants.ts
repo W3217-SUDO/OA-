@@ -53,3 +53,9 @@ export const initialProfile = (): Profile => {
     return { username: "", display_name: "", department: "" };
   }
 };
+
+// BUG20261028012：客户功能按角色权限勾选；身份还没加载时先按可用显示，后台仍会校验。
+export const customerActionAllowed = (profile: Profile, code: string) => {
+  const keys = profile.configured_action_keys;
+  return !keys || keys.includes("*") || keys.includes(code);
+};

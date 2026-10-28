@@ -12,7 +12,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.core.constants import CASE_ACTIONS_EXPLICIT_MARKER, SYSTEM_ACTION_BY_CODE, SYSTEM_ACTION_DEFINITIONS
+from app.core.constants import CASE_ACTIONS_EXPLICIT_MARKER, CUSTOMER_ROLE_ACTIONS, SYSTEM_ACTION_BY_CODE, SYSTEM_ACTION_DEFINITIONS
 from app.core.permissions import _effective_job_role_action_keys
 from app.core.startup_data import CASE_ACTIONS_DEFAULT_ALL_REVISION, _grant_case_actions_to_all_roles_once
 from app.database import Base
@@ -45,6 +45,10 @@ class RoleCaseActionsDefaultAllTest(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self) -> None:
         await self.engine.dispose()
 
+    def test_customer_functions_are_catalogued_under_my_customers(self) -> None:
+        for code, _ in CUSTOMER_ROLE_ACTIONS:
+            self.assertEqual(SYSTEM_ACTION_BY_CODE[code]["menu_key"], "customer-mine")
+
     def test_new_case_functions_are_catalogued_under_my_cases(self) -> None:
         for code in ("case.task.view", "case.log.view", "case.export.print"):
             self.assertEqual(SYSTEM_ACTION_BY_CODE[code]["menu_key"], "case-mine")
@@ -69,10 +73,14 @@ class RoleCaseActionsDefaultAllTest(unittest.IsolatedAsyncioTestCase):
             admin_permission = await db.scalar(select(RolePermission).where(RolePermission.role == "admin"))
             self.assertTrue({f"@action:{code}" for code in CASE_CODES} <= set(user_permission.menu_keys))
             self.assertEqual(admin_permission.menu_keys, ["case"])
+            # 第二批：客户功能同样默认全勾。
+            customer_codes = [code for code, _ in CUSTOMER_ROLE_ACTIONS]
+            self.assertTrue({f"@action:{code}" for code in customer_codes} <= set(user_permission.menu_keys))
             jobs = {role.code: role for role in (await db.scalars(select(JobRole))).all()}
             for code in ("CODEX-1028-12-ASSISTANT", "CODEX-1028-12-LAWYER"):
                 role = jobs[code]
                 self.assertEqual(set(_effective_job_role_action_keys(role)) & set(CASE_CODES), set(CASE_CODES))
+                self.assertTrue(set(customer_codes) <= set(_effective_job_role_action_keys(role)))
             # 旧标签保留，菜单和其他动作不因此改变。
             self.assertIn("案件办理", jobs["CODEX-1028-12-LAWYER"].permissions)
             self.assertIn("案件费用申请", jobs["CODEX-1028-12-ASSISTANT"].permissions)

@@ -48,6 +48,8 @@ interface CustomerDetailViewProps {
   customerLicenseAttachment: Attachment | undefined;
   customerLicenseThumb: string;
   canManage: boolean;
+  canManageContacts?: boolean;
+  canManageNotes?: boolean;
   customerEventForm: FormInstance;
   onTabChange: (key: string) => void;
   onClose: () => void;
@@ -75,7 +77,7 @@ interface CustomerDetailViewProps {
   onCreateCustomerEvent: () => void;
 }
 
-export function CustomerDetailView({ initialView, customer, directory, customerTypeOptions, detailTab, detailLoading, recordError, historyError, customerEventError, sharedObjectsError, contactPage, contactPageSize, contactTotal, customerEvents, events, attachments, sharedObjects, customerLicenseAttachment, customerLicenseThumb, canManage, customerEventForm, onTabChange, onClose, onRefreshContacts, onContactPageChange, onNewContact, onViewContact, onEditContact, onSetContactPrimary, onSetContactActive, onSetContactInactive, onUploadContactPhoto, onViewContactPhoto, onViewDocument, onDownloadDocument, onDeleteDocument, onDeleteNote, onEditNote, onNewNote, onNewDocument, onOpenLicenseUpload, onOpenContracts, onNewContract, onCreateCustomerEvent }: CustomerDetailViewProps) {
+export function CustomerDetailView({ initialView, customer, directory, customerTypeOptions, detailTab, detailLoading, recordError, historyError, customerEventError, sharedObjectsError, contactPage, contactPageSize, contactTotal, customerEvents, events, attachments, sharedObjects, customerLicenseAttachment, customerLicenseThumb, canManage, canManageContacts = canManage, canManageNotes = canManage, customerEventForm, onTabChange, onClose, onRefreshContacts, onContactPageChange, onNewContact, onViewContact, onEditContact, onSetContactPrimary, onSetContactActive, onSetContactInactive, onUploadContactPhoto, onViewContactPhoto, onViewDocument, onDownloadDocument, onDeleteDocument, onDeleteNote, onEditNote, onNewNote, onNewDocument, onOpenLicenseUpload, onOpenContracts, onNewContract, onCreateCustomerEvent }: CustomerDetailViewProps) {
   const userLabels = (values: unknown) => displayChinesePersonNames(values, directory);
   const userLabel = (value: string) => displayChinesePersonName(value, directory);
 
@@ -96,7 +98,7 @@ export function CustomerDetailView({ initialView, customer, directory, customerT
           : [],
   );
 
-  const contactPhotoActions = (contact: Contact) => canManage ? (
+  const contactPhotoActions = (contact: Contact) => canManageContacts ? (
     <Space size={0}>
       <Upload accept=".jpg,.jpeg,.png,.gif,.webp" showUploadList={false} customRequest={option => void onUploadContactPhoto(contact, option)}>
         <Button type="link">{contact.photo_attachment_id ? "替换照片" : "上传照片"}</Button>
@@ -194,7 +196,7 @@ export function CustomerDetailView({ initialView, customer, directory, customerT
             children: (
               <>
                 <Space style={{ marginBottom: 8 }}>
-                  {canManage && <Button size="small" type="primary" onClick={onNewContact}>新建联系人</Button>}
+                  {canManageContacts && <Button size="small" type="primary" onClick={onNewContact}>新建联系人</Button>}
                   <Button size="small" icon={<ReloadOutlined />} onClick={onRefreshContacts}>刷新</Button>
                 </Space>
                 <Table
@@ -230,7 +232,7 @@ export function CustomerDetailView({ initialView, customer, directory, customerT
                     { title: "照片", width: 150, render: (_: unknown, row: Contact) => contactPhotoActions(row) },
                     {
                       title: "操作",
-                      render: (_: unknown, row: Contact) => canManage ? (
+                      render: (_: unknown, row: Contact) => canManageContacts ? (
                         <Space size={0}>
                           <Button type="link" onClick={() => onEditContact(row)}>编辑</Button>
                           {!row.is_primary && <Button type="link" onClick={() => void onSetContactPrimary(row)}>设为主要</Button>}
@@ -288,7 +290,7 @@ export function CustomerDetailView({ initialView, customer, directory, customerT
                   { title: "操作人", dataIndex: "operator", width: 100, render: (value: string) => userLabel(value) },
                   { title: "时间", dataIndex: "created_at", width: 165 },
                 ]} />
-                {canManage && (
+                {canManageNotes && (
                   <Card size="small" title="新增客户注意事项" style={{ marginTop: 16 }}>
                     <Form form={customerEventForm} layout="vertical">
                       <Form.Item label="事项内容" name="content" rules={[{ required: true, message: "请输入客户注意事项" }]}>
@@ -351,7 +353,7 @@ export function CustomerDetailView({ initialView, customer, directory, customerT
           },
         ]}
       />
-      {canManage && detailTab === "notes" && (
+      {canManageNotes && detailTab === "notes" && (
         <div className="customer-detail-actions">
           <Button type="link" onClick={onNewNote}>{initialView === "customer-company" ? "新建" : "新建事项记录"}</Button>
           {(customer.data.notes || []).map((note) => (

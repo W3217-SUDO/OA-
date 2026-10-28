@@ -25,27 +25,33 @@ from app.security import hash_password
 
 
 CASE_ACTIONS_DEFAULT_ALL_REVISION = "role_case_actions_default_all_v1"
+CUSTOMER_ACTIONS_DEFAULT_ALL_REVISION = "role_customer_actions_default_all_v1"
+
+
+async def _grant_actions_to_all_roles_once(db: AsyncSession, revision: str, codes: list[str]) -> None:
+    """BUG20261028012：角色权限细到功能，每批功能上线时所有角色默认全勾，之后由管理员按角色取消。
+
+    每批只执行一次（schema_migrations 登记），以后管理员取消的功能不会在重启时被补回。
+    """
+    await db.execute(text("CREATE TABLE IF NOT EXISTS schema_migrations (key VARCHAR(128) PRIMARY KEY)"))
+    if (await db.execute(text("SELECT key FROM schema_migrations WHERE key = :key"), {"key": revision})).first():
+        return
+    for permission in (await db.scalars(select(RolePermission).where(RolePermission.role != "admin"))).all():
+        permission.menu_keys = list(dict.fromkeys([*(permission.menu_keys or []), *(f"@action:{code}" for code in codes)]))
+    for role in (await db.scalars(select(JobRole).where(JobRole.code != "SYSTEM-ADMIN"))).all():
+        extra = [CASE_ACTIONS_EXPLICIT_MARKER] if any(code.startswith("case.") for code in codes) else []
+        # 显式标记后旧标签不再折算案件功能，功能以勾选为准；旧标签的菜单和其他动作不变。
+        role.permissions = list(dict.fromkeys([*(role.permissions or []), *(f"action:{code}" for code in codes), *extra]))
+    await db.execute(text("INSERT INTO schema_migrations (key) VALUES (:key)"), {"key": revision})
 
 
 async def _grant_case_actions_to_all_roles_once(db: AsyncSession) -> None:
-    """BUG20261028012：角色权限细到案件功能，上线时所有角色默认全勾，之后由管理员按角色取消。
-
-    只执行一次（schema_migrations 登记），以后管理员取消的功能不会在重启时被补回。
-    """
-    await db.execute(text("CREATE TABLE IF NOT EXISTS schema_migrations (key VARCHAR(128) PRIMARY KEY)"))
-    if (await db.execute(
-        text("SELECT key FROM schema_migrations WHERE key = :key"), {"key": CASE_ACTIONS_DEFAULT_ALL_REVISION},
-    )).first():
-        return
-    case_codes = [item["code"] for item in SYSTEM_ACTION_DEFINITIONS if item["code"].startswith("case.")]
-    for permission in (await db.scalars(select(RolePermission).where(RolePermission.role != "admin"))).all():
-        permission.menu_keys = list(dict.fromkeys([*(permission.menu_keys or []), *(f"@action:{code}" for code in case_codes)]))
-    for role in (await db.scalars(select(JobRole).where(JobRole.code != "SYSTEM-ADMIN"))).all():
-        # 显式标记后旧标签不再折算案件功能，功能以勾选为准；旧标签的菜单和其他动作不变。
-        role.permissions = list(dict.fromkeys([
-            *(role.permissions or []), *(f"action:{code}" for code in case_codes), CASE_ACTIONS_EXPLICIT_MARKER,
-        ]))
-    await db.execute(text("INSERT INTO schema_migrations (key) VALUES (:key)"), {"key": CASE_ACTIONS_DEFAULT_ALL_REVISION})
+    await _grant_actions_to_all_roles_once(db, CASE_ACTIONS_DEFAULT_ALL_REVISION, [
+        item["code"] for item in SYSTEM_ACTION_DEFINITIONS if item["code"].startswith("case.")
+    ])
+    await _grant_actions_to_all_roles_once(db, CUSTOMER_ACTIONS_DEFAULT_ALL_REVISION, [
+        item["code"] for item in SYSTEM_ACTION_DEFINITIONS if item["code"].startswith("crm.customer.")
+    ])
 
 
 async def initialize_startup_data(
