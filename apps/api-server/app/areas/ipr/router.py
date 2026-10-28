@@ -352,6 +352,8 @@ async def get_ipr_litigation_court_info(case_id: int, identity: dict = Depends(c
 
 @router.put(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/court-info")
 async def update_ipr_litigation_court_info(case_id: int, body: IprLitigationCourtInfoInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.litigation")
     from app.core.ipr import (
         _save_ipr_litigation_data,
     )
@@ -382,6 +384,8 @@ async def list_ipr_litigation_courts(case_id: int, identity: dict = Depends(curr
 
 @router.post(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/courts", status_code=status.HTTP_201_CREATED)
 async def create_ipr_litigation_court(case_id: int, body: IprLitigationCourtInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.litigation")
     from app.core.ipr import (
         _ipr_litigation_rows, _save_ipr_litigation_data,
     )
@@ -398,6 +402,8 @@ async def create_ipr_litigation_court(case_id: int, body: IprLitigationCourtInpu
 
 @router.put(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/courts/{{court_id}}")
 async def update_ipr_litigation_court(case_id: int, court_id: str, body: IprLitigationCourtInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.litigation")
     from app.core.ipr import (
         _ipr_litigation_rows, _save_ipr_litigation_data,
     )
@@ -416,6 +422,8 @@ async def update_ipr_litigation_court(case_id: int, court_id: str, body: IprLiti
 
 @router.delete(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/courts/{{court_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_ipr_litigation_court(case_id: int, court_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.litigation")
     from app.core.ipr import (
         _ipr_litigation_rows, _save_ipr_litigation_data,
     )
@@ -446,6 +454,8 @@ async def list_ipr_litigation_parties(case_id: int, identity: dict = Depends(cur
 
 @router.post(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/parties", status_code=status.HTTP_201_CREATED)
 async def create_ipr_litigation_party(case_id: int, body: IprLitigationPartyInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.litigation")
     from app.core.ipr import (
         _ipr_litigation_rows, _save_ipr_litigation_data,
     )
@@ -461,6 +471,8 @@ async def create_ipr_litigation_party(case_id: int, body: IprLitigationPartyInpu
 
 @router.put(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/parties/{{party_id}}")
 async def update_ipr_litigation_party(case_id: int, party_id: str, body: IprLitigationPartyInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.litigation")
     from app.core.ipr import (
         _ipr_litigation_rows, _save_ipr_litigation_data,
     )
@@ -477,6 +489,8 @@ async def update_ipr_litigation_party(case_id: int, party_id: str, body: IprLiti
 
 @router.delete(f"{settings.api_prefix}/ipr/lawsuit/cases/{{case_id}}/parties/{{party_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_ipr_litigation_party(case_id: int, party_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.litigation")
     from app.core.ipr import (
         _ipr_litigation_rows, _save_ipr_litigation_data,
     )
@@ -492,6 +506,8 @@ async def delete_ipr_litigation_party(case_id: int, party_id: str, identity: dic
 
 @router.post(f"{settings.api_prefix}/ipr/cases", status_code=status.HTTP_201_CREATED)
 async def create_ipr_case(body: IprCaseCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.create")
     from app.core.ipr import (
         _next_ipr_case_serial,
     )
@@ -543,6 +559,8 @@ async def batch_create_ipr_cases(body: IprCaseBatchCreateInput, identity: dict =
     audit events commit together; a database error rolls that whole valid subset
     back.
     """
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.create")
     from app.core.formatters import (
         _parse_ipr_batch_date,
     )
@@ -712,6 +730,8 @@ async def preview_ipr_case_reboot(case_id: int, identity: dict = Depends(current
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/reboot", status_code=status.HTTP_201_CREATED)
 async def reboot_ipr_case(case_id: int, body: IprCaseRebootInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Create a separately-tracked resubmission without mutating the source case."""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.close")
     from app.core.ipr import (
         _next_ipr_reboot_serial,
     )
@@ -814,6 +834,8 @@ async def reboot_ipr_case(case_id: int, body: IprCaseRebootInput, identity: dict
 
 @router.patch(f"{settings.api_prefix}/ipr/cases/{{case_id}}")
 async def update_ipr_case(case_id: int, body: IprCaseUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.update")
     from app.core.ipr import (
         _ipr_litigation_rows,
     )
@@ -891,6 +913,8 @@ async def update_ipr_case(case_id: int, body: IprCaseUpdateInput, identity: dict
 @router.put(f"{settings.api_prefix}/ipr/cases/{{case_id}}/links")
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/links")
 async def update_ipr_case_links(case_id: int, body: IprCaseCrossModuleLinkInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.update")
     from app.core.permissions import (
         _ensure_record_module, _ensure_record_visible, _require_record_owner_or_manager,
     )
@@ -986,6 +1010,8 @@ async def create_ipr_case_task(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a real task bound to the IPR case selected by the route."""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.task.create")
     from app.core.task_commands import create_task_record
     from app.core.tasks import _task_dict
     if body.case_record_id is not None and body.case_record_id != case_id:
@@ -1049,6 +1075,8 @@ async def list_ipr_case_customer_candidates(case_id: int, keyword: str = "", ide
 @router.put(f"{settings.api_prefix}/ipr/cases/{{case_id}}/customers")
 async def replace_ipr_case_customers(case_id: int, body: IprCaseCustomerReplaceInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Atomically replace an IPR case's customers and keep its shared primary customer field in sync."""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.update")
     from app.core.permissions import (
         _ensure_active_ipr_case_write, _record_scope_conditions,
     )
@@ -1108,6 +1136,8 @@ async def list_ipr_case_customer_contact_candidates(case_id: int, customer_id: i
 @router.put(f"{settings.api_prefix}/ipr/cases/{{case_id}}/customer-contacts")
 async def replace_ipr_case_customer_contacts(case_id: int, body: IprCaseCustomerContactReplaceInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Atomically save legacy document-contact and technology-contact selections for one linked customer."""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.update")
     from app.core.ipr import (
         _ipr_case_contact_candidates,
     )
@@ -1197,6 +1227,8 @@ async def list_ipr_case_law_firm_candidates(case_id: int, keyword: str = "", ide
 @router.put(f"{settings.api_prefix}/ipr/cases/{{case_id}}/law-firms")
 async def replace_ipr_case_law_firms(case_id: int, body: IprCaseLawFirmReplaceInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Atomically replace collaboration-law-firm selections; it is never a generic record write."""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.update")
     from app.core.permissions import (
         _ensure_record_module, _require_record_owner_or_manager,
     )
@@ -1228,6 +1260,8 @@ async def replace_ipr_case_law_firms(case_id: int, body: IprCaseLawFirmReplaceIn
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/maintenance")
 async def maintain_ipr_case(case_id: int, body: IprCaseMaintenanceInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Maintain active IPR deadline, annual-fee year and rate through a dedicated audited action."""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.maintain")
     from app.core.permissions import (
         _ensure_record_module, _require_record_owner_or_manager,
     )
@@ -1269,6 +1303,8 @@ async def maintain_ipr_case(case_id: int, body: IprCaseMaintenanceInput, identit
 @router.post(f"{settings.api_prefix}/ipr/cases/batch-maintenance")
 async def batch_maintain_ipr_cases(body: IprCaseBatchMaintenanceInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Apply the visible legacy batch-edit fields only after every target passes the same write checks."""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.maintain")
     from app.core.permissions import (
         _record_scope_conditions, _require_record_owner_or_manager,
     )
@@ -1321,6 +1357,8 @@ async def batch_maintain_ipr_cases(body: IprCaseBatchMaintenanceInput, identity:
 
 @router.post(f"{settings.api_prefix}/ipr/cases/annual-fee-monitoring/add")
 async def add_ipr_cases_to_annual_fee_monitoring(body: IprCaseAnnualFeeMonitoringInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.reminder.manage")
     from app.core.finance import (
         _set_ipr_annual_fee_monitoring,
     )
@@ -1329,6 +1367,8 @@ async def add_ipr_cases_to_annual_fee_monitoring(body: IprCaseAnnualFeeMonitorin
 
 @router.post(f"{settings.api_prefix}/ipr/cases/annual-fee-monitoring/remove")
 async def remove_ipr_cases_from_annual_fee_monitoring(body: IprCaseAnnualFeeMonitoringInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.reminder.manage")
     from app.core.finance import (
         _set_ipr_annual_fee_monitoring,
     )
@@ -1360,6 +1400,8 @@ async def list_ipr_case_logs(case_id: int, identity: dict = Depends(current_iden
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/logs", status_code=status.HTTP_201_CREATED)
 async def create_ipr_case_log(case_id: int, body: IprCaseLogInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Create a user-authored business log without weakening the immutable workflow audit trail."""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.log.manage")
     from app.core.ipr import (
         _ipr_case_log_dict,
     )
@@ -1377,6 +1419,8 @@ async def create_ipr_case_log(case_id: int, body: IprCaseLogInput, identity: dic
 @router.delete(f"{settings.api_prefix}/ipr/cases/{{case_id}}/logs/{{log_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_ipr_case_log(case_id: int, log_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Only the note author, the case manager, or an administrator can remove an authored business note."""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.log.manage")
     from app.core.permissions import (
         _ensure_active_ipr_case_write,
     )
@@ -1526,6 +1570,8 @@ router.include_router(case_files_router)
 
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/submit")
 async def submit_ipr_case(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.submit")
     from app.core.permissions import (
         _ensure_record_module, _require_record_owner_or_manager,
     )
@@ -1575,6 +1621,8 @@ async def review_ipr_case(case_id: int, body: IprCaseReviewInput, identity: dict
 
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/close")
 async def close_ipr_case(case_id: int, body: IprCaseLifecycleInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.close")
     from app.core.permissions import (
         _ensure_record_module, _require_record_owner_or_manager,
     )
@@ -1592,6 +1640,8 @@ async def close_ipr_case(case_id: int, body: IprCaseLifecycleInput, identity: di
 
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/reopen")
 async def reopen_ipr_case(case_id: int, body: IprCaseLifecycleInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.close")
     from app.core.permissions import (
         _ensure_record_module,
     )
@@ -1610,6 +1660,8 @@ async def reopen_ipr_case(case_id: int, body: IprCaseLifecycleInput, identity: d
 
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/documents/{{document_type}}", status_code=status.HTTP_201_CREATED)
 async def generate_ipr_case_document(case_id: int, document_type: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.document.generate")
     from app.core.ipr import (
         _ipr_case_document_bytes,
     )
@@ -1642,6 +1694,8 @@ async def create_ipr_official_import_batch(
     file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     """Parse a CSV source into reviewable candidates; this never creates formal official files."""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.official.manage")
     from app.core.formatters import (
         _parse_ipr_official_candidate_date,
     )
@@ -1817,6 +1871,8 @@ async def export_ipr_official_file_checklist(
 
 @router.post(f"{settings.api_prefix}/ipr/official-files/import-candidates/{{candidate_id}}/match")
 async def match_ipr_official_import_candidate(candidate_id: int, body: IprOfficialCandidateMatchInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.official.manage")
     from app.core.permissions import (
         _ensure_ipr_import_batch_visible, _ensure_record_module, _require_record_module_menu,
     )
@@ -1840,6 +1896,8 @@ async def match_ipr_official_import_candidate(candidate_id: int, body: IprOffici
 
 @router.patch(f"{settings.api_prefix}/ipr/official-files/import-candidates/{{candidate_id}}")
 async def correct_ipr_official_import_candidate(candidate_id: int, body: IprOfficialCandidateCorrectInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.official.manage")
     from app.core.permissions import (
         _ensure_ipr_import_batch_visible, _ensure_record_module, _ensure_record_visible, _require_record_module_menu,
     )
@@ -1879,6 +1937,8 @@ async def correct_ipr_official_import_candidate(candidate_id: int, body: IprOffi
 @router.post(f"{settings.api_prefix}/ipr/official-files/import-batches/{{batch_id}}/confirm")
 async def confirm_ipr_official_import_candidates(batch_id: int, body: IprOfficialCandidateConfirmInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Atomically turn confirmed candidate rows into formal official-file records."""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.official.manage")
     from app.core.ipr import (
         _next_ipr_official_file_serial,
     )
@@ -2043,6 +2103,8 @@ async def upload_ipr_official_file(
     received_date: date | None = Form(None), due_date: date | None = Form(None), remark: str = Form(""),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.official.manage")
     from app.core.ipr import (
         _next_ipr_official_file_serial,
     )
@@ -2080,6 +2142,8 @@ async def upload_ipr_official_file(
 @router.delete(f"{settings.api_prefix}/ipr/official-files/{{official_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_ipr_official_file(official_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Delete an unvalidated official file owned by the caller, including its stored originals."""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.official.delete")
     from app.core.permissions import (
         _require_record_owner_or_manager,
     )
@@ -2105,6 +2169,8 @@ async def delete_ipr_official_file(official_id: int, identity: dict = Depends(cu
 
 @router.post(f"{settings.api_prefix}/ipr/official-files/{{official_id}}/validate")
 async def validate_ipr_official_file(official_id: int, body: IprOfficialFileActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.official.manage")
     from app.core.permissions import (
         _ensure_record_module,
     )
@@ -2124,6 +2190,8 @@ async def validate_ipr_official_file(official_id: int, body: IprOfficialFileActi
 
 @router.post(f"{settings.api_prefix}/ipr/official-files/{{official_id}}/transmit")
 async def transmit_ipr_official_file(official_id: int, body: IprOfficialFileActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.official.manage")
     from app.core.permissions import (
         _ensure_record_module, _require_record_owner_or_manager,
     )
@@ -2141,6 +2209,8 @@ async def transmit_ipr_official_file(official_id: int, body: IprOfficialFileActi
 
 @router.post(f"{settings.api_prefix}/ipr/official-files/{{official_id}}/complete")
 async def complete_ipr_official_file(official_id: int, body: IprOfficialFileActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.official.manage")
     from app.core.permissions import (
         _ensure_record_module, _require_record_owner_or_manager,
     )
@@ -2164,6 +2234,8 @@ async def batch_ipr_official_file_action(action: str, body: IprOfficialFileBatch
     efficiency without allowing the generic record interface to bypass the
     validation / transfer / completion lifecycle.
     """
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.official.manage")
     from app.core.permissions import (
         _ensure_record_module, _ensure_record_visible, _require_record_owner_or_manager,
     )
@@ -2218,6 +2290,8 @@ async def batch_ipr_official_history_action(action: str, body: IprOfficialFileBa
     lifecycle, so this dedicated endpoint only updates the corresponding
     historical processing flag and records an auditable event.
     """
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.official.manage")
     from app.core.permissions import (
         _ensure_record_visible, _require_record_owner_or_manager,
     )
@@ -2257,6 +2331,8 @@ async def update_ipr_official_processing(
     db: AsyncSession = Depends(get_db),
 ):
     """Set one independent legacy processing dimension without changing lifecycle."""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.official.manage")
     from app.core.permissions import (
         _ensure_record_visible, _require_record_owner_or_manager, _require_record_module_menu,
     )

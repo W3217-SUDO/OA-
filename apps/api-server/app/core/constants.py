@@ -919,6 +919,18 @@ CONTRACT_ROLE_ACTIONS = (
     ("contract.payment.writeoff", "核销合同付款"),
 )
 CONTRACT_ROLE_ACTION_CODES = frozenset(code for code, _ in CONTRACT_ROLE_ACTIONS)
+# 第四批：知识产权案件与官文功能（立案审核、预警设置等仍按原规则）。
+IPR_ROLE_ACTIONS = (
+    ("ipr.case.create", "新建知产案件", "ipr-patent"), ("ipr.case.update", "修改知产案件信息", "ipr-patent"),
+    ("ipr.case.maintain", "案件维护/批量维护", "ipr-patent"), ("ipr.case.submit", "提交立案审核", "ipr-patent"),
+    ("ipr.case.close", "结案/重新打开/重启", "ipr-patent"), ("ipr.case.litigation", "维护诉讼法院及当事人", "ipr-patent"),
+    ("ipr.case.task.create", "新建知产案件任务", "ipr-patent"), ("ipr.case.log.manage", "维护知产案件日志", "ipr-patent"),
+    ("ipr.case.reminder.manage", "维护案件提醒及年费", "ipr-patent"), ("ipr.case.document.generate", "生成知产案件文书", "ipr-patent"),
+    ("ipr.case.file.manage", "上传/维护知产案件文件", "ipr-patent"), ("ipr.case.file.delete", "删除知产案件文件", "ipr-patent"),
+    ("ipr.case.fee.create", "新增知产案件费用", "ipr-patent"), ("ipr.case.fee.manage", "知产费用开票/付款/到账/解锁", "ipr-patent"),
+    ("ipr.case.fee.delete", "删除知产案件费用", "ipr-patent"), ("ipr.case.assisted_fee.manage", "维护知产资助费用", "ipr-patent"),
+    ("ipr.official.manage", "官文导入/处理/转达", "ipr-office-files"), ("ipr.official.delete", "删除官文", "ipr-office-files"),
+)
 
 
 SYSTEM_ACTION_OPERATION_LABELS = {
@@ -994,6 +1006,7 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
         {"code": "case.fee.receipt.upload", "menu_key": "case-files-receipt", "label": "上传案件票据文件"},
         *({"code": code, "menu_key": "customer-mine", "label": label} for code, label in CUSTOMER_ROLE_ACTIONS),
         *({"code": code, "menu_key": "contract-mine", "label": label} for code, label in CONTRACT_ROLE_ACTIONS),
+        *({"code": code, "menu_key": menu_key, "label": label} for code, label, menu_key in IPR_ROLE_ACTIONS),
         *({"code": code, "menu_key": menu_key, "label": label} for code, menu_key, label in FINANCE_EDIT_DELETE_ACTIONS),
     ])
     return definitions

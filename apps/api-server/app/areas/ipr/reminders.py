@@ -55,6 +55,8 @@ async def list_ipr_case_reminders(
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/events", status_code=status.HTTP_201_CREATED)
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/reminders", status_code=status.HTTP_201_CREATED)
 async def create_ipr_case_reminder(case_id: int, body: IprCaseReminderInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.reminder.manage")
     from app.core.ipr import (
         _ipr_case_reminder_dict,
     )
@@ -79,6 +81,8 @@ async def create_ipr_case_reminder(case_id: int, body: IprCaseReminderInput, ide
 @router.patch(f"{settings.api_prefix}/ipr/cases/{{case_id}}/events/{{event_id}}")
 @router.patch(f"{settings.api_prefix}/ipr/cases/{{case_id}}/reminders/{{event_id}}")
 async def update_ipr_case_reminder(case_id: int, event_id: int, body: IprCaseReminderUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.reminder.manage")
     from app.core.ipr import (
         _ipr_case_reminder_dict,
     )
@@ -116,6 +120,8 @@ async def update_ipr_case_reminder(case_id: int, event_id: int, body: IprCaseRem
 @router.delete(f"{settings.api_prefix}/ipr/cases/{{case_id}}/events/{{reminder_id}}", status_code=status.HTTP_204_NO_CONTENT)
 @router.delete(f"{settings.api_prefix}/ipr/cases/{{case_id}}/reminders/{{reminder_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_ipr_case_reminder(case_id: int, reminder_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.reminder.manage")
     from app.core.permissions import (
         _ensure_ipr_case_note_write,
     )
@@ -140,6 +146,8 @@ async def get_ipr_case_reminder_suppressions(case_id: int, identity: dict = Depe
 
 @router.put(f"{settings.api_prefix}/ipr/cases/{{case_id}}/reminder-suppressions")
 async def replace_ipr_case_reminder_suppressions(case_id: int, body: IprCaseReminderSuppressionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.reminder.manage")
     from app.core.permissions import (
         _ensure_ipr_case_note_write,
     )
@@ -192,6 +200,8 @@ async def list_ipr_case_annual_fees(
 
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/annual-fees", status_code=status.HTTP_201_CREATED)
 async def create_ipr_case_annual_fee(case_id: int, body: IprCaseAnnualFeeCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.reminder.manage")
     from app.core.finance import (
         _ipr_annual_fee_dict, _sync_ipr_annual_fee_reminder, _validate_ipr_annual_fee_values,
     )
@@ -219,6 +229,8 @@ async def create_ipr_case_annual_fee(case_id: int, body: IprCaseAnnualFeeCreateI
 
 @router.put(f"{settings.api_prefix}/ipr/cases/{{case_id}}/annual-fees/{{annual_fee_id}}")
 async def update_ipr_case_annual_fee(case_id: int, annual_fee_id: int, body: IprCaseAnnualFeeUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.reminder.manage")
     from app.core.finance import (
         _ipr_annual_fee_dict, _sync_ipr_annual_fee_reminder, _validate_ipr_annual_fee_values,
     )
@@ -254,6 +266,8 @@ async def update_ipr_case_annual_fee(case_id: int, annual_fee_id: int, body: Ipr
 
 @router.delete(f"{settings.api_prefix}/ipr/cases/{{case_id}}/annual-fees/{{annual_fee_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_ipr_case_annual_fee(case_id: int, annual_fee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.reminder.manage")
     from app.core.permissions import (
         _ensure_active_ipr_case_write,
     )

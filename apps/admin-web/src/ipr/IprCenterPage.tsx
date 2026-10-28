@@ -1,3 +1,4 @@
+import { roleActionAllowed } from "../roleActions";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import { POPUP_WIDTH } from "../components/common/popupSize";
 import {
@@ -1841,7 +1842,7 @@ export default function IprCenterPage({
             </h2>
             {!isLegacyIprRecord(detail) ? (
               <Space size={8} wrap className="ipr-case-page-tools">
-                <Button onClick={() => openCopy(detail)}>复制案件</Button>
+                {roleActionAllowed("ipr.case.create") && <Button onClick={() => openCopy(detail)}>复制案件</Button>}
                 <Button onClick={() => void openIprReboot(detail)}>
                   案件重提
                 </Button>

@@ -1,3 +1,4 @@
+import { roleActionAllowed } from "../../roleActions";
 import { Alert,Button,DatePicker,Form,Input,Modal,Select,Space,Tag } from "antd";
 import Table from "../../components/ResizableTable";
 import { AttachmentFileInput } from "../../components/common/AttachmentContent";
@@ -69,8 +70,8 @@ export function IprFilesPanel({
       ) : null}
       {detail.status === "在办" ? (
         <Space style={{ marginBottom: 8 }}>
-          <Button size="small" type="primary" onClick={onOpenUpload}>上传文档</Button>
-          <Button size="small" disabled={!selectedIprFileIds.length} onClick={onMarkSelectedTransmitted}>批量标记已转</Button>
+          {roleActionAllowed("ipr.case.file.manage") && <Button size="small" type="primary" onClick={onOpenUpload}>上传文档</Button>}
+          {roleActionAllowed("ipr.case.file.manage") && <Button size="small" disabled={!selectedIprFileIds.length} onClick={onMarkSelectedTransmitted}>批量标记已转</Button>}
           <Button size="small" onClick={onRefresh}>刷新</Button>
         </Space>
       ) : null}
@@ -124,10 +125,10 @@ export function IprFilesPanel({
             width: 150,
             render: (_: unknown, row: Attachment) => (
               <Space size={0}>
-                {row.requires_transmission && !row.is_transmitted && (
+                {row.requires_transmission && !row.is_transmitted && roleActionAllowed("ipr.case.file.manage") && (
                   <Button type="link" onClick={() => onMarkTransmitted(row)}>标记已转</Button>
                 )}
-                <Button type="link" danger onClick={() => confirmIprDeletion("file", row.original_name, () => onDeleteFile(row))}>删除</Button>
+                {roleActionAllowed("ipr.case.file.delete") && <Button type="link" danger onClick={() => confirmIprDeletion("file", row.original_name, () => onDeleteFile(row))}>删除</Button>}
               </Space>
             ),
           }] : []),

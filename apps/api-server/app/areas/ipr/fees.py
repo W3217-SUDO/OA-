@@ -53,6 +53,8 @@ async def list_ipr_case_assisted_fees(
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/assisted-fees", status_code=status.HTTP_201_CREATED)
 async def create_ipr_case_assisted_fee(case_id: int, body: IprCaseAssistedFeeCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """创建知识产权案件资助申请，保持原有专属数据模型。"""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.assisted_fee.manage")
     from app.core.finance import (
         _ipr_assisted_fee_dict,
     )
@@ -71,6 +73,8 @@ async def update_ipr_case_assisted_fee(
     case_id: int, assisted_fee_id: int, body: IprCaseAssistedFeeUpdateInput,
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.assisted_fee.manage")
     from app.core.finance import (
         _ipr_assisted_fee_dict, _ipr_case_assisted_fee_row,
     )
@@ -98,6 +102,8 @@ async def confirm_ipr_case_assisted_fee(
     case_id: int, assisted_fee_id: int, body: IprCaseAssistedFeeConfirmInput,
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.assisted_fee.manage")
     from app.core.finance import (
         _ipr_assisted_fee_dict, _ipr_case_assisted_fee_row,
     )
@@ -126,6 +132,8 @@ async def transact_ipr_case_assisted_fee(
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     """仅在回执日期和文件均可持久化时完成资助申请。"""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.assisted_fee.manage")
     from app.core.finance import (
         _ipr_assisted_fee_dict, _ipr_case_assisted_fee_row,
     )
@@ -162,6 +170,8 @@ async def transact_ipr_case_assisted_fee(
 
 @router.delete(f"{settings.api_prefix}/ipr/cases/{{case_id}}/assisted-fees/{{assisted_fee_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_ipr_case_assisted_fee(case_id: int, assisted_fee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.assisted_fee.manage")
     from app.core.finance import (
         _ipr_case_assisted_fee_row,
     )
@@ -240,6 +250,8 @@ async def list_ipr_case_legacy_fee_items(case_id: int, identity: dict = Depends(
 
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/fees", status_code=status.HTTP_201_CREATED)
 async def create_ipr_case_fee(case_id: int, body: IprCaseFeeCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.fee.create")
     from app.core.finance import (
         _ipr_case_fee_row, _round_fee_amount,
     )
@@ -293,6 +305,8 @@ async def create_ipr_case_fee(case_id: int, body: IprCaseFeeCreateInput, identit
 
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/fees/{{fee_id}}/invoice", status_code=status.HTTP_201_CREATED)
 async def create_ipr_case_fee_invoice(case_id: int, fee_id: int, body: IprCaseFeeInvoiceInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.fee.manage")
     from app.core.finance import (
         _ipr_case_fee, _round_fee_amount,
     )
@@ -337,6 +351,8 @@ async def list_ipr_case_fee_payment_types(case_id: int, fee_id: int, keyword: st
 
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/fees/{{fee_id}}/payment-types", status_code=status.HTTP_201_CREATED)
 async def create_ipr_case_fee_payment_type(case_id: int, fee_id: int, body: FinancePaymentTypeCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.fee.manage")
     from app.core.finance import (
         _create_payment_type, _finance_payment_type_dict, _ipr_case_fee,
     )
@@ -350,6 +366,8 @@ async def create_ipr_case_fee_payment_type(case_id: int, fee_id: int, body: Fina
 
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/fees/{{fee_id}}/payment-application", status_code=status.HTTP_201_CREATED)
 async def create_ipr_case_fee_payment_application(case_id: int, fee_id: int, body: IprCaseFeePaymentApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.fee.manage")
     from app.core.finance import (
         _active_payment_type, _finance_payment_type_dict, _ipr_case_fee,
     )
@@ -389,6 +407,8 @@ async def create_ipr_case_fee_payment_application(case_id: int, fee_id: int, bod
 
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/fees/{{fee_id}}/arrival", status_code=status.HTTP_201_CREATED)
 async def create_ipr_case_fee_arrival(case_id: int, fee_id: int, body: IprCaseFeeArrivalInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.fee.manage")
     from app.core.finance_centers import require_source_center
     from app.core.finance import (
         _ipr_case_fee, _ipr_case_fee_row, _round_fee_amount,
@@ -429,6 +449,8 @@ async def create_ipr_case_fee_arrival(case_id: int, fee_id: int, body: IprCaseFe
 
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/fees/{{fee_id}}/unlock")
 async def unlock_ipr_case_fee(case_id: int, fee_id: int, body: IprCaseFeeActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.fee.manage")
     from app.core.finance import (
         _ipr_case_fee, _ipr_case_fee_row,
     )
@@ -452,6 +474,8 @@ async def unlock_ipr_case_fee(case_id: int, fee_id: int, body: IprCaseFeeActionI
 
 @router.delete(f"{settings.api_prefix}/ipr/cases/{{case_id}}/fees/{{fee_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_ipr_case_fee(case_id: int, fee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.fee.delete")
     from app.core.finance import (
         _ipr_case_fee,
     )

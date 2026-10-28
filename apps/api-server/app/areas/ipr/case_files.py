@@ -109,6 +109,8 @@ async def upload_ipr_case_file(
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     """上传带业务日期和移交要求的知识产权案件文件。"""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.file.manage")
     from app.core.ipr import (
         _active_ipr_case_file_type,
     )
@@ -165,6 +167,8 @@ async def create_ipr_case_file_custom_import_batch(
     file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     """从历史命名文件解析候选项，此步不创建附件。"""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.file.manage")
     from app.core.ipr import (
         _active_ipr_case_file_type, _custom_ipr_filename_parts, _ipr_custom_candidate_dict,
     )
@@ -246,6 +250,8 @@ async def list_ipr_case_file_custom_import_candidates(batch_id: int, identity: d
 
 @router.post(f"{settings.api_prefix}/ipr/case-files/custom-import-candidates/{{candidate_id}}/match")
 async def match_ipr_case_file_custom_import_candidate(candidate_id: int, body: IprCaseFileCustomCandidateMatchInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.file.manage")
     from app.core.ipr import (
         _ipr_custom_candidate_dict, _refresh_ipr_custom_candidate,
     )
@@ -268,6 +274,8 @@ async def match_ipr_case_file_custom_import_candidate(candidate_id: int, body: I
 
 @router.patch(f"{settings.api_prefix}/ipr/case-files/custom-import-candidates/{{candidate_id}}")
 async def correct_ipr_case_file_custom_import_candidate(candidate_id: int, body: IprCaseFileCustomCandidateCorrectInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.file.manage")
     from app.core.ipr import (
         _ipr_custom_candidate_dict, _refresh_ipr_custom_candidate,
     )
@@ -291,6 +299,8 @@ async def correct_ipr_case_file_custom_import_candidate(candidate_id: int, body:
 
 @router.post(f"{settings.api_prefix}/ipr/case-files/custom-import-batches/{{batch_id}}/confirm")
 async def confirm_ipr_case_file_custom_import_candidates(batch_id: int, body: IprCaseFileCustomCandidateConfirmInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.file.manage")
     from app.core.ipr import (
         _active_ipr_case_file_type,
     )
@@ -336,6 +346,8 @@ async def batch_upload_ipr_case_file(
     remark: str = Form(""), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     """将一份来源文件批量关联案件，写入前先校验全部目标。"""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.file.manage")
     from app.core.ipr import (
         _active_ipr_case_file_type,
     )
@@ -403,6 +415,8 @@ async def batch_upload_ipr_case_file(
 
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/files/{{attachment_id}}/mark-transmitted")
 async def mark_ipr_case_file_transmitted(case_id: int, attachment_id: int, body: IprCaseFileTransmitInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.file.manage")
     from app.core.permissions import (
         _ensure_ipr_case_file_write,
     )
@@ -423,6 +437,8 @@ async def mark_ipr_case_file_transmitted(case_id: int, attachment_id: int, body:
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/files/mark-transmitted")
 async def mark_ipr_case_files_transmitted(case_id: int, body: IprCaseFileBatchTransmitInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """按历史移交规则先校验全部待处理文件，再统一写入。"""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.file.manage")
     from app.core.permissions import (
         _ensure_ipr_case_file_write,
     )
@@ -451,6 +467,8 @@ async def mark_ipr_case_files_transmitted(case_id: int, body: IprCaseFileBatchTr
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/files/{{attachment_id}}/unlock")
 async def unlock_ipr_case_file(case_id: int, attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """按历史解锁规则处理生成的申请文件包，解锁后才允许删除。"""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.file.manage")
     from app.core.permissions import (
         _ensure_ipr_case_file_write,
     )
@@ -473,6 +491,8 @@ async def unlock_ipr_case_file(case_id: int, attachment_id: int, identity: dict 
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/files/{{attachment_id}}/generate-application", status_code=status.HTTP_201_CREATED)
 async def generate_ipr_case_application_file(case_id: int, attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """按历史申请文件规则生成并保存锁定的 ZIP 文件包。"""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.document.generate")
     from app.core.permissions import (
         _ensure_ipr_case_file_write,
     )
@@ -516,6 +536,8 @@ async def generate_ipr_case_application_file(case_id: int, attachment_id: int, i
 
 @router.delete(f"{settings.api_prefix}/ipr/cases/{{case_id}}/files/{{attachment_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_ipr_case_file(case_id: int, attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.file.delete")
     from app.core.permissions import (
         _ensure_ipr_case_file_write,
     )

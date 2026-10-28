@@ -1,3 +1,4 @@
+import { roleActionAllowed } from "../roleActions";
 import { StatusTag } from "../components/common/StatusTag";
 import type { TableColumnsType } from "antd";
 import {
@@ -301,8 +302,8 @@ export function IprCaseList({
               ]}
             />
             <Button onClick={onExportExcel}>导出Excel</Button>
-            <Button onClick={onOpenBatchCreate}>批量新建案件</Button>
-            <Button onClick={onOpenBatchUpload}>批量上传文档</Button>
+            {roleActionAllowed("ipr.case.create") && <Button onClick={onOpenBatchCreate}>批量新建案件</Button>}
+            {roleActionAllowed("ipr.case.file.manage") && <Button onClick={onOpenBatchUpload}>批量上传文档</Button>}
             <Button onClick={() => onNavigate("ipr-custom-file-import")}>
               案件自定义文件导入
             </Button>

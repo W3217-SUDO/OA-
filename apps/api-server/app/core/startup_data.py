@@ -13,7 +13,7 @@ from app.core.constants import (
     LEGACY_INVESTIGATION_MENU_KEYS, LEGACY_TASK_MENU_KEYS, MENU_KEYS,
     ORIGINAL_ADMIN_MENU_KEYS, ORIGINAL_FINANCE_MENU_KEYS,
     ORIGINAL_INVESTIGATION_MENU_KEYS, REQUIRED_SEAL_ASSETS, ROLE_DATA_SCOPES,
-    CASE_ACTIONS_EXPLICIT_MARKER, CONTRACT_ROLE_ACTIONS, SYSTEM_ACTION_DEFINITIONS, SYSTEM_ADMIN_JOB_PERMISSIONS,
+    CASE_ACTIONS_EXPLICIT_MARKER, CONTRACT_ROLE_ACTIONS, IPR_ROLE_ACTIONS, SYSTEM_ACTION_DEFINITIONS, SYSTEM_ADMIN_JOB_PERMISSIONS,
 )
 from app.core.startup_backfills import run_historical_backfills
 from app.core.startup_migrations import lock_startup_transaction
@@ -27,6 +27,7 @@ from app.security import hash_password
 CASE_ACTIONS_DEFAULT_ALL_REVISION = "role_case_actions_default_all_v1"
 CUSTOMER_ACTIONS_DEFAULT_ALL_REVISION = "role_customer_actions_default_all_v1"
 CONTRACT_ACTIONS_DEFAULT_ALL_REVISION = "role_contract_actions_default_all_v1"
+IPR_ACTIONS_DEFAULT_ALL_REVISION = "role_ipr_actions_default_all_v1"
 
 
 async def _grant_actions_to_all_roles_once(db: AsyncSession, revision: str, codes: list[str]) -> None:
@@ -54,6 +55,7 @@ async def _grant_case_actions_to_all_roles_once(db: AsyncSession) -> None:
         item["code"] for item in SYSTEM_ACTION_DEFINITIONS if item["code"].startswith("crm.customer.")
     ])
     await _grant_actions_to_all_roles_once(db, CONTRACT_ACTIONS_DEFAULT_ALL_REVISION, [code for code, _ in CONTRACT_ROLE_ACTIONS])
+    await _grant_actions_to_all_roles_once(db, IPR_ACTIONS_DEFAULT_ALL_REVISION, [code for code, *_ in IPR_ROLE_ACTIONS])
 
 
 async def initialize_startup_data(

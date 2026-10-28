@@ -1,3 +1,4 @@
+import { roleActionAllowed } from "../../roleActions";
 import { Alert,Button,Card,Descriptions,Form,Input,Modal } from "antd";
 import Table from "../../components/ResizableTable";
 import dayjs from "dayjs";
@@ -47,7 +48,7 @@ export function IprBusinessLogsPanel({
       <Card
         size="small"
         title="案件日志"
-        extra={canWrite ? <Button size="small" type="link" onClick={onOpenLog}>新增日志</Button> : null}
+        extra={canWrite && roleActionAllowed("ipr.case.log.manage") ? <Button size="small" type="link" onClick={onOpenLog}>新增日志</Button> : null}
       >
         {iprSectionErrors.logs ? (
           <Alert type="error" showIcon message={iprSectionErrors.logs} style={{ marginBottom: 12 }} />

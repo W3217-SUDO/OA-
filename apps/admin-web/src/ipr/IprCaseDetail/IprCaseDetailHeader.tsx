@@ -1,3 +1,4 @@
+import { roleActionAllowed } from "../../roleActions";
 import { useState } from "react";
 import { Alert,Button,Card,Checkbox,DatePicker,Descriptions,Input,Select,Space,Tag,message } from "antd";
 import { api } from "../../api";
@@ -373,7 +374,7 @@ function IprCaseInfoGrid({ detail, onOpenRebootCase, onSaved }: Pick<IprCaseDeta
             <Button size="small" onClick={() => setEditing(false)} disabled={saving}>取消</Button>
             <Button size="small" type="primary" loading={saving} onClick={() => void save()}>保存</Button>
           </Space>
-        ) : canEdit ? <Button size="small" type="primary" onClick={startEdit}>修改</Button> : null}
+        ) : canEdit && roleActionAllowed("ipr.case.update") ? <Button size="small" type="primary" onClick={startEdit}>修改</Button> : null}
       </div>
       <div className="ipr-case-info-body">
         <dl className="ipr-case-info-grid">

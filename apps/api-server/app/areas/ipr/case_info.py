@@ -85,6 +85,8 @@ def _stored(value):
 
 @router.patch(f"{settings.api_prefix}/ipr/cases/{{case_id}}/info")
 async def update_ipr_case_info(case_id: int, body: IprCaseInfoInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.update")
     from app.core.permissions import _ensure_record_module, _require_record_owner_or_manager
     from app.core.system import _allowed_field_keys, _record_dict
     record = await _ensure_record_module(case_id, "ipr_case", identity, db)
