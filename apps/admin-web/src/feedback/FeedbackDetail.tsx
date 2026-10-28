@@ -65,7 +65,8 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
     return () => window.clearTimeout(timer);
   }, [eventCount]);
 
-  // 回复带的截图和附件走回复接口；点状态按钮时如果已经选了文件，先作为一条回复发出，再改状态。
+  // 回复带的截图和附件走回复接口；点状态按钮时如果已经选了文件，先把文件作为一条回复发出，文字仍随状态一起提交
+  // （“未解决，重新打开”必须带说明，BUG20261028001 曾因文字跟着文件走、状态请求空说明被拒）。
   // 回复文字走 JSON，截图和附件再逐个上传到这条回复（见 upload.ts）；返回没传上去的文件名。
   const sendFiles = async (content: string) => {
     const { data } = await api.post(`/feedback/${feedbackId}/replies`, { content, file_count: files.length });
@@ -75,20 +76,26 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
     setBusy(true);
     try {
       let failed: string[] = [];
-      if (path === "messages") failed = await sendFiles(comment.trim());
-      else {
-        if (files.length) failed = await sendFiles(comment.trim());
-        await api.post(`/feedback/${feedbackId}/transitions`, files.length ? { ...body, comment: "" } : body);
+      if (path === "messages") {
+        failed = await sendFiles(comment.trim());
+        setComment("");
+        setFiles([]);
+      } else {
+        if (files.length) {
+          failed = await sendFiles("");
+          // 文件已经发出去了，先清掉，状态请求失败后重试也不会重复发。
+          setFiles([]);
+        }
+        await api.post(`/feedback/${feedbackId}/transitions`, body);
+        setComment("");
       }
       if (failed.length) message.warning(`${success}，但 ${failed.join("、")} 没有传上去，请重新添加后再发一次`, 6);
       else message.success(success);
-      setComment("");
-      setFiles([]);
       await load();
       window.dispatchEvent(new Event("sunhold:notifications-updated"));
     } catch (failure: any) {
       message.error(feedbackErrorText(failure, "操作失败"));
-      if (failure?.response?.status === 409) await load();
+      await load();
     } finally {
       setBusy(false);
     }
