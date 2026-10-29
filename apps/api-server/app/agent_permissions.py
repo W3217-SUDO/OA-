@@ -1,5 +1,9 @@
 """智能体全局管理的个人动作授权，不授予系统管理员或他人个人库权限。"""
+import logging
+
 from fastapi import HTTPException
+
+logger = logging.getLogger(__name__)
 
 AGENT_GLOBAL_MANAGE_ACTION = "agent.settings.global.manage"
 # 允许用本人账号生成 MCP 个人访问令牌（只读），让自己电脑上的本地 agent 连接 OA；系统管理员默认拥有。
@@ -20,10 +24,16 @@ USER_ACTION_KEYS = frozenset({AGENT_GLOBAL_MANAGE_ACTION, MCP_PERSONAL_TOKEN_ACT
 
 
 def personal_action_keys(overrides: dict) -> list[str]:
+    # 读权限时不认识的个人动作只忽略并记日志，不再整号 409：数据比代码先写入（如 2026-10-29 shenhe 登录不了）时账号仍能用。
+    # 保存时仍由 update_user_permission_overrides 严格校验。
     keys = overrides.get("action_keys", [])
-    if not isinstance(keys, list) or any(not isinstance(key, str) or key not in USER_ACTION_KEYS for key in keys):
-        raise HTTPException(409, "用户个人动作授权无效，请由系统管理员核对")
-    return list(dict.fromkeys(keys))
+    if not isinstance(keys, list):
+        logger.warning("个人动作授权结构无效，已忽略：%r", keys)
+        return []
+    unknown = [key for key in keys if not isinstance(key, str) or key not in USER_ACTION_KEYS]
+    if unknown:
+        logger.warning("忽略不认识的个人动作授权：%s", unknown)
+    return list(dict.fromkeys(key for key in keys if isinstance(key, str) and key in USER_ACTION_KEYS))
 
 
 def is_actual_system_admin(identity: dict) -> bool:
