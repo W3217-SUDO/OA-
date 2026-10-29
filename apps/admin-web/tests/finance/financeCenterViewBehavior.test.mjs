@@ -503,47 +503,14 @@ test("main receipt cells read top-level allocations and real payment method with
   }
 });
 
-test("historical archive settlement actions open real legacy heads and never expose modern writes", async () => {
+test("historical settlements use the same row actions as modern rows", () => {
+  // BUG20261028009/010：不再有“历史只读”操作列，历史行与现代行同样办理，由后端承接。
   const source = fs.readFileSync(new URL("FinanceCenterPage.tsx", sourceRoot), "utf8");
-  const tree = ts.createSourceFile("FinanceCenterPage.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const names = ["openHistoricalSettlement", "historicalSettlementOperation", "generalSettlementOperation", "archiveSettlementPendingOperation"];
-  const expressions = new Map();
-  const visit = node => {
-    if (ts.isVariableDeclaration(node) && names.includes(node.name.getText(tree))) expressions.set(node.name.getText(tree), node.initializer.getText(tree));
-    ts.forEachChild(node, visit);
-  };
-  visit(tree);
-  assert.equal(expressions.size, names.length);
-  const reads = [], exports = [], errors = [];
-  let actions;
-  const code = ts.transpileModule(`${names.map(name => `const ${name} = ${expressions.get(name)};`).join("\n")} result({generalSettlementOperation,archiveSettlementPendingOperation});`, {
-    compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS },
-  }).outputText;
-  vm.runInNewContext(code, {
-    require, exports: {}, Button, Space: ui.Space, DownloadOutlined: () => null, isHistoricalSettlement: loadFinanceModule("settlementIdentity.ts").isHistoricalSettlement,
-    openLegacyFinanceDetail: async id => { reads.push(id); },
-    exportGeneralSettlement: async (kind, ids) => { exports.push({ kind, ids }); },
-    exportPendingArchiveSettlements: async ids => { exports.push({ kind: "archive", ids }); },
-    message: { error: value => errors.push(value) }, result: value => { actions = value; },
-  });
-  // 历史普通结算已改为与现代申请同样办理（BUG20261028009），这里只剩历史归档费。
-  for (const [name, id] of [["archiveSettlementPendingOperation", "legacy-archive:71"]]) {
-    const row = { id, source: "legacy", read_only: true, legacy_record_id: 41, source_status: "30", data: {} };
-    const view = actions[name](null, row);
-    const buttons = nodes(view).filter(node => node.type === Button);
-    assert.deepEqual(buttons.map(node => node.props.children || node.props["aria-label"]), ["历史只读", "导出"]);
-    await buttons[0].props.onClick();
-    await buttons[1].props.onClick();
-    assert.equal(reads.at(-1), 41);
-    assert.equal(exports.at(-1).ids[0], id);
-  }
-  assert.deepEqual(errors, []);
-  actions.archiveSettlementPendingOperation(null, { id: "legacy-archive:999", source: "legacy", read_only: true, data: {} }).props.children[0].props.onClick();
-  assert.equal(reads.length, 1);
-  assert.match(errors[0], /缺少有效的来源头记录/);
+  assert.doesNotMatch(source, /历史只读/);
+  assert.doesNotMatch(source, /historicalSettlementOperation/);
 });
 
-test("settlement tables select historical normal rows, disable historical archive rows and keep query export reachable", () => {
+test("settlement tables select historical rows and keep query export reachable", () => {
   const noView = () => null;
   const { FinanceOriginalRoutesView } = loadFinanceModule("FinanceOriginalRoutesView.tsx", {
     "./constants": loadFinanceModule("constants.ts"), "./financeErrors": {},
@@ -566,10 +533,10 @@ test("settlement tables select historical normal rows, disable historical archiv
       generalSettlementDetails: [], selectedOriginalRows: [], setSelectedOriginalRows: keys => { selected = keys; },
     });
     const table = nodes(view).find(node => node.type === Table);
-    assert.equal(table.props.rowSelection.getCheckboxProps(historical).disabled, archive);
+    assert.equal(table.props.rowSelection.getCheckboxProps(historical).disabled, false);
     assert.equal(table.props.rowSelection.getCheckboxProps(modern).disabled, false);
     table.props.rowSelection.onChange([8, historical.id]);
-    assert.deepEqual(Array.from(selected), archive ? [8] : [8, historical.id]);
+    assert.deepEqual(Array.from(selected), [8, historical.id]);
     if (archive) assert.ok(nodes(view).some(node => node.type === Button && node.props.children === "导出查询结果"));
   }
 });

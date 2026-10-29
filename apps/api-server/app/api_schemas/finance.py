@@ -550,13 +550,25 @@ class ArchiveSettlementPaymentReviewInput(BaseModel):
     comment: str = Field(default="", max_length=2000)
 
 
-class ArchiveSettlementRollbackInput(BaseModel):
-    record_ids: list[int] = Field(min_length=1, max_length=100)
+class _ArchiveSettlementRecordsInput(BaseModel):
+    """归档费决定记录编号与历史归档费编号（legacy-archive:明细）可混合，合计至少一条（BUG20261028010）。"""
+    record_ids: list[int] = Field(default_factory=list, max_length=100)
+    projection_ids: list[str] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def _require_targets(self):
+        if not self.record_ids and not self.projection_ids:
+            raise ValueError("请选择归档费记录")
+        if len(self.record_ids) + len(self.projection_ids) > 100:
+            raise ValueError("一次最多处理 100 条归档费记录")
+        return self
+
+
+class ArchiveSettlementRollbackInput(_ArchiveSettlementRecordsInput):
     comment: str = Field(min_length=1, max_length=2000)
 
 
-class ArchiveSettlementRejectedActionInput(BaseModel):
-    record_ids: list[int] = Field(min_length=1, max_length=100)
+class ArchiveSettlementRejectedActionInput(_ArchiveSettlementRecordsInput):
     comment: str = Field(default="", max_length=2000)
 
 

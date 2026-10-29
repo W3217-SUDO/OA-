@@ -205,13 +205,21 @@ async def _source_query(identity, db, mode, statuses, filters):
             relation, ~archive_modern, _text(obj, "IsActived") == "T",
             _text(original_fee.source_payload, "IsActived") == "T", original_fee.is_active.is_(True))
         archive_state = _text(obj, "ArchiveAmountSettlementStatus")
+        # 历史归档费在新系统办理后由决定记录接管（BUG20261028010）：有决定记录的明细不再按原状态显示；
+        # 新系统回滚或重新申请（决定记录“已回滚”）后回到待支付。
+        archive_key = literal("legacy-archive:") + cast(line.id, String)
+        decisions = select(BusinessRecord.id).where(
+            BusinessRecord.module == "finance_archive_settlement", BusinessRecord.status != "已删除",
+            BusinessRecord.data["source_row_id"].as_string() == archive_key)
+        decided = exists(decisions)
+        rolled_back = exists(decisions.where(BusinessRecord.status == "已回滚"))
         if mode == "pending":
-            query = query.where(or_(phase.notin_(ARCHIVED_PHASES), phase.is_(None)), _text(source, "SettlementStatus").in_(("20", "25")))
+            query = query.where(or_(phase.notin_(ARCHIVED_PHASES), phase.is_(None)), _text(source, "SettlementStatus").in_(("20", "25")), ~decided)
         elif mode == "payment":
             query = query.where(or_(phase.in_(ARCHIVED_PHASES), phase.is_(None)), _text(source, "SettlementStatus") == "25",
-                                or_(archive_state == "20", archive_state.is_(None)))
+                                or_(and_(or_(archive_state == "20", archive_state.is_(None)), ~decided), rolled_back))
         else:
-            query = query.where(archive_state == ("30" if mode == "paid" else "40"))
+            query = query.where(archive_state == ("30" if mode == "paid" else "40"), ~decided)
     fields = query.subquery("legacy_settlement_fields")
     query = select(fields)
     text_filters = {"customer": "customer", "case_no": "case_no", "payer": "payer_name", "payment_method": "payment_method",

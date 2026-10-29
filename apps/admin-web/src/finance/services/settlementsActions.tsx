@@ -3,7 +3,7 @@ import type { FormInstance } from "antd/es/form/hooks/useForm";
 import dayjs from "dayjs";
 import { financeCenterApi } from "./financeCenterApi";
 import type { FinanceScope, SettlementRow } from "../types";
-import { requireWritableSettlements, settlementExportIds, settlementSourceCounts, settlementTargets } from "../settlementIdentity";
+import { archiveRecordTargets, requireWritableSettlements, settlementExportIds, settlementSourceCounts, settlementTargets } from "../settlementIdentity";
 import type { FinanceActionGate } from "../../financeActionGate.mjs";
 import { normalizeSettlementContextRows, settlementContextPageSize, settlementContextTasksRequest } from "../constants";
 import { financeDownloadErrorDetail, financeErrorMessageText } from "../financeErrors";
@@ -496,7 +496,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
             const response = await api.post(isArchiveSettlementRejectedRoute
                 ? "/finance/archive-settlements/rejected/rollback"
                 : "/finance/archive-settlements/paid/rollback", {
-                record_ids: archiveSettlementRollbackTargets.map((row) => Number(row.id)),
+                ...archiveRecordTargets(archiveSettlementRollbackTargets),
                 comment: archiveSettlementRollbackComment.trim(),
             });
             message.success(isArchiveSettlementRejectedRoute
@@ -527,7 +527,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
         setArchiveSettlementBusy(true);
         try {
             const response = await api.post("/finance/archive-settlements/rejected/reapply", {
-                record_ids: archiveSettlementReapplyTargets.map((row) => Number(row.id)),
+                ...archiveRecordTargets(archiveSettlementReapplyTargets),
                 comment: archiveSettlementReapplyComment.trim(),
             });
             message.success(`已重新申请 ${response.data.reapplied} 条归档费`);

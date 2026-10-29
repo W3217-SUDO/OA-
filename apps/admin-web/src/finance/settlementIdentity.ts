@@ -24,11 +24,22 @@ export function isHistoricalSettlement(row: HistoricalSettlementIdentity): boole
   return row.source === "legacy" || row.historical === true || row.read_only === true;
 }
 
-/** 历史归档费投影仍只读；历史普通结算（legacy-normal）由后端在办理时承接为现代申请（BUG20261028009）。 */
+/** 历史结算（legacy-normal / legacy-archive）由后端在办理时承接为现代记录（BUG20261028009/010）；缺有效编号的历史行仍不能办理。 */
 export function requireWritableSettlements(rows: ArchiveSettlementTarget[]): void {
-  if (rows.some(row => /^legacy-archive:/.test(String(row.id)) || (isHistoricalSettlement(row) && !/^legacy-normal:[1-9]\d*$/.test(String(row.id))))) {
-    throw new Error("历史归档费记录只读，不能办理审批、支付、回退、重提或删除");
+  if (rows.some(row => isHistoricalSettlement(row) && !/^legacy-(normal|archive):[1-9]\d*$/.test(String(row.id)))) {
+    throw new Error("历史结算记录缺少来源编号，不能办理审批、支付、回退、重提或删除");
   }
+}
+
+/** 归档费办理目标：决定记录编号与历史归档费编号分开提交。 */
+export function archiveRecordTargets(rows: { id: string | number }[]) {
+  const record_ids: number[] = [];
+  const projection_ids: string[] = [];
+  for (const row of rows) {
+    if (typeof row.id === "string" && /^legacy-archive:[1-9]\d*$/.test(row.id)) projection_ids.push(row.id);
+    else record_ids.push(Number(row.id));
+  }
+  return { record_ids, projection_ids };
 }
 
 /** 普通结算办理目标：现代申请编号与历史结算编号分开提交。 */

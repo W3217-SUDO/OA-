@@ -19,7 +19,9 @@ from app.core.finance_centers import (
     legacy_incoming_status_counts,
 )
 from app.core.imported_settlement_projection import read_imported_settlement_page
-from app.areas.finance.settlement_legacy_adoption import adopt_legacy_settlements, is_adopted
+from app.areas.finance.settlement_legacy_adoption import (
+    adopt_legacy_archive_settlements, adopt_legacy_settlements, archive_decision_data, is_adopted, legacy_archive_rows,
+)
 from app.areas.finance.imported_settlement_exports import (
     append_imported_export_rows, enrich_general_export_rows, query_export_rows,
 )
@@ -207,13 +209,18 @@ async def review_archive_settlement_payments(
         raise HTTPException(status_code=422, detail="归档费记录不能为空或重复")
     if not body.approved and not body.comment.strip():
         raise HTTPException(status_code=422, detail="拒绝支付时请输入备注.")
+    legacy_ids = [item for item in settlement_ids if item.startswith("legacy-archive:")]
+    modern_ids = [item for item in settlement_ids if item not in legacy_ids]
     rows = await _pending_archive_settlement_rows(
-        identity, db, require_archived=True, selected_ids=set(settlement_ids),
-    )
-    if len(rows) != len(settlement_ids):
+        identity, db, require_archived=True, selected_ids=set(modern_ids),
+    ) if modern_ids else []
+    if len(rows) != len(modern_ids):
         raise HTTPException(status_code=409, detail="部分归档费不存在、已处理或无权审核")
-    row_map = {row["id"]: row for row in rows}
     decided_at = datetime.now().isoformat(timespec="seconds")
+    # 历史归档费（原系统待支付）按原明细生成决定记录（BUG20261028010）。
+    legacy_rows = await legacy_archive_rows(legacy_ids, "payment", identity, db)
+    rows += [{**row, "data": archive_decision_data(row, identity, decided_at)} for row in legacy_rows]
+    row_map = {row["id"]: row for row in rows}
     reusable = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "finance_archive_settlement",
         BusinessRecord.status == "已回滚",
@@ -350,6 +357,7 @@ async def rollback_paid_archive_settlements(
     record_ids = list(dict.fromkeys(body.record_ids))
     if len(record_ids) != len(body.record_ids):
         raise HTTPException(status_code=422, detail="归档费记录不能重复")
+    record_ids += await adopt_legacy_archive_settlements(body.projection_ids, "paid", identity, db)
     records = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.id.in_(record_ids),
         BusinessRecord.module == "finance_archive_settlement",
@@ -449,7 +457,8 @@ async def rollback_rejected_archive_settlements(
         raise HTTPException(status_code=403, detail="当前角色没有归档费拒绝回滚权限")
     if not body.comment.strip():
         raise HTTPException(status_code=422, detail="请输入审核备注.")
-    records = await _rejected_archive_settlement_records(body.record_ids, identity, db)
+    records = await _rejected_archive_settlement_records(
+        body.record_ids + await adopt_legacy_archive_settlements(body.projection_ids, "rejected", identity, db), identity, db)
     changed_at = datetime.now().isoformat(timespec="seconds")
     for record in records:
         record.status = "已支付"
@@ -478,7 +487,8 @@ async def reapply_rejected_archive_settlements(
     )
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="当前角色没有归档费重新申请权限")
-    records = await _rejected_archive_settlement_records(body.record_ids, identity, db)
+    records = await _rejected_archive_settlement_records(
+        body.record_ids + await adopt_legacy_archive_settlements(body.projection_ids, "rejected", identity, db), identity, db)
     changed_at = datetime.now().isoformat(timespec="seconds")
     for record in records:
         record.status = "已回滚"

@@ -13,6 +13,8 @@ from app.core.imported_settlement_projection import read_imported_settlement_pag
 from app.models import BusinessRecord, IncomingPayment, WorkflowEvent
 
 PROJECTION_ID = re.compile(r"^legacy-normal:[1-9]\d*$")
+ARCHIVE_PROJECTION_ID = re.compile(r"^legacy-archive:[1-9]\d*$")
+ARCHIVE_DECISION_STATUS = {"paid": "已支付", "rejected": "已拒绝"}
 LEGACY_STATUSES = {"待审批", "待付款", "已付款", "已拒绝"}
 _DROPPED_FIELDS = {"status", "date_unknown"}
 
@@ -74,6 +76,63 @@ async def adopt_legacy_settlements(projection_ids: list[str], identity: dict, db
         db.add(WorkflowEvent(
             record_id=record.id, action="承接历史结算", to_status=record.status, operator=identity["username"],
             comment=f"原系统结算状态 {row.get('source_status') or '未提供'}，按原分配快照承接",
+        ))
+        adopted_ids.append(record.id)
+    return adopted_ids
+
+
+async def legacy_archive_rows(projection_ids: list[str], mode: str, identity: dict, db) -> list[dict]:
+    """读取指定的历史归档费行（BUG20261028010）；不存在、已办理或状态已变化时 409。"""
+    ids = list(dict.fromkeys(str(item).strip() for item in projection_ids))
+    if not ids:
+        return []
+    invalid = [item for item in ids if not ARCHIVE_PROJECTION_ID.match(item)]
+    if invalid:
+        raise HTTPException(422, "历史归档费编号无效：" + "、".join(invalid))
+    rows = (await read_imported_settlement_page([], identity, db, mode=mode, projection_ids=ids))["items"]
+    if any((row.get("data") or {}).get("archive_fee_amount") is None for row in rows):
+        raise HTTPException(403, "没有查看结算金额的权限，不能办理历史归档费")
+    taken = await db.scalar(select(BusinessRecord.serial_no).where(
+        BusinessRecord.module == "finance_archive_settlement", BusinessRecord.status.in_({"已支付", "已拒绝"}),
+        BusinessRecord.data["source_row_id"].as_string().in_(ids),
+    ).limit(1))
+    if taken:
+        raise HTTPException(409, f"部分历史归档费已在新系统办理（{taken}），请刷新后重试")
+    return rows
+
+
+def archive_decision_data(row: dict, identity: dict, decided_at: str) -> dict:
+    data = {key: value for key, value in (row.get("data") or {}).items() if key not in _DROPPED_FIELDS}
+    return {
+        **data,
+        "source_row_id": row["id"],
+        "legacy_projection_id": row["id"],
+        "legacy_source_status": row.get("source_status"),
+        "archive_payment_submitted_by": data.get("applied_by") or row.get("owner") or identity["username"],
+        "archive_payment_submitted_at": data.get("applied_at") or data.get("settlement_paid_at") or decided_at,
+        "archive_payment_reviewer": data.get("reviewer") or "",
+        "archive_payment_reviewed_at": data.get("reviewed_at") or data.get("paid_at") or "",
+    }
+
+
+async def adopt_legacy_archive_settlements(projection_ids: list[str], mode: str, identity: dict, db) -> list[int]:
+    """已支付/已拒绝的历史归档费在新系统回滚或重新申请时，按原状态承接为归档费决定记录。"""
+    rows = await legacy_archive_rows(projection_ids, mode, identity, db)
+    status = ARCHIVE_DECISION_STATUS[mode]
+    now = datetime.now().isoformat(timespec="seconds")
+    adopted_ids: list[int] = []
+    for row in rows:
+        record = BusinessRecord(
+            module="finance_archive_settlement", serial_no=f"ARCP-{row['id'].replace(':', '-')}",
+            title=row.get("title") or "历史归档结算", customer=row.get("customer") or "", status=status,
+            owner=identity["username"], department=str(identity.get("department") or "上海分所"),
+            data={**archive_decision_data(row, identity, now), "adopted_by": identity["username"], "adopted_at": now},
+        )
+        db.add(record)
+        await db.flush()
+        db.add(WorkflowEvent(
+            record_id=record.id, action="承接历史归档费", to_status=status, operator=identity["username"],
+            comment=f"原系统归档费状态 {row.get('source_status') or '未提供'}，按原明细承接",
         ))
         adopted_ids.append(record.id)
     return adopted_ids

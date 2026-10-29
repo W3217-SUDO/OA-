@@ -2185,24 +2185,6 @@ function FinanceCenterContent({
       return false;
     }
   };
-  const openHistoricalSettlement = (row: SettlementRow) => {
-    const recordId = row.legacy_record_id;
-    if (typeof recordId !== "number" || !Number.isSafeInteger(recordId) || recordId <= 0) {
-      message.error("历史结算缺少有效的来源头记录，无法查看");
-      return;
-    }
-    void openLegacyFinanceDetail(recordId, {
-      amount_basis: row.amount_basis,
-      source_label: row.source_label,
-      has_local_allocation_activity: row.has_local_allocation_activity,
-    });
-  };
-  const historicalSettlementOperation = (row: SettlementRow, archive = false) => (
-    <Space orientation="vertical" size={0} className="finance-settlement-row-actions">
-      <Button type="link" style={{ width: 64, minHeight: 44 }} title={`原状态：${row.source_status ?? "未提供"}`} onClick={() => openHistoricalSettlement(row)}>历史只读</Button>
-      <Button type="link" style={{ width: 44, minHeight: 44 }} icon={<DownloadOutlined />} aria-label="导出" title="导出历史结算" onClick={() => void (archive ? exportPendingArchiveSettlements([row.id]) : exportGeneralSettlement("settlement", [row.id]))} />
-    </Space>
-  );
   const openGeneralSettlementReview = (targets: Fee[], approved: boolean) => {
     if (!writableSettlementSelection(targets)) return;
     if (!targets.length) {
@@ -2343,7 +2325,8 @@ function FinanceCenterContent({
     </Space>
   );
   };
-  const archiveSettlementPendingOperation = (_: unknown, row: ArchiveSettlementRow) => isHistoricalSettlement(row) ? historicalSettlementOperation(row, true) : (
+  // 历史归档费与现代记录同样办理（BUG20261028010），办理时由后端承接。
+  const archiveSettlementPendingOperation = (_: unknown, row: ArchiveSettlementRow) => (
     <Space size={0} className="finance-settlement-row-actions">
       {isArchiveSettlementPaidRoute || isArchiveSettlementRejectedRoute ? (
         <Button

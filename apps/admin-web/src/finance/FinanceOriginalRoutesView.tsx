@@ -1,5 +1,4 @@
 import {IncomingTotalsBody} from "./IncomingTotalsBody";
-import { isHistoricalSettlement } from "./settlementIdentity";
 import type { SettlementRow } from "./types";
 
 import {financeErrorDetail} from "./financeErrors";
@@ -753,16 +752,13 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                         ...(isGeneralSettlementRoute ? { columnWidth: 36 } : {}),
                         selectedRowKeys: selectedOriginalRows,
                         onChange: (keys) =>
-                          setSelectedOriginalRows(
-                            keys.filter(key => !isArchiveSettlementActiveRoute || !configuredRows.some(row => row.id === key && isHistoricalSettlement(row))) as (string | number)[],
-                          ),
+                          setSelectedOriginalRows(keys as (string | number)[]),
                         getTitleCheckboxProps: () =>
                           initialView === "finance-payment-waiting"
                             ? { disabled: false }
                             : {},
                         getCheckboxProps: (row) => ({
                           disabled:
-                            (isArchiveSettlementActiveRoute && isHistoricalSettlement(row)) ||
                             Boolean(isInternalQueueRoute && row.data?.read_only) ||
                             (initialView === "finance-internal-refund-audit" && row.status !== "待审批"),
                         }),
@@ -1195,7 +1191,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
             {isArchiveSettlementActiveRoute && archiveSettlementMeta.total > 0 && (
               <div className="finance-archive-settlement-footer">
                 <Space size={7}>
-                  {isArchiveSettlementPaymentRoute && configuredRows.some(row => !isHistoricalSettlement(row)) && (
+                  {isArchiveSettlementPaymentRoute && configuredRows.length > 0 && (
                     <>
                       <Button
                         loading={archiveSettlementBusy}
@@ -1225,7 +1221,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                       </Button>
                     </>
                   )}
-                  {isArchiveSettlementPaidRoute && configuredRows.some(row => !isHistoricalSettlement(row)) && (
+                  {isArchiveSettlementPaidRoute && configuredRows.length > 0 && (
                     <Button
                       loading={archiveSettlementBusy}
                       onClick={() =>
@@ -1239,7 +1235,7 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                       回滚归档费结算
                     </Button>
                   )}
-                  {isArchiveSettlementRejectedRoute && configuredRows.some(row => !isHistoricalSettlement(row)) && (
+                  {isArchiveSettlementRejectedRoute && configuredRows.length > 0 && (
                     <Button
                       loading={archiveSettlementBusy}
                       onClick={() =>

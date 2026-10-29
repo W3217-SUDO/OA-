@@ -932,6 +932,45 @@ class SQLiteIncomingQueryTest(RawIncomingBundleAssertions, IncomingQueryAssertio
                     identity={"username": "u", "role": "user", "_finance_scope": "firm"}, db=db)
             self.assertEqual(denied.exception.status_code, 403)
 
+    async def test_historical_archive_fee_is_rolled_back_reviewed_and_hidden_once_decided(self):
+        """BUG20261028010：历史归档费可回滚、审核，办理后由决定记录接管，历史明细不重复显示。"""
+        from app.models_shared import ArchiveSettlementPaymentReviewInput, ArchiveSettlementRollbackInput
+        from app.areas.finance.settlements import (
+            list_archive_settlement_payments, list_paid_archive_settlements,
+            review_archive_settlement_payments, rollback_paid_archive_settlements,
+        )
+        from app.core.imported_settlement_projection import read_imported_settlement_page
+
+        async with self.sessions() as db:
+            header, line, _, _ = await self._seed_legacy_settlement_page(db)
+            identity = {"username": "admin", "role": "admin", "_finance_scope": "firm"}
+            header.source_payload = {**header.source_payload, "SettlementStatus": 25}
+            line.source_payload = {**line.source_payload, "ArchiveAmountSettlementStatus": 30}
+            await db.commit()
+            key = f"legacy-archive:{line.id}"
+            paid = await read_imported_settlement_page([], identity, db, mode="paid")
+            self.assertEqual([row["id"] for row in paid["items"]], [key])
+            rolled = await rollback_paid_archive_settlements(ArchiveSettlementRollbackInput(
+                projection_ids=[key], comment="金额有误"), identity=identity, db=db)
+            self.assertEqual(rolled["status"], "已回滚")
+            self.assertEqual((await read_imported_settlement_page([], identity, db, mode="paid"))["total"], 0)
+            payment = await read_imported_settlement_page([], identity, db, mode="payment")
+            self.assertEqual([row["id"] for row in payment["items"]], [key])
+            reviewed = await review_archive_settlement_payments(ArchiveSettlementPaymentReviewInput(
+                settlement_ids=[key], approved=True), identity=identity, db=db)
+            self.assertEqual(reviewed["status"], "已支付")
+            self.assertEqual((await read_imported_settlement_page([], identity, db, mode="payment"))["total"], 0)
+            listed = await list_paid_archive_settlements(identity=identity, db=db, page=1, page_size=10)
+            self.assertEqual([row["id"] for row in listed["items"]], reviewed["record_ids"])
+            self.assertEqual(listed["items"][0]["data"]["source_row_id"], key)
+            self.assertEqual(await db.scalar(select(func.count(BusinessRecord.id)).where(
+                BusinessRecord.module == "finance_archive_settlement")), 1)
+            with self.assertRaises(Exception):
+                await rollback_paid_archive_settlements(ArchiveSettlementRollbackInput(
+                    projection_ids=[key], comment="重复"), identity=identity, db=db)
+            await db.rollback()
+            self.assertEqual((await list_archive_settlement_payments(identity=identity, db=db, page=1, page_size=10))["total"], 0)
+
     async def test_imported_archive_rules_use_raw_phase_and_keep_unknown_out_of_payment(self):
         from app.core.imported_settlement_projection import read_imported_settlement_page
 
