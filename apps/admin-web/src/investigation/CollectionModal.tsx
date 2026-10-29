@@ -53,7 +53,6 @@ export default function CollectionModal({
       cancelText="取消"
       onOk={onOk}
       onCancel={onCancel}
-      okButtonProps={{ disabled: collectionStorageLoading || !!collectionStorageError || !collectionStorageOptions.length }}
     >
       <Form form={collectionForm} layout="vertical">
         <Form.Item
@@ -96,13 +95,13 @@ export default function CollectionModal({
             validateStatus={collectionStorageError ? "error" : undefined}
             help={collectionStorageError || undefined}
             name="evidence_storage_path"
-            rules={[{ required: true, message: "请选择证物存放处" }]}
           >
             <Cascader
               options={collectionStorageOptions}
               disabled={collectionStorageLoading || !!collectionStorageError}
               notFoundContent={collectionStorageLoading ? <Spin size="small" /> : "暂无可用库位"}
-              placeholder="请选择仓库及库位"
+              // BUG20261029003：取证时证物存放处选填，入库时再选也可以。
+              placeholder="选填，可在证物入库时再选"
               showSearch
               onChange={(path) =>
                 collectionForm.setFieldsValue({
@@ -129,7 +128,7 @@ export default function CollectionModal({
           </Form.Item>
         </div>
         {!collectionStorageLoading && !collectionStorageError && !collectionStorageOptions.length && (
-          <Alert type="warning" showIcon message="没有可用库位，请联系仓库管理员配置仓库及库位" />
+          <Alert type="info" showIcon message="暂无可用库位，可先不填，证物入库时再选" />
         )}
         {batchCollectionTargets.length === 0 && (
           <Form.Item label="证据文件">

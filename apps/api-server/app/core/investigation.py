@@ -195,10 +195,12 @@ async def _register_clue_collection(clue_id: int, body: ClueCollectionInput, ide
             item = files.get(file_id)
             if not item or item.record_id != clue.id:
                 raise HTTPException(status_code=422, detail=f"取证文件 {file_id} 不属于当前线索")
-    if not body.storage_location_id:
-        raise HTTPException(status_code=422, detail="请选择仓库库位")
-    warehouse, location = await _resolve_warehouse_location(body, db)
-    storage_location = _warehouse_location_display(warehouse, location)
+    # BUG20261029003：取证时证物存放处选填，没选就等证物入库时再定库位。
+    warehouse = location = None
+    storage_location = ""
+    if body.storage_location_id:
+        warehouse, location = await _resolve_warehouse_location(body, db)
+        storage_location = _warehouse_location_display(warehouse, location)
     evidence_status = body.evidence_status.strip() or "未入库"
     if evidence_status not in {"未入库", "已入库", "已出库", "已重新入库", "已销毁"}:
         raise HTTPException(status_code=422, detail="证物状态无效")
@@ -211,14 +213,15 @@ async def _register_clue_collection(clue_id: int, body: ClueCollectionInput, ide
         "is_timestamp_evidence": timestamp_evidence,
         "notarization_no": body.notarization_no.strip(), "certificate_no": body.notarization_no.strip(),
         "invoice_no": body.invoice_no.strip(), "storage_location": storage_location,
-        **_warehouse_location_data(warehouse, location),
+        **(_warehouse_location_data(warehouse, location) if location else {}),
         "evidence_status": evidence_status, "collection_file_ids": evidence_file_ids,
         "collected_by": identity["username"], "collection_registered_at": datetime.now().isoformat(timespec="seconds"),
     }
     collection_evidence = await _create_collection_evidence_record(clue, identity, db)
-    await _set_warehouse_evidence_location(
-        collection_evidence.id, warehouse, location, identity["username"], db
-    )
+    if location:
+        await _set_warehouse_evidence_location(
+            collection_evidence.id, warehouse, location, identity["username"], db
+        )
     clue.data = {**(clue.data or {}), "collection_evidence_record_id": collection_evidence.id}
     db.add(WorkflowEvent(record_id=clue.id, action="登记线索取证", from_status="待取证", to_status="已取证", operator=identity["username"], comment=f"取证日期 {body.collected_at}；取证机构 {notary_institution}；公证书号 {body.notarization_no.strip() or '未登记'}；发票号码 {body.invoice_no.strip() or '未登记'}；证物状态 {evidence_status}；取证文件 {len(evidence_file_ids)} 个。{body.comment}"))
     await _sync_legacy_projection(clue, identity, db)
