@@ -4,6 +4,10 @@ export const isContractPayment = (row) =>
 export const paymentActionPath = (row, action) =>
   `${isContractPayment(row) ? "/contract-payment-applications" : "/finance/fees"}/${row.id}/${action}`;
 
+// BUG20261029001：请款单申请日期取本次点“申请付款”的时间，旧数据再按申请日期、新建日期兜底。
+export const paymentApplicationDate = (row) =>
+  String(row?.data?.payment_applied_at || "").slice(0, 10) || row?.data?.application_date || row?.created_at || "";
+
 // 待核销列表里的请款单（已进付款包、尚未核销）：回滚时整个付款包退回待付款。
 export const isPendingWriteoffPackage = (row) => !isContractPayment(row) && row?.status === "待核销" &&
   Boolean(row?.data?.payment_package_id) && row?.data?.writeoff_status !== "已核销";

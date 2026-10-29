@@ -233,6 +233,8 @@ class September30CaseFinanceTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(fee.data["payment_requested_amount"], 100)
             self.assertEqual(fee.data["payment_request_amount"], 100)
             self.assertEqual(fee.data["payment_payee"], "")
+            # BUG20261029001：请款单申请日期是点“申请付款”当天，不是费用新建日期。
+            self.assertEqual(fee.data["application_date"], date.today().isoformat())
         withdrawn = await self.client.post(f"{API}/finance/fees/{self.fee_id}/cancel", json={"reason": "重提官费请款"})
         self.assertEqual(withdrawn.status_code, 200, withdrawn.text)
         async with self.sessions() as db:

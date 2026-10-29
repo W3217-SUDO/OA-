@@ -39,6 +39,7 @@ export type ContractPaymentEditPayload = {
 
 export function isContractPayment(row: PaymentLifecycleRow): boolean;
 export function paymentActionPath(row: PaymentLifecycleRow & { id: number }, action: string): string;
+export function paymentApplicationDate(row: { created_at?: string | null; data?: { payment_applied_at?: unknown; application_date?: unknown } | null } | null | undefined): string;
 export function isPendingWriteoffPackage(row: PaymentLifecycleRow | null | undefined): boolean;
 export function canEditContractPayment(row: PaymentLifecycleRow): boolean;
 export function paymentLifecycleStatus(row: PaymentLifecycleRow): string;

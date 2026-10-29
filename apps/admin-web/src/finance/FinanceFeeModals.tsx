@@ -6,6 +6,7 @@ import { money } from "./constants";
 import { displayFeeValue } from "../financialValueDisplay";
 import type { FeeEditorFormValues } from "./formTypes";
 import type { Fee, Transaction } from "./types";
+import { paymentApplicationDate } from "./paymentLifecycle.mjs";
 
 export interface FeeDetailModalProps {
   fee: Fee | null;
@@ -62,11 +63,7 @@ export function FeeDetailModal({
               {feeDetail.data.payment_package_context?.status || "—"}
             </Descriptions.Item>
             <Descriptions.Item label="申请日期">
-              {String(displayFeeValue(
-                feeDetail.data.application_date ||
-                feeDetail.created_at ||
-                ""
-              )).slice(0, 10)}
+              {String(displayFeeValue(paymentApplicationDate(feeDetail))).slice(0, 10)}
             </Descriptions.Item>
             <Descriptions.Item label="审核日期">
               {String(displayFeeValue(feeDetail.data.audit_date || feeDetail.updated_at || "")).slice(

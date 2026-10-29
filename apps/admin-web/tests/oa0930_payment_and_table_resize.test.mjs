@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as paymentLifecycle from '../src/finance/paymentLifecycle.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
@@ -25,6 +26,7 @@ function loadPaymentDocument() {
       if (name === 'antd') return { Button };
       if (name === 'react') return { Fragment: Symbol.for('react.fragment') };
       if (name === '../components/ResizableTable') return { default: Table };
+      if (name === './paymentLifecycle.mjs') return paymentLifecycle;
       if (name === 'react/jsx-runtime') return { jsx: element, jsxs: element };
       throw new Error(`unexpected import: ${name}`);
     },

@@ -3,6 +3,7 @@ import { Button } from "antd";
 import { money } from "../constants";
 import { displayFeeValue } from "../../financialValueDisplay";
 import type { Fee } from "../types";
+import { paymentApplicationDate } from "../paymentLifecycle.mjs";
 export function createPaymentAuditOriginalColumns(context: {
     readonly setFeeReviewTargets: React.Dispatch<React.SetStateAction<Fee[]>>;
     readonly openPaymentDetail?: (row: Fee) => Promise<void>;
@@ -76,7 +77,7 @@ export function createPaymentAuditOriginalColumns(context: {
         {
             title: "申请日期", ...moneyColumnStyle("申请日期"),
             width: 110,
-            render: (_: unknown, row: Fee) => String(displayFeeValue(row.data.application_date || row.created_at || "")).slice(0, 10),
+            render: (_: unknown, row: Fee) => String(displayFeeValue(paymentApplicationDate(row))).slice(0, 10),
         },
         {
             title: "状态", ...moneyColumnStyle("状态"),

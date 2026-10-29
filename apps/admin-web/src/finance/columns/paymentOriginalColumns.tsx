@@ -3,7 +3,7 @@ import { Button, Dropdown } from "antd";
 import { money } from "../constants";
 import { displayFeeValue } from "../../financialValueDisplay";
 import type { Fee, Transaction } from "../types";
-import { isPendingWriteoffPackage } from "../paymentLifecycle.mjs";
+import { isPendingWriteoffPackage, paymentApplicationDate } from "../paymentLifecycle.mjs";
 export function createPaymentOriginalColumns(context: {
     readonly originalOperation: (_: unknown, row: Fee) => React.JSX.Element;
     readonly paymentStatus: (fee: Fee) => any;
@@ -37,7 +37,7 @@ export function createPaymentOriginalColumns(context: {
         {
             title: "申请日期", ...moneyColumnStyle("申请日期"),
             width: 110,
-            render: (_: unknown, row: Fee) => String(displayFeeValue(row.data.application_date || row.created_at || "")).slice(0, 10),
+            render: (_: unknown, row: Fee) => String(displayFeeValue(paymentApplicationDate(row))).slice(0, 10),
         },
         {
             title: "申请金额", ...moneyColumnStyle("申请金额"),

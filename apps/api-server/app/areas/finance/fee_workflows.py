@@ -271,6 +271,8 @@ async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: di
             "payment_remark": payment_remark,
             "payee": payee,
             "payment_applied_at": applied_at,
+            # BUG20261029001：请款单申请日期是本次点“申请付款”的日期，不是费用新建日期。
+            "application_date": str(applied_at)[:10],
             "payment_applied_by": identity["username"],
             "payment_status": "待审批",
         }

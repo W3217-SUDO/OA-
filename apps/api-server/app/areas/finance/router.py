@@ -1678,6 +1678,7 @@ async def create_refund_page_case_fees(
                     "payment_payee": payee_name,
                     "payment_remark": request_item.payment_remark.strip(),
                     "payment_applied_at": datetime.now().isoformat(timespec="seconds") if body.submit_payment else "",
+                    **({"application_date": datetime.now().date().isoformat()} if body.submit_payment else {}),
                     "payment_applied_by": identity["username"] if body.submit_payment else "",
                     "payment_status": "待审批" if body.submit_payment else "",
                 },

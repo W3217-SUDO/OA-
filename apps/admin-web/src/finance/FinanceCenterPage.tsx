@@ -93,7 +93,7 @@ import { RefundLogDrawer } from "./RefundLogDrawer";
 import { InvoiceDetailTables } from "./InvoiceDetailTables";
 import { ContractPaymentEditPage } from "./ContractPaymentEditPage";
 import { invoiceObjectFees } from "./invoiceDetails.mjs";
-import { canEditContractPayment, isContractPayment, paymentLifecycleStatus } from "./paymentLifecycle.mjs";
+import { canEditContractPayment, isContractPayment, paymentApplicationDate, paymentLifecycleStatus } from "./paymentLifecycle.mjs";
 import { useFinanceRuntimeContext } from "./hooks/useFinanceRuntimeContext";
 import { usePaymentReversalState } from "./hooks/usePaymentReversalState";
 import { usePaymentWriteoffState } from "./hooks/usePaymentWriteoffState";
@@ -1788,8 +1788,7 @@ function FinanceCenterContent({
     };
     result = result.filter((item) => {
       const tx = latestTransaction(item);
-      const applicationDate =
-        item.data.application_date || item.created_at || "";
+      const applicationDate = paymentApplicationDate(item);
       const deadline = item.data.deadline || item.data.due_date || "";
       const applicationRange = dateQueryRange(originalQuery.applicationRange);
       const paymentRange = dateQueryRange(originalQuery.paymentRange);
@@ -3170,7 +3169,7 @@ function FinanceCenterContent({
         linkedCaseData.appellee_names ||
         linkedCaseData.opponent,
       申请人: financePersonDisplayName(data.applicant || row.owner, data.applicant_display_name || row.owner_display_name),
-      申请日期: (data.application_date || row.created_at || "").slice?.(0, 10),
+      申请日期: paymentApplicationDate(row).slice?.(0, 10),
       生成日期: (data.commission_created_at || row.created_at || "").slice?.(0, 10),
       提交人: financePersonDisplayName(
         data.archive_payment_submitted_by || data.submitted_by || row.owner,
@@ -4299,11 +4298,7 @@ function FinanceCenterContent({
             {String(Number(feeDetail.data.paid_hearing || 0))}
           </Descriptions.Item>
           <Descriptions.Item label="申请日期">
-            {displayFinancialValue(
-              feeDetail.data.application_date ||
-              feeDetail.created_at ||
-              "—"
-            ).slice(0, 10)}
+            {displayFinancialValue(paymentApplicationDate(feeDetail) || "—").slice(0, 10)}
           </Descriptions.Item>
           <Descriptions.Item label="审批意见">
             {feeDetail.data.review_comment ||

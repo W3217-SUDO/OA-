@@ -2,6 +2,7 @@ import { Button } from "antd";
 import type { TableColumnsType } from "antd";
 import { Fragment, type ReactNode } from "react";
 import Table from "../components/ResizableTable";
+import { paymentApplicationDate } from "./paymentLifecycle.mjs";
 
 const show = (value: any) => value === undefined || value === null || value === "" ? "—" : String(value);
 const amount = (value: any) => value === undefined || value === null || value === "" ? "—" : Number(value).toFixed(2);
@@ -62,9 +63,9 @@ export function PaymentDocument({ row, printing, onCase, onContract }: {row:any;
       ["案件编号",link(d.case_no,onCase)],["案件名称",show(d.case_name || d.case_title)],["合同编号",link(d.contract_no,onContract)],["合同名称",show(d.contract_name)],
       ["客户编号",show(d.customer_no)],["客户名称",show(row.customer)],["客户管理人",show(d.customer_manager_display_name || d.customer_manager)],
       ...["调查提成","案源提成","文书提成","开庭提成"].map(role => [`${role}(已付)`, d.paid_by_role ? amount(d.paid_by_role[role] || 0) : "—"] as [string,any]),
-      ["申请编号",show(row.serial_no)],["申请日期",date(d.application_date || row.created_at)],["审批意见",show(d.approval_comment || d.review_comment)],
+      ["申请编号",show(row.serial_no)],["申请日期",date(paymentApplicationDate(row))],["审批意见",show(d.approval_comment || d.review_comment)],
     ]) : meta([
-      ["合同编号",link(d.contract_no,onContract)],["申请日期",date(d.application_date || row.created_at)],["合同名称",copyField(d.contract_name)],["交款人",copyField(d.payer_display_name || d.payer_name || d.payer)],
+      ["合同编号",link(d.contract_no,onContract)],["申请日期",date(paymentApplicationDate(row))],["合同名称",copyField(d.contract_name)],["交款人",copyField(d.payer_display_name || d.payer_name || d.payer)],
       ["申请编号",copyField(row.serial_no)],["案源人",copyField(d.case_source ? d.case_source_display_name || d.case_source : d.source_person_display_name || d.source_person)],["客户名称",copyField(row.customer)],["备注",copyField(d.remark || row.description)],
       ["收款单位",copyField(d.payee_display_name || d.payee)],["开户行",copyField(d.account_bank || d.bank_name || d.payee_bank || d.bank)],["账号信息",copyField(d.account || d.bank_account || d.payee_account)],
     ])}
