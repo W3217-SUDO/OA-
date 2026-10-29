@@ -155,6 +155,13 @@ class RolePermissionBlocksTest(unittest.IsolatedAsyncioTestCase):
         nodes = {node["key"]: node["children"] for node in tree}
         # 请款单审批只有“审批”（同意/拒绝），仍单独勾选；没有编辑、删除费用。
         self.assertEqual([c["title"] for c in nodes["menu:finance-payment-audit"]], ["审批（同意）", "审批（拒绝）"])
+        # 左侧菜单不显示的页面不在角色权限里。
+        self.assertNotIn("menu:finance-jar", nodes)
+        self.assertEqual(nodes["menu:system-parameters-court"], [])
+        # 旧系统岗位名称不当功能显示。
+        titles = {c["title"] for children in nodes.values() for c in children} | {node["title"] for node in tree}
+        self.assertFalse({"客户修改", "费用申请", "合同付款申请"} & titles)
+        # 内部费用审批在两个待审核页面下都显示，同一开关。
         fee_audit = {c["key"]: c["state"]["checked"] for c in nodes["menu:finance-internal-fee-audit"]}
         self.assertEqual(fee_audit, {"action:finance.internal.review.approve#finance-internal-fee-audit": True,
                                      "action:finance.internal.review.reject#finance-internal-fee-audit": False})
