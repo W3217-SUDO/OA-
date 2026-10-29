@@ -148,6 +148,10 @@ def _reporter_actions(record: BusinessRecord, identity: dict) -> set[str]:
         return set(REPORTER_ACTIONS)
     if _assignee(record) == identity["username"]:
         return set(ASSIGNEE_CONFIRM_ACTIONS)
+    # 提交人或确认人在回复里写了“确认”但没点按钮时，问题处理助手代记“确认修改”（备注写明依据），
+    # 不再借用管理者身份，页面上分得清是谁（用户要求，2026-10-29）。
+    if identity["username"] == FEEDBACK_BOT_USERNAME:
+        return set(ASSIGNEE_CONFIRM_ACTIONS)
     return set()
 
 
@@ -555,6 +559,8 @@ async def transition_feedback(
     comment = body.comment.strip()
     if action in COMMENT_REQUIRED_ACTIONS and not comment:
         raise HTTPException(422, "请写明打算怎么改" if action == "请确认修改方案" else "请写明哪里还没解决")
+    if action == "确认修改" and identity["username"] == FEEDBACK_BOT_USERNAME and not comment:
+        raise HTTPException(422, "请写明谁在哪条回复里确认的")
     record.status = next_status
     record.updated_at = func.now()
     event = WorkflowEvent(

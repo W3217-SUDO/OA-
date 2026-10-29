@@ -146,5 +146,20 @@ class FeedbackConfirmFlowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(done.json(), {"status": "待验证"})
 
 
+    async def test_bot_records_confirmation_from_a_reply(self):
+        """提交人在回复里写“确认”没点按钮：问题处理助手代记“确认修改”（须写依据），记在 feedback-bot 名下，不借用管理者。"""
+        self.identity = dict(ADMIN)
+        await self._transition("请确认修改方案", "表头一律单行")
+        self.assertEqual(await self._actions(), [])
+        self.identity = dict(feedback.FEEDBACK_BOT_IDENTITY)
+        self.assertEqual((await self._transition("确认修改")).status_code, 422)
+        confirmed = await self._transition("确认修改", "提交人 10-29 回复“确认”")
+        self.assertEqual(confirmed.json(), {"status": "待处理"})
+        self.identity = dict(ADMIN)
+        events = (await self.client.get(f"{API}/{self.feedback_id}")).json()["events"]
+        self.assertEqual((events[-1]["action"], events[-1]["operator"], events[-1]["operator_role"]),
+                         ("确认修改", feedback.FEEDBACK_BOT_USERNAME, "bot"))
+
+
 if __name__ == "__main__":
     unittest.main()
