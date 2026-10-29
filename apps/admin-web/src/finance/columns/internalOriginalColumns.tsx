@@ -1,5 +1,5 @@
 import { moneyColumnStyle } from "../moneyColumns";
-import { Button } from "antd";
+import { Button, Dropdown } from "antd";
 import { money } from "../constants";
 import { displayFeeValue } from "../../financialValueDisplay";
 import type { Fee, Transaction } from "../types";
@@ -9,13 +9,20 @@ export function createInternalOriginalColumns(context: {
     readonly openCaseDetail: (caseNo: unknown) => Promise<void>;
     readonly latestTransaction: (fee: Fee) => Transaction;
     readonly financePersonDisplayName: (identity: unknown, displayName?: unknown) => string;
+    readonly openPaymentDetail: (row: Fee) => Promise<void>;
+    readonly rowMenuExtras: (row: Fee) => { key: string; label: string; onClick: () => void }[];
 }) {
+    // BUG20261029004：右键 查看、编辑、撤回，和付款管理-我的请款单一致。
+    const wrap = (row: Fee, content: React.ReactNode) => <Dropdown trigger={["contextMenu"]} menu={{items: [
+        {key:"view", label:"查看", onClick: () => void context.openPaymentDetail(row)},
+        ...context.rowMenuExtras(row),
+    ]}}><span style={{display:"inline-block", minWidth:20}}>{content}</span></Dropdown>;
     return [
         {
             title: "操作", ...moneyColumnStyle("操作"),
             key: "action",
             width: 70,
-            render: context.internalMineOperation,
+            render: (_: unknown, row: Fee) => wrap(row, context.internalMineOperation(_, row)),
         },
         { title: "请款单号", ...moneyColumnStyle("请款单号"), dataIndex: "serial_no", width: 165 },
         {

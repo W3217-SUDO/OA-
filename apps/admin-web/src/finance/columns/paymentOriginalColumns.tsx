@@ -14,9 +14,11 @@ export function createPaymentOriginalColumns(context: {
     readonly openPaymentDetail?: (row: Fee) => Promise<void>;
     readonly openPaymentRollback?: (row: Fee) => void;
     readonly canRollback?: boolean;
+    readonly rowMenuExtras?: (row: Fee) => { key: string; label: string; onClick: () => void }[];
 }) {
     const wrap = (row: Fee, content: React.ReactNode) => <Dropdown trigger={["contextMenu"]} menu={{items: [
         {key:"view", label:"查看", onClick: () => void context.openPaymentDetail?.(row)},
+        ...(context.rowMenuExtras?.(row) ?? []),
         // BUG20261028007：待核销的请款单右键也能回滚，整个付款包退回待付款。
         ...(context.canRollback && (["已审批", "待付款"].includes(row.status) || isPendingWriteoffPackage(row)) ? [{key:"rollback", label:"回滚", onClick: () => context.openPaymentRollback?.(row)}] : []),
     ]}}><span style={{display:"inline-block", minWidth:20}}>{content}</span></Dropdown>;

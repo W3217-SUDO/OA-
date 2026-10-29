@@ -1971,7 +1971,7 @@ function FinanceCenterContent({
     queryField("案件阶段", "caseStage"),
     queryField("费用类型", "feeType"),
   ];
-  const internalMineOperation = (_: unknown, row: Fee) => {
+  const internalMinePermissions = (row: Fee) => {
     const applicationItems = Array.isArray(row.data?.application_items)
       ? row.data.application_items as Fee[]
       : [row];
@@ -1989,6 +1989,10 @@ function FinanceCenterContent({
       (canFeeUpdate || row.owner === currentUser.username);
     const mayCancel = mayChange &&
       ["草稿", "待到账", "待分配", "待结算", "待归档", "待审批"].includes(row.status);
+    return { mayEdit, mayCancel };
+  };
+  const internalMineOperation = (_: unknown, row: Fee) => {
+    const { mayEdit, mayCancel } = internalMinePermissions(row);
     return (
       <Space size={0}>
         {mayEdit && (
@@ -2417,8 +2421,32 @@ function FinanceCenterContent({
         查看
       </Button>
     ) : null;
+  // BUG20261029004（范文玲）：我的请款单（付款管理、内部费用）每行右键都是 查看、编辑、撤回（照旧系统）；
+  // 当前状态不能编辑或撤回的，点了只提示原因，不改数据。
+  const paymentMineEditAction = (row: Fee) => {
+    const mayManage = canManage || row.owner === currentUser.username || row.data?.applicant === currentUser.username;
+    if (canEditContractPayment(row) && mayManage) return () => setContractPaymentEditId(row.id);
+    if (row.module === "finance" && row.status === "草稿" && (canFeeUpdate || row.owner === currentUser.username)) return () => openFeeEdit(row);
+    return null;
+  };
+  const rowMenuAction = (label: string, run: (() => void) | null, row: Fee) => ({
+    key: label === "编辑" ? "edit" : "withdraw", label,
+    onClick: () => run ? run() : message.warning(`请款单 ${row.serial_no} 当前状态为“${paymentStatus(row)}”，不能${label}`),
+  });
+  const paymentMineMenuExtras = (row: Fee) => initialView === "finance-payment-mine" ? [
+    rowMenuAction("编辑", paymentMineEditAction(row), row),
+    rowMenuAction("撤回", canWithdrawFinanceFee(row) ? () => openPaymentCancel(row) : null, row),
+  ] : [];
+  const internalMineMenuExtras = (row: Fee) => {
+    const { mayEdit, mayCancel } = internalMinePermissions(row);
+    return [
+      rowMenuAction("编辑", mayEdit ? () => openFeeEdit(row) : null, row),
+      rowMenuAction("撤回", mayCancel ? () => openPaymentCancel(row) : null, row),
+    ];
+  };
   const paymentOriginalColumns = createPaymentOriginalColumns({
     openPaymentDetail, openPaymentRollback, canRollback: ["admin", "manager", "auditor"].includes(role),
+    rowMenuExtras: paymentMineMenuExtras,
     get originalOperation() { return originalOperation; },
     get paymentStatus() { return paymentStatus; },
     get openCaseDetail() { return openCaseDetail; },
@@ -2436,6 +2464,7 @@ function FinanceCenterContent({
   });
   const internalOriginalColumns = createInternalOriginalColumns({
     get internalMineOperation() { return internalMineOperation; },
+    openPaymentDetail, rowMenuExtras: internalMineMenuExtras,
     get paymentStatus() { return paymentStatus; },
     get openCaseDetail() { return openCaseDetail; },
     get latestTransaction() { return latestTransaction; },
