@@ -14,6 +14,9 @@ export const dashboardWorkspaces: Record<string, { label: string; view: string; 
   "official-fee-unreceived": { label: "未到官费", view: "contract-receivable-detail", kind: "receivable" },
 };
 
+// 进费用列表（费用查询/退费接口）的控制台入口；其他入口（如待缴官费-请款单审批）按各自页面加载数据。
+export const FEE_LIST_DASHBOARD_QUEUES = ["official-fee-unpaid", "refund-pending"];
+
 export function dashboardWorkspace(route: string) {
   const key = route.startsWith("dashboard-queue-") ? route.slice("dashboard-queue-".length) : "";
   return Object.hasOwn(dashboardWorkspaces, key) ? { ...dashboardWorkspaces[key], key } : null;

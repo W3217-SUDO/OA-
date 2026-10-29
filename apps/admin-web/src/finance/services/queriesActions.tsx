@@ -18,6 +18,7 @@ import { incomingPaymentQueryParams } from "./incomingQuery";
 import type { IncomingPaymentPage } from "../hooks/useIncomingPaymentQuery";
 import { financeErrorDetail, financeErrorMessageText } from "../financeErrors";
 import { optionalRecords } from "../../optionalRecords";
+import { FEE_LIST_DASHBOARD_QUEUES } from "../../dashboardWorkspace";
 
 const projectionNumericId = (value: unknown) => {
     const raw = String(value ?? "");
@@ -672,7 +673,8 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
         setLoading(true);
         setFinanceDataReady(false);
         try {
-            if (context.dashboardQueue) {
+            // 只有费用列表的控制台入口走费用查询；待缴官费（请款单审批）按请款单审批加载（BUG20261028003 陶威 2026-10-29）。
+            if (FEE_LIST_DASHBOARD_QUEUES.includes(context.dashboardQueue)) {
                 const [result, profile, people] = await Promise.all([
                     api.get(isRefundCaseFeeRoute ? "/finance/case-fees/refunds" : "/finance/fees/query", { params: feeQueryParams({}, 1, 15) }),
                     api.get("/auth/me"), api.get("/people/options"),

@@ -2,6 +2,7 @@ import { FeeTypePicker, matchesFeeTypeSelection, type FeeTypeCatalog } from "./F
 import { displayFinancialValue } from "../financialValueDisplay";
 import { isHistoricalSettlement, requireWritableSettlements, settlementSourceMessage } from "./settlementIdentity";
 import { receiptBankCode, matchesReceiptBank } from "./bankReceiptScope";
+import { FEE_LIST_DASHBOARD_QUEUES } from "../dashboardWorkspace";
 import {
 ArrowUpOutlined,
 BookOutlined,
@@ -1099,7 +1100,7 @@ function FinanceCenterContent({
   };
 
   // 费用查询接口只认费用列表的控制台入口（待缴官费-本人、待退费）；请款单审批等入口不带给费用查询，否则接口返回 422。
-  const feeDashboardQueue = ["official-fee-unpaid", "refund-pending"].includes(dashboardQueue) ? dashboardQueue : undefined;
+  const feeDashboardQueue = FEE_LIST_DASHBOARD_QUEUES.includes(dashboardQueue) ? dashboardQueue : undefined;
   const feeQueryParams = (
     query: Record<string, unknown>,
     page = 1,
