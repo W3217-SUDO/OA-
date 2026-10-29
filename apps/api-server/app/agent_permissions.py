@@ -10,6 +10,8 @@ MCP_PERSONAL_TOKEN_WRITE_ACTION = "agent.mcp.personal_token.write"
 FINANCE_USER_ACTION_KEYS = frozenset({
     "finance.receipt.update", "finance.receipt.delete", "finance.payment.update",
     "finance.payment.delete", "finance.fee.update", "finance.fee.delete",
+    # BUG20261028012：回款领取、待分配回款、已分配回款页面各自的删除。
+    "finance.receipt.claim.delete", "finance.receipt.pending.delete", "finance.receipt.allocated.delete",
 })
 # 可以在员工管理里给别人勾选上面 6 个财务动作（只这 6 项，不含其他权限；用户 2026-10-28 要求给范明明）。
 FINANCE_CONFIGURE_ACTION = "finance.actions.configure"

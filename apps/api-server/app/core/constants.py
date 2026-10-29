@@ -897,7 +897,12 @@ FINANCE_EDIT_DELETE_ACTIONS = (
     ("finance.payment.delete", "finance-payment-package-manage", "删除付款包"),
     ("finance.fee.update", "finance-payment-audit", "编辑费用"),
     ("finance.fee.delete", "finance-payment-audit", "删除费用"),
+    # BUG20261028012（范文玲 2026-10-29）：回款领取、待分配回款、已分配回款页面的删除各自单独设。
+    ("finance.receipt.claim.delete", "finance-receipts-claim", "删除回款（回款领取）"),
+    ("finance.receipt.pending.delete", "finance-receipts-pending", "删除回款（待分配回款）"),
+    ("finance.receipt.allocated.delete", "finance-receipts-allocated", "删除回款（已分配回款）"),
 )
+RECEIPT_PAGE_DELETE_CODES = frozenset({"finance.receipt.claim.delete", "finance.receipt.pending.delete", "finance.receipt.allocated.delete"})
 
 
 # BUG20261028012 第二批：客户管理各页面“更多操作”及客户详情里的功能，按角色勾选（上线默认全勾）。
@@ -909,6 +914,22 @@ CUSTOMER_ROLE_ACTIONS = (
     ("crm.customer.contact.manage", "维护客户联系人"), ("crm.customer.note.manage", "维护事项记录及注意事项"),
     ("crm.customer.change.apply", "申请客户分级/关键信息变更"),
 )
+
+
+# BUG20261028012（范文玲 2026-10-29）：我的客户、部门客户、公司客户等页面下方的功能按页面各自勾选。
+# 功能码写成“基础码@页面”，后台只要任一页面勾了就允许该基础码；页面上按本页勾选显示按钮。
+CUSTOMER_PAGE_ACTIONS: dict[str, tuple[str, ...]] = {
+    "customer-mine": ("crm.customer.update", "crm.customer.recycle", "crm.customer.assign", "crm.customer.release", "crm.customer.share"),
+    "customer-dept": ("crm.customer.update", "crm.customer.recycle", "crm.customer.assign", "crm.customer.release", "crm.customer.share", "crm.customer.portal"),
+    "customer-company": ("crm.customer.update", "crm.customer.recycle", "crm.customer.assign", "crm.customer.release", "crm.customer.share", "crm.customer.portal"),
+    "customer-public": ("crm.customer.claim", "crm.customer.update"),
+    "customer-recycle": ("crm.customer.restore", "crm.customer.release"),
+    "customer-dept-recycle": ("crm.customer.restore", "crm.customer.release"),
+    "customer-company-recycle": ("crm.customer.restore", "crm.customer.release"),
+}
+CUSTOMER_PAGE_ACTION_LABELS = {"crm.customer.release@customer-recycle": "进入公海", "crm.customer.release@customer-dept-recycle": "进入公海",
+                               "crm.customer.release@customer-company-recycle": "进入公海"}
+CUSTOMER_SCOPED_BASE_CODES = frozenset(code for codes in CUSTOMER_PAGE_ACTIONS.values() for code in codes)
 
 
 # 第三批：合同管理功能（审批类按审批人流程控制，不在这里）。
@@ -951,26 +972,30 @@ TASK_INVESTIGATION_ROLE_ACTIONS = (
 )
 
 
-# BUG20261028012（范文玲 2026-10-29 定）：案件的角色权限只分三块，一块一个开关，勾上即块内功能全有。
+# BUG20261028012（范文玲 2026-10-29 定）：案件的角色权限分三块显示，块下每个功能单独勾选（区块可全选）。
 CASE_INTERNAL_FEE_ACTIONS = (
     ("case.internal_fee.create", "新增内部费用"), ("case.internal_fee.payment", "内部费用申请付款"),
     ("case.internal_fee.update", "编辑内部费用"), ("case.internal_fee.delete", "删除内部费用"),
 )
-CASE_ROLE_BLOCKS: dict[str, tuple[str, tuple[str, ...]]] = {
-    "case.block.operations": ("案件详情右上角“操作”", (
+CASE_ROLE_GROUPS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "group:case-operations": ("案件详情右上角“操作”", (
         "case.detail.update", "case.phase.update", "case.notary.update", "case.hearing.manage",
         "case.litigants.update", "case.criminal.public_security.update", "case.court.update",
-        "case.criminal.procuratorate.update", "case.criminal.court.update", "case.settlement.update",
+        "case.criminal.procuratorate.update", "case.settlement.update",
         "case.archive.submit", "case.document.generate", "case.merge", "case.duplicate",
     )),
-    "case.block.fee_other": ("律所费用（平台费用）“其他操作”", (
+    "group:case-fee-other": ("律所费用（平台费用）“其他操作”", (
         "case.fee.refund", "case.fee.payment", "case.fee.invoice", "case.fee.move",
         "case.fee.update", "case.fee.delete", "case.fee.mark_unpaid",
     )),
-    "case.block.internal_fee": ("内部结算", tuple(code for code, _label in CASE_INTERNAL_FEE_ACTIONS)),
+    "group:case-internal-fee": ("内部结算", tuple(code for code, _label in CASE_INTERNAL_FEE_ACTIONS)),
 }
-# 上线前内部结算和律所费用共用这些功能：还没按新方式保存过的角色，有其一就带内部结算，现有人员不少权限。
-CASE_INTERNAL_FEE_LEGACY_CODES = frozenset({"case.fee.create", "case.fee.payment", "case.fee.update", "case.fee.delete"})
+# 1.2.34 曾按整块存的开关，读取时仍按块内全部功能算（之后保存即换成单个功能）。
+CASE_LEGACY_BLOCK_CODES = {
+    "case.block.operations": (*CASE_ROLE_GROUPS["group:case-operations"][1], "case.criminal.court.update"),
+    "case.block.fee_other": CASE_ROLE_GROUPS["group:case-fee-other"][1],
+    "case.block.internal_fee": CASE_ROLE_GROUPS["group:case-internal-fee"][1],
+}
 # 客户、合同、知识产权、任务、调查和案件其余功能：给了该模块的页面就有，角色权限里不再单独设。
 PAGE_GRANTED_ACTION_ROOTS = {"case.": "case", "crm.": "customer", "contract.": "contract",
                              "ipr.": "ipr", "task.": "task", "investigation.": "investigation"}
@@ -1029,7 +1054,7 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
             ("case.criminal.court.update", "修改刑事案件法院信息"),
             ("case.team.assign", "分配案件人员"),
             ("case.progress.update", "维护案件进展"),
-            ("case.phase.update", "修改案件阶段"), ("case.hearing.manage", "维护开庭排期"),
+            ("case.phase.update", "修改案件阶段"), ("case.hearing.manage", "修改开庭律师/开庭排期"),
             ("case.task.create", "新建案件任务"), ("case.task.view", "查看案件任务"),
             ("case.log.view", "查看案件日志"), ("case.export.print", "导出案件打印表"),
             ("case.duplicate", "复制案件"),
@@ -1037,7 +1062,7 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
             ("case.reminder.manage", "维护案件提醒"), ("case.log.create", "新增案件日志"),
             ("case.document.generate", "生成案件文书"), ("case.document.upload", "上传案件文件"),
             ("case.document.manage", "维护案件文件及目录"),
-            ("case.document.delete", "删除案件文件"), ("case.archive.submit", "提交案件归档"),
+            ("case.document.delete", "删除案件文件"), ("case.archive.submit", "申请归档"),
             ("case.archive.review", "审核案件归档"), ("case.fee.create", "新增案件费用"),
             ("case.fee.update", "修改案件费用"), ("case.fee.delete", "删除案件费用"),
             ("case.fee.refund", "办理法院退费"), ("case.fee.payment", "申请案件付款"),
@@ -1048,9 +1073,11 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
         )),
         # BUG20261028012（范文玲 2026-10-29）：内部结算单独授权，不再和律所费用共用。
         *({"code": code, "menu_key": "case-mine", "label": label} for code, label in CASE_INTERNAL_FEE_ACTIONS),
-        *({"code": code, "menu_key": "case-mine", "label": label} for code, (label, _members) in CASE_ROLE_BLOCKS.items()),
         {"code": "case.fee.receipt.upload", "menu_key": "case-files-receipt", "label": "上传案件票据文件"},
         *({"code": code, "menu_key": "customer-mine", "label": label} for code, label in CUSTOMER_ROLE_ACTIONS),
+        *({"code": f"{code}@{page}", "menu_key": page,
+           "label": CUSTOMER_PAGE_ACTION_LABELS.get(f"{code}@{page}", dict(CUSTOMER_ROLE_ACTIONS)[code])}
+          for page, codes in CUSTOMER_PAGE_ACTIONS.items() for code in codes),
         *({"code": code, "menu_key": "contract-mine", "label": label} for code, label in CONTRACT_ROLE_ACTIONS),
         *({"code": code, "menu_key": menu_key, "label": label} for code, label, menu_key in IPR_ROLE_ACTIONS),
         *({"code": code, "menu_key": menu_key, "label": label} for code, label, menu_key in TASK_INVESTIGATION_ROLE_ACTIONS),
@@ -1064,35 +1091,39 @@ SYSTEM_ACTION_DEFINITIONS = _system_action_definitions()
 
 # BUG20261028015：案件详情费用“其他操作”已去掉这些入口，角色权限里不再显示勾选框；
 # 财务页面仍按这些功能码授权，保存角色时保留角色原有的授权，不因看不到而被取消。
-ROLE_TREE_HIDDEN_ACTION_CODES = frozenset({"case.fee.notice", "case.fee.arrival", "case.fee.receipt.view"})
+ROLE_TREE_HIDDEN_ACTION_CODES = frozenset({
+    "case.fee.notice", "case.fee.arrival", "case.fee.receipt.view",
+    # BUG20261028012：刑事案件统一走“修改法院信息”，页面已没有单独按钮。
+    "case.criminal.court.update",
+})
 
-_CASE_BLOCK_MEMBER_CODES = frozenset(code for _label, members in CASE_ROLE_BLOCKS.values() for code in members)
-# 由三块开关或页面带出的功能：角色权限里不显示，保存角色时不再单独存。
+_CASE_GROUP_MEMBER_CODES = frozenset(code for _label, members in CASE_ROLE_GROUPS.values() for code in members)
+# 给了页面就有的功能：角色权限里不显示，保存角色时不再单独存。
 PAGE_GRANTED_ACTION_CODES = frozenset(
     item["code"] for item in SYSTEM_ACTION_DEFINITIONS
     if item["code"].startswith(tuple(PAGE_GRANTED_ACTION_ROOTS))
-    and item["code"] not in CASE_ROLE_BLOCKS and item["code"] not in _CASE_BLOCK_MEMBER_CODES
-    and item["code"] not in ROLE_TREE_HIDDEN_ACTION_CODES
+    and item["code"] not in _CASE_GROUP_MEMBER_CODES and item["code"] not in ROLE_TREE_HIDDEN_ACTION_CODES
+    and item["code"] not in CUSTOMER_SCOPED_BASE_CODES and "@" not in item["code"]
 )
-ROLE_TREE_DERIVED_ACTION_CODES = PAGE_GRANTED_ACTION_CODES | _CASE_BLOCK_MEMBER_CODES
-
-
-def role_tree_block_codes(action_codes) -> set[str]:
-    """角色存的功能对应哪几块开关：存了开关，或存了块内任一功能（新方式保存前的旧授权）。"""
-    codes = set(action_codes)
-    blocks = {block for block, (_label, members) in CASE_ROLE_BLOCKS.items() if block in codes or codes & set(members)}
-    if codes & CASE_INTERNAL_FEE_LEGACY_CODES:
-        blocks.add("case.block.internal_fee")
-    return blocks
+# 角色权限里不显示、保存时不单独存：给页面就有的功能，以及由各客户页面勾选推出的客户基础码。
+ROLE_TREE_DERIVED_ACTION_CODES = PAGE_GRANTED_ACTION_CODES | CUSTOMER_SCOPED_BASE_CODES
+CASE_GROUP_BY_ACTION = {code: group for group, (_label, members) in CASE_ROLE_GROUPS.items() for code in members}
 
 
 def expand_role_action_codes(action_codes, menu_keys) -> list[str]:
-    """把三块开关展开成块内功能，再按已给的页面带出该模块其余功能；原有功能一个不去掉。"""
+    """案件三块里的功能按勾选的单个功能算；客户、合同、知产、任务、调查和案件其余功能按已给的页面带出。原有功能一个不去掉。"""
     result = list(dict.fromkeys(action_codes))
     if "*" in result:
         return result
-    for block in role_tree_block_codes(result):
-        result.extend([block, *CASE_ROLE_BLOCKS[block][1]])
+    for block, members in CASE_LEGACY_BLOCK_CODES.items():
+        if block in result:
+            result.extend(members)
+    # 客户：任一页面勾了即有该基础码；还没按页面保存过的旧授权（只有基础码）按各页面都有。
+    scoped = [code for code in result if "@" in code and code.split("@", 1)[0] in CUSTOMER_SCOPED_BASE_CODES]
+    if not scoped:
+        result.extend(f"{code}@{page}" for page, codes in CUSTOMER_PAGE_ACTIONS.items() for code in codes if code in result)
+    else:
+        result.extend(code.split("@", 1)[0] for code in scoped)
     roots = {root for root in PAGE_GRANTED_ACTION_ROOTS.values()
              if any(key == root or str(key).startswith(f"{root}-") for key in menu_keys)}
     result.extend(code for code in sorted(PAGE_GRANTED_ACTION_CODES)

@@ -14,6 +14,15 @@ from app.core.constants import FINANCE_EDIT_DELETE_ACTIONS
 from app.core.dependencies import AsyncSession, BusinessRecord, HTTPException, User, select
 
 FINANCE_ACTION_LABELS = {code: label for code, _menu, label in FINANCE_EDIT_DELETE_ACTIONS}
+PLATFORM_RECEIPT_PAGES = {
+    "platform-finance-overview-manage": "finance-receipts-manage", "platform-finance-overview-claim": "finance-receipts-claim",
+    "platform-finance-overview-pending": "finance-receipts-pending", "platform-finance-overview-allocated": "finance-receipts-allocated",
+}
+# 回款领取、待分配回款、已分配回款各自的删除只管本页显示的回款（按状态）；回款管理的删除管全部。
+RECEIPT_PAGE_DELETE_BY_STATUS = {
+    "待认领": "finance.receipt.claim.delete", "待分配": "finance.receipt.pending.delete",
+    "部分分配": "finance.receipt.pending.delete", "已分配": "finance.receipt.allocated.delete",
+}
 # 申请人对自己尚未审批通过的费用申请仍可修改、删除（这是申请流程本身，不是改财务数据）。
 OWN_EDITABLE_FEE_STATUSES = frozenset({"草稿", "已退回", "已驳回"})
 
@@ -21,9 +30,10 @@ OWN_EDITABLE_FEE_STATUSES = frozenset({"草稿", "已退回", "已驳回"})
 def page_granted_finance_actions(menu_keys) -> list[str]:
     """账号可见的管理页面带来的财务动作（页面即 FINANCE_EDIT_DELETE_ACTIONS 的第二列）。"""
     menus = {str(key) for key in menu_keys or []}
-    # BUG20261028012：平台财务中心“回款管理”和财务中心“回款管理”带同一组回款编辑、删除开关。
-    if "platform-finance-overview-manage" in menus:
-        menus.add("finance-receipts-manage")
+    # BUG20261028012：平台财务中心的回款管理/领取/待分配/已分配和财务中心同名页面带同一组开关。
+    for platform, firm in PLATFORM_RECEIPT_PAGES.items():
+        if platform in menus:
+            menus.add(firm)
     return [code for code, menu, _label in FINANCE_EDIT_DELETE_ACTIONS if menu in menus]
 
 
@@ -82,6 +92,14 @@ async def set_user_finance_actions(user_id: int, checked: list[str], db: AsyncSe
         user_id, UserPermissionOverrideUpdate(action_keys=[*others, *granted], action_denies=denied), db,
         actor=actor, authorization_source=source,
     )
+
+
+async def require_receipt_delete(identity: dict, db: AsyncSession, status: str) -> None:
+    """删除回款：有回款管理的删除，或有该回款所在页面（回款领取/待分配/已分配）的删除。"""
+    page_code = RECEIPT_PAGE_DELETE_BY_STATUS.get(str(status or ""))
+    if page_code and await finance_action_granted(identity, db, page_code):
+        return
+    await require_finance_action(identity, db, "finance.receipt.delete")
 
 
 async def require_finance_action(identity: dict, db: AsyncSession, code: str) -> None:

@@ -78,8 +78,11 @@ class FinanceActionPermissionTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(page_granted_finance_actions(["finance-receipts-manage"]), ["finance.receipt.update", "finance.receipt.delete"])
         self.assertEqual(page_granted_finance_actions(["finance-payment-package-manage"]), ["finance.payment.update", "finance.payment.delete"])
         self.assertEqual(page_granted_finance_actions(["finance-payment-audit"]), ["finance.fee.update", "finance.fee.delete"])
+        # BUG20261028012：回款领取、待分配回款、已分配回款各自带本页的删除开关（角色或按人勾了才有）。
+        self.assertEqual(page_granted_finance_actions(["finance-receipts-claim", "finance-receipts-pending", "finance-receipts-allocated"]),
+                         ["finance.receipt.claim.delete", "finance.receipt.pending.delete", "finance.receipt.allocated.delete"])
         self.assertEqual(page_granted_finance_actions([
-            "finance-receipts-icbc", "finance-receipts-claim", "finance-receipts-pending", "finance-receipts-allocated",
+            "finance-receipts-icbc",
             "finance-receipts-query", "finance-payment-query", "finance-payment-writeoff", "finance-fee-query",
             "finance-payment-mine", "finance-invoice-mine", "finance-internal-audit"]), [])
 

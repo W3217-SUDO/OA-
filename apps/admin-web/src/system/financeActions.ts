@@ -7,22 +7,31 @@ export const FINANCE_ACTIONS = [
   { value: "finance.payment.delete", label: "删除付款包" },
   { value: "finance.fee.update", label: "编辑费用" },
   { value: "finance.fee.delete", label: "删除费用" },
+  // BUG20261028012：回款领取、待分配回款、已分配回款页面的删除各自单独设。
+  { value: "finance.receipt.claim.delete", label: "删除回款（回款领取）" },
+  { value: "finance.receipt.pending.delete", label: "删除回款（待分配回款）" },
+  { value: "finance.receipt.allocated.delete", label: "删除回款（已分配回款）" },
 ];
 export const FINANCE_ACTION_KEYS = FINANCE_ACTIONS.map((item) => item.value);
 // 可以在员工管理里给别人配置上面 6 项。
 export const FINANCE_CONFIGURE_ACTION = "finance.actions.configure";
 
-// 回款管理、付款打包-管理、请款单审批；律师能看的回款领取、到账查询、付款单查询、费用查询等不带。
+// 每个动作对应的页面（与后端 FINANCE_EDIT_DELETE_ACTIONS 第二列一致）；到账查询、付款单查询、费用查询等不带。
 const ACTION_PAGES: Record<string, string> = {
-  "finance.receipt.": "finance-receipts-manage",
-  "finance.payment.": "finance-payment-package-manage",
-  "finance.fee.": "finance-payment-audit",
+  "finance.receipt.update": "finance-receipts-manage", "finance.receipt.delete": "finance-receipts-manage",
+  "finance.receipt.claim.delete": "finance-receipts-claim", "finance.receipt.pending.delete": "finance-receipts-pending",
+  "finance.receipt.allocated.delete": "finance-receipts-allocated",
+  "finance.payment.update": "finance-payment-package-manage", "finance.payment.delete": "finance-payment-package-manage",
+  "finance.fee.update": "finance-payment-audit", "finance.fee.delete": "finance-payment-audit",
+};
+const PLATFORM_RECEIPT_PAGES: Record<string, string> = {
+  "platform-finance-overview-manage": "finance-receipts-manage", "platform-finance-overview-claim": "finance-receipts-claim",
+  "platform-finance-overview-pending": "finance-receipts-pending", "platform-finance-overview-allocated": "finance-receipts-allocated",
 };
 
 /** 勾选的管理页面默认带出的财务动作。 */
 export function pageFinanceActions(menuKeys: string[]): string[] {
-  // BUG20261028012：平台财务中心“回款管理”和财务中心“回款管理”带同一组回款编辑、删除开关。
-  const pages = menuKeys.includes("platform-finance-overview-manage") ? [...menuKeys, "finance-receipts-manage"] : menuKeys;
-  return FINANCE_ACTION_KEYS.filter((code) =>
-    Object.entries(ACTION_PAGES).some(([action, page]) => code.startsWith(action) && pages.includes(page)));
+  // BUG20261028012：平台财务中心的回款页面和财务中心同名页面带同一组开关。
+  const pages = [...menuKeys, ...menuKeys.map((key) => PLATFORM_RECEIPT_PAGES[key]).filter(Boolean)];
+  return FINANCE_ACTION_KEYS.filter((code) => pages.includes(ACTION_PAGES[code]));
 }

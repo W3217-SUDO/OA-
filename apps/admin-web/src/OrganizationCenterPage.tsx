@@ -248,6 +248,20 @@ const rolePermissionMenuBranch = (nodes: TreeDataNode[], target: string): string
   }
   return [];
 };
+// 区块下功能全勾时区块显示为勾上（区块本身不保存）。
+const rolePermissionCheckedGroups = (nodes: TreeDataNode[], selected: string[]): string[] => {
+  const checked = new Set(selected);
+  const visit = (items: TreeDataNode[]) => items.forEach((node) => {
+    const children = (node.children || []) as TreeDataNode[];
+    if (String(node.key).startsWith("group:")) {
+      const actions = rolePermissionTreeActionKeys(children);
+      if (actions.length && actions.every((key) => checked.has(key))) checked.add(String(node.key));
+    }
+    visit(children);
+  });
+  visit(nodes);
+  return Array.from(checked);
+};
 const normalizeRolePermissionCheckedKeys = (keys: readonly unknown[]) =>
   keys.filter(
     (key): key is string =>
@@ -771,11 +785,12 @@ export default function OrganizationCenterPage({
                 checkStrictly
                 defaultExpandAll
                     treeData={rolePermissionTreeData}
-                    checkedKeys={selectedRolePermissions}
+                    checkedKeys={rolePermissionCheckedGroups(rolePermissionTreeData, selectedRolePermissions)}
                 disabled={rolePermissionLoading || permissionRole?.code === "SYSTEM-ADMIN"}
                 onCheck={(_checked, info) => {
                   const key = String(info.node.key);
-                  const affected = key.startsWith("menu:")
+                  // BUG20261028012：案件三块（group:）勾选即全选块下功能，块下每个功能也可单独勾选。
+                  const affected = key.startsWith("menu:") || key.startsWith("group:")
                     ? rolePermissionMenuBranch(rolePermissionTreeData, key)
                     : [key];
                   setSelectedRolePermissions((current) => {

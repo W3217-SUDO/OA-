@@ -1539,7 +1539,14 @@ function FinanceCenterContent({
   const internalReviewCanReject = role === "admin" || actionKeys.has("*") || actionKeys.has(internalReviewRejectAction);
   const canManage = ["admin", "manager"].includes(role);
   const canReceiptUpdate = financeActionAllowed(sessionUser, "finance.receipt.update");
-  const canReceiptDelete = financeActionAllowed(sessionUser, "finance.receipt.delete");
+  // BUG20261028012：回款领取、待分配回款、已分配回款页面的删除各自单独设，回款管理用回款删除。
+  const receiptDeletePage: Record<string, string> = {
+    "finance-receipts-claim": "claim", "platform-finance-overview-claim": "claim",
+    "finance-receipts-pending": "pending", "platform-finance-overview-pending": "pending",
+    "finance-receipts-allocated": "allocated", "platform-finance-overview-allocated": "allocated",
+  };
+  const canReceiptDelete = financeActionAllowed(sessionUser, receiptDeletePage[initialView]
+    ? `finance.receipt.${receiptDeletePage[initialView]}.delete` : "finance.receipt.delete");
   const canPaymentUpdate = financeActionAllowed(sessionUser, "finance.payment.update");
   const canPaymentDelete = financeActionAllowed(sessionUser, "finance.payment.delete");
   const canFeeUpdate = financeActionAllowed(sessionUser, "finance.fee.update");

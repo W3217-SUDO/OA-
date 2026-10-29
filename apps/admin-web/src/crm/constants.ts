@@ -55,7 +55,13 @@ export const initialProfile = (): Profile => {
 };
 
 // BUG20261028012：客户功能按角色权限勾选；身份还没加载时先按可用显示，后台仍会校验。
-export const customerActionAllowed = (profile: Profile, code: string) => {
+// BUG20261028012：我的客户、部门客户、公司客户等页面下方的功能按页面各自勾选（功能码@页面）；
+// 没有单独设置的页面（如共享客户）按任一页面勾了即可。
+const CUSTOMER_SCOPED_PAGES = new Set(["customer-mine", "customer-dept", "customer-company", "customer-public",
+  "customer-recycle", "customer-dept-recycle", "customer-company-recycle"]);
+export const customerActionAllowed = (profile: Profile, code: string, page = "") => {
   const keys = profile.configured_action_keys;
-  return !keys || keys.includes("*") || keys.includes(code);
+  if (!keys || keys.includes("*")) return true;
+  const scoped = `${code}@${page}`;
+  return CUSTOMER_SCOPED_PAGES.has(page) && keys.some((key) => key.startsWith(`${code}@`)) ? keys.includes(scoped) : keys.includes(code);
 };

@@ -1,7 +1,7 @@
 """BUG20261028012（范文玲 2026-10-29 定）：角色权限按页面给。
 
-客户、合同、知识产权、任务、调查以及案件其余功能给了页面就有；案件只设三块开关（右上角“操作”、
-律所/平台费用“其他操作”、内部结算）；财务回款/付款包/费用的编辑删除仍单独设。上线时现有人员不少权限。
+客户、合同、知识产权、任务、调查以及案件其余功能给了页面就有；案件分三块显示（右上角“操作”、
+律所/平台费用“其他操作”、内部结算），块下每个功能单独勾选、区块可全选；财务回款/付款包/费用的编辑删除仍单独设。
 """
 import unittest
 
@@ -34,10 +34,10 @@ class RolePermissionBlocksTest(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             db.add_all([
                 User(username=ADMIN["username"], display_name="管理者", password_hash="isolated-only", department="CODEXBLK", role="admin"),
-                # 新方式保存的岗位：只勾了“操作”这一块。
-                JobRole(code="CODEX-BLK-OPS", name="只勾操作", permissions=[*PAGES, "action:case.block.operations"]),
-                # 上线前的旧岗位：存的是单个功能（律所费用修改），没有开关。
-                JobRole(code="CODEX-BLK-LEGACY", name="旧岗位", permissions=[*PAGES, "action:case.fee.update", "action:case.delete"]),
+                # 只勾了“操作”里的修改法院信息、案件合并。
+                JobRole(code="CODEX-BLK-OPS", name="单个功能", permissions=[*PAGES, "action:case.court.update", "action:case.merge"]),
+                # 1.2.34 按整块存的开关。
+                JobRole(code="CODEX-BLK-LEGACY", name="整块", permissions=[*PAGES, "action:case.block.fee_other", "action:case.delete"]),
                 User(username="CODEXBLKOPS", display_name="操作", password_hash="isolated-only", department="CODEXBLK", role="user",
                      profile={"permission_role_code": "CODEX-BLK-OPS"}),
                 User(username="CODEXBLKLEGACY", display_name="旧", password_hash="isolated-only", department="CODEXBLK", role="user",
@@ -54,38 +54,35 @@ class RolePermissionBlocksTest(unittest.IsolatedAsyncioTestCase):
             user = await db.scalar(select(User).where(User.username == username))
             return set((await _user_permission_payload(user, db))["action_keys"])
 
-    async def test_block_and_page_grants(self):
+    async def test_single_functions_and_page_grants(self):
         actions = await self.actions("CODEXBLKOPS")
-        # “操作”块内功能全有；案件其余功能、客户功能跟页面带出。
-        self.assertTrue({"case.court.update", "case.merge", "case.archive.submit"} <= actions)
-        self.assertTrue({"case.document.delete", "case.delete", "case.fee.create", "crm.customer.recycle"} <= actions)
-        # 没勾的两块没有；没给页面的模块不带出。
-        self.assertFalse({"case.fee.update", "case.fee.refund", "case.internal_fee.delete"} & actions)
+        # 只有勾了的单个功能；案件其余功能、客户功能跟页面带出。
+        self.assertTrue({"case.court.update", "case.merge"} <= actions)
+        self.assertFalse({"case.detail.update", "case.archive.submit", "case.fee.update", "case.internal_fee.delete"} & actions)
+        self.assertTrue({"case.document.delete", "case.delete", "case.fee.create", "crm.customer.note.manage"} <= actions)
+        # 客户“更多操作”按页面勾选，没勾就没有。
+        self.assertNotIn("crm.customer.recycle", actions)
         self.assertFalse({"contract.delete", "ipr.case.update", "task.create"} & actions)
 
-    async def test_legacy_role_keeps_everything_until_saved(self):
+    async def test_block_saved_by_previous_version_still_counts(self):
         actions = await self.actions("CODEXBLKLEGACY")
-        # 旧岗位有律所费用修改：带出整个“其他操作”块，内部结算原来共用也带上；原有删除案件不少。
-        self.assertTrue({"case.fee.update", "case.fee.refund", "case.internal_fee.update", "case.internal_fee.create", "case.delete"} <= actions)
-        async with self.sessions() as db:
-            role = await db.scalar(select(JobRole).where(JobRole.code == "CODEX-BLK-LEGACY"))
-            checked = set(_job_role_tree_checked_permissions(role))
-        self.assertTrue({"action:case.block.fee_other", "action:case.block.internal_fee"} <= checked)
-        self.assertNotIn("action:case.block.operations", checked)
+        self.assertTrue({"case.fee.update", "case.fee.refund", "case.fee.mark_unpaid", "case.delete"} <= actions)
+        self.assertNotIn("case.internal_fee.update", actions)
 
-    async def test_save_stores_only_switches(self):
+    async def test_save_stores_single_functions(self):
         async with self.sessions() as db:
             role = await db.scalar(select(JobRole).where(JobRole.code == "CODEX-BLK-LEGACY"))
-            # 管理员在角色权限里只留“其他操作”，取消内部结算。
             await update_job_role_permissions(role.id, JobRolePermissionUpdate(
-                permissions=[*PAGES, "action:case.block.fee_other"], case_actions_explicit=True), identity=ADMIN, db=db)
+                permissions=[*PAGES, "action:case.fee.refund", "action:case.internal_fee.create", "action:case.delete"],
+                case_actions_explicit=True), identity=ADMIN, db=db)
             stored = set((await db.get(JobRole, role.id)).permissions)
-        self.assertIn("action:case.block.fee_other", stored)
-        self.assertFalse({"action:case.fee.update", "action:case.delete"} & stored)
+        self.assertTrue({"action:case.fee.refund", "action:case.internal_fee.create"} <= stored)
+        # 跟页面带出的功能、旧整块开关都不再存。
+        self.assertFalse({"action:case.delete", "action:case.block.fee_other"} & stored)
         actions = await self.actions("CODEXBLKLEGACY")
         self.assertIn("case.fee.refund", actions)
-        self.assertFalse({"case.internal_fee.create", "case.internal_fee.update"} & actions)
-        self.assertIn("case.delete", actions)  # 跟页面带出
+        self.assertFalse({"case.fee.update", "case.internal_fee.update"} & actions)
+        self.assertIn("case.delete", actions)
 
     async def test_internal_fee_uses_its_own_switch(self):
         identity = {"username": "CODEXBLKOPS", "role": "user", "role_ids": ["user"], "department": "CODEXBLK"}
@@ -95,7 +92,7 @@ class RolePermissionBlocksTest(unittest.IsolatedAsyncioTestCase):
                               data={"case_id": 900, "expense_scope": "律所"})
         async with self.sessions() as db:
             role = await db.scalar(select(JobRole).where(JobRole.code == "CODEX-BLK-OPS"))
-            role.permissions = [*PAGES, "action:case.block.internal_fee"]
+            role.permissions = [*PAGES, "action:case.internal_fee.delete"]
             await db.commit()
             await _require_linked_case_fee_action(internal, "case.fee.delete", identity, db)
             with self.assertRaises(HTTPException):
@@ -107,14 +104,44 @@ class RolePermissionBlocksTest(unittest.IsolatedAsyncioTestCase):
                  SystemMenu(id=3, key="finance-receipts-manage", label="回款管理", parent_key="")]
         tree = _organization_permission_tree(menus, [], set())
         codes = {node["key"]: {child["node_code"] for child in node["children"]} for node in tree}
-        self.assertEqual(codes["menu:case-mine"], {"case.block.operations", "case.block.fee_other", "case.block.internal_fee"})
-        self.assertEqual(codes["menu:customer-mine"], set())
+        self.assertEqual(codes["menu:case-mine"], {"group:case-operations", "group:case-fee-other", "group:case-internal-fee"})
+        groups = {group["key"]: [child["node_code"] for child in group["children"]] for group in tree[0]["children"]}
+        self.assertEqual(groups["group:case-internal-fee"], ["case.internal_fee.create", "case.internal_fee.payment",
+                                                             "case.internal_fee.update", "case.internal_fee.delete"])
+        self.assertIn("case.court.update", groups["group:case-operations"])
+        self.assertNotIn("case.criminal.court.update", groups["group:case-operations"])
+        self.assertEqual(codes["menu:customer-mine"], {f"{code}@customer-mine" for code in (
+            "crm.customer.update", "crm.customer.recycle", "crm.customer.assign", "crm.customer.release", "crm.customer.share")})
         self.assertEqual(codes["menu:finance-receipts-manage"], {"finance.receipt.update", "finance.receipt.delete"})
 
     def test_platform_receipt_manage_page_carries_receipt_switches(self):
         self.assertEqual(set(page_granted_finance_actions(["platform-finance-overview-manage"])),
                          {"finance.receipt.update", "finance.receipt.delete"})
-        self.assertEqual(page_granted_finance_actions(["platform-finance-overview-claim", "finance-receipts-pending"]), [])
+        self.assertEqual(page_granted_finance_actions(["platform-finance-overview-claim", "finance-receipts-pending"]),
+                         ["finance.receipt.claim.delete", "finance.receipt.pending.delete"])
+        self.assertEqual(page_granted_finance_actions(["finance-receipts-query"]), [])
+
+    def test_customer_functions_per_page(self):
+        from app.core.constants import expand_role_action_codes
+        # 旧授权只有基础码：各客户页面都有。
+        legacy = set(expand_role_action_codes(["crm.customer.recycle"], []))
+        self.assertTrue({"crm.customer.recycle@customer-mine", "crm.customer.recycle@customer-dept", "crm.customer.recycle@customer-company"} <= legacy)
+        # 按页面勾选后：只有勾了的页面，后台按任一页面有即允许基础码。
+        scoped = set(expand_role_action_codes(["crm.customer.recycle@customer-dept"], []))
+        self.assertIn("crm.customer.recycle", scoped)
+        self.assertNotIn("crm.customer.recycle@customer-mine", scoped)
+
+    async def test_receipt_delete_by_page_status(self):
+        from app.core.finance_action_permissions import require_receipt_delete
+        async with self.sessions() as db:
+            user = await db.scalar(select(User).where(User.username == "CODEXBLKOPS"))
+            user.profile = {**user.profile, "permission_overrides": {"menu_keys": ["user-center", "finance-receipts-claim"],
+                                                                     "action_keys": ["finance.receipt.claim.delete"]}}
+            await db.commit()
+            identity = {"username": "CODEXBLKOPS", "role": "manager", "role_ids": ["manager"]}
+            await require_receipt_delete(identity, db, "待认领")
+            with self.assertRaises(HTTPException):
+                await require_receipt_delete(identity, db, "待分配")
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 from app.core.constants import (
     AGENT_ACTION_CAPABILITY, CASE_ACTIONS_EXPLICIT_MARKER, MENUS_EXACT_MARKER, CASE_CREATABLE_TYPES, CIVIL_CASE_TYPES, CONTRACT_APPROVAL_ACTION_CODE, DEFAULT_MENU_LABEL_BY_KEY,
     DEFAULT_ROLE_PERMISSIONS, EXPENSE_SUBTYPE_FEE_TYPE, FIELD_KEYS, JAR_FEE_TRANSITIONS, JOB_ACTION_MENU_GRANTS,
-    CONTRACT_ROLE_ACTION_CODES, CONTRACT_ROLE_ACTIONS, CUSTOMER_ROLE_ACTIONS, FINANCE_EDIT_DELETE_ACTIONS, IPR_ROLE_ACTIONS, TASK_INVESTIGATION_ROLE_ACTIONS, JOB_ROLE_ACTION_KEY_GRANTS, ROLE_TREE_HIDDEN_ACTION_CODES, ROLE_TREE_DERIVED_ACTION_CODES, expand_role_action_codes, role_tree_block_codes, JOB_ROLE_LABEL_MENU_GRANTS, MENU_CHILDREN_BY_KEY, MENU_KEYS, ROLE_DATA_SCOPES,
+    CONTRACT_ROLE_ACTION_CODES, CONTRACT_ROLE_ACTIONS, RECEIPT_PAGE_DELETE_CODES, CUSTOMER_ROLE_ACTIONS, FINANCE_EDIT_DELETE_ACTIONS, IPR_ROLE_ACTIONS, TASK_INVESTIGATION_ROLE_ACTIONS, JOB_ROLE_ACTION_KEY_GRANTS, ROLE_TREE_HIDDEN_ACTION_CODES, ROLE_TREE_DERIVED_ACTION_CODES, expand_role_action_codes, CASE_GROUP_BY_ACTION, CASE_ROLE_GROUPS, JOB_ROLE_LABEL_MENU_GRANTS, MENU_CHILDREN_BY_KEY, MENU_KEYS, ROLE_DATA_SCOPES,
     SYSTEM_ACTION_DEFINITIONS, SYSTEM_MENU_ROUTE_KEYS, SYSTEM_USER_ROLE_CODES,
 )
 from app.core.dependencies import (
@@ -108,7 +108,6 @@ def _job_role_tree_checked_permissions(role: JobRole) -> list[str]:
             selected.append(str(value).removeprefix("menu:"))
     effective = _effective_job_role_action_keys(role)
     selected.extend(f"action:{code}" for code in effective if code in _CASE_ACTION_CODES)
-    selected.extend(f"action:{code}" for code in role_tree_block_codes(effective))
     return list(dict.fromkeys(selected))
 
 
@@ -158,13 +157,34 @@ def _split_role_permission_keys(menu_keys: list[str] | None) -> tuple[list[str],
     return list(dict.fromkeys(menus)), list(dict.fromkeys(actions))
 
 
+def _group_case_action_nodes(nodes: list[dict]) -> list[dict]:
+    """BUG20261028012：案件功能按页面分三块显示（区块可全选），块下每个功能单独勾选。"""
+    grouped: dict[str, list[dict]] = {}
+    result: list[dict] = []
+    for node in nodes:
+        group = CASE_GROUP_BY_ACTION.get(str(node.get("node_code") or ""))
+        if not group:
+            result.append(node)
+            continue
+        if group not in grouped:
+            grouped[group] = []
+            label = CASE_ROLE_GROUPS[group][0]
+            result.append({
+                "key": group, "node_type": "G", "node_original_id": group, "node_id": group, "node_code": group,
+                "text": label, "title": label, "state": {"checked": False}, "children": grouped[group],
+            })
+        grouped[group].append(node)
+    order = {code: index for _label, members in CASE_ROLE_GROUPS.values() for index, code in enumerate(members)}
+    for children in grouped.values():
+        children.sort(key=lambda item: order.get(item["node_code"], 0))
+    return result
+
+
 async def _system_permission_tree(db: AsyncSession, permission: RolePermission | None) -> list[dict]:
     from app.core.constants import (
         _system_action_definitions,
     )
     menu_keys, action_keys = _split_role_permission_keys(permission.menu_keys if permission else [])
-    # 案件三块：存了开关或存了块内任一功能（旧授权）都显示为勾上。
-    action_keys = [*action_keys, *role_tree_block_codes(action_keys)]
     rows = list((await db.scalars(select(SystemMenu).order_by(SystemMenu.sort_order, SystemMenu.id))).all())
     by_key = {item.key: item for item in rows}
     action_definitions = [
@@ -180,13 +200,15 @@ async def _system_permission_tree(db: AsyncSession, permission: RolePermission |
 
     def build(item: SystemMenu) -> dict:
         children = [build(child) for child in children_by_parent.get(item.key, [])]
+        action_nodes: list[dict] = []
         for definition in action_by_menu.get(item.key, []):
-            children.append({
+            action_nodes.append({
                 "node_type": "A", "node_original_id": f"action:{definition['code']}",
                 "node_id": f"action:{definition['code']}",
                 "node_code": definition["code"], "text": definition["label"], "title": definition["label"],
                 "state": {"checked": definition["code"] in action_keys}, "children": [],
             })
+        children.extend(_group_case_action_nodes(action_nodes))
         label = str(item.label or "").strip()
         if not label or label in {"---", "—", "-"}:
             label = DEFAULT_MENU_LABEL_BY_KEY.get(item.key, "未命名菜单")
@@ -274,7 +296,7 @@ def _role_permission_projection(role: str, permission: RolePermission | None) ->
         # 还没保存过的系统角色按默认全勾各批功能（BUG20261028012），保存后以勾选为准。
         defaults = [code for code, *_ in (
             *CUSTOMER_ROLE_ACTIONS, *CONTRACT_ROLE_ACTIONS, *IPR_ROLE_ACTIONS, *TASK_INVESTIGATION_ROLE_ACTIONS, *FINANCE_EDIT_DELETE_ACTIONS,
-        )]
+        ) if code not in RECEIPT_PAGE_DELETE_CODES]  # BUG20261028012：回款领取/待分配/已分配的删除不默认给
         action_keys = [*action_keys, *(code for code in defaults if code not in action_keys)]
     return {
         "menu_keys": _expand_menu_permission_keys(menu_keys),
@@ -2137,7 +2159,7 @@ def _organization_permission_tree(menus: list[SystemMenu], actions: list[str], s
         for menu in by_parent.get(parent_key, []):
             if menu.key in trail:
                 continue
-            children = [*build(menu.key, {*trail, menu.key}), *by_menu_actions.get(menu.key, [])]
+            children = [*build(menu.key, {*trail, menu.key}), *_group_case_action_nodes(by_menu_actions.get(menu.key, []))]
             label = str(menu.label or "").strip()
             if not label or label in {"---", "—", "-"}:
                 label = DEFAULT_MENU_LABEL_BY_KEY.get(menu.key, "未命名菜单")

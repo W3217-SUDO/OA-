@@ -1285,7 +1285,7 @@ export default function CustomerCenterPage({
                     ? [{ key: "edit", label: "客户编辑" }, { key: "claim", label: "拾回" }]
                     : [{ key: "claim", label: "拾回" }]
                   : []
-    ).filter((item) => !customerActionCodes[item.key] || customerActionAllowed(profile, customerActionCodes[item.key]));
+    ).filter((item) => !customerActionCodes[item.key] || customerActionAllowed(profile, customerActionCodes[item.key], initialView));
   })();
 
   const runOriginalAction = (key: string) => {
