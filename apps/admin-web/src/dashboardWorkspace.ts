@@ -2,6 +2,8 @@
 export const dashboardWorkspaces: Record<string, { label: string; view: string; kind: "finance" | "case" | "receivable" }> = {
   "official-fee-unpaid": { label: "待缴官费", view: "finance-fee-query", kind: "finance" },
   "refund-pending": { label: "待退费", view: "finance-refund", kind: "finance" },
+  // BUG20261028004/005：只看内部提成-待审核和内部提成(退费)-待审核。
+  "internal-commission-audit": { label: "待审内部提成费用", view: "finance-internal-commission-audit", kind: "finance" },
   "evidence-supplement": { label: "补充证据", view: "case-company", kind: "case" },
   "opinion-supplement": { label: "补充意见", view: "case-company", kind: "case" },
   "appeal-pending": { label: "待上诉", view: "case-company", kind: "case" },

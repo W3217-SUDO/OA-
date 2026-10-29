@@ -126,7 +126,7 @@ class Finance930Rows9To14Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(unarchived.json()["items"], [])
         await self.archive_case()
         results = {}
-        for kind in ("commission", "other", "refund"):
+        for kind in ("commission", "other", "refund", "commission_all"):
             response = await self.client.get(f"{settings.api_prefix}/finance/internal-review-requests", params={"kind": kind})
             self.assertEqual(response.status_code, 200, response.text)
             results[kind] = response.json()["items"]
@@ -136,6 +136,9 @@ class Finance930Rows9To14Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(results["refund"]), 1)
         self.assertEqual(results["refund"][0]["status"], "待审批")
         self.assertEqual(results["refund"][0]["title"], "测试案件")
+        # BUG20261028004/005：工作台“待审内部提成费用”= 内部提成-待审核 + 内部提成(退费)-待审核，不含其他内部费用。
+        self.assertEqual({row["id"] for row in results["commission_all"]},
+                         {row["id"] for row in results["commission"] + results["refund"]})
 
     async def test_legacy_external_fee_without_classification_keys_survives_pagination(self):
         async with self.sessions() as db:

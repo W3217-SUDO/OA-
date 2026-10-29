@@ -221,6 +221,7 @@ export function createRouteConfigs(context: {
             "finance-internal-archive",
             "finance-internal-audit",
             "finance-internal-fee-audit",
+            "finance-internal-commission-audit",
         ].map((route) => [
             route,
             {

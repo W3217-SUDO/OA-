@@ -29,6 +29,7 @@ export const internalApprovalRoutes = [
   "finance-internal-audit",
   "finance-internal-fee-audit",
   "finance-internal-refund-audit",
+  "finance-internal-commission-audit",
 ];
 
 export const money = (v: number) =>

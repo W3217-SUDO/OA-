@@ -15,6 +15,7 @@ const internalQueries: Record<string, { path: string; scope?: string; kind?: str
   "finance-internal-audit": { path: "/finance/internal-review-requests", kind: "commission" },
   "finance-internal-fee-audit": { path: "/finance/internal-review-requests", kind: "other" },
   "finance-internal-refund-audit": { path: "/finance/internal-review-requests", kind: "refund" },
+  "finance-internal-commission-audit": { path: "/finance/internal-review-requests", kind: "commission_all" },
 };
 
 export const isInternalFinanceQuery = (route: string) => Boolean(internalQueries[route]);

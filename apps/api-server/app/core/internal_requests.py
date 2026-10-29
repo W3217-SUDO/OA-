@@ -134,10 +134,11 @@ async def internal_review_rows(identity: dict, db: AsyncSession, kind: str) -> l
         commission = is_explicit_internal_commission(data)
         refund = commission and _is_refund_commission(row, sources)
         # 退费提成未归档时在“内部提成-待归档”，案件归档后才进入本队列。
-        if kind == "refund" and refund and row["status"] == "待审批":
+        # commission_all：工作台“待审内部提成费用”，合并内部提成-待审核和内部提成(退费)-待审核两个队列。
+        if kind in {"refund", "commission_all"} and refund and row["status"] == "待审批":
             selected.append({**row, "data": {**data, "is_refund": True}})
         elif row["status"] == "待审批" and (
-            (kind == "commission" and commission and not refund)
+            (kind in {"commission", "commission_all"} and commission and not refund)
             or (kind == "other" and not commission)
         ):
             selected.append(row)

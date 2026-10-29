@@ -567,7 +567,22 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
                     : initialView === "finance-internal-refund-audit"
                         ? "refund"
                         : "";
-            if (internalKind) {
+            if (initialView === "finance-internal-commission-audit") {
+                // 合并队列：退费提成和普通提成按各自类别分别审批。
+                const groups = [
+                    ["refund", feeReviewTargets.filter((item) => item.data?.is_refund)],
+                    ["commission", feeReviewTargets.filter((item) => !item.data?.is_refund)],
+                ] as const;
+                for (const [kind, targets] of groups) {
+                    if (!targets.length) continue;
+                    await api.post(`/finance/internal-applications/batch-review?kind=${kind}`, {
+                        fee_ids: targets.map((item) => item.id),
+                        approved,
+                        comment: feeReviewComment,
+                    });
+                }
+            }
+            else if (internalKind) {
                 await api.post(`/finance/internal-applications/batch-review?kind=${internalKind}`, {
                     fee_ids: feeReviewTargets.map((item) => item.id),
                     approved,

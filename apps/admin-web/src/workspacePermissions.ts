@@ -50,6 +50,7 @@ export function isWorkspaceRouteGranted(
   if (workspace?.kind === "case") return hasCaseRead();
   if (workspace?.kind === "receivable") return hasFamily("contract-receivable");
   if (workspace?.kind === "finance") {
+    if (workspace.view === "finance-internal-commission-audit") return hasFamily("finance-internal-audit", "finance-internal-refund-audit");
     return workspace.view === "finance-refund" ? hasFamily("finance-refund") : hasFamily("finance-fee-query");
   }
   return false;

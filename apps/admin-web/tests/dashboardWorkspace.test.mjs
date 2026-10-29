@@ -4,9 +4,9 @@ import { load } from "./caseRework0918.helpers.mjs";
 
 const proxy = values => new Proxy(values, { get: (target, key) => key in target ? target[key] : () => {} });
 
-test("八个控制台入口均解析为完整业务页，非法入口不放行", async () => {
+test("九个控制台入口均解析为完整业务页，非法入口不放行", async () => {
   const { dashboardWorkspace, dashboardWorkspaces } = await load("../src/dashboardWorkspace.ts", {});
-  assert.equal(Object.keys(dashboardWorkspaces).length, 8);
+  assert.equal(Object.keys(dashboardWorkspaces).length, 9);
   for (const [key, item] of Object.entries(dashboardWorkspaces)) {
     const result = dashboardWorkspace("dashboard-queue-" + key);
     assert.equal(result.view, item.view);

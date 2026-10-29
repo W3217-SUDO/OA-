@@ -909,7 +909,7 @@ async def list_internal_fees(
 
 @router.get(f"{settings.api_prefix}/finance/internal-review-requests")
 async def list_internal_review_requests(
-    kind: str = Query(pattern="^(commission|other|refund)$"),
+    kind: str = Query(pattern="^(commission|commission_all|other|refund)$"),
     page: int = Query(1, ge=1), page_size: int = Query(200, ge=1, le=200),
     case_no: str = "", customer: str = "", case_stages: str = "", payee: str = "", fee_types: str = "",
     paid_from: date | None = None, paid_to: date | None = None,

@@ -17,7 +17,8 @@ PORTAL_ITEMS = (
     # BUG20261028002/003：改名“待缴官费”，点进去是请款单审批，数量同请款单审批列表。
     ("fee-unpaid", "待缴官费", "finance-payment-audit", "todo:待审批官方费用", "请款单审批列表总数（外部费用和合同付款）"),
     ("internal-fee-audit", "待审批内部费用", "finance-internal-fee-audit", "todo:待审批内部费用", "内部费用待审核列表总数"),
-    ("fee-audit", "待审批费用", "finance-payment-audit", "todo:待审批官方费用", "请款单审批列表总数（外部费用和合同付款）"),
+    # BUG20261028004/005：改名“待审内部提成费用”，点进去只看内部提成-待审核和内部提成(退费)-待审核，数量同该列表。
+    ("fee-audit", "待审内部提成费用", "dashboard-queue-internal-commission-audit", "extra", "内部提成-待审核和内部提成(退费)-待审核合计"),
     ("settlement-audit", "待审批结算费用", "finance-settlement-audit", "todo:待审批结算费用", "结算待审核列表总数"),
     ("archive-fee", "待审批归档费用", "finance-archive-fee-pending", "todo:待归档费用", "归档费结算待归档列表总数"),
     ("seal-stamping", "待用印", "seal-admin-pending", "extra", "行政用印里已批准、等待盖章的申请"),
@@ -165,6 +166,8 @@ async def _extra_count(key, identity, db) -> int:
     if key in FEEDBACK_ITEM_STATUS:
         return await _feedback_count(FEEDBACK_ITEM_STATUS[key], db) if _is_admin_account(identity) else 0
 
+    if key == "fee-audit":
+        return await list_counts.internal_review_total(identity, db, "commission_all")
     if key == "seal-stamping":
         from app.areas.legal.seals import list_seal_applications
         return await list_counts._list_total(list_seal_applications, view="all", record_status="待用印",

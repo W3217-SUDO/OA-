@@ -2087,7 +2087,7 @@ function FinanceCenterContent({
           查看
         </Button>
       </Space>
-    ) : ["finance-internal-audit", "finance-internal-fee-audit", "finance-internal-refund-audit"].includes(initialView) ? (
+    ) : ["finance-internal-audit", "finance-internal-fee-audit", "finance-internal-refund-audit", "finance-internal-commission-audit"].includes(initialView) ? (
       <Space size={0}>
         {internalReviewCanApprove && row.status === "待审批" && (
           <Button type="link" onClick={() => setFeeReviewTargets([row])}>

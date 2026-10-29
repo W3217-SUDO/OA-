@@ -198,6 +198,14 @@ class CaseInternalFeeRow17Test(unittest.IsolatedAsyncioTestCase):
         normal=await self.client.get(f"{API}/finance/internal-review-requests",params={"kind":"commission"})
         self.assertEqual(normal.status_code,200,normal.text)
         self.assertFalse(set(ids)&{item["id"] for item in normal.json()["items"]})
+        # BUG20261028004/005：工作台“待审内部提成费用”合并两个队列，退费提成带 is_refund 以便按类别审批。
+        combined=await self.client.get(f"{API}/finance/internal-review-requests",params={"kind":"commission_all"})
+        self.assertEqual(combined.status_code,200,combined.text)
+        self.assertEqual(combined.json()["total"],5)
+        self.assertTrue(all(item["data"]["is_refund"] for item in combined.json()["items"]))
+        from app.core.dashboard_portals import _extra_count
+        async with self.sessions() as db:
+            self.assertEqual(await _extra_count("fee-audit",IDENTITY,db),5)
 
     async def test_other_user_cannot_apply_selected_case_fees(self):
         ids,_=await self.create_payment_selection()
