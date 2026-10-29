@@ -1076,7 +1076,8 @@ export default function CaseCenterPage({
 
   // 10.22 新增第 11 行：刑事案件列表左侧阶段树按旧系统刑事子阶段展示与筛选；
   // BUG20261028018：行政案件及国家赔偿也按旧系统自己的阶段树。
-  const phaseTreeCaseType = initialView.includes("criminal") ? "刑事案件" : initialView.includes("administrative") ? "行政案件及国家赔偿" : "";
+  const phaseTreeCaseType = initialView.includes("criminal") ? "刑事案件" : initialView.includes("administrative") ? "行政案件及国家赔偿"
+    : initialView.includes("arbitration") ? "仲裁" : "";
   const phaseChildrenByGroup = casePhaseChildrenForCaseType(phaseTreeCaseType);
   const phaseCountAliases = casePhaseAliasesForCaseType(phaseTreeCaseType);
   const searchByPhase = (status: string) => {

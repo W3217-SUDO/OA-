@@ -9,6 +9,7 @@ CRIMINAL_CASE_TYPE,
 LEGACY_CASE_PHASE_GROUPS,
 LEGACY_CIVIL_PHASE_ROOTS,
 LEGACY_ADMINISTRATIVE_PHASE_ROOT_ITEMS,
+LEGACY_ARBITRATION_PHASE_ROOT_ITEMS,
 LEGACY_CRIMINAL_PHASE_ROOT_ITEMS,
 buildLegacyCasePhaseTree,
 casePhaseChildrenForCaseType,
@@ -443,14 +444,8 @@ export const buildCasePhaseItemsFromCounts = (counts: Record<string, number>, it
   items.map((item) => ({...item, count: Number(counts[item.value] || 0)}));
 
 export const getCasePhaseDefinitions = (initialView: string, defaultItems: {label:string;value:string}[], criminalItems: {label:string;value:string}[]) => {
-  if (initialView === "case-company-arbitration") return [
-    {label:"待分配",value:"新案待分配"},
-    {label:"文书准备",value:"文书准备"},
-    {label:"仲裁阶段",value:"仲裁阶段"},
-    {label:"申诉阶段",value:"申诉阶段"},
-    {label:"执行立案",value:"执行立案"},
-    {label:"归档阶段",value:"归档阶段"},
-  ];
+  // BUG20261028019：仲裁按旧系统阶段树（我的案件、公司案件）。
+  if (initialView.includes("arbitration")) return LEGACY_ARBITRATION_PHASE_ROOT_ITEMS.map((item) => ({ ...item }));
   if (initialView.includes("counsel")) return [
     {label:"待分配",value:"新案待分配"},
     {label:"服务中",value:"服务中"},

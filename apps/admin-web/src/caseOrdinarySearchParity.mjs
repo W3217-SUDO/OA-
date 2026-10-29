@@ -132,9 +132,33 @@ export const LEGACY_ADMINISTRATIVE_PHASE_CHILDREN = {
 
 export const isAdministrativeCaseType = (caseType) => normalizeText(caseType) === ADMINISTRATIVE_CASE_TYPE;
 
+export const ARBITRATION_CASE_TYPE = "仲裁";
+
+// BUG20261028019（范文玲 2026-10-28）：仲裁的案件阶段树按旧系统截图一比一（我的案件、公司案件）。
+// 旧系统“执行立案”是目录，取值用执行阶段，免得和其下同名的“执行立案”阶段混在一起。
+export const LEGACY_ARBITRATION_PHASE_ROOT_ITEMS = [
+  { label: "待分配", value: "新案待分配" },
+  { label: "文书准备", value: "文书准备" },
+  { label: "仲裁阶段", value: "仲裁阶段" },
+  { label: "申诉阶段", value: "申诉阶段" },
+  { label: "执行立案", value: "执行阶段" },
+  { label: "归档阶段", value: "归档阶段" },
+];
+
+// 目录子项按取值索引（执行立案目录取值是执行阶段）。
+export const LEGACY_ARBITRATION_PHASE_CHILDREN = {
+  "仲裁阶段": ["仲裁立案受理", "仲裁补充证据", "仲裁准备开庭", "仲裁再次开庭", "仲裁庭后待判"],
+  "申诉阶段": ["申诉立案受理", "申诉补充证据", "申诉通知开庭", "申诉庭后待判", "申诉再审裁定"],
+  "执行阶段": ["执行立案", "执行受理", "执行中止", "执行结案", "和解中", "和解结案", "归档审核", "已归档"],
+  "归档阶段": ["归档审核", "已归档", "归档拒绝", "亏损内审", "亏损审核", "亏损归档", "亏损拒绝"],
+};
+
+export const isArbitrationCaseType = (caseType) => normalizeText(caseType) === ARBITRATION_CASE_TYPE;
+
 export const casePhaseChildrenForCaseType = (caseType) => (isCriminalCaseType(caseType)
   ? LEGACY_CRIMINAL_PHASE_CHILDREN
   : isAdministrativeCaseType(caseType) ? LEGACY_ADMINISTRATIVE_PHASE_CHILDREN
+  : isArbitrationCaseType(caseType) ? LEGACY_ARBITRATION_PHASE_CHILDREN
   : LEGACY_PHASE_CHILDREN);
 
 const LEGACY_PHASE_COUNT_ALIASES = {
@@ -151,11 +175,11 @@ const LEGACY_PHASE_COUNT_ALIASES = {
   "归档阶段": ["归档"],
 };
 
-// 行政案件迁移数据里有旧阶段名“待分配”，和“新案待分配”一起计入“待分配”（旧系统显示【5】）。
-// 只用于行政案件，其他类型的计数不变。
+// 行政案件、仲裁迁移数据里有旧阶段名“待分配”，和“新案待分配”一起计入“待分配”（旧系统行政显示【5】）。
+// 只用于行政案件和仲裁，其他类型的计数不变。
 const ADMINISTRATIVE_PHASE_COUNT_ALIASES = { ...LEGACY_PHASE_COUNT_ALIASES, "新案待分配": ["待分配"] };
 
-export const casePhaseAliasesForCaseType = (caseType) => (isAdministrativeCaseType(caseType)
+export const casePhaseAliasesForCaseType = (caseType) => (isAdministrativeCaseType(caseType) || isArbitrationCaseType(caseType)
   ? ADMINISTRATIVE_PHASE_COUNT_ALIASES
   : LEGACY_PHASE_COUNT_ALIASES);
 
