@@ -30,7 +30,8 @@ import { rememberFeedbackStatusFilter } from "./feedback/navigation";
 // 工作台“我的待办”的入口和图标，顺序和入口沿用原有待办。
 export const DASHBOARD_TODOS: Record<string, { route: string; icon: ReactNode }> = {
   待处理任务: { route: "task-my-accepted", icon: <CheckSquareOutlined /> },
-  待审批官方费用: { route: "finance-payment-audit", icon: <BankOutlined /> },
+  // 只算待审批的官方费用（BUG20261028003），点进去也只看官方费用，与“待缴官费”同一入口。
+  待审批官方费用: { route: "dashboard-queue-official-fee-audit", icon: <BankOutlined /> },
   待审批线索: { route: "clue-audit-pending", icon: <FileSearchOutlined /> },
   待审批内部费用: { route: "finance-internal-fee-audit", icon: <WalletOutlined /> },
   待审批合同: { route: "contract-audit-pending", icon: <FileProtectOutlined /> },

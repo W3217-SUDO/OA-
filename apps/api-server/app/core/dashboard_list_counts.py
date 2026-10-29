@@ -82,6 +82,15 @@ async def payment_audit_official_total(identity, db):
     from app.core.permissions import _record_scope_conditions, _require_record_module_menu
     from app.models import BusinessRecord
 
+    from app.core.permissions import _permission_payload_for_identity
+
+    # 点“待缴官费”进的是请款单审批页面，列表按该页面的数据范围取数（给页面=页面数据全有）；
+    # 有这个页面的人计数也按同一范围，否则数据范围小的人（如范明明）计数为 0、列表却有数据（2026-10-29）。
+    menus = set((await _permission_payload_for_identity(identity, db)).get("menu_keys") or [])
+    if "finance-payment-audit" in menus and not identity.get("_page_menu_capability"):
+        role_ids = list(identity.get("role_ids") or [])
+        identity = {**identity, "role": "admin", "role_ids": role_ids if "admin" in role_ids else ["admin", *role_ids],
+                    "action_keys": ["*"], "_page_menu_capability": True, "_request_page": "finance-payment-audit"}
     try:
         await _require_record_module_menu("finance", identity, db, action="查询请款")
     except HTTPException as error:
