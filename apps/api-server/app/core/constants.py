@@ -1101,6 +1101,13 @@ ROLE_TREE_HIDDEN_ACTION_CODES = frozenset({
     # 同上（范文玲 2026-10-29 13:40）：请款单审批、我的请款单页面没有编辑/删除费用按钮（只用于改、删别人的费用草稿）；
     # 付款打包-管理左侧菜单不显示。这些开关不在角色权限里显示，现有授权按原样保留。
     "finance.fee.update", "finance.fee.delete", "finance.payment.update", "finance.payment.delete",
+    # 范文玲 2026-10-29 14:35：付款管理、内部费用各待审核/待归档页的“审批（同意/拒绝）”跟页面固定，给了菜单就有。
+    INTERNAL_REVIEW_APPROVE_ACTION, INTERNAL_REVIEW_REJECT_ACTION,
+})
+# 能打开这些页面就能审批（同意/拒绝）：请款单审批、内部提成-待归档、各内部费用待审核页（含平台财务中心请款单审批）。
+INTERNAL_REVIEW_PAGES = frozenset({
+    "finance-payment-audit", "platform-finance-payment-audit", "finance-internal-archive", "finance-internal-audit",
+    "finance-internal-fee-audit", "finance-internal-refund-audit", "finance-internal-commission-audit",
 })
 # 左侧菜单不显示的页面（与前端 App.tsx 左侧菜单的过滤一致）：角色权限里不显示（范文玲 2026-10-29 13:45），
 # 角色原有的这些页面授权保存时按原样保留。
@@ -1110,9 +1117,6 @@ ROLE_TREE_HIDDEN_MENU_KEYS = frozenset({
 })
 # 同一个功能控制多个页面的按钮时，角色权限里在这些页面下都显示（同一开关，勾一处各处同步）。
 ROLE_TREE_ACTION_ALSO_MENUS = {
-    # 请款单审批、内部提成-待归档、内部费用三个待审核页面的“审批”按钮（同意/拒绝）都认这一组开关。
-    INTERNAL_REVIEW_APPROVE_ACTION: ("finance-payment-audit", "finance-internal-archive", "finance-internal-fee-audit", "finance-internal-refund-audit"),
-    INTERNAL_REVIEW_REJECT_ACTION: ("finance-payment-audit", "finance-internal-archive", "finance-internal-fee-audit", "finance-internal-refund-audit"),
 }
 
 _CASE_GROUP_MEMBER_CODES = frozenset(code for _label, members in CASE_ROLE_GROUPS.values() for code in members)
@@ -1142,6 +1146,8 @@ def expand_role_action_codes(action_codes, menu_keys) -> list[str]:
         result.extend(f"{code}@{page}" for page, codes in CUSTOMER_PAGE_ACTIONS.items() for code in codes if code in result)
     else:
         result.extend(code.split("@", 1)[0] for code in scoped)
+    if INTERNAL_REVIEW_PAGES.intersection(menu_keys):
+        result.extend((INTERNAL_REVIEW_APPROVE_ACTION, INTERNAL_REVIEW_REJECT_ACTION))
     roots = {root for root in PAGE_GRANTED_ACTION_ROOTS.values()
              if any(key == root or str(key).startswith(f"{root}-") for key in menu_keys)}
     result.extend(code for code in sorted(PAGE_GRANTED_ACTION_CODES)

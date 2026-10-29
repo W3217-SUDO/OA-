@@ -1978,12 +1978,7 @@ function FinanceCenterContent({
       Number(item.data?.paid_amount || 0) > 0 ||
       item.data?.writeoff_status === "已核销");
     const mayChange = isApplicant && !hasPaidItem && row.status !== "部分处理";
-    const hasApplication = Boolean(String(row.data?.payment_application_no || "").trim() || applicant);
-    const maySubmit =
-      ["草稿", "已退回"].includes(row.status) &&
-      (hasApplication
-        ? isApplicant
-        : role === "admin" || role === "manager" || row.owner === currentUser.username);
+    // BUG20261028012（范文玲 2026-10-29 14:35）：内部费用-我的请款单只保留 查看、编辑、撤回，去掉提交审批和回滚。
     const mayEdit =
       row.module === "finance" &&
       row.data.fee_type === "内部费用" &&
@@ -1991,15 +1986,8 @@ function FinanceCenterContent({
       (canFeeUpdate || row.owner === currentUser.username);
     const mayCancel = mayChange &&
       ["草稿", "待到账", "待分配", "待结算", "待归档", "待审批"].includes(row.status);
-    const mayRollback = mayChange &&
-      ["待到账", "待分配", "待结算", "待归档", "待审批", "已审批", "待付款"].includes(row.status);
     return (
       <Space size={0}>
-        {maySubmit && (
-          <Button type="link" onClick={() => feeAction(row, "submit")}>
-            提交审批
-          </Button>
-        )}
         {mayEdit && (
           <Button type="link" onClick={() => openFeeEdit(row)}>
             编辑
@@ -2008,11 +1996,6 @@ function FinanceCenterContent({
         {mayCancel && (
           <Button type="link" danger onClick={() => openPaymentCancel(row)}>
             撤回
-          </Button>
-        )}
-        {mayRollback && (
-          <Button type="link" onClick={() => openPaymentRollback(row)}>
-            回滚
           </Button>
         )}
         <Button type="link" onClick={() => void openPaymentDetail(row)}>

@@ -153,18 +153,21 @@ class RolePermissionBlocksTest(unittest.IsolatedAsyncioTestCase):
                  SystemMenu(id=6, key="customer-mine", label="我的客户", parent_key="")]
         tree = _organization_permission_tree(menus, ["客户修改", "费用申请", "合同付款申请"], {"action:finance.internal.review.approve"})
         nodes = {node["key"]: node["children"] for node in tree}
-        # 请款单审批只有“审批”（同意/拒绝），没有编辑、删除费用。
-        self.assertEqual([c["title"] for c in nodes["menu:finance-payment-audit"]], ["审批（同意）", "审批（拒绝）"])
+        # 范文玲 14:35：付款管理、内部费用各待审核页的功能跟页面固定，不单设开关。
+        self.assertEqual(nodes["menu:finance-payment-audit"], [])
         # 左侧菜单不显示的页面不在角色权限里。
         self.assertNotIn("menu:finance-jar", nodes)
         self.assertEqual(nodes["menu:system-parameters-court"], [])
         # 旧系统岗位名称不当功能显示。
         titles = {c["title"] for children in nodes.values() for c in children} | {node["title"] for node in tree}
         self.assertFalse({"客户修改", "费用申请", "合同付款申请"} & titles)
-        # 内部费用审批在两个待审核页面下都显示，同一开关。
-        fee_audit = {c["key"]: c["state"]["checked"] for c in nodes["menu:finance-internal-fee-audit"]}
-        self.assertEqual(fee_audit, {"action:finance.internal.review.approve#finance-internal-fee-audit": True,
-                                     "action:finance.internal.review.reject#finance-internal-fee-audit": False})
+        self.assertEqual(nodes["menu:finance-internal-fee-audit"], [])
+        self.assertEqual(nodes["menu:finance-internal-audit"], [])
+        # 给了这些页面就能审批（同意/拒绝）。
+        from app.core.constants import expand_role_action_codes
+        self.assertTrue({"finance.internal.review.approve", "finance.internal.review.reject"}
+                        <= set(expand_role_action_codes([], ["finance-internal-fee-audit"])))
+        self.assertFalse({"finance.internal.review.approve"} & set(expand_role_action_codes([], ["finance-payment-mine"])))
 
     async def test_legacy_label_shown_as_pages_and_kept_on_save(self):
         async with self.sessions() as db:

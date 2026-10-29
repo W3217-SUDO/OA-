@@ -89,10 +89,12 @@ class FinanceActionPermissionTest(unittest.IsolatedAsyncioTestCase):
     async def test_visible_page_grants_and_untick_wins(self):
         self.assertEqual(await self.keys("CODEXFAADMIN"), {"*"})
         self.assertEqual(await self.keys("CODEXFAAUDIT"), {"finance.receipt.update", "finance.receipt.delete"})
-        self.assertEqual(await self.keys("CODEXFALAWYER"), set())
+        # 范文玲 2026-10-29：内部提成-待审核页的审批（同意/拒绝）跟页面固定，给了页面就有。
+        REVIEW = {"finance.internal.review.approve", "finance.internal.review.reject"}
+        self.assertEqual(await self.keys("CODEXFALAWYER"), REVIEW)
         # 付款打包-管理+请款单审批带出 4 项，按人取消的“删除费用”不给。
         self.assertEqual(await self.keys("CODEXFAPAY"),
-                         {"finance.payment.update", "finance.payment.delete", "finance.fee.update"})
+                         {"finance.payment.update", "finance.payment.delete", "finance.fee.update"} | REVIEW)
         async with self.sessions() as db:
             self.assertFalse(await finance_action_granted(self.identity("CODEXFAPAY"), db, "finance.fee.delete"))
             with self.assertRaises(HTTPException) as raised:
@@ -129,8 +131,8 @@ class FinanceActionPermissionTest(unittest.IsolatedAsyncioTestCase):
             payer = await db.scalar(select(User).where(User.username == "CODEXFAPAY"))
             await set_user_finance_actions(payer.id, ["finance.payment.update"], db, actor="CODEXFACONF", source="test")
             await db.commit()
-        self.assertEqual(await self.keys("CODEXFALAWYER"), {"finance.fee.update"})
-        self.assertEqual(await self.keys("CODEXFAPAY"), {"finance.payment.update"})
+        self.assertEqual(await self.keys("CODEXFALAWYER"), {"finance.fee.update", "finance.internal.review.approve", "finance.internal.review.reject"})
+        self.assertEqual(await self.keys("CODEXFAPAY"), {"finance.payment.update", "finance.internal.review.approve", "finance.internal.review.reject"})
 
     async def test_configure_endpoint_only_for_admin_or_granted(self):
         from app.areas.system import router as system_router
