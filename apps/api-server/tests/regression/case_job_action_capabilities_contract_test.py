@@ -56,7 +56,9 @@ class CaseJobActionCapabilitiesContractTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_unbound_user_does_not_receive_case_actions_by_default(self) -> None:
         identity = {"username": "case-unbound", "role": "user"}
-        self.assertFalse(await _case_action_granted(identity, self.db, "case.log.create"))
+        # BUG20261028012（2026-10-29）：新增日志跟案件页面走；三块开关里的功能没勾仍没有。
+        self.assertTrue(await _case_action_granted(identity, self.db, "case.log.create"))
+        self.assertFalse(await _case_action_granted(identity, self.db, "case.court.update"))
 
 
 if __name__ == "__main__":

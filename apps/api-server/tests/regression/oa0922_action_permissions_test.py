@@ -46,13 +46,15 @@ class CaseActionPermissionsTest(unittest.IsolatedAsyncioTestCase):
             data={"fee_ids": "1", "bill_no": "CODEX-0922-bill", "bill_date": "2026-09-25"},
             files={"file": ("CODEX-0922-bill.pdf", b"x", "application/pdf")},
         )
-        self.assertEqual(response.status_code, 403, response.text)
+        # BUG20261028012（2026-10-29）：上传票据跟案件页面走，给了页面就有，不再单独授权。
+        self.assertNotEqual(response.status_code, 403, response.text)
 
     async def test_delete_requires_its_own_action_and_admin_passes_action_gate(self):
         response = await self.client.post(
             "/api/v1/cases/attachments/delete", json={"attachment_ids": [123]},
         )
-        self.assertEqual(response.status_code, 403, response.text)
+        # BUG20261028012：删除案件文件给了案件页面就有，过了动作校验后按文件是否存在返回。
+        self.assertEqual(response.status_code, 404, response.text)
         app.dependency_overrides[current_identity] = lambda: {
             "username": "admin", "role": "admin", "role_ids": ["admin"], "department": "测试部",
         }
@@ -80,7 +82,8 @@ class CaseActionPermissionsTest(unittest.IsolatedAsyncioTestCase):
             court_response = await self.client.put(
                 "/api/v1/cases/1/court-info", json={"first_instance_court": "CODEX-0922-court"},
             )
-        self.assertEqual(response.status_code, 403, response.text)
+        # BUG20261028012：文件目录维护给了页面就有；修改法院信息在“操作”开关里，没勾仍拒绝。
+        self.assertEqual(response.status_code, 201, response.text)
         self.assertEqual(court_response.status_code, 403, court_response.text)
 
 

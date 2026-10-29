@@ -422,6 +422,7 @@ export const noCaseDetailWriteCapability: CaseDetailCapabilities = {
   can_refund_finance: false, can_apply_fee_payment: false, can_apply_fee_invoice: false,
   can_manage_fee_notice: false, can_confirm_fee_arrival: false, can_view_fee_receipt: false,
   can_mark_fee_unpaid: false, can_move_fee: false, can_manage_assisted_fees: false, team_role: "none",
+  can_create_internal_fee: false, can_apply_internal_fee_payment: false, can_edit_internal_fee: false, can_delete_internal_fee: false,
   reason: "当前账号没有案件详情办理权限",
 };
 

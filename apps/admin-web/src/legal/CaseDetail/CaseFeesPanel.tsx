@@ -110,7 +110,7 @@ export const CaseFeesPanel = ({
     );
   }
 
-  // internal
+  // internal（BUG20261028012：内部结算按“内部结算”开关单独授权）
   return (
     <div className="case-legacy-tab-panel">
       <Table rowKey="id" size="small" pagination={{pageSize:10,showSizeChanger:true,showTotal:total=>`共有${total}条`}} scroll={{x:1000}} dataSource={feeRows} rowSelection={{selectedRowKeys:selectedFeeKeys,onChange:setSelectedFeeKeys}} columns={[
@@ -124,13 +124,13 @@ export const CaseFeesPanel = ({
         {title:"付款时间",width:120,render:(_:unknown,row:CaseRow)=>String(displayFeeValue(String(row.data.paid_at||row.data.payment_date||"").slice(0,10)))},
         {title:"提交人",width:120,render:(_:unknown,row:CaseRow)=>row.data.submitter_display_name||row.data.submitted_by_display_name||row.data.handler_display_name||row.owner_display_name||casePersonDisplayName?.(row.owner)},
         {title:"备注",width:220,render:(_:unknown,row:CaseRow)=>displayFeeValue(row.description||row.data.remark)},
-        {title:"操作",width:130,fixed:"right" as const,render:(_:unknown,row:CaseRow)=><Space size={0}>{counselDetailCapabilities.can_edit_finance&&<Button type="link" onClick={()=>editCaseFee?.(row)}>编辑</Button>}{counselDetailCapabilities.can_delete_finance&&<Button type="link" danger onClick={()=>deleteCaseFee?.(row)}>删除</Button>}</Space>},
+        {title:"操作",width:130,fixed:"right" as const,render:(_:unknown,row:CaseRow)=><Space size={0}>{counselDetailCapabilities.can_edit_internal_fee&&<Button type="link" onClick={()=>editCaseFee?.(row)}>编辑</Button>}{counselDetailCapabilities.can_delete_internal_fee&&<Button type="link" danger onClick={()=>deleteCaseFee?.(row)}>删除</Button>}</Space>},
       ]}/>
       <Space className="case-legacy-bottom-actions">
-        {counselDetailCapabilities.can_create_finance&&<Button onClick={()=>handleInternalFeeAction?.("create")}>新增内部费用</Button>}
-        {counselDetailCapabilities.can_apply_fee_payment&&<Button onClick={()=>handleInternalFeeAction?.("payment")}>申请付款</Button>}
-        {counselDetailCapabilities.can_edit_finance&&<Button disabled={!selectedFee} onClick={()=>handleInternalFeeAction?.("edit")}>编辑</Button>}
-        {counselDetailCapabilities.can_delete_finance&&<Button danger disabled={!selectedFee} onClick={()=>handleInternalFeeAction?.("delete")}>删除</Button>}
+        {counselDetailCapabilities.can_create_internal_fee&&<Button onClick={()=>handleInternalFeeAction?.("create")}>新增内部费用</Button>}
+        {counselDetailCapabilities.can_apply_internal_fee_payment&&<Button onClick={()=>handleInternalFeeAction?.("payment")}>申请付款</Button>}
+        {counselDetailCapabilities.can_edit_internal_fee&&<Button disabled={!selectedFee} onClick={()=>handleInternalFeeAction?.("edit")}>编辑</Button>}
+        {counselDetailCapabilities.can_delete_internal_fee&&<Button danger disabled={!selectedFee} onClick={()=>handleInternalFeeAction?.("delete")}>删除</Button>}
       </Space>
     </div>
   );

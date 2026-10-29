@@ -951,6 +951,31 @@ TASK_INVESTIGATION_ROLE_ACTIONS = (
 )
 
 
+# BUG20261028012（范文玲 2026-10-29 定）：案件的角色权限只分三块，一块一个开关，勾上即块内功能全有。
+CASE_INTERNAL_FEE_ACTIONS = (
+    ("case.internal_fee.create", "新增内部费用"), ("case.internal_fee.payment", "内部费用申请付款"),
+    ("case.internal_fee.update", "编辑内部费用"), ("case.internal_fee.delete", "删除内部费用"),
+)
+CASE_ROLE_BLOCKS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "case.block.operations": ("案件详情右上角“操作”", (
+        "case.detail.update", "case.phase.update", "case.notary.update", "case.hearing.manage",
+        "case.litigants.update", "case.criminal.public_security.update", "case.court.update",
+        "case.criminal.procuratorate.update", "case.criminal.court.update", "case.settlement.update",
+        "case.archive.submit", "case.document.generate", "case.merge", "case.duplicate",
+    )),
+    "case.block.fee_other": ("律所费用（平台费用）“其他操作”", (
+        "case.fee.refund", "case.fee.payment", "case.fee.invoice", "case.fee.move",
+        "case.fee.update", "case.fee.delete", "case.fee.mark_unpaid",
+    )),
+    "case.block.internal_fee": ("内部结算", tuple(code for code, _label in CASE_INTERNAL_FEE_ACTIONS)),
+}
+# 上线前内部结算和律所费用共用这些功能：还没按新方式保存过的角色，有其一就带内部结算，现有人员不少权限。
+CASE_INTERNAL_FEE_LEGACY_CODES = frozenset({"case.fee.create", "case.fee.payment", "case.fee.update", "case.fee.delete"})
+# 客户、合同、知识产权、任务、调查和案件其余功能：给了该模块的页面就有，角色权限里不再单独设。
+PAGE_GRANTED_ACTION_ROOTS = {"case.": "case", "crm.": "customer", "contract.": "contract",
+                             "ipr.": "ipr", "task.": "task", "investigation.": "investigation"}
+
+
 SYSTEM_ACTION_OPERATION_LABELS = {
     "query": "查询", "create": "新增", "update": "编辑", "delete": "删除",
     "clear": "清理", "reset": "重置", "permissions": "维护权限", "restore": "恢复",
@@ -1021,6 +1046,9 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
             ("case.fee.mark_unpaid", "标记不缴费"), ("case.fee.move", "移到其他案件"),
             ("case.assisted_fee.manage", "维护资助费用"),
         )),
+        # BUG20261028012（范文玲 2026-10-29）：内部结算单独授权，不再和律所费用共用。
+        *({"code": code, "menu_key": "case-mine", "label": label} for code, label in CASE_INTERNAL_FEE_ACTIONS),
+        *({"code": code, "menu_key": "case-mine", "label": label} for code, (label, _members) in CASE_ROLE_BLOCKS.items()),
         {"code": "case.fee.receipt.upload", "menu_key": "case-files-receipt", "label": "上传案件票据文件"},
         *({"code": code, "menu_key": "customer-mine", "label": label} for code, label in CUSTOMER_ROLE_ACTIONS),
         *({"code": code, "menu_key": "contract-mine", "label": label} for code, label in CONTRACT_ROLE_ACTIONS),
@@ -1037,6 +1065,39 @@ SYSTEM_ACTION_DEFINITIONS = _system_action_definitions()
 # BUG20261028015：案件详情费用“其他操作”已去掉这些入口，角色权限里不再显示勾选框；
 # 财务页面仍按这些功能码授权，保存角色时保留角色原有的授权，不因看不到而被取消。
 ROLE_TREE_HIDDEN_ACTION_CODES = frozenset({"case.fee.notice", "case.fee.arrival", "case.fee.receipt.view"})
+
+_CASE_BLOCK_MEMBER_CODES = frozenset(code for _label, members in CASE_ROLE_BLOCKS.values() for code in members)
+# 由三块开关或页面带出的功能：角色权限里不显示，保存角色时不再单独存。
+PAGE_GRANTED_ACTION_CODES = frozenset(
+    item["code"] for item in SYSTEM_ACTION_DEFINITIONS
+    if item["code"].startswith(tuple(PAGE_GRANTED_ACTION_ROOTS))
+    and item["code"] not in CASE_ROLE_BLOCKS and item["code"] not in _CASE_BLOCK_MEMBER_CODES
+    and item["code"] not in ROLE_TREE_HIDDEN_ACTION_CODES
+)
+ROLE_TREE_DERIVED_ACTION_CODES = PAGE_GRANTED_ACTION_CODES | _CASE_BLOCK_MEMBER_CODES
+
+
+def role_tree_block_codes(action_codes) -> set[str]:
+    """角色存的功能对应哪几块开关：存了开关，或存了块内任一功能（新方式保存前的旧授权）。"""
+    codes = set(action_codes)
+    blocks = {block for block, (_label, members) in CASE_ROLE_BLOCKS.items() if block in codes or codes & set(members)}
+    if codes & CASE_INTERNAL_FEE_LEGACY_CODES:
+        blocks.add("case.block.internal_fee")
+    return blocks
+
+
+def expand_role_action_codes(action_codes, menu_keys) -> list[str]:
+    """把三块开关展开成块内功能，再按已给的页面带出该模块其余功能；原有功能一个不去掉。"""
+    result = list(dict.fromkeys(action_codes))
+    if "*" in result:
+        return result
+    for block in role_tree_block_codes(result):
+        result.extend([block, *CASE_ROLE_BLOCKS[block][1]])
+    roots = {root for root in PAGE_GRANTED_ACTION_ROOTS.values()
+             if any(key == root or str(key).startswith(f"{root}-") for key in menu_keys)}
+    result.extend(code for code in sorted(PAGE_GRANTED_ACTION_CODES)
+                  if PAGE_GRANTED_ACTION_ROOTS[next(p for p in PAGE_GRANTED_ACTION_ROOTS if code.startswith(p))] in roots)
+    return list(dict.fromkeys(result))
 
 
 SYSTEM_ACTION_BY_CODE = {item["code"]: item for item in SYSTEM_ACTION_DEFINITIONS}

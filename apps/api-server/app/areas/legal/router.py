@@ -916,7 +916,8 @@ async def create_case_batch_fees(body: CaseBatchFeeInput, identity: dict = Depen
             raise HTTPException(status_code=422, detail="非内部案件费用必须逐案明确合同：" + "、".join(missing_contract_cases))
     contracts_by_case: dict[int, BusinessRecord | None] = {}
     for case_record in ordered_cases:
-        await _require_case_action(identity, db, "case.fee.create")
+        # BUG20261028012：内部结算单独授权。
+        await _require_case_action(identity, db, "case.internal_fee.create" if body.expense_scope == "内部" else "case.fee.create")
         if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
             raise HTTPException(status_code=409, detail=f"案件 {case_record.serial_no} 已进入归档流程，不能新增费用")
         contract_record = None

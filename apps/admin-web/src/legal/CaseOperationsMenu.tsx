@@ -27,8 +27,9 @@ export function CaseOperationsMenu({ selected, capabilities, canAssignTeam, canC
         key: `${scope}-fees`, label: scope === "firm" ? "新增律所费用" : "新增平台费用",
         children: ["官费", "第三方费用", "代理费", "其他费用"].map((kind) => ({ key: `${scope}-${kind}`, label: `新增${kind}` })),
       })),
-      { key: "internal-fee", label: "新增内部费用" },
     ] : []),
+    // BUG20261028012：内部结算单独授权。
+    ...(capabilities.can_create_internal_fee ? [{ key: "internal-fee", label: "新增内部费用" }] : []),
     ...(batchItems.length ? [{ key: "batch-update", label: "批量修改", children: batchItems }] : []),
     ...(capabilities.can_generate_document ? [
       { key: "document-authorization-letter", label: "生成授权委托书" },

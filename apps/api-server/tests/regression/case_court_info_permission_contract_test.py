@@ -95,7 +95,8 @@ class CaseCourtInfoPermissionContractTest(unittest.IsolatedAsyncioTestCase):
         capability = await self.client.get(f"{API}/cases/{self.case_id}/action-capabilities")
         self.assertEqual(capability.status_code, 200, capability.text)
         self.assertTrue(capability.json()["can_edit_court_info"])
-        self.assertFalse(capability.json()["can_update_progress"])
+        # BUG20261028012（2026-10-29）：维护案件进展给了案件页面就有。
+        self.assertTrue(capability.json()["can_update_progress"])
 
         saved = await self.client.put(f"{API}/cases/{self.case_id}/court-info", json=self.payload())
         self.assertEqual(saved.status_code, 200, saved.text)

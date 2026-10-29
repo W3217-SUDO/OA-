@@ -414,6 +414,10 @@ export type CaseDetailCapabilities = {
   can_view_fee_receipt: boolean;
   can_mark_fee_unpaid: boolean;
   can_move_fee?: boolean;
+  can_create_internal_fee?: boolean;
+  can_apply_internal_fee_payment?: boolean;
+  can_edit_internal_fee?: boolean;
+  can_delete_internal_fee?: boolean;
   can_manage_assisted_fees: boolean;
   team_role: "manager" | "handling_lawyer" | "assistant" | "none";
   reason: string;

@@ -65,7 +65,8 @@ class RoleCaseActionsDefaultAllTest(unittest.IsolatedAsyncioTestCase):
 
         tree = _organization_permission_tree([SystemMenu(id=1, key="case-mine", label="我的案件", parent_key="")], [], set())
         codes = {child["node_code"] for child in tree[0]["children"]}
-        self.assertIn("case.fee.update", codes)
+        # BUG20261028012（2026-10-29）：案件只显示三块开关，块内功能和其他案件功能不再单独列出。
+        self.assertEqual(codes, {"case.block.operations", "case.block.fee_other", "case.block.internal_fee"})
         self.assertFalse(codes & ROLE_TREE_HIDDEN_ACTION_CODES)
 
     async def test_all_roles_get_every_case_function_once(self) -> None:

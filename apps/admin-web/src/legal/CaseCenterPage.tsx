@@ -2155,7 +2155,7 @@ export default function CaseCenterPage({
   };
 
   const deleteCaseFee = (row: CaseRow) => {
-    if (!counselDetailCapabilities.can_delete_finance) return message.warning("当前角色没有删除案件费用权限");
+    if (!(isInternalCaseFee(row) ? counselDetailCapabilities.can_delete_internal_fee : counselDetailCapabilities.can_delete_finance)) return message.warning("当前角色没有删除案件费用权限");
     Modal.confirm({ title: `删除费用：${row.serial_no}`, content: "删除后仅系统管理员可在回收站恢复，是否继续？", okText: "确认删除", cancelText: "取消", onOk: async () => {
       try { await api.delete(isInternalCaseFee(row) ? `/finance/internal-fees/${row.id}` : `/finance/fees/${row.id}`); message.success("费用草稿已删除"); await load(); if (viewingCounselCase) await openCounselDetail(viewingCounselCase); }
       catch (error: any) { message.error(error?.response?.data?.detail || "费用删除失败"); }
@@ -2241,7 +2241,7 @@ export default function CaseCenterPage({
     });
   };
   const editCaseFee = (row: CaseRow) => {
-    if (!counselDetailCapabilities.can_edit_finance) return message.warning("当前角色没有修改案件费用权限");
+    if (!(isInternalCaseFee(row) ? counselDetailCapabilities.can_edit_internal_fee : counselDetailCapabilities.can_edit_finance)) return message.warning("当前角色没有修改案件费用权限");
     setFeeSubtypePreset("");
     feeForm.setFieldValue("source_file_type", resolveCaseFileTypeSelection("", fileTypeOptionsForCase(viewingCounselCase?.data.case_type)));
     const expenseScope = row.data.expense_scope || "律所";

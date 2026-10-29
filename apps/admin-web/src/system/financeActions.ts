@@ -21,6 +21,8 @@ const ACTION_PAGES: Record<string, string> = {
 
 /** 勾选的管理页面默认带出的财务动作。 */
 export function pageFinanceActions(menuKeys: string[]): string[] {
+  // BUG20261028012：平台财务中心“回款管理”和财务中心“回款管理”带同一组回款编辑、删除开关。
+  const pages = menuKeys.includes("platform-finance-overview-manage") ? [...menuKeys, "finance-receipts-manage"] : menuKeys;
   return FINANCE_ACTION_KEYS.filter((code) =>
-    Object.entries(ACTION_PAGES).some(([action, page]) => code.startsWith(action) && menuKeys.includes(page)));
+    Object.entries(ACTION_PAGES).some(([action, page]) => code.startsWith(action) && pages.includes(page)));
 }

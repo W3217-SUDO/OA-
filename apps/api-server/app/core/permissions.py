@@ -2,7 +2,7 @@
 from app.core.constants import (
     AGENT_ACTION_CAPABILITY, CASE_ACTIONS_EXPLICIT_MARKER, MENUS_EXACT_MARKER, CASE_CREATABLE_TYPES, CIVIL_CASE_TYPES, CONTRACT_APPROVAL_ACTION_CODE, DEFAULT_MENU_LABEL_BY_KEY,
     DEFAULT_ROLE_PERMISSIONS, EXPENSE_SUBTYPE_FEE_TYPE, FIELD_KEYS, JAR_FEE_TRANSITIONS, JOB_ACTION_MENU_GRANTS,
-    CONTRACT_ROLE_ACTION_CODES, CONTRACT_ROLE_ACTIONS, CUSTOMER_ROLE_ACTIONS, FINANCE_EDIT_DELETE_ACTIONS, IPR_ROLE_ACTIONS, TASK_INVESTIGATION_ROLE_ACTIONS, JOB_ROLE_ACTION_KEY_GRANTS, ROLE_TREE_HIDDEN_ACTION_CODES, JOB_ROLE_LABEL_MENU_GRANTS, MENU_CHILDREN_BY_KEY, MENU_KEYS, ROLE_DATA_SCOPES,
+    CONTRACT_ROLE_ACTION_CODES, CONTRACT_ROLE_ACTIONS, CUSTOMER_ROLE_ACTIONS, FINANCE_EDIT_DELETE_ACTIONS, IPR_ROLE_ACTIONS, TASK_INVESTIGATION_ROLE_ACTIONS, JOB_ROLE_ACTION_KEY_GRANTS, ROLE_TREE_HIDDEN_ACTION_CODES, ROLE_TREE_DERIVED_ACTION_CODES, expand_role_action_codes, role_tree_block_codes, JOB_ROLE_LABEL_MENU_GRANTS, MENU_CHILDREN_BY_KEY, MENU_KEYS, ROLE_DATA_SCOPES,
     SYSTEM_ACTION_DEFINITIONS, SYSTEM_MENU_ROUTE_KEYS, SYSTEM_USER_ROLE_CODES,
 )
 from app.core.dependencies import (
@@ -106,10 +106,9 @@ def _job_role_tree_checked_permissions(role: JobRole) -> list[str]:
             selected.extend(JOB_ROLE_LABEL_MENU_GRANTS.get(value, ()))
         elif value not in {CASE_ACTIONS_EXPLICIT_MARKER, MENUS_EXACT_MARKER}:
             selected.append(str(value).removeprefix("menu:"))
-    selected.extend(
-        f"action:{code}" for code in _effective_job_role_action_keys(role)
-        if code in _CASE_ACTION_CODES
-    )
+    effective = _effective_job_role_action_keys(role)
+    selected.extend(f"action:{code}" for code in effective if code in _CASE_ACTION_CODES)
+    selected.extend(f"action:{code}" for code in role_tree_block_codes(effective))
     return list(dict.fromkeys(selected))
 
 
@@ -164,11 +163,13 @@ async def _system_permission_tree(db: AsyncSession, permission: RolePermission |
         _system_action_definitions,
     )
     menu_keys, action_keys = _split_role_permission_keys(permission.menu_keys if permission else [])
+    # 案件三块：存了开关或存了块内任一功能（旧授权）都显示为勾上。
+    action_keys = [*action_keys, *role_tree_block_codes(action_keys)]
     rows = list((await db.scalars(select(SystemMenu).order_by(SystemMenu.sort_order, SystemMenu.id))).all())
     by_key = {item.key: item for item in rows}
     action_definitions = [
         definition for definition in _system_action_definitions(set(by_key))
-        if definition["code"] not in ROLE_TREE_HIDDEN_ACTION_CODES
+        if definition["code"] not in ROLE_TREE_HIDDEN_ACTION_CODES | ROLE_TREE_DERIVED_ACTION_CODES
     ]
     action_by_menu: dict[str, list[dict]] = {}
     for definition in action_definitions:
@@ -512,6 +513,7 @@ async def _permission_payload_for_identity(identity: dict, db: AsyncSession) -> 
             else:
                 job_role = await _job_role_for_name(explicit_role_name, db)
                 payload = _denied_job_role_payload(payload) if not job_role else _apply_job_role_policy(payload, job_role)
+        payload = {**payload, "action_keys": expand_role_action_codes(payload.get("action_keys", []), payload.get("menu_keys", []))}
     if identity.get("_page_menu_capability"):
         # A visible page is the complete capability contract for that page.
         # Keep the real menu tree for navigation, but remove hidden action,
@@ -566,10 +568,12 @@ async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
             menu_keys.append("customer-conflict")
         if can_approve_contract and "contract-audit" not in menu_keys:
             menu_keys.append("contract-audit")
+    menu_keys = _expand_menu_permission_keys(menu_keys)
     return {
         **permission,
-        "menu_keys": _expand_menu_permission_keys(menu_keys),
-        "action_keys": list(dict.fromkeys(permission.get("action_keys", []))),
+        "menu_keys": menu_keys,
+        # BUG20261028012：案件三块展开成块内功能；客户、合同、知产、任务、调查及案件其余功能给了页面就有。
+        "action_keys": expand_role_action_codes(permission.get("action_keys", []), menu_keys),
         "user_action_keys": user_actions,
         # 员工管理里按人取消勾选的财务动作，优先于页面可见带来的授权。
         "user_action_denies": [] if "admin" in role_ids else [
@@ -1742,6 +1746,11 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
         "can_confirm_fee_arrival": active and await _case_action_granted(identity, db, "case.fee.arrival"),
         "can_view_fee_receipt": await _case_action_granted(identity, db, "case.fee.receipt.view"),
         "can_mark_fee_unpaid": active and await _case_action_granted(identity, db, "case.fee.mark_unpaid"),
+        # BUG20261028012：内部结算下方的新增、申请付款、编辑、删除单独授权。
+        "can_create_internal_fee": active and await _case_action_granted(identity, db, "case.internal_fee.create"),
+        "can_apply_internal_fee_payment": active and await _case_action_granted(identity, db, "case.internal_fee.payment"),
+        "can_edit_internal_fee": active and await _case_action_granted(identity, db, "case.internal_fee.update"),
+        "can_delete_internal_fee": active and await _case_action_granted(identity, db, "case.internal_fee.delete"),
         # 10.26 第11行：能修改案件费用的人都可以“移到其他案子”（角色里没有单独勾选移费动作也放行）。
         "can_move_fee": active and (await _case_action_granted(identity, db, "case.fee.move")
                                     or await _case_action_granted(identity, db, "case.fee.update")),
@@ -2100,7 +2109,7 @@ def _organization_permission_tree(menus: list[SystemMenu], actions: list[str], s
     for definition in SYSTEM_ACTION_DEFINITIONS:
         key = f"action:{definition['code']}"
         catalog_keys.add(key)
-        if definition["menu_key"] in menu_keys and definition["code"] not in ROLE_TREE_HIDDEN_ACTION_CODES:
+        if definition["menu_key"] in menu_keys and definition["code"] not in ROLE_TREE_HIDDEN_ACTION_CODES | ROLE_TREE_DERIVED_ACTION_CODES:
             by_menu_actions.setdefault(definition["menu_key"], []).append({
                 "key": key, "node_type": "A", "node_original_id": definition["code"],
                 "node_id": definition["code"], "node_code": definition["code"],

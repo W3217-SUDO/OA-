@@ -21,6 +21,9 @@ OWN_EDITABLE_FEE_STATUSES = frozenset({"草稿", "已退回", "已驳回"})
 def page_granted_finance_actions(menu_keys) -> list[str]:
     """账号可见的管理页面带来的财务动作（页面即 FINANCE_EDIT_DELETE_ACTIONS 的第二列）。"""
     menus = {str(key) for key in menu_keys or []}
+    # BUG20261028012：平台财务中心“回款管理”和财务中心“回款管理”带同一组回款编辑、删除开关。
+    if "platform-finance-overview-manage" in menus:
+        menus.add("finance-receipts-manage")
     return [code for code, menu, _label in FINANCE_EDIT_DELETE_ACTIONS if menu in menus]
 
 

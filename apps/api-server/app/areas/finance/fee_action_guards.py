@@ -8,6 +8,13 @@ from app.core.finance_batch_parity import (
     is_internal_fee,
 )
 
+INTERNAL_FEE_ACTION_KEYS = {
+    "case.fee.payment": "case.internal_fee.payment",
+    "case.fee.update": "case.internal_fee.update",
+    "case.fee.delete": "case.internal_fee.delete",
+}
+
+
 def _is_internal_application(item: BusinessRecord) -> bool:
     data = item.data or {}
     return is_internal_fee(data) and bool(
@@ -31,5 +38,8 @@ async def _require_linked_case_fee_action(item: BusinessRecord, action_key: str,
     if not case_record or case_record.module != "case":
         raise HTTPException(status_code=409, detail="案件费用关联的案件不存在")
     from app.core.cases import _case_action_granted
+    # BUG20261028012：内部结算的申请付款、编辑、删除按“内部结算”开关，不再和律所费用共用。
+    if is_internal_fee(data):
+        action_key = INTERNAL_FEE_ACTION_KEYS.get(action_key, action_key)
     if not await _case_action_granted(identity, db, action_key):
         raise HTTPException(status_code=403, detail="当前账号没有该案件费用操作权限")

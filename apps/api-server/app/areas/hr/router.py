@@ -1,6 +1,6 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 from app.core.constants import (
-    CASE_ACTIONS_EXPLICIT_MARKER, MENUS_EXACT_MARKER, FIELD_KEYS, HR_SUBRECORD_KINDS, JOB_ROLE_ACTION_KEY_GRANTS, ROLE_DATA_SCOPES, ROLE_TREE_HIDDEN_ACTION_CODES, SYSTEM_ACTION_DEFINITIONS, SYSTEM_ADMIN_JOB_PERMISSIONS,
+    CASE_ACTIONS_EXPLICIT_MARKER, MENUS_EXACT_MARKER, FIELD_KEYS, HR_SUBRECORD_KINDS, JOB_ROLE_ACTION_KEY_GRANTS, ROLE_DATA_SCOPES, ROLE_TREE_HIDDEN_ACTION_CODES, ROLE_TREE_DERIVED_ACTION_CODES, SYSTEM_ACTION_DEFINITIONS, SYSTEM_ADMIN_JOB_PERMISSIONS,
     SYSTEM_MENU_ROUTE_KEYS, WORKFLOW_TRANSITIONS,
 )
 from app.core.dependencies import (
@@ -737,6 +737,9 @@ async def update_job_role_permissions(
         if str(value).removeprefix("action:") in ROLE_TREE_HIDDEN_ACTION_CODES and str(value).startswith("action:")
         and value not in permissions
     )
+    if role.code != "SYSTEM-ADMIN":
+        # BUG20261028012：页面带出的功能和案件三块里的功能不单独存，只存开关（旧授权保存后即换成开关）。
+        permissions = [value for value in permissions if str(value).removeprefix("action:") not in ROLE_TREE_DERIVED_ACTION_CODES]
     if body.case_actions_explicit and role.code != "SYSTEM-ADMIN":
         permissions = _explicit_case_role_permissions(permissions)
     menus_exact = (MENUS_EXACT_MARKER in (role.permissions or [])) if body.menus_exact is None else body.menus_exact
