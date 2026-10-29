@@ -142,6 +142,20 @@ async def internal_review_rows(identity: dict, db: AsyncSession, kind: str) -> l
             or (kind == "other" and not commission)
         ):
             selected.append(row)
+    # BUG20261029002：旧系统导入的待审批请款明细（LIP-）也要案件已归档才进待审核，
+    # 内部提成还要已结算；退费提成按 10.22 规则只看归档。
+    legacy = {row["id"]: row for row in selected if (row.get("data") or {}).get("legacy_kind") == "internal_payment_line"}
+    if legacy:
+        from app.core.internal_commission_stage import archived_case_ids, legacy_line_settled_ids
+
+        records = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(legacy)))).all())
+        archived = await archived_case_ids(db, {int((item.data or {}).get("case_id") or 0) for item in records
+                                                if str((item.data or {}).get("case_id") or "").isdigit()})
+        settled = await legacy_line_settled_ids(db, [(item.id, item.data or {}) for item in records])
+        keep = {item.id for item in records
+                if str((item.data or {}).get("case_id") or "").isdigit() and int((item.data or {})["case_id"]) in archived
+                and (item.id in settled or (legacy[item.id].get("data") or {}).get("is_refund"))}
+        selected = [row for row in selected if row["id"] not in legacy or row["id"] in keep]
     if not selected:
         return []
     anchors = list((await db.scalars(select(BusinessRecord).where(
@@ -286,6 +300,14 @@ async def pending_case_fee_settlements(identity: dict, db: AsyncSession) -> list
             (row.get("data") or {}).get("base_fee_type") == "代理费"
             and not (row.get("data") or {}).get("refund_fee")
             and not (row.get("data") or {}).get("commission_paid")]
+    # BUG20261029002：待结算只放已到账、已分配的案件费用；旧系统导入的来源按旧到账结算资格判断。
+    from app.core.internal_commission_stage import allocated_fee_ids
+    modern_ids = {row["id"] for row in rows if not legacy_sources.get(row["id"], {}).get("eligible")}
+    allocated = await allocated_fee_ids(db, modern_ids)
+    rows = [row for row in rows if legacy_sources.get(row["id"], {}).get("eligible") or (
+        row["id"] in allocated
+        and float((row.get("data") or {}).get("received_amount") or (row.get("data") or {}).get("cashed_amount") or 0) > 0
+    )]
     case_ids = {
         int((row.get("data") or {}).get("case_id"))
         for row in rows if str((row.get("data") or {}).get("case_id") or "").isdigit()

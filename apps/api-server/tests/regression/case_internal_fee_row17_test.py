@@ -133,12 +133,12 @@ class CaseInternalFeeRow17Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(direct.status_code,409,direct.text)
         response=await self.client.post(f"{API}/finance/internal-applications/payment-requests",json=self.payment_body(ids))
         self.assertEqual(response.status_code,200,response.text)
-        # 10.22 第 6 行：案件未归档时退费提成在“内部提成-待归档”，不进退费审核队列。
+        # 10.22 第 6 行：案件未归档时退费提成不进退费审核队列；BUG20261029002：退费提成不结算，也不进“内部提成-待归档”。
         pending=await self.client.get(f"{API}/finance/internal-review-requests",params={"kind":"refund"})
         self.assertFalse(set(ids)&{item["id"] for item in pending.json()["items"]})
         archive=await self.client.get(f"{API}/finance/internal-fees",params={"scope":"archive"})
         self.assertEqual(archive.status_code,200,archive.text)
-        self.assertIn(response.json()["application_no"],[item["serial_no"] for item in archive.json()["items"]])
+        self.assertNotIn(response.json()["application_no"],[item["serial_no"] for item in archive.json()["items"]])
         await self.archive_case()
         after=await self.client.get(f"{API}/finance/internal-review-requests",params={"kind":"refund"})
         self.assertEqual(after.status_code,200,after.text)
@@ -151,9 +151,8 @@ class CaseInternalFeeRow17Test(unittest.IsolatedAsyncioTestCase):
         ids,source_id=await self.create_payment_selection()
         async with self.sessions() as db:
             rows=await pending_case_fee_settlements(IDENTITY,db)
-            source=next(row for row in rows if row["id"]==source_id)
-            self.assertEqual(source["data"]["amount"],270)
-            self.assertEqual(source["data"]["cashed_amount"],0)
+            # BUG20261029002：待结算只放已到账、已分配的案件费用。
+            self.assertNotIn(source_id,[row["id"] for row in rows])
             fee=await db.get(BusinessRecord,source_id)
             fee.data={**fee.data,"received_amount":1000,"cashed_amount":1000}
             db.add(IncomingPayment(receipt_no="CODEX1021INTERNAL-RECEIPT",received_date=date.today(),amount=1000,

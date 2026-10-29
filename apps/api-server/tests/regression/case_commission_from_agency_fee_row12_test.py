@@ -316,7 +316,8 @@ class CaseCommissionFromAgencyFeeRow12Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(item["status"], "待归档")
         self.assertEqual(item["data"]["payment_requested_amount"], item["data"]["amount"])
         archive_page = await self.client.get(f"{API}/finance/internal-fees", params={"scope": "archive"})
-        self.assertIn(result["application_no"], [row["serial_no"] for row in archive_page.json()["items"]])
+        # BUG20261029002：待归档只放已结算的请款，退费提成不结算，不在待归档列表。
+        self.assertNotIn(result["application_no"], [row["serial_no"] for row in archive_page.json()["items"]])
         early = await self.client.get(f"{API}/finance/internal-review-requests", params={"kind": "refund"})
         self.assertNotIn(result["application_no"], [row["serial_no"] for row in early.json()["items"]])
         async with self.sessions() as db:

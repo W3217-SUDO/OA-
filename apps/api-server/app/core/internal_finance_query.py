@@ -280,6 +280,24 @@ async def internal_application_queue(identity: dict, db: AsyncSession, scope: st
     cases = {item.id: item for item in (await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "case", BusinessRecord.id.in_(case_ids), *access,
     ))).all()} if case_ids else {}
+    if scope == "archive":
+        # BUG20261029002：待归档只放已结算、案件未归档的请款单。旧主单按明细的旧系统回款结算判断
+        # （上面的旧谓词在生产历史量大时不执行），新提成要求来源已结算，退费提成不结算故不在此列。
+        from app.core.internal_commission_stage import ARCHIVED_CASE_STATUSES, legacy_line_settled_ids
+        from app.core.internal_requests import refund_commission_ids
+
+        lines = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(child_ids))))) if child_ids else []
+        settled = await legacy_line_settled_ids(db, [(item.id, item.data or {}) for item in lines])
+        lines_by_parent: dict[int, list[int]] = {}
+        for item in lines:
+            lines_by_parent.setdefault(int((item.data or {}).get("internal_application_id") or 0), []).append(item.id)
+        parents = [item for item in parents
+                   if lines_by_parent.get(item.id) and all(line in settled for line in lines_by_parent[item.id])
+                   and not (cases.get(int((item.data or {}).get("case_id") or 0))
+                            and cases[int((item.data or {})["case_id"])].status in ARCHIVED_CASE_STATUSES)]
+        refund_ids = await refund_commission_ids(list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.id.in_(modern_ids))))), db) if modern_ids else set()
+        modern_ids -= refund_ids
     allowed = await _allowed_field_keys(identity, db)
     rows = []
     for item in parents:

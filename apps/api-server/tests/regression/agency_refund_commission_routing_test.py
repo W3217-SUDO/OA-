@@ -133,7 +133,8 @@ class AgencyRefundCommissionRoutingTest(unittest.IsolatedAsyncioTestCase):
         # 案件未归档：退费提成在“内部提成-待归档”，归档后才进入“内部提成(退费)-待审核”。
         archive_page = await self.client.get(f"{API}/finance/internal-fees", params={"scope": "archive"})
         self.assertEqual(archive_page.status_code, 200, archive_page.text)
-        self.assertIn(application_no, [item["serial_no"] for item in archive_page.json()["items"]])
+        # BUG20261029002：待归档只放已结算的请款，退费提成不结算，不在待归档列表。
+        self.assertNotIn(application_no, [item["serial_no"] for item in archive_page.json()["items"]])
         early = await self.client.get(f"{API}/finance/internal-review-requests", params={"kind": "refund"})
         self.assertNotIn(application_no, [item["serial_no"] for item in early.json()["items"]])
         async with self.sessions() as db:
