@@ -1098,6 +1098,8 @@ function FinanceCenterContent({
     };
   };
 
+  // 费用查询接口只认费用列表的控制台入口（待缴官费-本人、待退费）；请款单审批等入口不带给费用查询，否则接口返回 422。
+  const feeDashboardQueue = ["official-fee-unpaid", "refund-pending"].includes(dashboardQueue) ? dashboardQueue : undefined;
   const feeQueryParams = (
     query: Record<string, unknown>,
     page = 1,
@@ -1108,7 +1110,7 @@ function FinanceCenterContent({
     const listValue = (value: unknown) =>
       Array.isArray(value) ? value.join(",") : String(value || "");
     if (isRefundCaseFeeRoute) return {
-      dashboard_queue: dashboardQueue || undefined,
+      dashboard_queue: feeDashboardQueue,
       case_no: query.routeField0 || "",
       court_case_no: query.routeField1 || "",
       court_name: query.routeField2 || "",
@@ -1127,7 +1129,7 @@ function FinanceCenterContent({
       page_size: pageSize,
     };
     return {
-      dashboard_queue: dashboardQueue || undefined,
+      dashboard_queue: feeDashboardQueue,
       scope: query.dashboardScope || "company",
       unpaid_official: query.dashboardUnpaidOfficial || undefined,
       case_no: query.routeField0 || "",
