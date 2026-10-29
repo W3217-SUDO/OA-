@@ -8,7 +8,7 @@ from app.core.dependencies import (
 from app.models_shared import (
     ArchiveSettlementPaymentReviewInput, ArchiveSettlementRejectedActionInput,
     ArchiveSettlementRollbackInput, FinanceSettlementApplyInput, FinanceSettlementPaymentInput,
-    FinanceSettlementReapplyInput, FinanceSettlementReviewInput,
+    FinanceSettlementReapplyInput, FinanceSettlementReviewInput, FinanceSettlementWithdrawInput,
 )
 from fastapi import APIRouter, Request
 from app.core.incoming_settlement import (_active_settlements_by_receipt, _settlement_financial_snapshot)
@@ -19,6 +19,7 @@ from app.core.finance_centers import (
     legacy_incoming_status_counts,
 )
 from app.core.imported_settlement_projection import read_imported_settlement_page
+from app.areas.finance.settlement_legacy_adoption import adopt_legacy_settlements, is_adopted
 from app.areas.finance.imported_settlement_exports import (
     append_imported_export_rows, enrich_general_export_rows, query_export_rows,
 )
@@ -650,7 +651,7 @@ async def reapply_general_settlement_applications(body: FinanceSettlementReapply
     comment = body.comment.strip()
     if not comment:
         raise HTTPException(status_code=422, detail="请输入备注.")
-    application_ids = list(dict.fromkeys(body.application_ids))
+    application_ids = list(dict.fromkeys(body.application_ids)) + await adopt_legacy_settlements(body.projection_ids, identity, db)
     records = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.id.in_(application_ids),
         BusinessRecord.module == "finance_settlement",
@@ -679,18 +680,19 @@ async def reapply_general_settlement_applications(body: FinanceSettlementReapply
     if active_settlements:
         blocked = [active_settlements[receipt_id].serial_no for receipt_id in receipt_ids if receipt_id in active_settlements]
         raise HTTPException(status_code=409, detail="来源回款已有其他有效结算申请：" + "、".join(blocked))
+    modern_receipt_ids = {int((record.data or {}).get("receipt_id") or 0) for record in records if not is_adopted(record)}
     current_rows = await _general_settlement_rows(
-        identity, db, receipt_ids=set(receipt_ids), include_active_receipts=True,
-    )
+        identity, db, receipt_ids=modern_receipt_ids, include_active_receipts=True,
+    ) if modern_receipt_ids else []
     current_by_receipt = {int(row["id"]): row for row in current_rows}
-    missing_receipts = [str(receipt_id) for receipt_id in receipt_ids if receipt_id not in current_by_receipt]
+    missing_receipts = [str(receipt_id) for receipt_id in modern_receipt_ids if receipt_id not in current_by_receipt]
     if missing_receipts:
         raise HTTPException(status_code=409, detail="部分来源回款未完整分配或当前不可结算：" + "、".join(missing_receipts))
     reapplied_at = datetime.now().isoformat(timespec="seconds")
     for record in records:
         previous_status = record.status
         receipt_id = int((record.data or {}).get("receipt_id") or 0)
-        current_data = dict(current_by_receipt[receipt_id].get("data") or {})
+        current_data = dict(record.data or {}) if is_adopted(record) else dict(current_by_receipt[receipt_id].get("data") or {})
         record.status = "待审批"
         record.description = comment
         record.data = {
@@ -723,7 +725,7 @@ async def review_general_settlement_applications(body: FinanceSettlementReviewIn
     )
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="当前角色没有结算审批权限")
-    application_ids = list(dict.fromkeys(body.application_ids))
+    application_ids = list(dict.fromkeys(body.application_ids)) + await adopt_legacy_settlements(body.projection_ids, identity, db)
     records = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.id.in_(application_ids),
         BusinessRecord.module == "finance_settlement",
@@ -736,7 +738,8 @@ async def review_general_settlement_applications(body: FinanceSettlementReviewIn
     if invalid:
         raise HTTPException(status_code=409, detail="仅待审批结算申请可以审核：" + "、".join(invalid))
     if body.approved:
-        receipt_ids = {int((record.data or {}).get("receipt_id") or 0) for record in records}
+        # 承接的历史结算按原系统分配快照审核，不和现行分配重新比对。
+        receipt_ids = {int((record.data or {}).get("receipt_id") or 0) for record in records if not is_adopted(record)}
         if 0 in receipt_ids:
             raise HTTPException(status_code=409, detail="结算申请缺少来源回款，不能审批")
         current_rows = await _general_settlement_rows(
@@ -748,6 +751,8 @@ async def review_general_settlement_applications(body: FinanceSettlementReviewIn
         ))).all()}
         stale = []
         for record in records:
+            if is_adopted(record):
+                continue
             receipt_id = int((record.data or {}).get("receipt_id") or 0)
             current = current_by_receipt.get(receipt_id)
             payment = payments.get(receipt_id)
@@ -788,7 +793,7 @@ async def pay_or_rollback_general_settlement_applications(body: FinanceSettlemen
     )
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="当前角色没有结算付款权限")
-    application_ids = list(dict.fromkeys(body.application_ids))
+    application_ids = list(dict.fromkeys(body.application_ids)) + await adopt_legacy_settlements(body.projection_ids, identity, db)
     records = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.id.in_(application_ids),
         BusinessRecord.module == "finance_settlement",
@@ -871,6 +876,66 @@ async def pay_or_rollback_general_settlement_applications(body: FinanceSettlemen
         "status": target_status,
         "action": action,
     }
+
+
+WITHDRAWABLE_SETTLEMENT_STATUSES = {"待审批", "待付款", "部分付款", "已付款", "已拒绝", "已驳回", "已退回"}
+
+
+@router.post(f"{settings.api_prefix}/finance/general-settlements/applications/withdraw")
+async def withdraw_general_settlement_applications(body: FinanceSettlementWithdrawInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """回滚：按原系统把结算申请退回待结算（回款回到待提交），可从待审核、待付款、已付款、已拒绝办理。"""
+    from app.core.finance import _sync_case_commissions_for_links
+    from app.core.permissions import _settlement_application_scope
+    if identity.get("role") not in {"admin", "manager", "auditor"}:
+        raise HTTPException(status_code=403, detail="当前角色没有结算回滚权限")
+    comment = body.comment.strip()
+    if not comment:
+        raise HTTPException(status_code=422, detail="请输入回滚备注。")
+    application_ids = list(dict.fromkeys(body.application_ids)) + await adopt_legacy_settlements(body.projection_ids, identity, db)
+    records = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.id.in_(application_ids),
+        BusinessRecord.module == "finance_settlement",
+        *_settlement_application_scope(identity),
+        *settlement_center_conditions(identity),
+    ))).all())
+    if len(records) != len(application_ids):
+        raise HTTPException(status_code=404, detail="部分结算申请不存在或无权访问")
+    invalid = [record.serial_no for record in records if record.status not in WITHDRAWABLE_SETTLEMENT_STATUSES]
+    if invalid:
+        raise HTTPException(status_code=409, detail="结算申请当前状态不能回滚：" + "、".join(invalid))
+    archive_decisions = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "finance_archive_settlement",
+        BusinessRecord.status.in_({"已支付", "已拒绝"}),
+    ))).all())
+    blocked_ids = {int((decision.data or {}).get("source_application_id") or 0) for decision in archive_decisions} & set(application_ids)
+    # 原系统里归档费已支付的历史结算，归档费仍挂在原明细上，先不允许回滚结算。
+    blocked_ids |= {record.id for record in records if is_adopted(record) and any(
+        isinstance(detail, dict) and str(detail.get("source_status") or "") == "30"
+        for detail in (record.data or {}).get("allocation_details") or [])}
+    if blocked_ids:
+        blocked = [record.serial_no for record in records if record.id in blocked_ids]
+        raise HTTPException(status_code=409, detail="关联归档费已支付或已处理，请先回滚归档费再回滚结算：" + "、".join(blocked))
+    processed_at = datetime.now().isoformat(timespec="seconds")
+    paid_records = [record for record in records if record.status in {"已付款", "部分付款"}]
+    for record in records:
+        previous_status = record.status
+        record.status = "已撤回"
+        record.data = {**(record.data or {}), "rollback_by": identity["username"], "rollback_at": processed_at,
+                       "rollback_comment": comment, "rollback_from": previous_status}
+        db.add(WorkflowEvent(
+            record_id=record.id, action="回滚结算", from_status=previous_status, to_status="已撤回",
+            operator=identity["username"], comment=comment,
+        ))
+    source_fee_ids = {
+        int(detail.get("fee_id") or 0)
+        for record in paid_records
+        for detail in list((record.data or {}).get("allocation_details") or [])
+        if isinstance(detail, dict) and str(detail.get("fee_id") or "").isdigit()
+    } - {0}
+    if source_fee_ids:
+        await _sync_case_commissions_for_links(db, operator=identity["username"], source_fee_ids=source_fee_ids, comment="一般结算回滚")
+    await db.commit()
+    return {"withdrawn": len(records), "application_ids": application_ids, "status": "已撤回"}
 
 
 @router.get(f"{settings.api_prefix}/finance/general-settlements/export")

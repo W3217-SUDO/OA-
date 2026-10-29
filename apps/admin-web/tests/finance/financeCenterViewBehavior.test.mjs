@@ -503,7 +503,7 @@ test("main receipt cells read top-level allocations and real payment method with
   }
 });
 
-test("historical settlement actions open real legacy heads and never expose modern writes", async () => {
+test("historical archive settlement actions open real legacy heads and never expose modern writes", async () => {
   const source = fs.readFileSync(new URL("FinanceCenterPage.tsx", sourceRoot), "utf8");
   const tree = ts.createSourceFile("FinanceCenterPage.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const names = ["openHistoricalSettlement", "historicalSettlementOperation", "generalSettlementOperation", "archiveSettlementPendingOperation"];
@@ -526,7 +526,8 @@ test("historical settlement actions open real legacy heads and never expose mode
     exportPendingArchiveSettlements: async ids => { exports.push({ kind: "archive", ids }); },
     message: { error: value => errors.push(value) }, result: value => { actions = value; },
   });
-  for (const [name, id] of [["generalSettlementOperation", "legacy-normal:41"], ["archiveSettlementPendingOperation", "legacy-archive:71"]]) {
+  // 历史普通结算已改为与现代申请同样办理（BUG20261028009），这里只剩历史归档费。
+  for (const [name, id] of [["archiveSettlementPendingOperation", "legacy-archive:71"]]) {
     const row = { id, source: "legacy", read_only: true, legacy_record_id: 41, source_status: "30", data: {} };
     const view = actions[name](null, row);
     const buttons = nodes(view).filter(node => node.type === Button);
@@ -537,12 +538,12 @@ test("historical settlement actions open real legacy heads and never expose mode
     assert.equal(exports.at(-1).ids[0], id);
   }
   assert.deepEqual(errors, []);
-  actions.generalSettlementOperation(null, { id: "legacy-normal:999", source: "legacy", read_only: true, data: {} }).props.children[0].props.onClick();
-  assert.equal(reads.length, 2);
+  actions.archiveSettlementPendingOperation(null, { id: "legacy-archive:999", source: "legacy", read_only: true, data: {} }).props.children[0].props.onClick();
+  assert.equal(reads.length, 1);
   assert.match(errors[0], /缺少有效的来源头记录/);
 });
 
-test("settlement tables disable historical selection and keep query export reachable", () => {
+test("settlement tables select historical normal rows, disable historical archive rows and keep query export reachable", () => {
   const noView = () => null;
   const { FinanceOriginalRoutesView } = loadFinanceModule("FinanceOriginalRoutesView.tsx", {
     "./constants": loadFinanceModule("constants.ts"), "./financeErrors": {},
@@ -565,10 +566,10 @@ test("settlement tables disable historical selection and keep query export reach
       generalSettlementDetails: [], selectedOriginalRows: [], setSelectedOriginalRows: keys => { selected = keys; },
     });
     const table = nodes(view).find(node => node.type === Table);
-    assert.equal(table.props.rowSelection.getCheckboxProps(historical).disabled, true);
+    assert.equal(table.props.rowSelection.getCheckboxProps(historical).disabled, archive);
     assert.equal(table.props.rowSelection.getCheckboxProps(modern).disabled, false);
     table.props.rowSelection.onChange([8, historical.id]);
-    assert.deepEqual(Array.from(selected), [8]);
+    assert.deepEqual(Array.from(selected), archive ? [8] : [8, historical.id]);
     if (archive) assert.ok(nodes(view).some(node => node.type === Button && node.props.children === "导出查询结果"));
   }
 });

@@ -3,7 +3,7 @@ import type { FormInstance } from "antd/es/form/hooks/useForm";
 import dayjs from "dayjs";
 import { financeCenterApi } from "./financeCenterApi";
 import type { FinanceScope, SettlementRow } from "../types";
-import { requireWritableSettlements, settlementExportIds, settlementSourceCounts } from "../settlementIdentity";
+import { requireWritableSettlements, settlementExportIds, settlementSourceCounts, settlementTargets } from "../settlementIdentity";
 import type { FinanceActionGate } from "../../financeActionGate.mjs";
 import { normalizeSettlementContextRows, settlementContextPageSize, settlementContextTasksRequest } from "../constants";
 import { financeDownloadErrorDetail, financeErrorMessageText } from "../financeErrors";
@@ -246,7 +246,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
         setGeneralSettlementBusy(true);
         try {
             const response = await api.post("/finance/general-settlements/applications/review", {
-                application_ids: generalSettlementReviewTargets.map((row) => row.id),
+                ...settlementTargets(generalSettlementReviewTargets),
                 approved: generalSettlementReviewApproved,
                 comment: generalSettlementReviewComment,
             });
@@ -275,7 +275,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
         requireWritableSettlements(generalSettlementPaymentTargets);
         if (generalSettlementPaymentAction === "rollback" &&
             !generalSettlementPaymentComment.trim()) {
-            message.warning("请输入回退备注。");
+            message.warning("请输入回滚备注。");
             return;
         }
         if (!financeActionGates.generalSettlement.tryEnter()) {
@@ -284,14 +284,20 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
         }
         setGeneralSettlementBusy(true);
         try {
-            const response = await api.post("/finance/general-settlements/applications/payment", {
-                application_ids: generalSettlementPaymentTargets.map((row) => row.id),
-                action: generalSettlementPaymentAction,
-                comment: generalSettlementPaymentComment,
-            });
+            // 回滚按原系统退回待结算；标记已支付走付款接口。
+            const response = generalSettlementPaymentAction === "paid"
+                ? await api.post("/finance/general-settlements/applications/payment", {
+                    ...settlementTargets(generalSettlementPaymentTargets),
+                    action: "paid",
+                    comment: generalSettlementPaymentComment,
+                })
+                : await api.post("/finance/general-settlements/applications/withdraw", {
+                    ...settlementTargets(generalSettlementPaymentTargets),
+                    comment: generalSettlementPaymentComment,
+                });
             message.success(generalSettlementPaymentAction === "paid"
                 ? `已标记 ${response.data.processed} 条结算为已支付`
-                : `已回退 ${response.data.processed} 条结算`);
+                : `已回滚 ${response.data.withdrawn} 条结算，已退回待结算`);
             setGeneralSettlementPaymentTargets([]);
             setGeneralSettlementPaymentComment("");
             setSelectedOriginalRows([]);
@@ -323,7 +329,7 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
         setGeneralSettlementBusy(true);
         try {
             const response = await api.post("/finance/general-settlements/applications/reapply", {
-                application_ids: generalSettlementReapplyTargets.map((row) => row.id),
+                ...settlementTargets(generalSettlementReapplyTargets),
                 comment: generalSettlementReapplyComment,
             });
             message.success(`已重新申请 ${response.data.reapplied} 条结算`);

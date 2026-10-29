@@ -24,11 +24,22 @@ export function isHistoricalSettlement(row: HistoricalSettlementIdentity): boole
   return row.source === "legacy" || row.historical === true || row.read_only === true;
 }
 
-/** 历史投影标识不能进入现代审批、付款或撤回请求。 */
+/** 历史归档费投影仍只读；历史普通结算（legacy-normal）由后端在办理时承接为现代申请（BUG20261028009）。 */
 export function requireWritableSettlements(rows: ArchiveSettlementTarget[]): void {
-  if (rows.some(row => isHistoricalSettlement(row) || /^legacy-(normal|archive):/.test(String(row.id)))) {
-    throw new Error("历史结算记录只读，不能办理审批、支付、回退、重提或删除");
+  if (rows.some(row => /^legacy-archive:/.test(String(row.id)) || (isHistoricalSettlement(row) && !/^legacy-normal:[1-9]\d*$/.test(String(row.id))))) {
+    throw new Error("历史归档费记录只读，不能办理审批、支付、回退、重提或删除");
   }
+}
+
+/** 普通结算办理目标：现代申请编号与历史结算编号分开提交。 */
+export function settlementTargets(rows: { id: string | number }[]) {
+  const application_ids: number[] = [];
+  const projection_ids: string[] = [];
+  for (const row of rows) {
+    if (typeof row.id === "string" && /^legacy-normal:[1-9]\d*$/.test(row.id)) projection_ids.push(row.id);
+    else application_ids.push(Number(row.id));
+  }
+  return { application_ids, projection_ids };
 }
 
 export function settlementExportIds(ids: (string | number)[], modernKey: "ids" | "application_ids") {

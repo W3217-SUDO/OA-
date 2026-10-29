@@ -125,6 +125,7 @@ from app.api_schemas.finance import (
     FinanceSettlementReviewInput as FinanceSettlementReviewInput,
     FinanceSettlementPaymentInput as FinanceSettlementPaymentInput,
     FinanceSettlementReapplyInput as FinanceSettlementReapplyInput,
+    FinanceSettlementWithdrawInput as FinanceSettlementWithdrawInput,
     ArchiveSettlementPaymentReviewInput as ArchiveSettlementPaymentReviewInput,
     ArchiveSettlementRollbackInput as ArchiveSettlementRollbackInput,
     ArchiveSettlementRejectedActionInput as ArchiveSettlementRejectedActionInput,

@@ -3,7 +3,7 @@
 from typing import Literal
 
 from fastapi import Depends, HTTPException, Query, Request
-from sqlalchemy import Integer, String, and_, case, cast, func, inspect, literal, or_, select, union_all
+from sqlalchemy import Integer, String, and_, case, cast, exists, func, inspect, literal, or_, select, union_all
 from sqlalchemy.orm import aliased, with_expression
 
 from app.database import get_db
@@ -77,12 +77,22 @@ def _incoming_source_relation():
     )
 
 
+def reopened_legacy_settlement():
+    """历史结算在新系统回滚（承接的申请已撤回）后按原系统回到待提交，重新进入待结算。"""
+    return exists(select(BusinessRecord.id).where(
+        BusinessRecord.module == "finance_settlement", BusinessRecord.status == "已撤回",
+        BusinessRecord.data["legacy_projection_id"].as_string().is_not(None),
+        BusinessRecord.data["receipt_id"].as_integer() == IncomingPayment.id,
+    ))
+
+
 def incoming_settlement_candidates(identity, *, receipt_ids=None):
     # 先保留原来源唯一性判定，再筛候选；不能先筛状态而把重复旧头变成唯一。
     statement = select(
         IncomingPayment.id.label("receipt_id"), LEGACY_INCOMING_SOURCE.c.source_header_id,
     ).join(LEGACY_INCOMING_SOURCE, _incoming_source_relation()).where(
-        LEGACY_INCOMING_SOURCE.c.settlement_status == "5", *incoming_center_conditions(identity),
+        or_(LEGACY_INCOMING_SOURCE.c.settlement_status == "5", reopened_legacy_settlement()),
+        *incoming_center_conditions(identity),
     )
     if receipt_ids is not None:
         statement = statement.where(IncomingPayment.id.in_(receipt_ids))

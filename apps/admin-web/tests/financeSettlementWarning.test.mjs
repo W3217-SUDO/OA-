@@ -72,8 +72,8 @@ test('invoice-specific click validation remains intact', () => {
 });
 
 test('historical selected fees retain the real readonly guard and never open a write dialog', () => {
-  const state = setup([{ id: 'legacy-normal:41', source: 'legacy', read_only: true, data: { case_id: 1 } }], [{ id: 1 }]);
+  const state = setup([{ id: 'legacy-archive:41', source: 'legacy', read_only: true, data: { case_id: 1 } }], [{ id: 1 }]);
   state.openSettlementBatch();
-  assert.deepEqual(state.warnings, ['历史结算记录只读，不能办理审批、支付、回退、重提或删除']);
+  assert.deepEqual(state.warnings, ['历史归档费记录只读，不能办理审批、支付、回退、重提或删除']);
   assert.deepEqual(state.calls, []);
 });

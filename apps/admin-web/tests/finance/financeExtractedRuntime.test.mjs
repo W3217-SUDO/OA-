@@ -216,12 +216,16 @@ test("legacy history list summary and detail carry the explicit center without r
   }
 });
 
-test("historical settlement identities cannot enter any modern settlement write action", async () => {
+test("historical normal settlements are writable through projection ids while archive history stays read-only", async () => {
   const identity = loadModule("settlementIdentity.ts", {});
   const historical = { id: "legacy-normal:41", source: "legacy", read_only: true, legacy_record_id: 41 };
   assert.equal(identity.isHistoricalSettlement(historical), true);
-  assert.throws(() => identity.requireWritableSettlements([historical]), /历史结算记录只读/);
-  assert.throws(() => identity.requireWritableSettlements([{ id: "legacy-archive:71" }]), /历史结算记录只读/);
+  identity.requireWritableSettlements([historical, { id: 8 }]);  // BUG20261028009：后端办理时承接
+  assert.deepEqual(JSON.parse(JSON.stringify(identity.settlementTargets([{ id: 8 }, historical]))), {
+    application_ids: [8], projection_ids: ["legacy-normal:41"],
+  });
+  assert.throws(() => identity.requireWritableSettlements([{ id: "legacy-archive:71" }]), /历史归档费记录只读/);
+  assert.throws(() => identity.requireWritableSettlements([{ id: 9, source: "legacy", read_only: true }]), /历史归档费记录只读/);
   identity.requireWritableSettlements([{ id: 8 }, { id: "archive:8:2" }]);
   assert.deepEqual(JSON.parse(JSON.stringify(identity.settlementExportIds([8, "legacy-normal:41", "legacy-archive:71"], "application_ids"))), {
     application_ids: "8", projection_ids: "legacy-normal:41,legacy-archive:71",
@@ -235,14 +239,12 @@ test("historical settlement identities cannot enter any modern settlement write 
   const gate = { tryEnter: () => { gates += 1; return true; } };
   const actions = createFinanceSettlementsActions({
     financeScope: "firm", financeActionGates: { generalSettlement: gate, archiveSettlement: gate },
-    generalSettlementReviewTargets: [historical], generalSettlementPaymentTargets: [historical],
-    generalSettlementReapplyTargets: [historical], generalSettlementApplyTargets: [historical.id],
     archiveSettlementReviewTargets: [{ id: "legacy-archive:71" }],
     archiveSettlementRollbackTargets: [{ id: "legacy-archive:71" }],
     archiveSettlementReapplyTargets: [{ id: "legacy-archive:71" }],
   });
-  for (const name of ["submitGeneralSettlementReview", "submitGeneralSettlementPayment", "submitGeneralSettlementReapply", "submitGeneralSettlementApply", "submitArchiveSettlementReview", "submitArchiveSettlementRollback", "submitArchiveSettlementReapply"]) {
-    await assert.rejects(actions[name](), /历史结算记录只读/);
+  for (const name of ["submitArchiveSettlementReview", "submitArchiveSettlementRollback", "submitArchiveSettlementReapply"]) {
+    await assert.rejects(actions[name](), /历史归档费记录只读/);
   }
   assert.equal(writes, 0);
   assert.equal(gates, 0);

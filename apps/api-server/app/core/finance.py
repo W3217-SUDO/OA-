@@ -2908,7 +2908,9 @@ async def _general_settlement_rows(
     from app.core.system import (
         _allowed_field_keys,
     )
-    from app.core.finance_centers import incoming_center_conditions, incoming_settlement_candidates, LEGACY_INCOMING_SOURCE
+    from app.core.finance_centers import (
+        incoming_center_conditions, incoming_settlement_candidates, reopened_legacy_settlement, LEGACY_INCOMING_SOURCE,
+    )
     candidates = incoming_settlement_candidates(identity, receipt_ids=receipt_ids) if not receipt_detail else None
     if candidates is not None:
         legacy_header_ids = select(candidates.c.source_header_id)
@@ -2929,6 +2931,7 @@ async def _general_settlement_rows(
         payment_query = payment_query.where(or_(
             IncomingPayment.source_kind != "hz_crm_20260930",
             LEGACY_INCOMING_SOURCE.c.settlement_status == "5",
+            reopened_legacy_settlement(),
         )).where(IncomingPayment.id.in_(eligible_receipt_ids))
     if receipt_ids is not None:
         payment_query = payment_query.where(IncomingPayment.id.in_(receipt_ids))
@@ -3058,14 +3061,14 @@ async def _general_settlement_rows(
     }
     rejection_by_receipt: dict[int, str] = {}
     for record in sorted(settlement_records, key=lambda record: (
-        str(((record.data or {}).get("rollback_at") if record.status == "已退回" else (record.data or {}).get("reviewed_at")) or record.updated_at or record.created_at), record.id
+        str(((record.data or {}).get("rollback_at") if record.status in {"已退回", "已撤回"} else (record.data or {}).get("reviewed_at")) or record.updated_at or record.created_at), record.id
     ), reverse=True):
         receipt_id = int((record.data or {}).get("receipt_id") or 0)
         if receipt_id and record.status in inactive_statuses and receipt_id not in rejection_by_receipt:
             data = record.data or {}
             rejection_by_receipt[receipt_id] = str(
                 (data.get("rollback_comment") or data.get("rejection_comment") or "")
-                if record.status == "已退回" else (data.get("review_comment") or record.description or "")
+                if record.status in {"已退回", "已撤回"} else (data.get("review_comment") or record.description or "")
             )
 
     consumed_by_fee: dict[int, float] = {}
@@ -3321,6 +3324,9 @@ async def _pending_archive_settlement_rows(
         *_settlement_application_scope(identity),
         *settlement_center_conditions(identity),
     ).order_by(BusinessRecord.id.asc()))).all())
+    # 承接时原系统已付款的历史结算，归档费仍按原系统明细（历史归档投影）办理，不在这里重复生成。
+    records = [record for record in records if (record.data or {}).get("legacy_source_status") != "25"
+               or not (record.data or {}).get("legacy_projection_id")]
     details = [
         detail
         for record in records

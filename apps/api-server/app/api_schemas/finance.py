@@ -512,20 +512,35 @@ class FinanceSettlementApplyInput(BaseModel):
     comment: str = ""
 
 
-class FinanceSettlementReviewInput(BaseModel):
-    application_ids: list[int] = Field(min_length=1, max_length=100)
+class _SettlementTargetsInput(BaseModel):
+    """现代申请编号与历史结算投影编号（legacy-normal:回款头）二选一或混合，合计至少一条。"""
+    application_ids: list[int] = Field(default_factory=list, max_length=100)
+    projection_ids: list[str] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def _require_targets(self):
+        if not self.application_ids and not self.projection_ids:
+            raise ValueError("请选择结算申请")
+        if len(self.application_ids) + len(self.projection_ids) > 100:
+            raise ValueError("一次最多处理 100 条结算申请")
+        return self
+
+
+class FinanceSettlementReviewInput(_SettlementTargetsInput):
     approved: bool
     comment: str = Field(default="", max_length=2000)
 
 
-class FinanceSettlementPaymentInput(BaseModel):
-    application_ids: list[int] = Field(min_length=1, max_length=100)
+class FinanceSettlementPaymentInput(_SettlementTargetsInput):
     action: str = Field(pattern="^(paid|rollback)$")
     comment: str = Field(default="", max_length=2000)
 
 
-class FinanceSettlementReapplyInput(BaseModel):
-    application_ids: list[int] = Field(min_length=1, max_length=100)
+class FinanceSettlementReapplyInput(_SettlementTargetsInput):
+    comment: str = Field(min_length=1, max_length=2000)
+
+
+class FinanceSettlementWithdrawInput(_SettlementTargetsInput):
     comment: str = Field(min_length=1, max_length=2000)
 
 

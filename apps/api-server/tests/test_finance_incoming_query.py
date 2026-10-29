@@ -851,6 +851,87 @@ class SQLiteIncomingQueryTest(RawIncomingBundleAssertions, IncomingQueryAssertio
             self.assertEqual(await db.scalar(select(func.count(BusinessRecord.id)).where(
                 BusinessRecord.module.in_(("finance_settlement", "finance_archive_settlement")))), 0)
 
+    async def test_historical_normal_settlement_is_adopted_reviewed_paid_and_rolled_back(self):
+        """BUG20261028009：历史只读结算可审核、支付、回滚，办理时按原快照转成现代申请，同一回款只承接一次。"""
+        from fastapi import HTTPException
+        from app.models import WorkflowEvent
+        from app.models_shared import (
+            FinanceSettlementPaymentInput, FinanceSettlementReviewInput, FinanceSettlementWithdrawInput,
+        )
+        from app.areas.finance.settlements import (
+            list_general_settlement_applications, pay_or_rollback_general_settlement_applications,
+            review_general_settlement_applications, withdraw_general_settlement_applications,
+        )
+
+        async with self.sessions() as db:
+            header, line, _, payment = await self._seed_legacy_settlement_page(db)
+            identity = {"username": "admin", "role": "admin", "_finance_scope": "firm"}
+            header.source_payload = {**header.source_payload, "SettlementStatus": 10}
+            await db.commit()
+            projection_id = f"legacy-normal:{header.id}"
+            reviewed = await review_general_settlement_applications(FinanceSettlementReviewInput(
+                projection_ids=[projection_id], approved=True, comment="同意"), identity=identity, db=db)
+            self.assertEqual(reviewed["status"], "待付款")
+            application_id = reviewed["application_ids"][0]
+            record = await db.get(BusinessRecord, application_id)
+            self.assertEqual(record.data["legacy_projection_id"], projection_id)
+            self.assertEqual(record.data["legacy_source_status"], "10")
+            self.assertEqual(record.data["receipt_id"], payment.id)
+            self.assertEqual(record.data["allocation_details"][0]["line_id"], line.id)
+            self.assertEqual((await list_general_settlement_applications(
+                application_status="待审批", identity=identity, db=db, page=1, page_size=10))["total"], 0)
+            pending_payment = await list_general_settlement_applications(
+                application_status="待付款", identity=identity, db=db, page=1, page_size=10)
+            self.assertEqual([item["id"] for item in pending_payment["items"]], [application_id])
+            with self.assertRaises(HTTPException) as repeated:
+                await review_general_settlement_applications(FinanceSettlementReviewInput(
+                    projection_ids=[projection_id], approved=True), identity=identity, db=db)
+            self.assertEqual(repeated.exception.status_code, 409)
+            await db.rollback()
+            paid = await pay_or_rollback_general_settlement_applications(FinanceSettlementPaymentInput(
+                application_ids=[application_id], action="paid"), identity=identity, db=db)
+            self.assertEqual(paid["status"], "已付款")
+            record = await db.get(BusinessRecord, application_id)
+            details = record.data["allocation_details"]
+            if details[0].get("source_status") != "30":
+                record.data = {**record.data, "allocation_details": [{**details[0], "source_status": "30"}, *details[1:]]}
+                await db.commit()
+            with self.assertRaises(HTTPException) as archive_paid:  # 原系统归档费已支付，先回滚归档费
+                await withdraw_general_settlement_applications(FinanceSettlementWithdrawInput(
+                    application_ids=[application_id], comment="分配有误"), identity=identity, db=db)
+            self.assertEqual(archive_paid.exception.status_code, 409)
+            await db.rollback()
+            record = await db.get(BusinessRecord, application_id)
+            record.data = {**record.data, "allocation_details": [
+                {**detail, "source_status": "20"} for detail in record.data["allocation_details"]]}
+            await db.commit()
+            withdrawn = await withdraw_general_settlement_applications(FinanceSettlementWithdrawInput(
+                application_ids=[application_id], comment="分配有误"), identity=identity, db=db)
+            self.assertEqual(withdrawn["status"], "已撤回")
+            for status in ("待审批", "待付款", "已付款", "已拒绝"):
+                self.assertEqual((await list_general_settlement_applications(
+                    application_status=status, identity=identity, db=db, page=1, page_size=10))["total"], 0)
+            actions = (await db.scalars(select(WorkflowEvent.action).where(
+                WorkflowEvent.record_id == application_id).order_by(WorkflowEvent.id))).all()
+            self.assertEqual(actions, ["承接历史结算", "同意结算", "标记已支付", "回滚结算"])
+
+    async def test_historical_settlement_rollback_requires_comment_and_role(self):
+        from pydantic import ValidationError
+        from fastapi import HTTPException
+        from app.models_shared import FinanceSettlementWithdrawInput
+        from app.areas.finance.settlements import withdraw_general_settlement_applications
+
+        with self.assertRaises(ValidationError):
+            FinanceSettlementWithdrawInput(projection_ids=["legacy-normal:1"], comment="")
+        with self.assertRaises(ValidationError):
+            FinanceSettlementWithdrawInput(comment="无目标")
+        async with self.sessions() as db:
+            with self.assertRaises(HTTPException) as denied:
+                await withdraw_general_settlement_applications(FinanceSettlementWithdrawInput(
+                    projection_ids=["legacy-normal:1"], comment="回滚"),
+                    identity={"username": "u", "role": "user", "_finance_scope": "firm"}, db=db)
+            self.assertEqual(denied.exception.status_code, 403)
+
     async def test_imported_archive_rules_use_raw_phase_and_keep_unknown_out_of_payment(self):
         from app.core.imported_settlement_projection import read_imported_settlement_page
 
@@ -1507,6 +1588,32 @@ class SQLiteIncomingQueryTest(RawIncomingBundleAssertions, IncomingQueryAssertio
             self.assertEqual(counts["unmapped_legacy_status_total"], 1)
             self.assertEqual({row["source_status"]: row["count"] for row in counts["legacy_source_statuses"]},
                 {"5": 1, "25": 1, None: 1})
+
+    async def test_rolled_back_historical_settlement_returns_to_pending(self):
+        """BUG20261028009：历史结算在新系统回滚（承接申请已撤回）后按原系统回到待结算，其他已付款历史仍不进入。"""
+        from app.models import LegacyFinanceRecord
+        from app.core.finance import _general_settlement_rows
+
+        async with self.sessions() as db:
+            for number in (61, 62):
+                db.add(LegacyFinanceRecord(source_table="FAM_AR_Payment", legacy_id=str(number),
+                    record_kind="ar_payment", primary_amount=10, source_payload={
+                        "PaymentId": str(number), "GroupId": 10, "SettlementStatus": "25"}))
+                db.add(IncomingPayment(source_kind="hz_crm_20260930", receipt_no=f"HZ-RCPT-{number}",
+                    received_date=date(2026, 10, 16), amount=10, allocated_amount=10,
+                    payer_name="独立测试", claimed_customer="独立测试客户", operator="admin",
+                    status="已分配", allocations=[{"amount": 10, "settlement_items": [{
+                        "fee_type": "代理费", "amount": 10, "settlement_amount": 8, "archive_fee": 1}]}]))
+            await db.flush()
+            rolled_back = await db.scalar(select(IncomingPayment).where(IncomingPayment.receipt_no == "HZ-RCPT-61"))
+            db.add(BusinessRecord(module="finance_settlement", serial_no="JS-ADOPTED-61", title="承接", customer="", owner="admin",
+                status="已撤回", data={"receipt_id": rolled_back.id, "legacy_projection_id": "legacy-normal:1",
+                                     "legacy_source_status": "25", "rollback_comment": "分配有误"}))
+            await db.commit()
+            identity = {"username": "admin", "role": "admin", "_finance_scope": "firm"}
+            rows = await _general_settlement_rows(identity, db)
+            self.assertEqual([row["serial_no"] for row in rows], ["HZ-RCPT-61"])
+            self.assertEqual(rows[0]["data"]["rejection_comment"], "分配有误")
 
     async def test_header_method_never_uses_bank_source_or_allocation_method(self):
         from app.core.finance import _incoming_payment_legacy_summary

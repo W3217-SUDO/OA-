@@ -2250,8 +2250,8 @@ function FinanceCenterContent({
     setGeneralSettlementReapplyTargets(targets);
   };
 
+  // 历史普通结算与现代申请同样办理（BUG20261028009），办理时由后端承接。
   const generalSettlementOperation = (_: unknown, sourceRow: SettlementRow) => {
-    if (isHistoricalSettlement(sourceRow)) return historicalSettlementOperation(sourceRow);
     const row = sourceRow as Fee;
     return (
     <Space size={0} className="finance-settlement-row-actions">
@@ -2303,20 +2303,32 @@ function FinanceCenterContent({
       )}
       <Button
         type="link"
-        title="导出结算清单"
-        aria-label="导出结算清单"
+        title="导出结算提成表"
+        aria-label="导出结算提成表"
         icon={<BookOutlined />}
         onClick={() => void exportGeneralSettlement("settlement", [row.id])}
       />
+      {isGeneralSettlementAuditRoute && (
+        <Button
+          type="link"
+          danger
+          title="拒绝结算"
+          aria-label="拒绝结算"
+          icon={<DeleteOutlined />}
+          onClick={() => openGeneralSettlementReview([row], false)}
+        />
+      )}
+      {!isGeneralSettlementPendingRoute && (
+        <Button
+          type="link"
+          title="回滚结算（退回待结算）"
+          aria-label="回滚结算"
+          icon={<RollbackOutlined />}
+          onClick={() => openGeneralSettlementPayment([row], "rollback")}
+        />
+      )}
       {(isGeneralSettlementPaymentRoute || isGeneralSettlementPaidRoute) && (
         <>
-          <Button
-            type="link"
-            title="回退结算"
-            aria-label="回退结算"
-            icon={<RollbackOutlined />}
-            onClick={() => openGeneralSettlementPayment([row], "rollback")}
-          />
           {isGeneralSettlementPaymentRoute && (
             <Button
               type="link"
@@ -3402,7 +3414,7 @@ function FinanceCenterContent({
     90, 180, 220, 220, 130, 220, 130, 130, 140, 140, 140, 140, 140, 120,
   ];
   const generalSettlementColumnWidths = [
-    80, 160, 104, 176, 104, 96, 96, 96, 96, 96, 96, 96, 96, 96,
+    116, 160, 104, 176, 104, 96, 96, 96, 96, 96, 96, 96, 96, 96,
     17,
   ];
   const archiveSettlementColumnWidths = [

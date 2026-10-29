@@ -2,7 +2,6 @@ import { Button, Space } from "antd";
 import Table from "../components/ResizableTable";
 import { displayFinancialValue, displayFeeValue } from "../financialValueDisplay";
 import type { SettlementRow, SettlementAllocationDetail } from "./types";
-import { isHistoricalSettlement } from "./settlementIdentity";
 
 export interface GeneralSettlementExpandedRowProps {
   row: SettlementRow;
@@ -131,7 +130,7 @@ export function GeneralSettlementExpandedRow({
               width: 96,
               render: (_v, detail: SettlementAllocationDetail) => (
                 <Space size={0}>
-                  {!isHistoricalSettlement(row) && <Button type="link" title="新建案件任务" onClick={() => openCaseTaskCreate(detail)}>✉</Button>}
+                  <Button type="link" title="新建案件任务" onClick={() => openCaseTaskCreate(detail)}>✉</Button>
                   <Button type="link" title="导出结算清单" onClick={() => void exportGeneralSettlement("settlement", [row.id])}>▣</Button>
                   <Button type="link" title="导出结算列表" onClick={() => void exportGeneralSettlement("case", [row.id])}>▦</Button>
                 </Space>

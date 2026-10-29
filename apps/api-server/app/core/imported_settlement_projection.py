@@ -141,6 +141,11 @@ async def _source_query(identity, db, mode, statuses, filters):
         visible_legacy_amounts = legacy_assigned_amounts(header_ids=amount_header_ids)
     modern = exists(select(BusinessRecord.id).where(BusinessRecord.module == "finance_settlement",
         BusinessRecord.status != "已删除", BusinessRecord.data["receipt_id"].as_integer() == receipts.c.receipt_id))
+    # 归档费明细：承接时原系统已付款的历史结算仍按原明细显示，直到在新系统回滚（已撤回）。
+    adopted_paid = and_(BusinessRecord.data["legacy_source_status"].as_string() == "25", BusinessRecord.status != "已撤回")
+    archive_modern = exists(select(BusinessRecord.id).where(BusinessRecord.module == "finance_settlement",
+        BusinessRecord.status != "已删除", BusinessRecord.data["receipt_id"].as_integer() == receipts.c.receipt_id,
+        or_(BusinessRecord.data["legacy_projection_id"].as_string().is_(None), ~adopted_paid)))
     common = {"header_id": head.id, "receipt_id": receipts.c.receipt_id, "receipt_no": receipts.c.receipt_no,
         "has_local_allocation_activity": receipts.c.has_local_allocation_activity,
         "header_legacy_id": head.legacy_id,
@@ -197,7 +202,7 @@ async def _source_query(identity, db, mode, statuses, filters):
             "status": literal({"pending": "待归档", "payment": "待支付", "paid": "已支付", "rejected": "已拒绝"}[mode]),
             "receipt_amount": amount, "archive_fee_amount": _money(obj, "ArchiveAmount"), "phase": phase})
         query = line_from.with_only_columns(*(value.label(key) for key, value in common.items())).where(
-            relation, ~modern, _text(obj, "IsActived") == "T",
+            relation, ~archive_modern, _text(obj, "IsActived") == "T",
             _text(original_fee.source_payload, "IsActived") == "T", original_fee.is_active.is_(True))
         archive_state = _text(obj, "ArchiveAmountSettlementStatus")
         if mode == "pending":
@@ -413,6 +418,11 @@ async def read_imported_settlement_page(modern_rows, identity, db, *, mode, stat
                 "page_size": page_size,
             }
 
+    if mode == "normal" and projection_ids is not None:
+        # 指定历史普通结算（导出、办理承接）只展开这些回款头，不再先投影全部历史再筛选。
+        header_ids = [int(str(item).split(":", 1)[1]) for item in projection_ids
+                      if str(item).startswith("legacy-normal:") and str(item).split(":", 1)[1].isdigit()]
+        filters = {**filters, "_projection_header_ids": header_ids or [0]}
     query, details = await _source_query(identity, db, mode, statuses, filters)
     if mode in {"pending", "payment", "paid", "rejected"}:
         # 归档投影的基础关联非常重，原实现会为未知状态、未知阶段、未知日期、

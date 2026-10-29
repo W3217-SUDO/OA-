@@ -165,7 +165,7 @@ export function SettlementReviewModals({
         title={
           generalPaymentAction === "paid"
             ? "标记已支付"
-            : "回退结算"
+            : "回滚结算（退回待结算）"
         }
         okText="提交"
         cancelText="取消"
@@ -177,7 +177,7 @@ export function SettlementReviewModals({
         <label className="finance-settlement-review-field">
           <span>
             {generalPaymentAction === "rollback"
-              ? "回退备注:"
+              ? "回滚备注:"
               : "备注:"}
           </span>
           <Input
