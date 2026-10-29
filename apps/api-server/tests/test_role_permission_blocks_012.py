@@ -153,7 +153,8 @@ class RolePermissionBlocksTest(unittest.IsolatedAsyncioTestCase):
                  SystemMenu(id=6, key="customer-mine", label="我的客户", parent_key="")]
         tree = _organization_permission_tree(menus, ["客户修改", "费用申请", "合同付款申请"], {"action:finance.internal.review.approve"})
         nodes = {node["key"]: node["children"] for node in tree}
-        self.assertEqual(nodes["menu:finance-payment-audit"], [])
+        # 请款单审批只有“审批”（同意/拒绝），没有编辑、删除费用。
+        self.assertEqual([c["title"] for c in nodes["menu:finance-payment-audit"]], ["审批（同意）", "审批（拒绝）"])
         # 左侧菜单不显示的页面不在角色权限里。
         self.assertNotIn("menu:finance-jar", nodes)
         self.assertEqual(nodes["menu:system-parameters-court"], [])

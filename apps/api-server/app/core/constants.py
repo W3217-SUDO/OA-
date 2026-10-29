@@ -1043,8 +1043,8 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
         )
     definitions.extend([
         {"code": "conflict.review.approve", "menu_key": "customer-conflict", "label": "利益冲突审批"},
-        {"code": INTERNAL_REVIEW_APPROVE_ACTION, "menu_key": "finance-internal-audit", "label": "内部费用审批通过"},
-        {"code": INTERNAL_REVIEW_REJECT_ACTION, "menu_key": "finance-internal-audit", "label": "内部费用审批拒绝"},
+        {"code": INTERNAL_REVIEW_APPROVE_ACTION, "menu_key": "finance-internal-audit", "label": "审批（同意）"},
+        {"code": INTERNAL_REVIEW_REJECT_ACTION, "menu_key": "finance-internal-audit", "label": "审批（拒绝）"},
         *({"code": code, "menu_key": "case-mine", "label": label} for code, label in (
             ("case.detail.update", "修改案件基本信息"), ("case.court.update", "修改案件法院信息"),
             ("case.notary.update", "修改案件公证信息"), ("case.litigants.update", "修改案件当事人"),
@@ -1110,8 +1110,9 @@ ROLE_TREE_HIDDEN_MENU_KEYS = frozenset({
 })
 # 同一个功能控制多个页面的按钮时，角色权限里在这些页面下都显示（同一开关，勾一处各处同步）。
 ROLE_TREE_ACTION_ALSO_MENUS = {
-    INTERNAL_REVIEW_APPROVE_ACTION: ("finance-internal-fee-audit", "finance-internal-refund-audit"),
-    INTERNAL_REVIEW_REJECT_ACTION: ("finance-internal-fee-audit", "finance-internal-refund-audit"),
+    # 请款单审批、内部提成-待归档、内部费用三个待审核页面的“审批”按钮（同意/拒绝）都认这一组开关。
+    INTERNAL_REVIEW_APPROVE_ACTION: ("finance-payment-audit", "finance-internal-archive", "finance-internal-fee-audit", "finance-internal-refund-audit"),
+    INTERNAL_REVIEW_REJECT_ACTION: ("finance-payment-audit", "finance-internal-archive", "finance-internal-fee-audit", "finance-internal-refund-audit"),
 }
 
 _CASE_GROUP_MEMBER_CODES = frozenset(code for _label, members in CASE_ROLE_GROUPS.values() for code in members)
