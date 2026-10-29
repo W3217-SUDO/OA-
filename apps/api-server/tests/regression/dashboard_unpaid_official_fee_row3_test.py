@@ -104,7 +104,12 @@ class DashboardUnpaidOfficialFeeRow3Test(unittest.IsolatedAsyncioTestCase):
             clicked_rows = await _fee_query_rows(
                 IDENTITY, db, scope="mine", unpaid_official=True,
             )
-            result = await dashboard(IDENTITY, db, section="metrics")
+            # 律师（不能打开请款单审批）仍按本人案件未缴官费计数（BUG20261028003 只改能打开请款单审批的人）。
+            from unittest.mock import patch
+            async def lawyer_menus(*_args, **_kwargs):
+                return {"menu_keys": ["case-mine", "finance-fee-query"]}
+            with patch("app.core.permissions._permission_payload_for_identity", lawyer_menus):
+                result = await dashboard(IDENTITY, db, section="metrics")
         clicked_response = await self.client.get(
             f"{settings.api_prefix}/finance/fees/query",
             params={"dashboard_queue": "official-fee-unpaid", "scope": "mine"},

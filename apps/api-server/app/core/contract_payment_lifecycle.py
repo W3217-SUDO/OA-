@@ -282,13 +282,10 @@ def payment_query_amount(record, dialect):
     return cast(func.nullif(value, ""), Float)
 
 
-async def query_payments(filters, identity, db):
-    from sqlalchemy import String, and_, case, cast, func, or_
-    from app.core.permissions import _record_scope_conditions, _require_record_module_menu
-    from app.core.system import _allowed_field_keys
-    from app.core.contracts import _contract_customer_record_dicts
+def payment_application_fee_condition():
+    """请款列表里的费用行：外部费用，且真实提交过付款申请（旧系统 ap_payment 或本系统提交过）。"""
+    from sqlalchemy import and_, func, or_
     from app.core.internal_requests import external_finance_condition
-    await _require_record_module_menu("finance", identity, db, action="查询请款")
     record = BusinessRecord
     data = record.data
     legacy_kind = func.coalesce(data["legacy_kind"].as_string(), "")
@@ -300,13 +297,25 @@ async def query_payments(filters, identity, db):
             WorkflowEvent.action == "提交费用付款申请",
         ).exists(),
     )
-    conditions = [or_(record.module == "contract_payment", and_(
+    return and_(
         record.module == "finance", or_(
             legacy_kind == "ap_payment",
             and_(legacy_kind == "", submitted_direct_payment),
         ),
         external_finance_condition(),
-    )), *(await _record_scope_conditions(identity, db))]
+    )
+
+
+async def query_payments(filters, identity, db):
+    from sqlalchemy import String, and_, case, cast, func, or_
+    from app.core.permissions import _record_scope_conditions, _require_record_module_menu
+    from app.core.system import _allowed_field_keys
+    from app.core.contracts import _contract_customer_record_dicts
+    await _require_record_module_menu("finance", identity, db, action="查询请款")
+    record = BusinessRecord
+    data = record.data
+    conditions = [or_(record.module == "contract_payment", payment_application_fee_condition()),
+                  *(await _record_scope_conditions(identity, db))]
     scope = filters.get("scope", "all")
     applicant_value = func.coalesce(func.nullif(data["applicant"].as_string(), ""), record.owner)
     if scope == "mine":

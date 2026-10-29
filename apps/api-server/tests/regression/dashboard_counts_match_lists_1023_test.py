@@ -48,6 +48,9 @@ class DashboardCountsMatchListsTest(unittest.IsolatedAsyncioTestCase):
                 record("contract_payment", "CP-2", "待审批"),
                 record("contract_payment", "CP-3", "已审批"),
                 record("finance_settlement", "ST-1", "待审批", finance_scope="firm"),
+                record("finance", "FEE-OFFICIAL", "待审批", fee_type="官方费用", expense_scope="律所", payment_applied_at="2026-10-29"),
+                record("finance", "FEE-AGENCY", "待审批", fee_type="代理费", expense_scope="律所", payment_applied_at="2026-10-29"),
+                record("finance", "FEE-NOT-APPLIED", "待审批", fee_type="官方费用", expense_scope="律所"),
             ])
             await db.commit()
         app.dependency_overrides[get_db] = self.override_db
@@ -86,10 +89,18 @@ class DashboardCountsMatchListsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cards["待审核归档"], 3, "“归档审核”与“待归档审核”都计入；亏损内审/亏损审核不计入")
         self.assertEqual(cards["待审核预损费用"], loss_internal)
         self.assertEqual(cards["待审核预损费用"], 1)
-        payment = (await self._total("GET", "/records", params={"module": "finance", "finance_view": "external", "record_status": "待审批", "page_size": 1})
-                   + await self._total("GET", "/records", params={"module": "contract_payment", "record_status": "待审批", "page_size": 1}))
-        self.assertEqual(cards["待审批官方费用"], payment)
-        self.assertEqual(cards["待审批官方费用"], 2)
+        # BUG20261028003（2026-10-29）：只算请款单审批里待审批的官方费用（不含其他费用和合同付款）。
+        payment = await self.client.get(f"{API}/finance/payment-applications/query", params={"scope": "audit", "page": 1, "page_size": 200})
+        self.assertEqual(payment.status_code, 200, payment.text)
+        official = [item for item in payment.json()["items"]
+                    if item.get("module") == "finance" and (item.get("data") or {}).get("fee_type") == "官方费用"]
+        self.assertEqual(cards["待审批官方费用"], len(official))
+        self.assertEqual(cards["待审批官方费用"], 1)
+        # 能打开请款单审批的人（管理者），提醒指标“待缴官费”同口径，点进去是请款单审批（只看官方费用）。
+        async with self.sessions() as db:
+            metrics = (await dashboard(IDENTITY, db, section="metrics"))["metrics"]
+        official = next(item for item in metrics if item["key"] == "official-fee-unpaid")
+        self.assertEqual((official["value"], official["route"]), ("1件", "dashboard-queue-official-fee-audit"))
         self.assertEqual(cards["待审批内部费用"], await self._total(
             "GET", "/finance/internal-review-requests", params={"kind": "other", "page": 1, "page_size": 15}))
         self.assertEqual(cards["待审批结算费用"], await self._total(

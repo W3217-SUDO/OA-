@@ -29,7 +29,7 @@ async def dashboard_todos(identity, db, *, record_scope=None):
     archive_action_allowed = await _case_action_granted(identity, db, "case.archive.review")
     # 各卡片计数互不依赖，独立只读会话并行计算（性能：原先串行约 5–8 秒）。
     list_totals = await list_counts.gather_counts(db, {
-        "待审批官方费用": lambda session: list_counts.payment_audit_total(identity, session),
+        "待审批官方费用": lambda session: list_counts.payment_audit_official_total(identity, session),
         "待审批内部费用": lambda session: list_counts.internal_review_total(identity, session, "other"),
         "待审批结算费用": lambda session: list_counts.settlement_audit_total(identity, session),
         "待归档费用": lambda session: list_counts.archive_fee_pending_total(identity, session),

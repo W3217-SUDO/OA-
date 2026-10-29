@@ -1699,7 +1699,7 @@ function FinanceCenterContent({
         ? "fee-query"
         : "payment";
   const displayedOriginalTitle =
-    dashboardQueue === "official-fee-unpaid" ? "待缴官费" : dashboardQueue === "refund-pending" ? "待退费" :
+    ["official-fee-unpaid", "official-fee-audit"].includes(dashboardQueue) ? "待缴官费" : dashboardQueue === "refund-pending" ? "待退费" :
     platformMode && initialView === "finance-payment-mine"
       ? "请款单列表"
       : originalFinanceTitles[initialView] || "财务中心";
@@ -1751,6 +1751,9 @@ function FinanceCenterContent({
     }
     if (initialView === "finance-payment-audit") {
       result = result.filter((item) => item.status === "待审批");
+      if (dashboardQueue === "official-fee-audit") {
+        result = result.filter((item) => item.module === "finance" && item.data?.fee_type === "官方费用");
+      }
     }
     if (initialView === "finance-payment-waiting") {
       result = result.filter((item) =>

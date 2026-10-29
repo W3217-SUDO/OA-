@@ -1,6 +1,8 @@
 // 控制台使用独立标签，保留固定业务筛选，避免与普通菜单查询互相覆盖。
 export const dashboardWorkspaces: Record<string, { label: string; view: string; kind: "finance" | "case" | "receivable" }> = {
   "official-fee-unpaid": { label: "待缴官费", view: "finance-fee-query", kind: "finance" },
+  // BUG20261028003（范明明 2026-10-29）：能打开请款单审批的人，“待缴官费”进请款单审批，只看待审批的官方费用。
+  "official-fee-audit": { label: "待缴官费", view: "finance-payment-audit", kind: "finance" },
   "refund-pending": { label: "待退费", view: "finance-refund", kind: "finance" },
   // BUG20261028004/005：只看内部提成-待审核和内部提成(退费)-待审核。
   "internal-commission-audit": { label: "待审内部提成费用", view: "finance-internal-commission-audit", kind: "finance" },

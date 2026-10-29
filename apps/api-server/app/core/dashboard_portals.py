@@ -15,7 +15,8 @@ ADMIN_ROLE_NAMES = {"系统管理员", "SYSTEM-ADMIN"}
 PORTAL_ITEMS = (
     ("task", "待处理任务", "task-my-accepted", "todo:待处理任务", "我负责、待接收或待处理的任务"),
     # BUG20261028002/003：改名“待缴官费”，点进去是请款单审批，数量同请款单审批列表。
-    ("fee-unpaid", "待缴官费", "finance-payment-audit", "todo:待审批官方费用", "请款单审批列表总数（外部费用和合同付款）"),
+    # BUG20261028003（2026-10-29）：只算请款单审批里待审批的官方费用，点进去同样只看官方费用。
+    ("fee-unpaid", "待缴官费", "dashboard-queue-official-fee-audit", "todo:待审批官方费用", "请款单审批里待审批的官方费用"),
     ("internal-fee-audit", "待审批内部费用", "finance-internal-fee-audit", "todo:待审批内部费用", "内部费用待审核列表总数"),
     # BUG20261028004/005：改名“待审内部提成费用”，点进去只看内部提成-待审核和内部提成(退费)-待审核，数量同该列表。
     ("fee-audit", "待审内部提成费用", "dashboard-queue-internal-commission-audit", "extra", "内部提成-待审核和内部提成(退费)-待审核合计"),

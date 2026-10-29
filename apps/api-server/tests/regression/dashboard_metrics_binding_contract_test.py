@@ -124,7 +124,12 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
                 ),
             ])
             await db.commit()
-            result = await dashboard(IDENTITY, db, section=None)
+            # 律师（不能打开请款单审批）的“待缴官费”仍是本人案件未缴官费（BUG20261028003 只改能打开请款单审批的人）。
+            from unittest.mock import patch as mock_patch
+            async def lawyer_menus(*_args, **_kwargs):
+                return {"menu_keys": ["case-mine", "finance-fee-query"]}
+            with mock_patch("app.core.permissions._permission_payload_for_identity", lawyer_menus):
+                result = await dashboard(IDENTITY, db, section=None)
 
         metrics = {item["key"]: item for item in result["metrics"]}
         self.assertEqual(metrics["official-fee-unpaid"]["value"], "1件")
