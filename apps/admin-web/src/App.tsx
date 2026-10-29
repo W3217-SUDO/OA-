@@ -121,7 +121,7 @@ function lazyWithVersionRecovery<T extends ComponentType<any>>(
 
 // 页面还开着旧版本时，新版本下发的入口（如工作台“待缴官费”）旧页面不认识：先带版本参数重载一次，取到新版本再打开；
 // 重载后仍不认识才提示页面不存在（陶威 2026-10-29）。
-function UnknownPage({ route }: { route: string }) {
+function UnknownPageMessage({ route }: { route: string }) {
   const [retry] = useState(() => {
     const marker = `sunhold:unknown-route-reload:${route}`;
     try {
@@ -136,11 +136,7 @@ function UnknownPage({ route }: { route: string }) {
   useEffect(() => {
     if (retry) reloadAppShell();
   }, [retry]);
-  return (
-    <Card className="panel">
-      <div className="placeholder">{retry ? "正在打开页面…" : "页面不存在，请从左侧菜单重新选择。"}</div>
-    </Card>
-  );
+  return <div className="placeholder">{retry ? "正在打开页面…" : "页面不存在，请从左侧菜单重新选择。"}</div>;
 }
 
 class PageLoadBoundary extends Component<
@@ -1916,7 +1912,9 @@ export default function App() {
     ) : route === "reports" ? (
       <ReportCenterPage initialView={active} onNavigate={navigate} />
     ) : (
-      <UnknownPage route={active} />
+      <Card className="panel">
+        <UnknownPageMessage route={active} />
+      </Card>
     );
   const currentPage = requestedPage;
   const refreshCurrentPage = () => {
