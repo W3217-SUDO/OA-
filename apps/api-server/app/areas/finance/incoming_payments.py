@@ -282,8 +282,11 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
         raise HTTPException(status_code=403, detail="当前账号没有该银行回款上传权限")
     preview = False
     recognized = False
+    # BUG20261028008（范明明 2026-10-29）：表格流水也先预览、点“确认导入”才写入。确认时重新上传同一文件，
+    # 按预览时的内容摘要核对（不回传全部行，大文件不受表单字段大小限制）。
+    sheet_digest_rows = None
     try:
-        if confirmation_token:
+        if confirmation_token and confirmed_rows:
             if len(confirmed_rows) > 2 * 1024 * 1024:
                 raise ValueError('确认内容过大，请重新识别')
             statement_rows = json.loads(confirmed_rows)
@@ -303,6 +306,12 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
             else:
                 from starlette.concurrency import run_in_threadpool
                 statement_rows = await run_in_threadpool(read_statement, raw, file.filename or "", bank_source)
+                sheet_digest_rows = [[sheet, number, {key: cell_text(value) for key, value in row.items()}] for sheet, number, row in statement_rows]
+                if confirmation_token:
+                    if not verify_preview(confirmation_token, sheet_digest_rows, identity['username'], f"{bank_source}:{identity['_finance_scope']}"):
+                        raise ValueError('文件与预览时不一致或预览已过期，请重新上传核对')
+                else:
+                    preview = True
     except HTTPException:
         raise
     except ValueError as exc:
@@ -368,8 +377,11 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
         except (ValueError, TypeError) as exc:
             errors.append({"sheet": sheet_name, "row": row_no, "error": str(exc) or "字段格式错误"})
     if preview:
-        return {'requires_confirmation': True, 'items': preview_items, 'rows': statement_rows,
-            'confirmation_token': sign_preview(statement_rows, identity['username'], f"{bank_source}:{identity['_finance_scope']}"),
+        signed_rows = statement_rows if sheet_digest_rows is None else sheet_digest_rows
+        return {'requires_confirmation': True, 'items': preview_items,
+            # 表格流水确认时重新上传文件，不回传行内容。
+            'rows': statement_rows if sheet_digest_rows is None else None, 'confirm_with_file': sheet_digest_rows is not None,
+            'confirmation_token': sign_preview(signed_rows, identity['username'], f"{bank_source}:{identity['_finance_scope']}"),
             'created': 0, 'valid_count': created, 'errors': errors, 'skipped': skipped}
     if created:
         await db.commit()

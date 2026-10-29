@@ -58,11 +58,11 @@ export function createFinanceWorkflowActions(context: FinanceWorkflowDependencie
             const { data } = await api.post("/finance/incoming-payments/import", body, { headers: { "Content-Type": "multipart/form-data" } });
             if (data.requires_confirmation) {
                 Modal.confirm({
-                    title: "核对银行流水识别结果", width: 1080, okText: "确认导入", cancelText: "取消",
+                    title: "核对银行流水，确认后导入", width: 1080, okText: "确认导入", cancelText: "取消",
                     okButtonProps: { disabled: !data.valid_count },
                     content: <div>
                         <Alert type="warning" showIcon message="尚未写入回款。请逐笔核对付款方、日期、金额和银行流水号；识别有误请取消并调整原文件。" />
-                        <p>{file.name}：可导入 {data.valid_count} 笔，跳过支出 {data.skipped} 笔，{data.errors?.length || 0} 笔校验未通过。</p>
+                        <p>{file.name}：可导入 {data.valid_count} 笔，合计 {(data.items || []).reduce((sum: number, item: any) => sum + Number(item.amount || 0), 0).toFixed(2)} 元；跳过支出 {data.skipped} 笔，{data.errors?.length || 0} 笔校验未通过（含已登记过的重复流水）。</p>
                         <Table size="small" rowKey={(_, index) => String(index)} dataSource={data.items}
                             pagination={{pageSize: 10}} scroll={{x: 900, y: 300}}
                             columns={[
@@ -80,7 +80,9 @@ export function createFinanceWorkflowActions(context: FinanceWorkflowDependencie
                     onOk: async () => {
                         const confirmed = new FormData();
                         confirmed.append("bank_source", bankSource);
-                        confirmed.append("confirmed_rows", JSON.stringify(data.rows));
+                        // BUG20261028008：表格流水确认时重新上传同一文件，后端按预览内容核对后再写入。
+                        if (data.confirm_with_file) confirmed.append("file", file);
+                        else confirmed.append("confirmed_rows", JSON.stringify(data.rows));
                         confirmed.append("confirmation_token", data.confirmation_token);
                         try {
                             const response = await api.post("/finance/incoming-payments/import", confirmed);
