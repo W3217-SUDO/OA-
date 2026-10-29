@@ -1095,7 +1095,24 @@ ROLE_TREE_HIDDEN_ACTION_CODES = frozenset({
     "case.fee.notice", "case.fee.arrival", "case.fee.receipt.view",
     # BUG20261028012：刑事案件统一走“修改法院信息”，页面已没有单独按钮。
     "case.criminal.court.update",
+    # BUG20261028012（范文玲 2026-10-29 13:19）：系统中心各页面统一套的查询/新增/编辑/删除等没有按页面核对，
+    # 系统里也没有地方按它们放行（系统中心只认管理员），角色权限里不再显示。
+    *(item["code"] for item in SYSTEM_ACTION_DEFINITIONS if item["menu_key"] == "system" or item["menu_key"].startswith("system-")),
+    # 同上（范文玲 2026-10-29 13:40）：请款单审批、我的请款单页面没有编辑/删除费用按钮（只用于改、删别人的费用草稿）；
+    # 付款打包-管理左侧菜单不显示。这些开关不在角色权限里显示，现有授权按原样保留。
+    "finance.fee.update", "finance.fee.delete", "finance.payment.update", "finance.payment.delete",
 })
+# 左侧菜单不显示的页面（与前端 App.tsx 左侧菜单的过滤一致）：角色权限里不显示（范文玲 2026-10-29 13:45），
+# 角色原有的这些页面授权保存时按原样保留。
+ROLE_TREE_HIDDEN_MENU_KEYS = frozenset({
+    "task-reminders", "vip-tasks", "finance-jar", "finance-payment-package-manage", "finance-internal-void", "system-users",
+    "documents-outgoing", "documents-register", "documents-files", "documents-template", "documents-agent", "documents-archive",
+})
+# 同一个功能控制多个页面的按钮时，角色权限里在这些页面下都显示（同一开关，勾一处各处同步）。
+ROLE_TREE_ACTION_ALSO_MENUS = {
+    INTERNAL_REVIEW_APPROVE_ACTION: ("finance-internal-fee-audit", "finance-internal-refund-audit"),
+    INTERNAL_REVIEW_REJECT_ACTION: ("finance-internal-fee-audit", "finance-internal-refund-audit"),
+}
 
 _CASE_GROUP_MEMBER_CODES = frozenset(code for _label, members in CASE_ROLE_GROUPS.values() for code in members)
 # 给了页面就有的功能：角色权限里不显示，保存角色时不再单独存。

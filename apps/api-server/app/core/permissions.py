@@ -2,7 +2,7 @@
 from app.core.constants import (
     AGENT_ACTION_CAPABILITY, CASE_ACTIONS_EXPLICIT_MARKER, MENUS_EXACT_MARKER, CASE_CREATABLE_TYPES, CIVIL_CASE_TYPES, CONTRACT_APPROVAL_ACTION_CODE, DEFAULT_MENU_LABEL_BY_KEY,
     DEFAULT_ROLE_PERMISSIONS, EXPENSE_SUBTYPE_FEE_TYPE, FIELD_KEYS, JAR_FEE_TRANSITIONS, JOB_ACTION_MENU_GRANTS,
-    CONTRACT_ROLE_ACTION_CODES, CONTRACT_ROLE_ACTIONS, RECEIPT_PAGE_DELETE_CODES, CUSTOMER_ROLE_ACTIONS, FINANCE_EDIT_DELETE_ACTIONS, IPR_ROLE_ACTIONS, TASK_INVESTIGATION_ROLE_ACTIONS, JOB_ROLE_ACTION_KEY_GRANTS, ROLE_TREE_HIDDEN_ACTION_CODES, ROLE_TREE_DERIVED_ACTION_CODES, expand_role_action_codes, CASE_GROUP_BY_ACTION, CASE_ROLE_GROUPS, JOB_ROLE_LABEL_MENU_GRANTS, MENU_CHILDREN_BY_KEY, MENU_KEYS, ROLE_DATA_SCOPES,
+    CONTRACT_ROLE_ACTION_CODES, CONTRACT_ROLE_ACTIONS, RECEIPT_PAGE_DELETE_CODES, CUSTOMER_ROLE_ACTIONS, FINANCE_EDIT_DELETE_ACTIONS, IPR_ROLE_ACTIONS, TASK_INVESTIGATION_ROLE_ACTIONS, JOB_ROLE_ACTION_KEY_GRANTS, ROLE_TREE_HIDDEN_ACTION_CODES, ROLE_TREE_DERIVED_ACTION_CODES, ROLE_TREE_ACTION_ALSO_MENUS, ROLE_TREE_HIDDEN_MENU_KEYS, expand_role_action_codes, CASE_GROUP_BY_ACTION, CASE_ROLE_GROUPS, JOB_ROLE_LABEL_MENU_GRANTS, MENU_CHILDREN_BY_KEY, MENU_KEYS, ROLE_DATA_SCOPES,
     SYSTEM_ACTION_DEFINITIONS, SYSTEM_MENU_ROUTE_KEYS, SYSTEM_USER_ROLE_CODES,
 )
 from app.core.dependencies import (
@@ -99,11 +99,17 @@ _CASE_LEGACY_PERMISSION_LABELS = {
 }
 
 
+# 旧系统岗位权限名（如“客户修改”“费用申请”）：不是页面按钮，角色权限里不再当功能显示，按它开的页面显示为勾上。
+_JOB_ROLE_LEGACY_LABELS = (set(JOB_ROLE_LABEL_MENU_GRANTS) | set(JOB_ROLE_ACTION_KEY_GRANTS)) - set(SYSTEM_MENU_ROUTE_KEYS)
+
+
 def _job_role_tree_checked_permissions(role: JobRole) -> list[str]:
     selected = []
     for value in role.permissions or []:
         if value in _CASE_LEGACY_PERMISSION_LABELS:
             selected.extend(JOB_ROLE_LABEL_MENU_GRANTS.get(value, ()))
+        elif value in _JOB_ROLE_LEGACY_LABELS:
+            selected.extend(_expand_menu_permission_keys(list(JOB_ROLE_LABEL_MENU_GRANTS.get(value, ()))))
         elif value not in {CASE_ACTIONS_EXPLICIT_MARKER, MENUS_EXACT_MARKER}:
             selected.append(str(value).removeprefix("menu:"))
     effective = _effective_job_role_action_keys(role)
@@ -199,7 +205,7 @@ async def _system_permission_tree(db: AsyncSession, permission: RolePermission |
         children_by_parent.setdefault(item.parent_key or "", []).append(item)
 
     def build(item: SystemMenu) -> dict:
-        children = [build(child) for child in children_by_parent.get(item.key, [])]
+        children = [build(child) for child in children_by_parent.get(item.key, []) if child.key not in ROLE_TREE_HIDDEN_MENU_KEYS]
         action_nodes: list[dict] = []
         for definition in action_by_menu.get(item.key, []):
             action_nodes.append({
@@ -220,7 +226,7 @@ async def _system_permission_tree(db: AsyncSession, permission: RolePermission |
 
     # Include configured menu rows and synthetic action roots even when an isolated
     # database has not seeded every default menu.
-    roots = [build(item) for item in children_by_parent.get("", [])]
+    roots = [build(item) for item in children_by_parent.get("", []) if item.key not in ROLE_TREE_HIDDEN_MENU_KEYS]
     known = {node["node_code"] for node in roots}
     for definition in action_definitions:
         if definition["menu_key"] not in by_key and definition["menu_key"] not in known:
@@ -2139,9 +2145,16 @@ def _organization_permission_tree(menus: list[SystemMenu], actions: list[str], s
                 "state": {"checked": key in selected}, "children": [],
             })
 
+    for code, also_menus in ROLE_TREE_ACTION_ALSO_MENUS.items():
+        node = next((item for nodes in by_menu_actions.values() for item in nodes if item["node_code"] == code), None)
+        for menu_key in also_menus if node else ():
+            if menu_key in menu_keys:
+                # 同一开关在多个页面下显示：key 带页面后缀，前端按同一个功能勾选和保存。
+                by_menu_actions.setdefault(menu_key, []).append({**node, "key": f"action:{code}#{menu_key}", "state": dict(node["state"])})
+
     unmatched_actions = []
     for action in actions:
-        if action in _CASE_LEGACY_PERMISSION_LABELS or action in catalog_keys or action in {CASE_ACTIONS_EXPLICIT_MARKER, MENUS_EXACT_MARKER}:
+        if action in _CASE_LEGACY_PERMISSION_LABELS or action in _JOB_ROLE_LEGACY_LABELS or action in catalog_keys or action in {CASE_ACTIONS_EXPLICIT_MARKER, MENUS_EXACT_MARKER}:
             continue
         node = {
             "key": action, "node_type": "A", "node_original_id": action,
@@ -2157,7 +2170,7 @@ def _organization_permission_tree(menus: list[SystemMenu], actions: list[str], s
     def build(parent_key: str, trail: set[str]) -> list[dict]:
         nodes: list[dict] = []
         for menu in by_parent.get(parent_key, []):
-            if menu.key in trail:
+            if menu.key in trail or menu.key in ROLE_TREE_HIDDEN_MENU_KEYS:
                 continue
             children = [*build(menu.key, {*trail, menu.key}), *_group_case_action_nodes(by_menu_actions.get(menu.key, []))]
             label = str(menu.label or "").strip()

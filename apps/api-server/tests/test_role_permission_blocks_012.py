@@ -143,6 +143,48 @@ class RolePermissionBlocksTest(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(HTTPException):
                 await require_receipt_delete(identity, db, "待分配")
 
+    def test_tree_matches_page_buttons(self):
+        # 范文玲 2026-10-29 13:19：每个页面下只挂该页实际有的按钮。
+        menus = [SystemMenu(id=1, key="finance-payment-audit", label="请款单审批", parent_key=""),
+                 SystemMenu(id=2, key="finance-jar", label="JAR交案费管理", parent_key=""),
+                 SystemMenu(id=3, key="finance-internal-audit", label="内部提成-待审核", parent_key=""),
+                 SystemMenu(id=4, key="finance-internal-fee-audit", label="内部费用-待审核", parent_key=""),
+                 SystemMenu(id=5, key="system-parameters-court", label="法院设置", parent_key=""),
+                 SystemMenu(id=6, key="customer-mine", label="我的客户", parent_key="")]
+        tree = _organization_permission_tree(menus, ["客户修改", "费用申请", "合同付款申请"], {"action:finance.internal.review.approve"})
+        nodes = {node["key"]: node["children"] for node in tree}
+        self.assertEqual(nodes["menu:finance-payment-audit"], [])
+        # 左侧菜单不显示的页面不在角色权限里。
+        self.assertNotIn("menu:finance-jar", nodes)
+        self.assertEqual(nodes["menu:system-parameters-court"], [])
+        # 旧系统岗位名称不当功能显示。
+        titles = {c["title"] for children in nodes.values() for c in children} | {node["title"] for node in tree}
+        self.assertFalse({"客户修改", "费用申请", "合同付款申请"} & titles)
+        # 内部费用审批在两个待审核页面下都显示，同一开关。
+        fee_audit = {c["key"]: c["state"]["checked"] for c in nodes["menu:finance-internal-fee-audit"]}
+        self.assertEqual(fee_audit, {"action:finance.internal.review.approve#finance-internal-fee-audit": True,
+                                     "action:finance.internal.review.reject#finance-internal-fee-audit": False})
+
+    async def test_legacy_label_shown_as_pages_and_kept_on_save(self):
+        async with self.sessions() as db:
+            role = JobRole(code="CODEX-BLK-LABEL", name="旧岗位", permissions=["user-center", "员工修改", "合同付款申请"])
+            db.add(role)
+            await db.commit()
+            checked = set(_job_role_tree_checked_permissions(role))
+            self.assertIn("hr-all", checked)
+            self.assertNotIn("员工修改", checked)
+            # 页面仍勾着：保留原名称（连同员工修改动作）。
+            await update_job_role_permissions(role.id, JobRolePermissionUpdate(permissions=["user-center", "hr-all"]), identity=ADMIN, db=db)
+            self.assertEqual(set((await db.get(JobRole, role.id)).permissions), {"user-center", "hr-all", "员工修改", "合同付款申请"})
+            # 左侧菜单不显示的页面原有授权保存时保留。
+            role.permissions = [*role.permissions, "finance-jar"]
+            await db.commit()
+            await update_job_role_permissions(role.id, JobRolePermissionUpdate(permissions=["user-center", "hr-all"]), identity=ADMIN, db=db)
+            self.assertIn("finance-jar", (await db.get(JobRole, role.id)).permissions)
+            # 取消了它开的页面：名称一并去掉。
+            await update_job_role_permissions(role.id, JobRolePermissionUpdate(permissions=["user-center"]), identity=ADMIN, db=db)
+            self.assertEqual(set((await db.get(JobRole, role.id)).permissions), {"user-center", "合同付款申请", "finance-jar"})
+
 
 if __name__ == "__main__":
     unittest.main()

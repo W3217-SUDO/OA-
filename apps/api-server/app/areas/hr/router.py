@@ -738,6 +738,19 @@ async def update_job_role_permissions(
         and value not in permissions
     )
     if role.code != "SYSTEM-ADMIN":
+        # BUG20261028012（范文玲 2026-10-29 13:19）：旧系统岗位权限名不在角色权限里显示（显示为它开的页面）；
+        # 这些页面仍全部勾着就保留原名称（连同它带的业务动作），取消了其中页面才去掉。
+        from app.core.permissions import _CASE_LEGACY_PERMISSION_LABELS, _JOB_ROLE_LEGACY_LABELS, _expand_menu_permission_keys
+        from app.core.constants import JOB_ROLE_LABEL_MENU_GRANTS
+        submitted_menus = set(_expand_menu_permission_keys([str(value) for value in permissions if ":" not in str(value)]))
+        permissions.extend(
+            value for value in (role.permissions or [])
+            if value in _JOB_ROLE_LEGACY_LABELS and value not in _CASE_LEGACY_PERMISSION_LABELS and value not in permissions
+            and set(_expand_menu_permission_keys(list(JOB_ROLE_LABEL_MENU_GRANTS.get(value, ())))) <= submitted_menus
+        )
+        # 左侧菜单不显示的页面不在角色权限里，原有授权保留。
+        from app.core.constants import ROLE_TREE_HIDDEN_MENU_KEYS
+        permissions.extend(value for value in (role.permissions or []) if value in ROLE_TREE_HIDDEN_MENU_KEYS and value not in permissions)
         # BUG20261028012：页面带出的功能和案件三块里的功能不单独存，只存开关（旧授权保存后即换成开关）。
         permissions = [value for value in permissions if str(value).removeprefix("action:") not in ROLE_TREE_DERIVED_ACTION_CODES]
     if body.case_actions_explicit and role.code != "SYSTEM-ADMIN":

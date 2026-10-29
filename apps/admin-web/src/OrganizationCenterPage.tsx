@@ -226,10 +226,12 @@ const rolePermissionTreeMenuCodes = (
   });
   return menuCodes;
 };
+// 同一开关挂在多个页面下时，其他页面下的节点 key 为“action:功能码#页面”，勾选、保存都按同一个功能码。
+const roleActionBaseKey = (key: string) => (key.startsWith("action:") ? key.split("#")[0] : key);
 const rolePermissionTreeActionKeys = (nodes: TreeDataNode[] = [], keys: string[] = []) => {
   nodes.forEach((node) => {
     const key = String(node.key);
-    if (key.startsWith("action:")) keys.push(key);
+    if (key.startsWith("action:")) keys.push(roleActionBaseKey(key));
     if (Array.isArray(node.children)) rolePermissionTreeActionKeys(node.children as TreeDataNode[], keys);
   });
   return keys;
@@ -257,6 +259,7 @@ const rolePermissionCheckedGroups = (nodes: TreeDataNode[], selected: string[]):
       const actions = rolePermissionTreeActionKeys(children);
       if (actions.length && actions.every((key) => checked.has(key))) checked.add(String(node.key));
     }
+    if (String(node.key).includes("#") && checked.has(roleActionBaseKey(String(node.key)))) checked.add(String(node.key));
     visit(children);
   });
   visit(nodes);
@@ -792,7 +795,7 @@ export default function OrganizationCenterPage({
                   // BUG20261028012：案件三块（group:）勾选即全选块下功能，块下每个功能也可单独勾选。
                   const affected = key.startsWith("menu:") || key.startsWith("group:")
                     ? rolePermissionMenuBranch(rolePermissionTreeData, key)
-                    : [key];
+                    : [roleActionBaseKey(key)];
                   setSelectedRolePermissions((current) => {
                     const next = new Set(current);
                     affected.forEach((item) => info.checked ? next.add(item) : next.delete(item));

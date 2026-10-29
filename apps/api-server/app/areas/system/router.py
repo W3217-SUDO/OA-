@@ -1362,6 +1362,10 @@ async def update_role_permission(role: str, body: RolePermissionUpdate, identity
         raise HTTPException(status_code=422, detail=f"无效菜单权限：{', '.join(invalid)}")
     menu_keys = list(dict.fromkeys(body.menu_keys))
     item = await db.scalar(select(RolePermission).where(RolePermission.role == role))
+    # 左侧菜单不显示的页面不在角色权限里（范文玲 2026-10-29），原有授权保留；管理员保留全部。
+    from app.core.constants import ROLE_TREE_HIDDEN_MENU_KEYS
+    kept_menus = (all_menu_keys if role == "admin" else set(item.menu_keys if item else [])) & ROLE_TREE_HIDDEN_MENU_KEYS
+    menu_keys.extend(sorted(key for key in kept_menus if key not in menu_keys))
     _, existing_actions = _split_role_permission_keys(item.menu_keys if item else [])
     action_keys = list(dict.fromkeys(body.action_keys if body.action_keys is not None else (existing_actions or ([item["code"] for item in SYSTEM_ACTION_DEFINITIONS] if role == "admin" else []))))
     if body.action_keys is not None:
