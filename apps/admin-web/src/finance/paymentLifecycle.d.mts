@@ -7,6 +7,7 @@ export type PaymentLifecycleRow = {
     writeoff_status?: string;
     paid_amount?: number | string | null;
     payment_status?: string;
+    payment_package_id?: number | string | null;
   };
 };
 
@@ -38,6 +39,7 @@ export type ContractPaymentEditPayload = {
 
 export function isContractPayment(row: PaymentLifecycleRow): boolean;
 export function paymentActionPath(row: PaymentLifecycleRow & { id: number }, action: string): string;
+export function isPendingWriteoffPackage(row: PaymentLifecycleRow | null | undefined): boolean;
 export function canEditContractPayment(row: PaymentLifecycleRow): boolean;
 export function paymentLifecycleStatus(row: PaymentLifecycleRow): string;
 export function unifiedPaymentQueryParams(params: Record<string, unknown>): Record<string, unknown> & {

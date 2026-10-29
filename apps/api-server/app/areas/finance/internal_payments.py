@@ -1,7 +1,7 @@
 """内部结算与付款申请接口。"""
 from fastapi import APIRouter
 from app.core.dependencies import AsyncSession, BusinessRecord, Depends, HTTPException, Query, Response, User, WorkflowEvent, current_identity, date, datetime, delete, func, get_db, quote, select, settings, status
-from app.models_shared import FinancePaymentPackageCreateInput, FinancePaymentPackagePreviewInput, FinancePaymentPackageUpdateInput, FinancePaymentPackageWriteoffInput, FinanceSettlementMarkInput
+from app.models_shared import FinancePaymentPackageCreateInput, FinancePaymentPackagePreviewInput, FinancePaymentPackageUpdateInput, FinancePaymentPackageWriteoffInput, FinancePaymentRollbackInput, FinanceSettlementMarkInput
 from app.core.constants import PAYMENT_METHOD_OPTIONS
 from app.core.finance_person_projection import apply_finance_person_displays
 from app.core.finance_centers import finance_center_identity, require_record_center
@@ -487,3 +487,60 @@ async def cancel_internal_payment_package(package_id: int, reverse_paid: bool = 
     await db.delete(package)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(f"{settings.api_prefix}/finance/payment-packages/{{package_id}}/rollback")
+async def rollback_pending_writeoff_package(
+    package_id: int, body: FinancePaymentRollbackInput,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """BUG20261028007：待核销请款单右键“回滚”，整个付款包退回待付款（上一个栏目）。
+
+    付款包只改状态为“已回滚”并保留（逻辑删除），费用去掉付款包关联、恢复“已审批”，各记一条日志。"""
+    from app.core.permissions import _ensure_record_module
+
+    if identity.get("role") not in {"admin", "manager", "auditor"}:
+        raise HTTPException(status_code=403, detail="当前角色没有付款回滚权限")
+    package = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.id == package_id, BusinessRecord.module == "finance_package",
+    ).with_for_update())).first()
+    if not package:
+        raise HTTPException(status_code=404, detail="付款包不存在")
+    await _ensure_record_module(package_id, "finance_package", identity, db)
+    if package.status != "待核销":
+        raise HTTPException(status_code=409, detail="只有待核销的请款单可以回滚")
+    raw_fee_ids = list((package.data or {}).get("fee_ids", []))
+    if not raw_fee_ids or any(not str(item_id).strip().isdigit() for item_id in raw_fee_ids):
+        raise HTTPException(status_code=409, detail="付款包费用关联无效，不能回滚")
+    fee_ids = {int(item_id) for item_id in raw_fee_ids}
+    fees = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.id.in_(fee_ids), BusinessRecord.module == "finance",
+    ).with_for_update())).all()
+    if {item.id for item in fees} != fee_ids:
+        raise HTTPException(status_code=409, detail="付款包关联费用不完整，不能回滚")
+    payment_keys = {
+        "payment_status", "payment_date", "payment_package_id", "payment_package_no", "payment_requested_amount",
+        "paid_amount", "payment_applied_at", "payment_applied_by", "paid_at", "paid_by", "writeoff_status",
+        "writeoff_voucher_no", "payment_method", "written_off_at", "written_off_by",
+    }
+    comment = body.comment.strip() or f"回滚待核销付款包 {package.serial_no}"
+    for fee in fees:
+        data = fee.data or {}
+        if (int(data.get("payment_package_id") or 0) != package.id
+                or str(data.get("payment_package_no") or "").strip() != package.serial_no):
+            raise HTTPException(status_code=409, detail=f"费用 {fee.serial_no} 的付款包关联不一致")
+        if float(data.get("paid_amount") or 0) > 0 and data.get("writeoff_status") == "已核销":
+            raise HTTPException(status_code=409, detail=f"费用 {fee.serial_no} 已核销，不能回滚")
+        previous = fee.status
+        fee.status = "已审批"
+        fee.data = {key: value for key, value in data.items() if key not in payment_keys}
+        db.add(WorkflowEvent(record_id=fee.id, action="待核销回滚", from_status=previous, to_status="已审批",
+                             operator=identity["username"], comment=comment))
+    rolled_back_at = datetime.now().isoformat(timespec="seconds")
+    db.add(WorkflowEvent(record_id=package.id, action="待核销回滚", from_status=package.status, to_status="已回滚",
+                         operator=identity["username"], comment=comment))
+    package.status = "已回滚"
+    package.data = {**(package.data or {}), "rolled_back_by": identity["username"],
+                    "rolled_back_at": rolled_back_at, "rollback_comment": comment}
+    await db.commit()
+    return {"package_id": package.id, "package_no": package.serial_no, "fee_ids": sorted(fee_ids), "status": "已审批"}

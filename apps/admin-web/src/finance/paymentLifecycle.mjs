@@ -4,6 +4,10 @@ export const isContractPayment = (row) =>
 export const paymentActionPath = (row, action) =>
   `${isContractPayment(row) ? "/contract-payment-applications" : "/finance/fees"}/${row.id}/${action}`;
 
+// 待核销列表里的请款单（已进付款包、尚未核销）：回滚时整个付款包退回待付款。
+export const isPendingWriteoffPackage = (row) => !isContractPayment(row) && row?.status === "待核销" &&
+  Boolean(row?.data?.payment_package_id) && row?.data?.writeoff_status !== "已核销";
+
 export const canEditContractPayment = (row) => isContractPayment(row) &&
   ["草稿", "已驳回", "已退回"].includes(row.status) &&
   row.data?.writeoff_status !== "已核销" && Number(row.data?.paid_amount || 0) === 0;

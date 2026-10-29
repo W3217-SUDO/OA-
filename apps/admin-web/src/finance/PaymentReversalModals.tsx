@@ -1,5 +1,6 @@
 import { Input, Modal } from "antd";
 import type { Fee } from "./types";
+import { isPendingWriteoffPackage } from "./paymentLifecycle.mjs";
 
 interface ReversalModalProps {
   target: Fee | null;
@@ -42,6 +43,7 @@ export function PaymentReversalModals({ cancel, rollback }: PaymentReversalModal
         onOk={() => void rollback.onSubmit()}
         onCancel={rollback.onClose}
       >
+        {isPendingWriteoffPackage(rollback.target) && <p>回滚后整个付款包退回待付款列表，可重新打包付款。</p>}
         <Input.TextArea
           rows={4}
           value={rollback.text}

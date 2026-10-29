@@ -3,6 +3,7 @@ import { Button, Dropdown } from "antd";
 import { money } from "../constants";
 import { displayFeeValue } from "../../financialValueDisplay";
 import type { Fee, Transaction } from "../types";
+import { isPendingWriteoffPackage } from "../paymentLifecycle.mjs";
 export function createPaymentOriginalColumns(context: {
     readonly originalOperation: (_: unknown, row: Fee) => React.JSX.Element;
     readonly paymentStatus: (fee: Fee) => any;
@@ -16,7 +17,8 @@ export function createPaymentOriginalColumns(context: {
 }) {
     const wrap = (row: Fee, content: React.ReactNode) => <Dropdown trigger={["contextMenu"]} menu={{items: [
         {key:"view", label:"查看", onClick: () => void context.openPaymentDetail?.(row)},
-        ...(context.canRollback && ["已审批", "待付款"].includes(row.status) ? [{key:"rollback", label:"回滚", onClick: () => context.openPaymentRollback?.(row)}] : []),
+        // BUG20261028007：待核销的请款单右键也能回滚，整个付款包退回待付款。
+        ...(context.canRollback && (["已审批", "待付款"].includes(row.status) || isPendingWriteoffPackage(row)) ? [{key:"rollback", label:"回滚", onClick: () => context.openPaymentRollback?.(row)}] : []),
     ]}}><span style={{display:"inline-block", minWidth:20}}>{content}</span></Dropdown>;
     return [
         {
