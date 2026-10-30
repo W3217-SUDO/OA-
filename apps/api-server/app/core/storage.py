@@ -26,6 +26,11 @@ from app.pdf_runtime import serialized_pdfium
 
 
 OSS_CACHE_DIR = ".oss-cache"
+# OSS 附件本机缓存只是副本（原件在 OSS）：超过天数或总量超限时删最旧的，每个进程最多每 10 分钟清一次。
+OSS_CACHE_MAX_AGE_SECONDS = 7 * 24 * 3600
+OSS_CACHE_MAX_BYTES = 5 * 1024 ** 3
+OSS_CACHE_PRUNE_INTERVAL_SECONDS = 600
+_oss_cache_last_pruned = 0.0
 
 
 def oss_cache_path(item: FileAttachment) -> Path:
@@ -54,6 +59,45 @@ def attachment_local_path(item: FileAttachment) -> Path:
     return _attachment_storage_path(item) or Path(str(item.path))
 
 
+def prune_oss_cache(now: float | None = None) -> int:
+    """只清理 UPLOAD_ROOT/.oss-cache 下的缓存文件，返回删除个数；正在写入的临时文件（以点开头）不动。"""
+    import time
+    directory = (UPLOAD_ROOT / OSS_CACHE_DIR).expanduser().resolve()
+    if not directory.is_dir():
+        return 0
+    current = time.time() if now is None else now
+    files = []
+    for entry in directory.iterdir():
+        if entry.name.startswith(".") or not entry.is_file() or entry.is_symlink():
+            continue
+        stat = entry.stat()
+        files.append((max(stat.st_atime, stat.st_mtime), stat.st_size, entry))
+    files.sort(key=lambda item: item[0])
+    total = sum(size for _, size, _ in files)
+    removed = 0
+    for used_at, size, entry in files:
+        if current - used_at <= OSS_CACHE_MAX_AGE_SECONDS and total <= OSS_CACHE_MAX_BYTES:
+            break
+        if entry.parent != directory:
+            continue
+        entry.unlink(missing_ok=True)
+        total -= size
+        removed += 1
+    return removed
+
+
+async def _maybe_prune_oss_cache() -> None:
+    import time
+    global _oss_cache_last_pruned
+    if time.monotonic() - _oss_cache_last_pruned < OSS_CACHE_PRUNE_INTERVAL_SECONDS and _oss_cache_last_pruned:
+        return
+    _oss_cache_last_pruned = time.monotonic()
+    try:
+        await run_in_threadpool(prune_oss_cache)
+    except OSError:
+        logger.warning("OSS 附件缓存清理失败", exc_info=True)
+
+
 async def ensure_attachment_local(item: FileAttachment) -> Path | None:
     """需要本机文件的读取场景：OSS 附件没有缓存时先从 OSS 取回到缓存目录。"""
     from app.core.oss_attachments import oss_attachment_bytes, oss_attachment_location
@@ -63,6 +107,7 @@ async def ensure_attachment_local(item: FileAttachment) -> Path | None:
     if cached is not None:
         return cached
     content = await oss_attachment_bytes(item)
+    await _maybe_prune_oss_cache()
     target = oss_cache_path(item)
 
     def write() -> Path:
