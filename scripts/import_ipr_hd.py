@@ -7,7 +7,9 @@
   规范化全名与新系统已有客户相同的只列进报告，不自动合并，一律新建；编号被占用时加 HD- 前缀。
 - 案件：按 (legacy_source=ipr_hd, legacy_ipr_case_id) 幂等新建或更新；案号被其他记录占用时不覆盖，列为冲突。
 - 案件日志：IPR_Case_Log 投影为 workflow_events，经 hz_alignment_event_links 去重。
-- 附件文件不在 OSS，本脚本不写附件记录。
+- 案件文件：IPR_Case_File（有效的）按 --oss-keys 清单对上 OSS 对象 HD.IPR/HD.IPR.WEB/CaseFiles/CaseFiles/<案号>/<文件名>，
+  写 file_attachments（path=oss://...，大小、ETag 取 OSS）；OSS 上没有的只列进报告。remark 用 hd_file_id，不用 legacy_file_id，
+  避免案件文件列表拿 HD 的 FileId 去查上海副本表（撞号）。
 
 所有新记录带 migration_source=<--batch>，回滚按批次号逻辑删除。
 """
@@ -15,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import mimetypes
 import os
 import re
 import sys
@@ -34,6 +37,9 @@ from hz_field_maps import enabled, json_value, mapped_data, text  # noqa: E402
 LEGACY_SOURCE = "ipr_hd"
 SCHEMA = "legacy_ipr_hd"
 ACTOR = "ipr-hd-import"
+OSS_BUCKET = "oabeifen3217"
+OSS_CASE_FILE_PREFIX = "HD.IPR/HD.IPR.WEB/CaseFiles/CaseFiles/"
+STORED_NAME_PREFIX = "legacy-oss-hd-IPR_Case_File-"
 LOCAL_TZ = timezone(timedelta(hours=8))
 # 导出目录里的表全部进副本（以 _schema.json 为准）；以下几张是导入逻辑必需的。
 REQUIRED_TABLES = ("IPR_Case", "IPR_CaseType", "IPR_CasePhase", "IPR_Case_Customer", "CRM_Customer", "HR_Staff")
@@ -74,12 +80,12 @@ def audit_time(value):
 
 
 class HdImport:
-    def __init__(self, db, source: Path, batch: str):
-        self.db, self.source, self.batch = db, source, batch
+    def __init__(self, db, source: Path, batch: str, oss_keys: Path | None = None):
+        self.db, self.source, self.batch, self.oss_keys = db, source, batch, oss_keys
         self.report = Counter()
         self.lists: dict[str, list] = {
             "customer_name_or_code_matches": [], "case_serial_conflicts": [], "customer_serial_prefixed": [],
-            "unknown_case_types": [], "unresolved_people": [],
+            "unknown_case_types": [], "unresolved_people": [], "files_missing_in_oss": [],
         }
         self.schema = json.loads((source / "_schema.json").read_text(encoding="utf-8"))
         missing = [table for table in REQUIRED_TABLES if table not in self.schema]
@@ -302,9 +308,56 @@ class HdImport:
                             (f"{SCHEMA}.IPR_Case_Log", log_id, event_id, case_ids[case]))
             self.report["workflow_events_created"] += 1
 
+    def files(self, case_ids: dict[str, int]) -> None:
+        if not self.oss_keys:
+            self.report["files_skipped_no_oss_listing"] = 1
+            return
+        objects: dict[str, tuple[str, int]] = {}
+        for line in self.oss_keys.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                key, etag, size = json.loads(line)
+                if key.startswith(OSS_CASE_FILE_PREFIX) and not key.endswith("/"):
+                    objects[key] = (etag, int(size))
+        lowered = {key.lower(): key for key in objects}
+        types = {text(r["FileTypeId"]): text(r["FileTypeName"]) for r in self.load("IPR_Case_FileType")}
+        done = {r["stored_name"] for r in self.db.execute(
+            "SELECT stored_name FROM file_attachments WHERE stored_name LIKE %s", (STORED_NAME_PREFIX + "%",)).fetchall()}
+        for row in self.load("IPR_Case_File"):
+            file_id, case = text(row.get("FileId")), text(row.get("CaseId"))
+            if text(row.get("Actived")).upper() != "T" or case not in case_ids:
+                continue
+            stored_name = f"{STORED_NAME_PREFIX}{file_id}"
+            if stored_name in done:
+                continue
+            name = text(row.get("FullPath"))
+            candidates = [f"{OSS_CASE_FILE_PREFIX}{text(row.get('CaseNo'))}/{value}" for value in (name, name.strip()) if value]
+            key = None
+            for candidate in candidates:  # 先原样，再忽略大小写（Windows 文件名不区分大小写）
+                key = candidate if candidate in objects else lowered.get(candidate.lower())
+                if key:
+                    break
+            if not key:
+                self.lists["files_missing_in_oss"].append({"case_no": text(row.get("CaseNo")), "file_id": file_id, "full_path": name})
+                continue
+            etag, size = objects[key]
+            uploaded = audit_time(row.get("UploadingTime") or row.get("CreateTime"))
+            original_name = text(row.get("FileName")) or key.rsplit("/", 1)[-1]
+            self.db.execute(
+                """INSERT INTO file_attachments (record_id, category, file_type_code, original_name, stored_name, content_type, size, path,
+                       uploader, remark, document_date, is_license, requires_transmission, is_transmitted, transmitted_by,
+                       is_locked, locked_by, word_editor_lock_token, word_editor_locked_by, created_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, false, false, %s, '', false, '', '', '', COALESCE(%s, now()))""",
+                (case_ids[case], types.get(text(row.get("FileTypeId"))) or "其他", text(row.get("FileTypeId")), original_name, stored_name,
+                 mimetypes.guess_type(original_name)[0] or "application/octet-stream", size, f"oss://{OSS_BUCKET}/{key}",
+                 text(row.get("UploadingUser"))[:64], json.dumps({
+                     "source": self.batch, "legacy_source": LEGACY_SOURCE, "legacy_table": f"{SCHEMA}.IPR_Case_File",
+                     "hd_file_id": row.get("FileId"), "oss_etag": etag, "legacy_declared_bytes": row.get("FileSize")}, ensure_ascii=False),
+                 uploaded.date() if uploaded else None, text(row.get("IsTransmitted")).upper() == "T", uploaded))
+            self.report["file_attachments_created"] += 1
+
     def run(self) -> dict:
         timings = {}
-        for name, step in (("mirror", self.mirror), ("customers", None), ("cases", None), ("case_customers", None), ("logs", None)):
+        for name, step in (("mirror", self.mirror), ("customers", None), ("cases", None), ("case_customers", None), ("logs", None), ("files", None)):
             started = time.monotonic()
             if name == "mirror":
                 step()
@@ -314,8 +367,10 @@ class HdImport:
                 self.case_ids = self.cases(self.customer_ids)
             elif name == "case_customers":
                 self.case_customers(self.case_ids, self.customer_ids)
-            else:
+            elif name == "logs":
                 self.logs(self.case_ids)
+            else:
+                self.files(self.case_ids)
             timings[name] = round(time.monotonic() - started, 1)
         self.report["source_files"] = len(self.load("IPR_Case_File"))
         return {"batch": self.batch, "counts": dict(self.report), "timings_seconds": timings,
@@ -335,6 +390,9 @@ def rollback(db, batch: str) -> dict:
         result["ipr_case_type_assignments"] = db.execute(
             "UPDATE ipr_case_type_assignments SET deleted_at=now(), deleted_by=%(actor)s WHERE deleted_at IS NULL AND assigned_by=%(by)s "
             "AND case_record_id = ANY(%(ids)s)", {**stamp, "by": ACTOR, "ids": records}).rowcount
+        result["file_attachments"] = db.execute(
+            "UPDATE file_attachments SET deleted_at=now(), deleted_by=%(actor)s WHERE deleted_at IS NULL AND stored_name LIKE %(prefix)s "
+            "AND record_id = ANY(%(ids)s)", {**stamp, "prefix": STORED_NAME_PREFIX + "%", "ids": records}).rowcount
         result["workflow_events"] = db.execute(
             "UPDATE workflow_events SET deleted_at=now(), deleted_by=%(actor)s WHERE deleted_at IS NULL AND id IN "
             "(SELECT target_id FROM hz_alignment_event_links WHERE source_table=%(table)s AND record_id = ANY(%(ids)s))",
@@ -346,6 +404,7 @@ def rollback(db, batch: str) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--source", help="HD 导出 JSONL 目录")
+    parser.add_argument("--oss-keys", help="HD.IPR 的 OSS 对象清单（每行 [key, etag, size] 的 JSONL）；不给就不写附件")
     parser.add_argument("--rollback", action="store_true", help="按 --batch 逻辑删除该批次（配合 --apply 才提交）")
     parser.add_argument("--batch", default=f"ipr_hd_{datetime.now():%Y%m%d}", help="迁移批次号，写入 migration_source")
     parser.add_argument("--report", required=True, help="报告输出文件（仓库外）")
@@ -360,7 +419,8 @@ def main() -> None:
         if args.rollback:
             result = {"batch": args.batch, "counts": rollback(db, args.batch), "timings_seconds": {}}
         elif args.source:
-            result = HdImport(db, Path(args.source).expanduser(), args.batch).run()
+            result = HdImport(db, Path(args.source).expanduser(), args.batch,
+                                                Path(args.oss_keys).expanduser() if args.oss_keys else None).run()
         else:
             raise SystemExit("请指定 --source 或 --rollback")
         if args.apply:
