@@ -1558,7 +1558,6 @@ export default function InvestigationCenterPage({
         throw new Error("调查任务未关联有效的父调查事项");
       }
       const existingTasks = data.items as TaskRow[];
-      const parentTask = existingTasks.find((task) => !task.parent_task_id);
       setTaskTarget(row);
       setTaskAuthorizationTarget(authorization);
       setTasks(existingTasks);
@@ -1566,9 +1565,8 @@ export default function InvestigationCenterPage({
       // can therefore be created even when no task projection exists yet.
       setCreatingSubtask(Boolean(createSubtask));
       resetTaskForm(row, authorization);
-      const parentId = createSubtask && parentTask ? parentTask.id : undefined;
-      taskForm.setFieldValue("parent_task_id", parentId);
-      if (parentId) updateTaskParent(parentId, authorization, existingTasks);
+      // BUG20261030013：新增子任务的父任务就是当前调查任务，不再默认挂到已有的子任务下。
+      taskForm.setFieldValue("parent_task_id", undefined);
       setContractOptions(
         contractData.items.filter(
           (contract: Contract) =>
@@ -3559,7 +3557,6 @@ export default function InvestigationCenterPage({
           setCreatingSubtask(false);
         }}
         onCreateTask={(action) => void createTask(action)}
-        onParentTaskChange={updateTaskParent}
       />
       {!isAuditClue && <InvestigationDetailModal
         open={Boolean(investigationDetail)}

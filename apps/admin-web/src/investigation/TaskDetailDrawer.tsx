@@ -22,7 +22,6 @@ interface TaskDetailDrawerProps {
   personDisplayName: (value: unknown) => string;
   onClose: () => void;
   onCreateTask: (nextAction: "complete" | "continue") => void;
-  onParentTaskChange: (parentId: number) => void;
 }
 
 export default function TaskDetailDrawer({
@@ -39,7 +38,6 @@ export default function TaskDetailDrawer({
   personDisplayName,
   onClose,
   onCreateTask,
-  onParentTaskChange,
 }: TaskDetailDrawerProps) {
   return (
     <Drawer
@@ -113,7 +111,7 @@ export default function TaskDetailDrawer({
         style={{ marginTop: 16 }}
       >
         <Form form={taskForm} layout="vertical">
-          {creatingSubtask && !tasks.some((task) => !task.parent_task_id) && (
+          {creatingSubtask && (
             <Alert
               type="info"
               showIcon
@@ -129,23 +127,6 @@ export default function TaskDetailDrawer({
           >
             <Input />
           </Form.Item>
-          {creatingSubtask && tasks.some((task) => !task.parent_task_id) && (
-            <Form.Item
-              label="父调查任务"
-              name="parent_task_id"
-              rules={[{ required: true, message: "请选择父任务" }]}
-            >
-              <Select
-                onChange={onParentTaskChange}
-                options={tasks
-                  .filter((task) => !task.parent_task_id)
-                  .map((task) => ({
-                    value: task.id,
-                    label: `${task.serial_no}｜${task.title}`,
-                  }))}
-              />
-            </Form.Item>
-          )}
           <div className="form-grid">
             {!isLegacyInvestigationRecord(authorizationTarget) &&
               !authorizationTarget?.data.contract_id &&
