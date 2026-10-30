@@ -1991,26 +1991,12 @@ function FinanceCenterContent({
       ["草稿", "待到账", "待分配", "待结算", "待归档", "待审批"].includes(row.status);
     return { mayEdit, mayCancel };
   };
-  const internalMineOperation = (_: unknown, row: Fee) => {
-    const { mayEdit, mayCancel } = internalMinePermissions(row);
-    return (
-      <Space size={0}>
-        {mayEdit && (
-          <Button type="link" onClick={() => openFeeEdit(row)}>
-            编辑
-          </Button>
-        )}
-        {mayCancel && (
-          <Button type="link" danger onClick={() => openPaymentCancel(row)}>
-            撤回
-          </Button>
-        )}
-        <Button type="link" onClick={() => void openPaymentDetail(row)}>
-          查看
-        </Button>
-      </Space>
-    );
-  };
+  // BUG20261030001（范文玲）：编辑、撤回只在“查看”的右键菜单里，行内只留“查看”。
+  const internalMineOperation = (_: unknown, row: Fee) => (
+    <Button type="link" onClick={() => void openPaymentDetail(row)}>
+      查看
+    </Button>
+  );
   const feeQueryFields = [
     queryField("案件编号", "caseNo"),
     queryField("法院案号", "courtCaseNo"),
