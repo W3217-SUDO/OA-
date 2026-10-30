@@ -255,7 +255,11 @@ async def update_investigation_record(record_id: int, body: RecordUpdate, identi
         raise HTTPException(status_code=404, detail="调查中心记录不存在")
     if record.module == "task":
         _require_task_owner_or_initiator(record, identity, action="修改调查任务")
-    elif record.module == "clue" and record.status in {"待审批", "待客户审核", "待取证", "已取证"}:
+    elif record.module == "clue" and record.status in {"待审批", "待客户审核"}:
+        # BUG20261030014：审批中的线索只有提交线索的调查员本人能改，审批人（含管理员）不能改。
+        if identity["username"] not in {record.owner, str((record.data or {}).get("publisher") or "")}:
+            raise HTTPException(status_code=403, detail="待审批、待客户审核的线索只有提交线索的调查员本人可以修改")
+    elif record.module == "clue" and record.status in {"待取证", "已取证"}:
         reviewer = await db.scalar(select(User).where(User.username == identity["username"]))
         if identity.get("role") != "admin" and (not reviewer or not await _user_has_job_permission(reviewer, "线索审批", db)):
             await _require_record_owner_or_manager(record, identity, db)

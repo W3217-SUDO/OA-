@@ -2687,8 +2687,9 @@ export default function InvestigationCenterPage({
     "clue-my-refused": ["查询", "修改", "提交", "批量提交", "新增文件", "批量删除"],
     "clue-my-no-fee": ["查询", "修改", "申请费用"],
     "clue-my-fee": ["查询", "修改"],
-    "clue-audit-pending": ["查询", "刷新", "修改", "审批"],
-    "clue-audit-customer": ["查询", "刷新", "修改", "审批"],
+    // BUG20261030014：审批人不能修改发起人提交的线索，两个审核页不再有“修改”。
+    "clue-audit-pending": ["查询", "刷新", "审批"],
+    "clue-audit-customer": ["查询", "刷新", "审批"],
   };
   const selectedRows = visibleRows.filter((row) =>
     selectedClues.includes(row.id),
