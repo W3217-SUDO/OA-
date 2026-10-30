@@ -2031,25 +2031,11 @@ function FinanceCenterContent({
         <Button type="link" onClick={() => void openPaymentDetail(row)}>
           查看
         </Button>
+        {/* BUG20261030001（范文玲）：编辑、撤回只在“查看”的右键菜单里，行内不再重复。 */}
         {initialView === "finance-payment-mine" &&
           canEditContractPayment(row) &&
-          (canManage || row.owner === currentUser.username || row.data?.applicant === currentUser.username) && <>
-            <Button type="link" onClick={() => setContractPaymentEditId(row.id)}>编辑</Button>
+          (canManage || row.owner === currentUser.username || row.data?.applicant === currentUser.username) && (
             <Button type="link" onClick={() => void feeAction(row, "submit")}>重新提交</Button>
-          </>}
-        {initialView === "finance-payment-mine" &&
-          row.module === "finance" &&
-          row.status === "草稿" &&
-          (canFeeUpdate || row.owner === currentUser.username) && (
-            <Button type="link" onClick={() => openFeeEdit(row)}>
-              编辑
-            </Button>
-          )}
-        {initialView === "finance-payment-mine" &&
-          canWithdrawFinanceFee(row) && (
-            <Button type="link" danger onClick={() => openPaymentCancel(row)}>
-              撤回请款
-            </Button>
           )}
         {initialView === "finance-payment-mine" &&
           ["待审批", "已审批", "待付款"].includes(row.status) &&
