@@ -2094,11 +2094,12 @@ export default function IprCenterPage({
                           onSaveLawFirms={saveCaseLawFirms}
                           onLawFirmSelectionChange={setLawFirmSelection}
                         />
+                        {/* 历史载体只有上海 IPR；HD 等其他来源的老 CaseId 会撞号，不显示。 */}
                         {Number(
                           detail.data?.legacy_ipr_case_id ||
                             detail.data?.legacy_case_id ||
                             0
-                        ) > 0 ? (
+                        ) > 0 && (!detail.data?.legacy_source || detail.data?.legacy_source === "ipr_sh") ? (
                           <div style={{ marginTop: 16 }}>
                             <IprLegacyHistoryRelations
                               legacyCaseId={Number(

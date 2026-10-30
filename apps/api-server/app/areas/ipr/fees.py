@@ -228,7 +228,8 @@ async def list_ipr_case_legacy_fee_items(case_id: int, identity: dict = Depends(
     )
     record = await _ensure_record_module(case_id, "ipr_case", identity, db)
     legacy_case_id = int((record.data or {}).get("legacy_ipr_case_id") or 0)
-    if legacy_case_id <= 0:
+    # 公共副本表是沪知导入的上海 IPR；HD 等其他来源的 CaseId 会撞号，不能拿来查这里。
+    if legacy_case_id <= 0 or (record.data or {}).get("legacy_source", "ipr_sh") != "ipr_sh":
         return {"items": []}
     try:
         async with db.begin_nested():

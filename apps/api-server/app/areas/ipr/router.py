@@ -778,7 +778,7 @@ async def reboot_ipr_case(case_id: int, body: IprCaseRebootInput, identity: dict
         new_data.pop(key, None)
     new_data.pop("conflict_review", None)
     # BUG20261030004：从迁移案件重提出来的是新案件，不带旧系统案件标识，否则会被当成迁移案件、隐藏操作按钮。
-    for key in {"legacy_ipr_case_id", "legacy_case_id", "legacy_record", "migration_source", "source_table", "page_mapping_revision"}:
+    for key in {"legacy_ipr_case_id", "legacy_case_id", "legacy_record", "migration_source", "source_table", "page_mapping_revision", "legacy_source"}:
         new_data.pop(key, None)
     new_data.update({
         "reboot_root_serial": root_serial,

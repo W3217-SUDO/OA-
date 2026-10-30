@@ -813,6 +813,9 @@ async def _visible_legacy_ipr_case_ids(identity: dict, db: AsyncSession) -> set[
     ))).all())
     legacy_ids: set[int] = set()
     for row in rows:
+        # 历史载体只有上海 IPR（沪知副本）；HD 等其他来源的老 CaseId 与之撞号，不能据此放开可见范围。
+        if (row.data or {}).get("legacy_source", "ipr_sh") != "ipr_sh":
+            continue
         raw_id = (row.data or {}).get("legacy_ipr_case_id", (row.data or {}).get("legacy_case_id"))
         try:
             if raw_id not in (None, ""):
