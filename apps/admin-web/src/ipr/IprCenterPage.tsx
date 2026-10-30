@@ -57,6 +57,7 @@ IprLawsuitPanel,
 IprMaintenancePanel,
 IprOperationLogsPanel,
 IprRemindersPanel,
+IprTrademarkImage,
 IprTasksPanel,
 } from "./IprCaseDetail";
 import { IprCaseList } from "./IprCaseList";
@@ -2161,6 +2162,15 @@ export default function IprCenterPage({
               />
             </div>
             <aside className="ipr-case-page-side">
+              {detail.data.case_kind === "商标" ? (
+                <IprTrademarkImage
+                  detail={detail}
+                  onSaved={(attachmentId) => {
+                    setDetail((current) => current && current.id === detail.id ? { ...current, data: { ...current.data, trademark_image_attachment_id: attachmentId } } : current);
+                    void loadIprLogs(detail.id);
+                  }}
+                />
+              ) : null}
               <IprRemindersPanel
                 detail={detail}
                 iprSectionErrors={iprSectionErrors}

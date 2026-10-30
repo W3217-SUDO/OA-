@@ -1,5 +1,6 @@
 // 知识产权案件详情页的“案件信息”区，字段和顺序按原沪知系统案件页（BUG20261028001）。
 // 迁移数据字段名沿用旧库（case_name、case_request_no……），新建案件用新字段名，按顺序取第一个有值的。
+// 商标案件按原系统商标页：不显示证件号码、发明人、首年年费年度、费用减缓比例，另有商标类别等（BUG20261030005）。
 
 type IprCaseLike = { serial_no?: string; customer?: string; status?: string; data?: Record<string, any> | null };
 
@@ -47,6 +48,12 @@ export const annualYearText = (value: unknown) => {
   const number = Number(raw);
   return Number.isInteger(number) && number >= 1 && number <= 30 ? `第${chineseNumber(number)}年` : raw;
 };
+// 商标类型：旧库 TradeTypeId 只有 1（一般商标）。
+export const TRADE_TYPE_OPTIONS = ["一般商标", "集体商标", "证明商标"].map((value) => ({ value, label: value }));
+const tradeTypeText = (data: Record<string, any>) => text(data.trade_type_name) || (String(data.trade_type_id ?? "") === "1" ? "一般商标" : text(data.trade_type_id));
+
+export const isTrademarkCase = (record: IprCaseLike) => record.data?.case_kind === "商标";
+
 export const ANNUAL_YEAR_OPTIONS = Array.from({ length: 20 }, (_, index) => ({ value: String(index + 1), label: annualYearText(index + 1) }));
 
 /** 旧库是 T/F，新建案件是布尔值。 */
@@ -55,6 +62,30 @@ export const iprFlagChecked = (value: unknown) => value === true || ["T", "t", "
 export function iprCaseInfoItems(record: IprCaseLike): IprCaseInfoItem[] {
   const data = record.data || {};
   const item = (key: string, label: string, value: unknown): IprCaseInfoItem => ({ key, label, value: text(value) || "—" });
+  if (isTrademarkCase(record)) {
+    return [
+      item("serial", "案件编号", record.serial_no || data.case_no),
+      item("type", "案件类型", pick(data, "case_type_name", "case_type", "application_type")),
+      item("phase", "案件阶段", pick(data, "case_phase") || record.status),
+      item("register-date", "立案日", iprDateText(pick(data, "case_register_date", "accepted_at"))),
+      item("request-no", "申请号", pick(data, "case_request_no", "application_no")),
+      item("name", "商标名称", pick(data, "case_name", "patent_name", "invention_name")),
+      item("request-date", "申请日", iprDateText(pick(data, "case_request_date", "application_date"))),
+      item("authorization-date", "授权日", iprDateText(pick(data, "authorization_date"))),
+      item("source-people", "案源人", pick(data, "case_origin_people_name", "case_source")),
+      item("agent", "代理人", pick(data, "agent", "procurator_name")),
+      item("writer", "撰稿人", pick(data, "writer", "copywriter_name")),
+      item("source-date", "案源日", iprDateText(pick(data, "case_origin_date", "source_date"))),
+      item("first-instance-date", "初审公告", iprDateText(pick(data, "first_instance_date"))),
+      item("trade-type", "商标类型", tradeTypeText(data)),
+      item("trademark-ids", "商标类别", pick(data, "trademark_ids")),
+      item("ref-case-no", "关联案号", pick(data, "ref_case_no")),
+      item("applicant", "申请人", pick(data, "applicant_name", "applicant", "applicants")),
+      item("trade-product-service", "商品服务", pick(data, "trade_product_service")),
+      item("customer", "客户", record.customer),
+      item("manager", "案件管理人", pick(data, "case_manager", "case_officer_name")),
+    ];
+  }
   return [
     item("serial", "案件编号", record.serial_no || data.case_no),
     item("type", "案件类型", pick(data, "case_type_name", "case_type", "application_type")),
@@ -81,6 +112,15 @@ export function iprCaseInfoItems(record: IprCaseLike): IprCaseInfoItem[] {
 
 export function iprCaseFlags(record: IprCaseLike): IprCaseFlag[] {
   const data = record.data || {};
+  if (isTrademarkCase(record)) {
+    return [
+      { key: "priority", label: "优先权", checked: iprFlagChecked(data.has_priority) },
+      { key: "foreign", label: "涉外案件", checked: iprFlagChecked(data.has_foreign) },
+      { key: "color", label: "颜色保护", checked: iprFlagChecked(data.has_trade_color_protected) },
+      { key: "voice", label: "声音标志", checked: iprFlagChecked(data.has_trade_voice_protected) },
+      { key: "three-d", label: "三维标志", checked: iprFlagChecked(data.has_trade3_d_protected) },
+    ];
+  }
   return [
     { key: "priority", label: "优先权", checked: iprFlagChecked(data.has_priority) },
     { key: "foreign", label: "涉外案件", checked: iprFlagChecked(data.has_foreign) },
@@ -91,7 +131,7 @@ export function iprCaseFlags(record: IprCaseLike): IprCaseFlag[] {
 }
 
 // “修改”时各格的输入方式和保存字段（后端 /ipr/cases/{id}/info）；案件编号、案件类型、客户不在这里改。
-export type IprCaseEditField = { field: string; type: "text" | "date" | "phase" | "annual-year" | "relief-rate"; sources: string[] };
+export type IprCaseEditField = { field: string; type: "text" | "textarea" | "date" | "phase" | "annual-year" | "relief-rate" | "trade-type"; sources: string[] };
 export const IPR_CASE_EDIT_FIELDS: Record<string, IprCaseEditField> = {
   phase: { field: "case_phase", type: "phase", sources: ["case_phase"] },
   "register-date": { field: "case_register_date", type: "date", sources: ["case_register_date", "accepted_at"] },
@@ -110,9 +150,14 @@ export const IPR_CASE_EDIT_FIELDS: Record<string, IprCaseEditField> = {
   applicant: { field: "applicant_name", type: "text", sources: ["applicant_name", "applicant", "applicants"] },
   inventor: { field: "inventor", type: "text", sources: ["inventor", "case_inventor", "inventors"] },
   manager: { field: "case_manager", type: "text", sources: ["case_manager", "case_officer_name"] },
+  "first-instance-date": { field: "first_instance_date", type: "date", sources: ["first_instance_date"] },
+  "trade-type": { field: "trade_type_name", type: "trade-type", sources: ["trade_type_name"] },
+  "trademark-ids": { field: "trademark_ids", type: "text", sources: ["trademark_ids"] },
+  "trade-product-service": { field: "trade_product_service", type: "textarea", sources: ["trade_product_service"] },
 };
 export const IPR_CASE_FLAG_FIELDS: Record<string, string> = {
   priority: "has_priority", foreign: "has_foreign", relief: "has_relief", "private-inventor": "has_private_inventor", iu: "has_iu",
+  color: "has_trade_color_protected", voice: "has_trade_voice_protected", "three-d": "has_trade3_d_protected",
 };
 
 /** 进入修改时每格的初始值（日期取 YYYY-MM-DD，减缓比例统一成 1.00/0.85/0.70）。 */
@@ -121,7 +166,8 @@ export function iprCaseEditValues(record: IprCaseLike): Record<string, string> {
   const values: Record<string, string> = {};
   for (const [key, config] of Object.entries(IPR_CASE_EDIT_FIELDS)) {
     const raw = text(pick(data, ...config.sources));
-    values[key] = config.type === "date" ? iprDateText(raw)
+    values[key] = config.type === "trade-type" ? tradeTypeText(data)
+      : config.type === "date" ? iprDateText(raw)
       : config.type === "relief-rate" && raw ? Number(raw).toFixed(2)
       : config.type === "annual-year" ? (/^\d+$/.test(raw) ? raw : "")
       : raw;

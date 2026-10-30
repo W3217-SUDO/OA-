@@ -11,3 +11,4 @@ export { IprBusinessLogsPanel,IprOperationLogsPanel } from "./IprLogsPanel";
 export { IprMaintenancePanel } from "./IprMaintenancePanel";
 export { IprRemindersPanel } from "./IprRemindersPanel";
 export { IprTasksPanel } from "./IprTasksPanel";
+export { IprTrademarkImage } from "./IprTrademarkImage";

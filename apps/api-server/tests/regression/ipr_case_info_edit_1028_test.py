@@ -99,6 +99,48 @@ class IprCaseInfoEditTest(unittest.IsolatedAsyncioTestCase):
         closed = await self.client.post(f"{API}/ipr/cases/{self.case_id}/logs", json={"content": "x"})
         self.assertEqual(closed.status_code, 409)
 
+    async def test_trademark_fields_and_image(self):
+        """BUG20261030005：商标案件保存商标类别、商品服务、初审公告、商标类型和颜色/声音/三维标志，可上传商标图样。"""
+        async with self.sessions() as db:
+            record = await db.get(BusinessRecord, self.case_id)
+            record.data = {**record.data, "case_kind": "商标"}
+            await db.commit()
+        response = await self.client.patch(f"{API}/ipr/cases/{self.case_id}/info", json={
+            "trademark_ids": "9、35", "trade_product_service": "商业管理咨询", "first_instance_date": "2016-12-13",
+            "trade_type_name": "一般商标", "has_trade_color_protected": True, "has_trade3_d_protected": True,
+        })
+        self.assertEqual(response.status_code, 200, response.text)
+        bad = await self.client.patch(f"{API}/ipr/cases/{self.case_id}/info", json={"trade_type_name": "特殊商标"})
+        self.assertEqual(bad.status_code, 422)
+        missing = await self.client.get(f"{API}/ipr/cases/{self.case_id}/trademark-image")
+        self.assertEqual(missing.status_code, 404)
+        import tempfile
+        from unittest import mock
+        from pathlib import Path
+        from app.core import storage
+        with tempfile.TemporaryDirectory() as folder, mock.patch.object(case_info, "UPLOAD_ROOT", Path(folder)), \
+                mock.patch.object(storage, "UPLOAD_ROOT", Path(folder)):
+            wrong = await self.client.put(f"{API}/ipr/cases/{self.case_id}/trademark-image", files={"file": ("a.pdf", b"%PDF", "application/pdf")})
+            self.assertEqual(wrong.status_code, 422)
+            png = b"\x89PNG\r\n\x1a\n" + b"0" * 32
+            uploaded = await self.client.put(f"{API}/ipr/cases/{self.case_id}/trademark-image", files={"file": ("logo.png", png, "image/png")})
+            self.assertEqual(uploaded.status_code, 200, uploaded.text)
+            image = await self.client.get(f"{API}/ipr/cases/{self.case_id}/trademark-image")
+            self.assertEqual((image.status_code, image.content), (200, png))
+        async with self.sessions() as db:
+            record = await db.get(BusinessRecord, self.case_id)
+            self.assertEqual((record.data["trademark_ids"], record.data["trade_product_service"]), ("9、35", "商业管理咨询"))
+            self.assertEqual((record.data["first_instance_date"], record.data["trade_type_name"]), ("2016-12-13", "一般商标"))
+            self.assertEqual((record.data["has_trade_color_protected"], record.data["has_trade3_d_protected"]), ("T", "T"))
+            self.assertEqual(record.data["trademark_image_attachment_id"], uploaded.json()["attachment_id"])
+            comments = [event.comment for event in (await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == self.case_id))).all()]
+            self.assertTrue(any("商标类别" in comment and "颜色保护" in comment for comment in comments))
+            self.assertTrue(any("商标图样" in comment for comment in comments))
+
+    async def test_patent_case_cannot_upload_trademark_image(self):
+        response = await self.client.put(f"{API}/ipr/cases/{self.case_id}/trademark-image", files={"file": ("logo.png", b"x", "image/png")})
+        self.assertEqual(response.status_code, 422)
+
 
 if __name__ == "__main__":
     unittest.main()

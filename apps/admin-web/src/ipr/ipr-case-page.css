@@ -130,6 +130,14 @@
   grid-column: span 2;
 }
 
+.ipr-case-info-trade-product-service {
+  grid-column: span 2;
+}
+
+.ipr-case-info-trade-product-service dd {
+  white-space: pre-wrap;
+}
+
 .ipr-case-info-flags {
   flex: 0 0 auto;
   margin: 0;
@@ -162,8 +170,10 @@
     grid-column: auto;
   }
 
-  /* 前 16 格三列排完剩一格，补满这一行。 */
-  .ipr-case-info-relief-rate {
+  /* 前 16 格三列排完剩一格，补满这一行（商标案件第 16 格是关联案号）。 */
+  .ipr-case-info-relief-rate,
+  .ipr-case-info-trademark .ipr-case-info-ref-case-no,
+  .ipr-case-info-trade-product-service {
     grid-column: 1 / -1;
   }
 }
@@ -177,7 +187,8 @@
     grid-column: 1 / -1;
   }
 
-  .ipr-case-info-relief-rate {
+  .ipr-case-info-relief-rate,
+  .ipr-case-info-trademark .ipr-case-info-ref-case-no {
     grid-column: auto;
   }
 }
@@ -212,7 +223,8 @@
   .ipr-case-info-inventor,
   .ipr-case-info-customer,
   .ipr-case-info-manager,
-  .ipr-case-info-reboot {
+  .ipr-case-info-reboot,
+  .ipr-case-info-trade-product-service {
     grid-column: auto;
   }
 
@@ -233,4 +245,35 @@
 
 .ipr-case-info-tools:empty {
   display: none;
+}
+
+/* 商标案件右上角商标图样（同原系统，没上传时显示 ®）。 */
+.ipr-trademark-image {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: var(--ant-color-bg-container, #fff);
+  border-radius: 8px;
+}
+
+.ipr-trademark-image-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 180px;
+  height: 180px;
+}
+
+.ipr-trademark-image-frame img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.ipr-trademark-image-default {
+  font-size: 140px;
+  line-height: 1;
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
 }

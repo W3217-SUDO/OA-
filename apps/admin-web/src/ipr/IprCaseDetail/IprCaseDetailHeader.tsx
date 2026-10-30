@@ -6,7 +6,7 @@ import Table from "../../components/ResizableTable";
 import dayjs from "dayjs";
 import { isIprLawsuit,isLegacyIprRecord,personDisplayName } from "../constants";
 import type { CpcApplication,IprRecord } from "../types";
-import { ANNUAL_YEAR_OPTIONS,IPR_CASE_EDIT_FIELDS,IPR_CASE_FLAG_FIELDS,RELIEF_RATE_OPTIONS,iprCaseEditValues,iprCaseFlags,iprCaseInfoItems } from "./iprCaseInfo";
+import { ANNUAL_YEAR_OPTIONS,IPR_CASE_EDIT_FIELDS,IPR_CASE_FLAG_FIELDS,RELIEF_RATE_OPTIONS,TRADE_TYPE_OPTIONS,isTrademarkCase,iprCaseEditValues,iprCaseFlags,iprCaseInfoItems } from "./iprCaseInfo";
 
 interface IprCaseDetailHeaderProps {
   detail: IprRecord;
@@ -358,9 +358,12 @@ function IprCaseInfoGrid({ detail, onOpenRebootCase, onSaved }: Pick<IprCaseDeta
       return <DatePicker size="small" style={{ width: "100%" }} value={value ? dayjs(value) : null}
         onChange={(next) => set(next ? next.format("YYYY-MM-DD") : "")} />;
     }
-    if (config.type === "phase" || config.type === "annual-year" || config.type === "relief-rate") {
+    if (config.type === "textarea") {
+      return <Input.TextArea size="small" autoSize={{ minRows: 2, maxRows: 6 }} value={value} onChange={(event) => set(event.target.value)} />;
+    }
+    if (config.type === "phase" || config.type === "annual-year" || config.type === "relief-rate" || config.type === "trade-type") {
       const options = config.type === "phase" ? phaseOptions.map((item) => ({ value: item, label: item }))
-        : config.type === "annual-year" ? ANNUAL_YEAR_OPTIONS : RELIEF_RATE_OPTIONS;
+        : config.type === "annual-year" ? ANNUAL_YEAR_OPTIONS : config.type === "trade-type" ? TRADE_TYPE_OPTIONS : RELIEF_RATE_OPTIONS;
       return <Select size="small" style={{ width: "100%" }} value={value || undefined} placeholder="请选择" allowClear
         options={options} onChange={(next) => set(next || "")} showSearch={config.type === "phase"} />;
     }
@@ -377,7 +380,7 @@ function IprCaseInfoGrid({ detail, onOpenRebootCase, onSaved }: Pick<IprCaseDeta
         ) : canEdit && roleActionAllowed("ipr.case.update") ? <Button size="small" type="primary" onClick={startEdit}>修改</Button> : null}
       </div>
       <div className="ipr-case-info-body">
-        <dl className="ipr-case-info-grid">
+        <dl className={`ipr-case-info-grid${isTrademarkCase(detail) ? " ipr-case-info-trademark" : ""}`}>
           {iprCaseInfoItems(detail).map((item) => (
             <div key={item.key} className={`ipr-case-info-cell ipr-case-info-${item.key}`}>
               <dt>{item.label}</dt>
