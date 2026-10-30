@@ -6,6 +6,9 @@ import type { FinanceScope } from "../types";
 export function financeCenterApi(financeScope: FinanceScope) {
   const scoped = (url: string, config?: AxiosRequestConfig): AxiosRequestConfig | undefined =>
     /^\/finance\/(incoming-payments|general-settlements|archive-settlements|settlements|legacy-history)(\/|$)/.test(url)
+    // 付款管理、开票管理、费用查询、未开票也按老系统 GroupId 分中心（陶威 2026-10-30）；工作台入口不分。
+    || (/^\/finance\/(payment-applications\/query|payment-workflow\/list|invoices|case-fees\/invoice-status|fees\/query)$/.test(url)
+      && !config?.params?.dashboard_queue)
       ? { ...config, params: { ...config?.params, finance_scope: financeScope } }
       : config;
   return {

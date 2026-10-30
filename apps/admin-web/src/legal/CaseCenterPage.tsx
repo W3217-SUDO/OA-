@@ -2791,8 +2791,11 @@ export default function CaseCenterPage({
     : counselDetailAttachments);
   const isAiSpaceFolder=activeCounselDocCategory==="AI空间";
   const activeCounselDocLabel=counselDocTree.find(item=>item.category===activeCounselDocCategory)?.label||activeCounselDocCategory;
-  const firmFeeRows=counselDetailFinance.filter(row=>row.data.expense_scope!=="平台"&&row.data.expense_scope!=="内部"&&!String(row.data.fee_type||"").includes("内部"));
-  const platformFeeRows=counselDetailFinance.filter(row=>row.data.expense_scope==="平台");
+  // 迁移费用按老系统 GroupId 分律所/平台（10/20，0 两边都不显示），新建费用按费用归属（陶威 2026-10-30）。
+  const legacyFeeGroup=(row:CaseRow)=>String(row.data.group_id??"");
+  const isPlatformCaseFee=(row:CaseRow)=>["0","10","20"].includes(legacyFeeGroup(row))?legacyFeeGroup(row)==="20":row.data.expense_scope==="平台";
+  const firmFeeRows=counselDetailFinance.filter(row=>legacyFeeGroup(row)!=="0"&&!isPlatformCaseFee(row)&&row.data.expense_scope!=="内部"&&!String(row.data.fee_type||"").includes("内部"));
+  const platformFeeRows=counselDetailFinance.filter(isPlatformCaseFee);
   const internalFeeRows=counselDetailFinance.filter(row=>row.data.expense_scope==="内部"||String(row.data.fee_type||"").includes("内部"));
   const isInternalCaseFee=(row:CaseRow)=>row.data.expense_scope==="内部"||String(row.data.fee_type||"").includes("内部");
   const selectedFirmFee=firmFeeRows.find(row=>selectedFirmFeeKeys.includes(row.id));

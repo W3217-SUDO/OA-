@@ -16,7 +16,7 @@ from app.models_shared import (
 )
 from fastapi import APIRouter
 from app.core.finance_centers import (
-    legacy_center_conditions, optional_finance_center_identity, validate_legacy_receipt_allocations,
+    filter_rows_by_center, legacy_center_conditions, optional_finance_center_identity, validate_legacy_receipt_allocations,
 )
 
 router = APIRouter()
@@ -295,7 +295,7 @@ async def list_invoice_applications(
     invoice_title: str = "", invoice_no: str = "", invoice_status: str = "",
     invoiced_from: date | None = None, invoiced_to: date | None = None, case_no: str = "", applicant: str = "",
     page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=200),
-    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.finance import (
         _invoice_list_rows,
@@ -308,6 +308,8 @@ async def list_invoice_applications(
         if not any(grants[scope_name][action] for scope_name in ("firm", "platform") for action in ("review", "issue")):
             raise HTTPException(status_code=403, detail="当前账号没有待处理开票权限")
     rows = await _invoice_list_rows(identity, db, scope=scope, customer=customer, application_no=application_no, invoice_type=invoice_type, invoice_title=invoice_title, invoice_no=invoice_no, invoice_status=invoice_status, invoiced_from=invoiced_from, invoiced_to=invoiced_to, case_no=case_no, applicant_filter=applicant)
+    # 财务中心/平台财务中心按老系统发票 GroupId 分开（陶威 2026-10-30）。
+    rows = await filter_rows_by_center(rows, identity, db)
     total_amount = round(sum(float((row.get("data") or {}).get("amount", 0) or 0) for row in rows if row.get("status") not in {"已撤回", "已作废"}), 2)
     total_extra_amount = round(sum(float((row.get("data") or {}).get("extra_amount", 0) or 0) for row in rows if row.get("status") not in {"已撤回", "已作废"}), 2)
     start = (page - 1) * page_size
@@ -376,7 +378,7 @@ async def list_invoice_case_fees(
     fee_types: str = "律师代理费", payer_name: str = "",
     cashed_from: date | None = None, cashed_to: date | None = None,
     page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=200),
-    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.finance import (
         _invoice_case_fee_rows,
@@ -399,6 +401,8 @@ async def list_invoice_case_fees(
         fee_types=fee_types, payer_name=payer_name, cashed_from=cashed_from,
         cashed_to=cashed_to,
     )
+    # 财务中心/平台财务中心按老系统费用 GroupId 分开（陶威 2026-10-30）。
+    rows = await filter_rows_by_center(rows, identity, db)
     totals = {
         "amount": round(sum(float((row.get("data") or {}).get("amount") or 0) for row in rows), 2),
         "invoice_amount": round(sum(float((row.get("data") or {}).get("invoice_amount") or 0) for row in rows), 2),
@@ -713,7 +717,7 @@ async def query_finance_fees(
     hearing_lawyer: str = "", assistant: str = "", case_stages: str = "", fee_types: str = "",
     page: int = Query(1, ge=1), page_size: int = Query(15, ge=1, le=200),
     dashboard_queue: str = "",
-    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.dashboard_scope import dashboard_request_identity
     identity = await dashboard_request_identity(dashboard_queue, {"official-fee-unpaid"}, identity, db)
@@ -760,6 +764,8 @@ async def query_finance_fees(
                 refund_amount_to=refund_amount_to, payment_status=payment_status, unpaid_official=unpaid_official,
             )
         ]
+    # 财务中心/平台财务中心按老系统费用 GroupId 分开（陶威 2026-10-30）。
+    summary_rows = await filter_rows_by_center(summary_rows, identity, db)
     amount_visible = "finance.amount" in await _allowed_field_keys(identity, db)
     totals = {
         key: round(sum(float((row.get("data") or {}).get(key) or 0) for row in summary_rows), 2) if amount_visible else None

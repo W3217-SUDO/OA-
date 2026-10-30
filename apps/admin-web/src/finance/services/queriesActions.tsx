@@ -101,14 +101,14 @@ async function loadMyInternalApplications() {
     return { data: { items, total: items.length, page: 1, page_size: items.length || 15 } };
 }
 
-async function loadPaymentApprovalApplications() {
+async function loadPaymentApprovalApplications(financeScope: FinanceScope) {
     // 待审批筛选在服务端分页前完成，不让历史终态单据挤掉真正待办。
     const items: Fee[] = [];
     let page = 1;
     let total = 0;
     do {
         const { data } = await api.get("/finance/payment-applications/query", {
-            params: { scope: "audit", page, page_size: 200 },
+            params: { scope: "audit", page, page_size: 200, finance_scope: financeScope },
         });
         if (!Array.isArray(data.items) || !Number.isInteger(data.total) || data.total < 0) {
             throw new Error("请款单审批分页响应无效");
@@ -693,7 +693,7 @@ export function createFinanceQueriesActions(context: FinanceQueriesDependencies)
                         ? loadContractPaymentRecords()
                         : Promise.resolve({ data: { items: [] } })
                     : initialView === "finance-payment-audit"
-                        ? loadPaymentApprovalApplications()
+                        ? loadPaymentApprovalApplications(context.financeScope === "platform" ? "platform" : "firm")
                         : api.get("/finance/payment-applications/query", {
                         params: { scope: "mine", page: 1, page_size: 100 },
                     });

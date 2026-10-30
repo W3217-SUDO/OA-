@@ -333,7 +333,16 @@ async def query_payments(filters, identity, db):
         conditions.append(record.status == "待审批")
     finance_scope = filters.get("finance_scope") or (scope if scope in {"firm", "platform"} else "")
     if finance_scope:
+        # 迁移数据按老系统 GroupId：请款单看所属合同的，费用看自己的；0 两边都不显示（陶威 2026-10-30）。
+        from sqlalchemy.orm import aliased
+        contract = aliased(BusinessRecord)
+        contract_group = select(contract.data["group_id"].as_string()).where(
+            contract.module == "contract",
+            cast(contract.id, String) == func.coalesce(data["contract_record_id"].as_string(), data["contract_id"].as_string()),
+        ).correlate(record).limit(1).scalar_subquery()
+        group = case((record.module == "contract_payment", contract_group), else_=data["group_id"].as_string())
         computed_scope = func.coalesce(func.nullif(data["finance_scope"].as_string(), ""), case(
+            (group == "10", "firm"), (group == "20", "platform"), (group == "0", "none"),
             (or_(data["accounting_center"].as_string() == "平台财务中心", data["contract_body"].as_string() == "平台"), "platform"),
             else_="firm",
         ))

@@ -19,6 +19,9 @@ RECORD_CENTER_VALUES = {
     "contract_body": {"律所": "firm", "平台": "platform"},
     "expense_scope": {"律所": "firm", "平台": "platform"},
 }
+# 律所/平台按老系统原样区分（陶威 2026-10-30）：迁移数据各表看自己的 GroupId（10=律所、20=平台、0=两边都不显示），
+# 请款单看所属合同的 GroupId；本系统新建的记录仍看 finance_scope/accounting_center/contract_body/expense_scope。
+LEGACY_GROUP_CENTERS = {"10": "firm", "20": "platform", "0": None}
 
 # 旧导入未保存源库命名空间；新导入必须按真实头外键读取，不能跨库按裸主键拼接。
 _LEGACY_PAYMENT_ID = LegacyFinanceRecord.source_payload["PaymentId"].as_string()
@@ -296,6 +299,9 @@ async def require_source_center(record, db=None):
 
 def record_center_values(record):
     data = record.data or {}
+    group = str(data.get("group_id") if data.get("group_id") is not None else "").strip()
+    if group in LEGACY_GROUP_CENTERS:
+        return {LEGACY_GROUP_CENTERS[group]} - {None}
     values = set()
     for key, mapping in RECORD_CENTER_VALUES.items():
         value = data.get(key)
@@ -366,13 +372,71 @@ def record_center_presence():
         )),
         source.is_active.is_(True),
     ).correlate(BusinessRecord).scalar_subquery()
+    # 迁移数据有 GroupId 就只按它（0 两边都不算），不再和导入时写的 expense_scope 等字段冲突（陶威 2026-10-30）。
+    group = func.coalesce(BusinessRecord.data["group_id"].as_string(), "")
+    has_group = group.in_(list(LEGACY_GROUP_CENTERS))
     return {
-        center: or_(*(BusinessRecord.data[key].as_string().in_(
-            [value for value, mapped in mapping.items() if mapped == center],
-        ) for key, mapping in RECORD_CENTER_VALUES.items()),
+        center: or_(and_(has_group, group == ("10" if center == "firm" else "20")), and_(~has_group, or_(
+            *(BusinessRecord.data[key].as_string().in_(
+                [value for value, mapped in mapping.items() if mapped == center],
+            ) for key, mapping in RECORD_CENTER_VALUES.items()),
             cast(BusinessRecord.data["legacy_record"]["GroupId"].as_string(), String) == (
                 "10" if center == "firm" else "20"),
             source_group == ("10" if center == "firm" else "20"),
-        ).is_(True)
+        ))).is_(True)
         for center in ("firm", "platform")
     }
+
+
+_CENTER_FIELDS = ("group_id", "finance_scope", "accounting_center", "contract_body", "expense_scope",
+                  "contract_record_id", "contract_id")
+
+
+def _own_center(data: dict, module: str) -> tuple[bool, str | None]:
+    """返回（是否已判定，中心）。迁移数据有 GroupId 就只看它。"""
+    group = str(data.get("group_id") if data.get("group_id") is not None else "").strip()
+    if group in LEGACY_GROUP_CENTERS:
+        return True, LEGACY_GROUP_CENTERS[group]
+    values = {mapping[value] for key, mapping in RECORD_CENTER_VALUES.items()
+              if isinstance(value := data.get(key), str) and value in mapping}
+    if len(values) == 1:
+        return True, next(iter(values))
+    return False, None
+
+
+async def finance_centers_for_ids(db, ids) -> dict[int, str | None]:
+    """按记录编号批量算所属财务中心；只读必要字段，不取整条 data。"""
+    ids = sorted({int(item) for item in ids if item is not None})
+    if not ids:
+        return {}
+    fields = [BusinessRecord.data[key].as_string().label(key) for key in _CENTER_FIELDS]
+    rows = []
+    for offset in range(0, len(ids), 2000):
+        rows.extend((await db.execute(select(BusinessRecord.id, BusinessRecord.module, *fields).where(
+            BusinessRecord.id.in_(ids[offset:offset + 2000])))).all())
+    result: dict[int, str | None] = {}
+    pending_contracts: dict[int, int] = {}
+    for row in rows:
+        data = {key: getattr(row, key) for key in _CENTER_FIELDS}
+        if row.module == "contract_payment" and not data.get("finance_scope"):
+            contract = str(data.get("contract_record_id") or data.get("contract_id") or "")
+            if contract.isdigit():
+                pending_contracts[row.id] = int(contract)
+                continue
+        decided, center = _own_center(data, row.module)
+        result[row.id] = center if decided else "firm"
+    if pending_contracts:
+        contract_centers = await finance_centers_for_ids(db, set(pending_contracts.values()))
+        for record_id, contract_id in pending_contracts.items():
+            result[record_id] = contract_centers.get(contract_id, "firm") if contract_id in contract_centers else "firm"
+    return result
+
+
+async def filter_rows_by_center(rows, identity, db, *, id_of=lambda row: row.get("id")):
+    """当前财务中心只留本中心的行（未传中心时原样返回）。"""
+    scope = identity.get("_finance_scope")
+    if scope not in {"firm", "platform"}:
+        return list(rows)
+    rows = list(rows)
+    centers = await finance_centers_for_ids(db, [id_of(row) for row in rows if str(id_of(row) or "").isdigit()])
+    return [row for row in rows if not str(id_of(row) or "").isdigit() or centers.get(int(id_of(row)), "firm") == scope]

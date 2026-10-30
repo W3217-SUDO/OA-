@@ -76,7 +76,7 @@ async def payment_audit_total(identity, db):
 async def payment_audit_official_total(identity, db):
     """BUG20261028003（范明明 2026-10-29）：“待缴官费”= 请款单审批里待审批的官方费用（不含代理费等和合同付款）。"""
     # 与请款单审批取数同一条件（请款费用行、待审批、本人数据范围），再限定费用类型。
-    from sqlalchemy import func, select
+    from sqlalchemy import select
 
     from app.core.contract_payment_lifecycle import payment_application_fee_condition
     from app.core.permissions import _record_scope_conditions, _require_record_module_menu
@@ -97,11 +97,15 @@ async def payment_audit_official_total(identity, db):
         if error.status_code in {403, 404}:
             return 0
         raise
-    return int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
+    ids = (await db.scalars(select(BusinessRecord.id).where(
         payment_application_fee_condition(), BusinessRecord.status == "待审批",
         BusinessRecord.data["fee_type"].as_string() == "官方费用",
         *(await _record_scope_conditions(identity, db)),
-    )) or 0)
+    ))).all()
+    # 工作台点进去是财务中心的请款单审批，只算律所（老系统 GroupId 10）的（陶威 2026-10-30）。
+    from app.core.finance_centers import finance_centers_for_ids
+    centers = await finance_centers_for_ids(db, ids)
+    return sum(1 for record_id in ids if centers.get(record_id, "firm") == "firm")
 
 
 async def internal_review_total(identity, db, kind="other"):

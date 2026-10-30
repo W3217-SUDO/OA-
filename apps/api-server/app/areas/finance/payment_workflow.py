@@ -6,6 +6,7 @@ from app.core.dependencies import (AsyncSession, BusinessRecord, FileAttachment,
 from app.core.constants import PAYMENT_METHOD_OPTIONS, UPLOAD_ROOT
 from app.core.permissions import _ensure_record_visible, _record_dict_for_identity, _record_dicts_for_identity, _require_contract_action
 from app.core.finance_batch_parity import is_internal_fee
+from app.core.finance_centers import filter_rows_by_center, optional_finance_center_identity
 
 router = APIRouter()
 
@@ -18,7 +19,7 @@ async def payment_action_allowed(identity, db, action):
     return menu in set(permission.get('menu_keys', []))
 
 @router.get(f'{settings.api_prefix}/finance/payment-workflow/list')
-async def list_workflow_payments(stage: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def list_workflow_payments(stage: str, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import _record_scope_conditions
     stages = {'waiting': {'已审批', '待付款', '部分付款'}, 'writeoff': {'待核销'}, 'print': {'待核销', '已付款'}}
     if stage not in stages:
@@ -27,6 +28,8 @@ async def list_workflow_payments(stage: str, identity: dict = Depends(current_id
         BusinessRecord.module.in_(['finance', 'contract_payment']), BusinessRecord.status.in_(stages[stage]),
         *(await _record_scope_conditions(identity, db))).order_by(BusinessRecord.id.desc()))).all()
     rows = [row for row in rows if not is_internal_fee(row.data or {})]
+    # 财务中心/平台财务中心按老系统 GroupId 分开（陶威 2026-10-30）；付款包按包内单据所在中心。
+    rows = await filter_rows_by_center(rows, identity, db, id_of=lambda row: row.id)
     if stage != 'waiting':
         packages = {}
         ungrouped = []
