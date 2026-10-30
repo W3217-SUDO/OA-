@@ -888,6 +888,8 @@ CASE_ACTIONS_EXPLICIT_MARKER = "config:case-actions-explicit"
 # 岗位只按自己勾的页面授权（陶威 2026-10-28）：打了这个标记的岗位，不再合入系统角色（如普通用户）的页面；
 # 员工管理里按人设置的页面仍然优先（冲突时以个人设置为准）。默认不打，已有岗位不受影响。
 MENUS_EXACT_MARKER = "config:menus-exact"
+# 每个非管理员账号都有的公共页面（BUG20261030007）：用户中心的消息通知、沟通日志、账户管理（改密码）。
+PUBLIC_MENU_KEYS = ("user-center", "user-messages", "user-communications", "user-account")
 
 INTERNAL_REVIEW_APPROVE_ACTION = "finance.internal.review.approve"
 INTERNAL_REVIEW_REJECT_ACTION = "finance.internal.review.reject"

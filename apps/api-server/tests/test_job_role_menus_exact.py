@@ -1,7 +1,7 @@
 """岗位“只按岗位页面授权”（陶威 2026-10-28）。
 
-默认（不打标记）：绑定岗位的人 = 岗位页面 + 已审计确认的系统角色（如普通用户）页面，和原来一样。
-打了 config:menus-exact：只用岗位自己的页面。员工管理里按人设置的页面始终优先（冲突时以个人设置为准）。
+BUG20261030007（2026-10-30）起不论是否打标记都只用岗位自己的页面，不再合入系统角色（如普通用户）的页面；
+没绑定岗位的账号也不给系统角色页面，只有公共页面（用户中心）。管理员不受影响。员工管理里按人设置的页面始终优先（冲突时以个人设置为准）。
 岗位权限页面保存时不带该开关，标记保持不变；带 menus_exact 才打开或关闭。
 """
 import unittest
@@ -38,6 +38,7 @@ class JobRoleMenusExactTest(unittest.IsolatedAsyncioTestCase):
                 JobRole(code="CODEX-ME-ROLE", name="隔离岗位", permissions=list(ROLE_PAGES)),
                 User(username="CODEXMEBOUND", display_name="绑定人", password_hash="isolated-only", department="CODEXME", role="user",
                      profile={"permission_role_code": "CODEX-ME-ROLE"}),
+                User(username="CODEXMEUNBOUND", display_name="未设岗位", password_hash="isolated-only", department="CODEXME", role="user"),
                 User(username="CODEXMEPERSONAL", display_name="个人设置", password_hash="isolated-only", department="CODEXME", role="user",
                      profile={"permission_role_code": "CODEX-ME-ROLE",
                               "permission_overrides": {"menu_keys": ["user-center", "customer-mine", "documents-my"]}}),
@@ -62,9 +63,17 @@ class JobRoleMenusExactTest(unittest.IsolatedAsyncioTestCase):
             await update_job_role_permissions(self.role_id, JobRolePermissionUpdate(permissions=permissions, **flags), identity=ADMIN, db=db)
             return list((await db.get(JobRole, self.role_id)).permissions)
 
-    async def test_default_merges_system_role_pages(self):
+    async def test_default_uses_only_role_pages(self):
         menus = await self.menus("CODEXMEBOUND")
-        self.assertTrue({"customer-mine", "task-my-created", "case-mine-civil"} <= menus)
+        self.assertIn("case-mine-civil", menus)
+        self.assertFalse({"customer-mine", "task-my-created"} & menus)
+
+    async def test_unbound_account_gets_only_public_pages(self):
+        self.assertEqual(await self.menus("CODEXMEUNBOUND"), {"user-center", "user-messages", "user-communications", "user-account"})
+
+    async def test_admin_keeps_all_pages(self):
+        menus = await self.menus(ADMIN["username"])
+        self.assertTrue({"customer-mine", "task-my-created", "case-mine-civil", "finance-fee-query"} <= menus)
 
     async def test_marker_uses_only_role_pages(self):
         stored = await self.set_permissions(ROLE_PAGES, menus_exact=True)
@@ -86,4 +95,4 @@ class JobRoleMenusExactTest(unittest.IsolatedAsyncioTestCase):
         # 岗位权限页面保存（不带开关、也不带标记）不会把标记弄丢。
         self.assertIn(MENUS_EXACT_MARKER, await self.set_permissions([*ROLE_PAGES, "customer-mine"]))
         self.assertNotIn(MENUS_EXACT_MARKER, await self.set_permissions(ROLE_PAGES, menus_exact=False))
-        self.assertTrue({"customer-mine", "task-my-created"} <= await self.menus("CODEXMEBOUND"))
+        self.assertFalse({"customer-mine", "task-my-created"} & await self.menus("CODEXMEBOUND"))

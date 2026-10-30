@@ -20,6 +20,7 @@ from app.database import Base, get_db
 from app.main import app
 from app.models import BusinessRecord, RolePermission, User, WorkflowEvent
 from app.security import current_identity
+from tests.personnel_role_fixture import bind_system_role_pages
 
 
 API = settings.api_prefix
@@ -133,6 +134,7 @@ class CaseOrdinarySearchD12Contract(unittest.IsolatedAsyncioTestCase):
             transport=httpx.ASGITransport(app=app),
             base_url="http://case-d12.test",
         )
+        await bind_system_role_pages(self.sessions)
 
     async def override_db(self):
         async with self.sessions() as db:
@@ -278,6 +280,7 @@ class CaseOrdinarySearchD12Contract(unittest.IsolatedAsyncioTestCase):
             db.add(BusinessRecord(module="refund", serial_no="CODEX-D-special-hidden", title="退费", status="待审批",
                 owner="other-user", department="Other department", data={"fee_type": "退费"}))
             await db.commit()
+            await bind_system_role_pages(db=db)
         params = {"kind": "refund", "page_size": 200}
         first = await self.client.get(f"{API}/cases/special-records", params=params)
         second = await self.client.get(f"{API}/cases/special-records", params={**params, "page": 2})

@@ -14,6 +14,7 @@ from app.database import Base, get_db
 from app.main import app, dashboard
 from app.models import BusinessRecord, RolePermission, User, WorkflowEvent
 from app.security import current_identity
+from tests.personnel_role_fixture import bind_system_role_pages
 
 
 API = settings.api_prefix
@@ -97,6 +98,7 @@ class DashboardRefundWorkbench92Row4Test(unittest.IsolatedAsyncioTestCase):
         app.dependency_overrides[get_db] = self.override_db
         app.dependency_overrides[current_identity] = lambda: ADMIN
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://row4.test")
+        await bind_system_role_pages(self.sessions)
 
     async def override_db(self):
         async with self.sessions() as db:

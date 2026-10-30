@@ -9,6 +9,7 @@ from app.database import Base, get_db
 from app.main import app
 from app.models import BusinessRecord, ContractApprovalStep, RolePermission, User
 from app.security import current_identity
+from tests.personnel_role_fixture import bind_system_role_pages
 
 
 API = settings.api_prefix
@@ -44,6 +45,7 @@ class ContractCustomerManagerDepartmentRow16Test(unittest.IsolatedAsyncioTestCas
         app.dependency_overrides[get_db] = override_db
         app.dependency_overrides[current_identity] = lambda: IDENTITY
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://row16.test")
+        await bind_system_role_pages(self.sessions)
 
     async def asyncTearDown(self):
         await self.client.aclose()

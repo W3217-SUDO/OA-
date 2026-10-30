@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app import main as api
 from app.models import Base, BusinessRecord, HrSubrecord, User, WorkflowEvent
+from tests.personnel_role_fixture import bind_system_role_pages
 
 
 class HrPerformanceManagementTest(unittest.IsolatedAsyncioTestCase):
@@ -36,6 +37,7 @@ class HrPerformanceManagementTest(unittest.IsolatedAsyncioTestCase):
         self.scope = patch.object(api, "_user_permission_payload", AsyncMock(return_value={"data_scope": "本部门数据"}))
         self.permission.start(); self.scope.start()
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=api.app), base_url="http://test/api/v1")
+        await bind_system_role_pages(self.sessions)
 
     async def asyncTearDown(self):
         await self.client.aclose()

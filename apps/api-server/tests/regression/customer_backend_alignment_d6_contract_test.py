@@ -19,6 +19,7 @@ from app.database import Base, get_db
 from app.main import app
 from app.models import BusinessRecord, ContractApprovalStep, FileAttachment, JobRole, LegacyCustomer, LegacyCustomerContact, RolePermission, SystemParameter, User, WorkflowEvent
 from app.security import current_identity
+from tests.personnel_role_fixture import bind_system_role_pages
 
 
 ADMIN = {"username": "customer-admin", "role": "admin", "display_name": "客户管理员", "department": "上海分所"}
@@ -85,6 +86,7 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
         app.dependency_overrides[get_db] = override_db
         app.dependency_overrides[current_identity] = lambda: ADMIN
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://customer-center.test")
+        await bind_system_role_pages(self.sessions)
 
     async def asyncTearDown(self):
         await self.client.aclose()
@@ -384,6 +386,7 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
                 menu_keys=["customer-dept", *(f"@action:{code}" for code, _ in CUSTOMER_ROLE_ACTIONS)], field_keys=["customer.legal"],
             ))
             await db.commit()
+            await bind_system_role_pages(db=db)
 
         app.dependency_overrides[current_identity] = lambda: USER
         department = await self.client.get(

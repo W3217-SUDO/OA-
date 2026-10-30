@@ -13,6 +13,7 @@ from app.main import app
 import app.main as main_module
 from app.models import BusinessRecord, FileAttachment, JarFeeAuditLog, RolePermission, User
 from app.security import current_identity
+from tests.personnel_role_fixture import bind_system_role_pages
 
 
 API = settings.api_prefix
@@ -36,6 +37,7 @@ class JarFeeBackendContractTest(unittest.IsolatedAsyncioTestCase):
         self.previous = dict(app.dependency_overrides); app.dependency_overrides[get_db] = override_db; app.dependency_overrides[current_identity] = lambda: self.identity
         self.upload_dir = tempfile.TemporaryDirectory(); self.previous_upload_root = main_module.UPLOAD_ROOT; main_module.UPLOAD_ROOT = Path(self.upload_dir.name)
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://jar.test")
+        await bind_system_role_pages(self.sessions)
 
     async def asyncTearDown(self):
         await self.client.aclose(); app.dependency_overrides.clear(); app.dependency_overrides.update(self.previous); main_module.UPLOAD_ROOT = self.previous_upload_root; self.upload_dir.cleanup(); await self.engine.dispose()
@@ -94,6 +96,7 @@ class JarFeeBackendContractTest(unittest.IsolatedAsyncioTestCase):
                 BusinessRecord(module="jar_fee", serial_no="CODEX-JAR-OWN", title="own", customer="JAR customer", status="待确认", owner="jar-user", department="Finance", data={"amount": 9, "official_fee_amount": 2, "agency_fee_amount": 3, "other_fee_amount": 1}),
                 BusinessRecord(module="jar_fee", serial_no="CODEX-JAR-OTHER", title="other", customer="JAR customer", status="待确认", owner="jar-admin", department="Finance", data={"amount": 9}),
             ]); await db.commit()
+            await bind_system_role_pages(db=db)
         self.identity = {"username": "jar-user", "role": "user", "display_name": "JAR User", "department": "Finance"}
         response = await self.client.get(f"{API}/finance/jar-fees"); self.assertEqual(response.status_code, 200, response.text)
         items = response.json()["items"]; self.assertEqual(len(items), 1); self.assertIsNone(items[0]["amount"]); self.assertIsNone(items[0]["official_fee_amount"])

@@ -17,6 +17,7 @@ from app.main import (
     list_records,
 )
 from app.models import BusinessRecord, SystemConfig, User
+from tests.personnel_role_fixture import bind_system_role_pages
 
 
 class InvestigationTaskAssigneeContractAccessTest(unittest.IsolatedAsyncioTestCase):
@@ -31,6 +32,7 @@ class InvestigationTaskAssigneeContractAccessTest(unittest.IsolatedAsyncioTestCa
         )
         async with self.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
+        await bind_system_role_pages(self.sessions)
 
     async def asyncTearDown(self):
         await self.engine.dispose()
@@ -100,6 +102,7 @@ class InvestigationTaskAssigneeContractAccessTest(unittest.IsolatedAsyncioTestCa
             )
             db.add(survey)
             await db.commit()
+            await bind_system_role_pages(db=db)
 
             created = await create_investigation_task(
                 survey.id,

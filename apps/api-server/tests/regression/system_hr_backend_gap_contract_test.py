@@ -26,6 +26,8 @@ from app.models import (
     WorkflowEvent,
 )
 from app.security import hash_password
+from app.core.constants import PUBLIC_MENU_KEYS
+from tests.personnel_role_fixture import bind_system_role_pages
 
 
 API = settings.api_prefix
@@ -100,6 +102,7 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
 
         app.dependency_overrides[get_db] = override_db
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://system-hr-gap.test")
+        await bind_system_role_pages(self.sessions)
 
     async def asyncTearDown(self):
         await self.client.aclose()
@@ -895,13 +898,14 @@ class SystemHrBackendGapContractTest(unittest.IsolatedAsyncioTestCase):
         ]:
             login = await self._login(username, password)
             self.assertEqual(login.status_code, status.HTTP_200_OK, login.text)
-            self.assertEqual(login.json()["user"]["menu_keys"], [])
+            # BUG20261030007：岗位无效时只剩人人都有的公共页面（用户中心），登录不受影响。
+            self.assertEqual(login.json()["user"]["menu_keys"], list(PUBLIC_MENU_KEYS))
             me = await self.client.get(
                 f"{API}/auth/me",
                 headers={"Authorization": f"Bearer {login.json()['access_token']}"},
             )
             self.assertEqual(me.status_code, status.HTTP_200_OK, me.text)
-            self.assertEqual(me.json()["menu_keys"], [])
+            self.assertEqual(me.json()["menu_keys"], list(PUBLIC_MENU_KEYS))
 
 
 if __name__ == "__main__":

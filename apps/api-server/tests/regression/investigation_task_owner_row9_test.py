@@ -6,6 +6,7 @@ from sqlalchemy.pool import StaticPool
 from app.database import Base
 from app.main import list_records
 from app.models import BusinessRecord, User
+from tests.personnel_role_fixture import bind_system_role_pages
 
 
 class InvestigationTaskOwnerRow9Test(unittest.IsolatedAsyncioTestCase):
@@ -20,6 +21,7 @@ class InvestigationTaskOwnerRow9Test(unittest.IsolatedAsyncioTestCase):
         )
         async with self.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
+        await bind_system_role_pages(self.sessions)
 
     async def asyncTearDown(self):
         await self.engine.dispose()
@@ -47,6 +49,7 @@ class InvestigationTaskOwnerRow9Test(unittest.IsolatedAsyncioTestCase):
                 ),
             ])
             await db.commit()
+            await bind_system_role_pages(db=db)
 
             mine = await list_records(
                 module="task", keyword="", record_status="", scope="all", statuses="",

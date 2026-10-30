@@ -21,6 +21,7 @@ from app.main import (
     _contract_customer_record_dict,
 )
 from app.models import BusinessRecord, User, Warehouse, WarehouseStorageLocation
+from tests.personnel_role_fixture import bind_system_role_pages
 
 
 IDENTITY = {"username": "admin", "role": "admin"}
@@ -35,6 +36,7 @@ class Investigation87ContractTest(unittest.IsolatedAsyncioTestCase):
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
         async with self.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
+        await bind_system_role_pages(self.sessions)
 
     async def asyncTearDown(self):
         await self.engine.dispose()
@@ -343,6 +345,7 @@ class Investigation87ContractTest(unittest.IsolatedAsyncioTestCase):
                 ),
             ])
             await db.commit()
+            await bind_system_role_pages(db=db)
 
             published = await list_records(
                 module="investigation", keyword="", record_status="", scope="mine", statuses="",

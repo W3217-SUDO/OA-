@@ -12,6 +12,7 @@ from app.database import Base, get_db
 from app.main import _large_screen_case_is_closed, _large_screen_month_keys, app, report_large_screen
 from app.models import BusinessRecord, FinanceTransaction, IncomingPayment, RolePermission, User
 from app.security import current_identity
+from tests.personnel_role_fixture import bind_system_role_pages
 
 
 ADMIN = {"username": "admin", "role": "admin"}
@@ -26,6 +27,7 @@ class ReportLargeScreenContractTest(unittest.IsolatedAsyncioTestCase):
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
         async with self.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
+        await bind_system_role_pages(self.sessions)
 
     async def asyncTearDown(self):
         await self.engine.dispose()
@@ -118,6 +120,7 @@ class ReportLargeScreenContractTest(unittest.IsolatedAsyncioTestCase):
                 BusinessRecord(module="case", serial_no="CODEX-LARGE-OTHER", title="other", customer="other", status="一审", owner="other", department="其他部", data={}),
             ])
             await db.commit()
+            await bind_system_role_pages(db=db)
             result = await report_large_screen({"username": "limited", "role": "user"}, db)
 
         self.assertEqual(result["case_summary"], {"total": 1, "in_progress": 1, "closed": 0})
@@ -149,6 +152,7 @@ class ReportLargeScreenContractTest(unittest.IsolatedAsyncioTestCase):
                 FinanceTransaction(finance_record_id=other_fee.id, transaction_type="付款", amount=30, transaction_date=date.today(), operator="other"),
             ])
             await db.commit()
+            await bind_system_role_pages(db=db)
             result = await report_large_screen({"username": "limited", "role": "user"}, db)
 
         self.assertTrue(result["finance"]["amount_visible"])

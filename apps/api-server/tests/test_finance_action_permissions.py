@@ -21,6 +21,7 @@ from app.core.finance_action_permissions import (
 )
 from app.database import Base
 from app.models import BusinessRecord, RolePermission, User
+from tests.personnel_role_fixture import bind_system_role_pages
 
 ALL = [code for code, _menu, _label in FINANCE_EDIT_DELETE_ACTIONS]
 # 页面可见时 current_identity 会把身份提升成 admin 和 "*"；这里模拟提升后的身份，检查不被它带过。
@@ -58,6 +59,7 @@ class FinanceActionPermissionTest(unittest.IsolatedAsyncioTestCase):
                                           "@action:finance.receipt.delete", "@action:finance.payment.update"], field_keys=[]),
             ])
             await db.commit()
+        await bind_system_role_pages(self.sessions)
 
     async def asyncTearDown(self):
         await self.engine.dispose()
@@ -106,6 +108,7 @@ class FinanceActionPermissionTest(unittest.IsolatedAsyncioTestCase):
             role = await db.scalar(select(RolePermission).where(RolePermission.role == "auditor"))
             role.menu_keys = [key for key in role.menu_keys if key != "@action:finance.receipt.delete"]
             await db.commit()
+            await bind_system_role_pages(db=db)
         self.assertEqual(await self.keys("CODEXFAAUDIT"), {"finance.receipt.update"})
         async with self.sessions() as db:
             auditor = await db.scalar(select(User).where(User.username == "CODEXFAAUDIT"))

@@ -24,6 +24,7 @@ from sqlalchemy.pool import NullPool, StaticPool
 from app.database import Base
 from app.main import dashboard, list_pending_execution_cases
 from app.models import BusinessRecord, ContractObject, HearingSchedule, User
+from tests.personnel_role_fixture import bind_system_role_pages
 
 
 IDENTITY = {"username": "admin", "role": "admin"}
@@ -44,6 +45,7 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             db.add(User(username="admin", display_name="Dashboard Admin", department="上海", password_hash="test", role="admin", is_active=True))
             await db.commit()
+        await bind_system_role_pages(self.sessions)
 
     async def asyncTearDown(self):
         await self.engine.dispose()
@@ -179,6 +181,7 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
                 ),
             ])
             await db.commit()
+            await bind_system_role_pages(db=db)
 
             admin_dashboard = await dashboard(IDENTITY, db, section=None)
             admin_list = await list_pending_execution_cases(1, 20, IDENTITY, db)

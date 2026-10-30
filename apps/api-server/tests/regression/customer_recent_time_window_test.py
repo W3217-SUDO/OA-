@@ -15,6 +15,7 @@ from app.main import app
 from app.models import BusinessRecord, RolePermission, SystemParameter, User
 from app.security import current_identity
 from app.areas.crm import router as crm
+from tests.personnel_role_fixture import bind_system_role_pages
 
 
 LOCAL_ZONE = timezone(timedelta(hours=8))
@@ -59,6 +60,7 @@ class CustomerRecentTimeWindowTest(unittest.IsolatedAsyncioTestCase):
         app.dependency_overrides[get_db] = override_db
         app.dependency_overrides[current_identity] = lambda: self.identity
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://recent-window.test")
+        await bind_system_role_pages(self.sessions)
 
     def set_now(self, year, month, day):
         FixedDateTime.current = FixedDateTime(year, month, day, 12, 30, tzinfo=LOCAL_ZONE)

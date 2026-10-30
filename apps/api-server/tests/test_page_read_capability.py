@@ -14,6 +14,7 @@ from app.database import Base, get_db
 from app.main import app
 from app.models import RolePermission, User
 from app.security import create_token
+from tests.personnel_role_fixture import bind_system_role_pages
 
 API = settings.api_prefix
 
@@ -41,6 +42,7 @@ class PageReadCapabilityTest(unittest.IsolatedAsyncioTestCase):
         token = create_token("CODEXPAGELAWYER", "user", 30)
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test",
                                         headers={"Authorization": f"Bearer {token}"})
+        await bind_system_role_pages(self.sessions)
 
     async def asyncTearDown(self):
         await self.client.aclose()

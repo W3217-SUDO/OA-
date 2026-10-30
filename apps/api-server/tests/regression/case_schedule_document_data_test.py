@@ -13,6 +13,7 @@ from app.database import Base, get_db
 from app.main import app
 from app.models import BusinessRecord, Department, HearingSchedule, RolePermission, User
 from app.security import current_identity
+from tests.personnel_role_fixture import bind_system_role_pages
 
 
 PREFIX = "CODEXDOCSCHED"
@@ -50,6 +51,7 @@ class CaseScheduleDocumentDataTest(unittest.IsolatedAsyncioTestCase):
         app.dependency_overrides[get_db] = database
         app.dependency_overrides[current_identity] = lambda: self.identity
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://schedule.test")
+        await bind_system_role_pages(self.sessions)
 
     async def asyncTearDown(self):
         await self.client.aclose()
@@ -102,6 +104,7 @@ class CaseScheduleDocumentDataTest(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             db.add(HearingSchedule(case_record_id=self.mine_id, hearing_date=date(2026, 10, 15), hearing_time="09:00", court="法院", courtroom="", hearing_type="一审开庭", hearing_lawyer=PREFIX + "-me", status="已排期"))
             await db.commit()
+            await bind_system_role_pages(db=db)
         response = await self.query("mine")
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["total"], 1)
@@ -112,6 +115,7 @@ class CaseScheduleDocumentDataTest(unittest.IsolatedAsyncioTestCase):
             denied = await db.scalar(select(User).where(User.username == PREFIX + "-other"))
             denied.profile = {"permission_overrides": {"menu_keys": []}}
             await db.commit()
+            await bind_system_role_pages(db=db)
         response = await self.query("department")
         self.assertEqual(response.status_code, 403, response.text)
         response = await self.query("mine", export_format="xls")

@@ -21,6 +21,7 @@ from app.models import (
     LegacyFinanceRecord, SystemParameter, User,
 )
 from app.security import current_identity
+from tests.personnel_role_fixture import bind_system_role_pages
 
 
 POSTGRES_URL = os.environ.get("FINANCE_SELECTED_TEST_POSTGRES_URL", "")
@@ -372,6 +373,7 @@ class SQLiteSelectedQueryTest(SelectedQueryAssertions, unittest.IsolatedAsyncioT
                 db.add(User(username="CODEX-ROW4-OTHER", display_name="隔离其他用户",
                             role="lawyer", department="CODEX-ROW4-OTHER", password_hash="test-only", is_active=True))
                 await db.commit()
+                await bind_system_role_pages(db=db)
             application.dependency_overrides[current_identity] = lambda: {
                 "username": "CODEX-ROW4-OTHER", "role": "lawyer", "department": "CODEX-ROW4-OTHER",
             }

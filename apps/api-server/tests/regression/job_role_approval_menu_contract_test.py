@@ -7,6 +7,8 @@ from sqlalchemy.pool import StaticPool
 from app.database import Base
 from app.main import _user_permission_payload, dashboard, list_records
 from app.models import BusinessRecord, ContractApprovalStep, JobRole, RolePermission, User
+from app.core.constants import PUBLIC_MENU_KEYS
+from tests.personnel_role_fixture import bind_system_role_pages
 
 
 class JobRoleApprovalMenuContractTest(unittest.IsolatedAsyncioTestCase):
@@ -51,6 +53,7 @@ class JobRoleApprovalMenuContractTest(unittest.IsolatedAsyncioTestCase):
                 approver="codex_approval_assistant", status="待审批",
             ))
             await db.commit()
+        await bind_system_role_pages(self.sessions)
 
     async def asyncTearDown(self):
         await self.engine.dispose()
@@ -85,7 +88,8 @@ class JobRoleApprovalMenuContractTest(unittest.IsolatedAsyncioTestCase):
             payload = await _user_permission_payload(user, db)
 
         menu_keys = set(payload["menu_keys"])
-        self.assertEqual(menu_keys, set())
+        # BUG20261030007：人人都有的公共页面（用户中心）之外没有别的页面。
+        self.assertEqual(menu_keys, set(PUBLIC_MENU_KEYS))
         self.assertNotIn("customer", menu_keys)
         self.assertNotIn("contract", menu_keys)
         self.assertNotIn("case", menu_keys)

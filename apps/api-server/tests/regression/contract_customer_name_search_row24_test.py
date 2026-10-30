@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 from app.database import Base
 from app.main import list_records
 from app.models import BusinessRecord, User
+from tests.personnel_role_fixture import bind_system_role_pages
 
 
 IDENTITY = {"username": "Fwl", "role": "user", "display_name": "范文林", "department": "合同部"}
@@ -47,6 +48,7 @@ class ContractCustomerNameSearchRow24Test(unittest.IsolatedAsyncioTestCase):
                 ),
             ])
             await db.commit()
+        await bind_system_role_pages(self.sessions)
 
     async def asyncTearDown(self) -> None:
         await self.engine.dispose()

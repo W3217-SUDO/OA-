@@ -13,6 +13,7 @@ from app.database import Base, get_db
 from app.main import app
 from app.models import BusinessRecord, RolePermission, SystemParameter, User, WorkflowEvent
 from app.security import current_identity
+from tests.personnel_role_fixture import bind_system_role_pages
 
 
 class CustomerRecycleReleaseTest(unittest.IsolatedAsyncioTestCase):
@@ -45,6 +46,7 @@ class CustomerRecycleReleaseTest(unittest.IsolatedAsyncioTestCase):
         app.dependency_overrides[get_db] = override_db
         app.dependency_overrides[current_identity] = lambda: self.identity
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://recycle-release.test")
+        await bind_system_role_pages(self.sessions)
 
     async def asyncTearDown(self):
         await self.client.aclose()

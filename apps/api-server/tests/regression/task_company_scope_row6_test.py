@@ -14,6 +14,7 @@ from app.database import Base, get_db
 from app.main import app
 from app.models import BusinessRecord, RolePermission, User
 from app.security import current_identity
+from tests.personnel_role_fixture import bind_system_role_pages
 
 
 API = settings.api_prefix
@@ -56,6 +57,7 @@ class TaskCompanyScopeRow6Test(unittest.IsolatedAsyncioTestCase):
         app.dependency_overrides[get_db] = self.override_db
         app.dependency_overrides[current_identity] = lambda: VIEWER
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://row6.test")
+        await bind_system_role_pages(self.sessions)
 
     async def override_db(self):
         async with self.sessions() as db:

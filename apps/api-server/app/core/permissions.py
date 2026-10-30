@@ -1,6 +1,6 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 from app.core.constants import (
-    AGENT_ACTION_CAPABILITY, CASE_ACTIONS_EXPLICIT_MARKER, MENUS_EXACT_MARKER, CASE_CREATABLE_TYPES, CIVIL_CASE_TYPES, CONTRACT_APPROVAL_ACTION_CODE, DEFAULT_MENU_LABEL_BY_KEY,
+    AGENT_ACTION_CAPABILITY, CASE_ACTIONS_EXPLICIT_MARKER, MENUS_EXACT_MARKER, PUBLIC_MENU_KEYS, CASE_CREATABLE_TYPES, CIVIL_CASE_TYPES, CONTRACT_APPROVAL_ACTION_CODE, DEFAULT_MENU_LABEL_BY_KEY,
     DEFAULT_ROLE_PERMISSIONS, EXPENSE_SUBTYPE_FEE_TYPE, FIELD_KEYS, JAR_FEE_TRANSITIONS, JOB_ACTION_MENU_GRANTS,
     CONTRACT_ROLE_ACTION_CODES, CONTRACT_ROLE_ACTIONS, RECEIPT_PAGE_DELETE_CODES, CUSTOMER_ROLE_ACTIONS, FINANCE_EDIT_DELETE_ACTIONS, IPR_ROLE_ACTIONS, TASK_INVESTIGATION_ROLE_ACTIONS, JOB_ROLE_ACTION_KEY_GRANTS, ROLE_TREE_HIDDEN_ACTION_CODES, ROLE_TREE_DERIVED_ACTION_CODES, ROLE_TREE_ACTION_ALSO_MENUS, ROLE_TREE_HIDDEN_MENU_KEYS, expand_role_action_codes, CASE_GROUP_BY_ACTION, CASE_ROLE_GROUPS, JOB_ROLE_LABEL_MENU_GRANTS, MENU_CHILDREN_BY_KEY, MENU_KEYS, ROLE_DATA_SCOPES,
     SYSTEM_ACTION_DEFINITIONS, SYSTEM_MENU_ROUTE_KEYS, SYSTEM_USER_ROLE_CODES,
@@ -352,27 +352,6 @@ async def _permission_payload_for_roles(role_ids: list[str], db: AsyncSession) -
     }
 
 
-async def _explicit_system_role_menu_keys(role_ids: list[str], db: AsyncSession) -> list[str]:
-    """只合入已有授权审计确认的系统角色菜单，避免混入初始化默认授权。"""
-    cache_key = "explicit_system_role_menu_keys"
-    if cache_key not in db.info:
-        authorized_change = select(BusinessRecord.id).join(
-            WorkflowEvent, WorkflowEvent.record_id == BusinessRecord.id,
-        ).where(
-            BusinessRecord.module == "system_audit",
-            BusinessRecord.title == ("角色权限:" + RolePermission.role),
-            BusinessRecord.data["role"].as_string() == RolePermission.role,
-            WorkflowEvent.action == "更新角色权限",
-        ).correlate(RolePermission).exists()
-        rows = (await db.execute(select(RolePermission.role, RolePermission.menu_keys).where(
-            RolePermission.role.in_(SYSTEM_USER_ROLE_CODES - {"admin"}), authorized_change,
-        ))).all()
-        # Session.info 随请求数据库会话结束，不跨请求缓存授权；系统角色一次读取。
-        db.info[cache_key] = {role: _split_role_permission_keys(keys)[0] for role, keys in rows}
-    by_role = db.info[cache_key]
-    return list(dict.fromkeys(key for role in role_ids for key in by_role.get(role, [])))
-
-
 async def _require_record_module_menu(module: str, identity: dict, db: AsyncSession, *, action: str) -> None:
     """Prevent generic write/export endpoints from bypassing menu authorization."""
     # 确认存档仅经本人专用接口读取和决定，管理员也不能用通用记录入口绕过。
@@ -578,12 +557,15 @@ async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
             permission = _apply_job_role_policy(permission, job_role)
     overrides = _user_permission_overrides(user)
     user_actions = [] if "admin" in role_ids else personal_action_keys(overrides)
-    menus_exact = bool(job_role and MENUS_EXACT_MARKER in (job_role.permissions or []))
-    if explicit_role_name and "admin" not in role_ids and overrides.get("menu_keys") is None and not menus_exact:
-        explicit_system_menus = await _explicit_system_role_menu_keys(role_ids, db)
-        permission["menu_keys"] = _expand_menu_permission_keys([*permission["menu_keys"], *explicit_system_menus])
+    if "admin" not in role_ids and not explicit_role_name:
+        # BUG20261030007（陶威、范文玲 2026-10-30）：页面只认人员角色勾选的，账号角色（如普通用户）的页面不再给；
+        # 没设人员角色的账号也一样，只剩下面补上的公共页面。
+        permission["menu_keys"] = []
     if overrides.get("menu_keys") is not None:
         permission["menu_keys"] = _expand_menu_permission_keys(overrides["menu_keys"])
+    if "admin" not in role_ids:
+        # 公共页面人人都有（工作台、智能体中心、问题反馈由前端常显），权限数据有问题时也不会一个菜单都没有。
+        permission["menu_keys"] = _expand_menu_permission_keys([*permission["menu_keys"], *PUBLIC_MENU_KEYS])
     if overrides.get("field_keys") is not None:
         permission["field_keys"] = list(overrides["field_keys"])
     if overrides.get("data_scope") is not None:

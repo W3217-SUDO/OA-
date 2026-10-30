@@ -15,6 +15,7 @@ from app.areas.finance.router import router
 from app.core.finance_batch_parity import group_commission_applications
 from app.config import settings
 from sqlalchemy import select
+from tests.personnel_role_fixture import bind_system_role_pages
 
 API = settings.api_prefix
 IDENTITY = {'username': 'CODEX-0915-admin', 'role': 'admin', 'department': 'Test', 'display_name': 'Test'}
@@ -53,6 +54,7 @@ class BatchTests(unittest.IsolatedAsyncioTestCase):
                 payer_name='测试法院',status='待分配',claimed_customer=customer.title,claimant=IDENTITY['username'],operator=IDENTITY['username'])
             db.add_all([fee,internal,payment]); await db.commit()
             self.fee_id,self.internal_id,self.receipt_id=fee.id,internal.id,payment.id
+        await bind_system_role_pages(self.sessions)
 
     def record(self,module,name,data,status='正常'):
         return BusinessRecord(module=module,serial_no='CODEX-0915-'+name,title='CODEX-0915-'+name,
@@ -171,12 +173,14 @@ class BatchTests(unittest.IsolatedAsyncioTestCase):
             fee=await db.get(BusinessRecord,self.fee_id)
             fee.owner=username
             await db.flush()
+            await bind_system_role_pages(db=db)
             from app.core.permissions import _permission_payload_for_identity
             permission=await _permission_payload_for_identity({'username':username,'role':'user','department':'Test'},db)
             self.assertIn('finance-payment-waiting',permission['menu_keys'])
             # 默认普通角色有财务父菜单；拒权用例必须显式撤销办理菜单。
             user.profile={'permission_overrides':{'menu_keys':[]}}
             await db.commit()
+            await bind_system_role_pages(db=db)
         from app.security import create_token
         self.app.dependency_overrides.pop(current_identity)
         headers={'Authorization':'Bearer '+create_token(username,'user')}
