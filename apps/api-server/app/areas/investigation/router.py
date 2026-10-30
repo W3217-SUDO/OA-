@@ -1205,7 +1205,7 @@ async def create_investigation_fee_application(record_id: int, body: Investigati
         raise HTTPException(status_code=409, detail="线索完成取证后才能申请费用")
     if (clue.data or {}).get("fee_application_id"):
         raise HTTPException(status_code=409, detail="该线索已经提交过费用申请")
-    serial_no = f"FY{datetime.now():%Y%m%d%H%M%S%f}"; fee = BusinessRecord(module="finance", serial_no=serial_no, title=f"调查费用—{clue.title}", customer=clue.customer, status="草稿", owner=identity["username"], department=clue.department, description=body.description, data={"fee_type": body.fee_type, "amount": body.amount, "clue_id": clue.id, "clue_no": clue.serial_no, "investigator": clue.owner, "source": "调查线索费用申请"})
+    serial_no = f"FY{datetime.now():%Y%m%d%H%M%S%f}"; fee = BusinessRecord(module="finance", serial_no=serial_no, title=f"调查费用—{clue.title or (clue.data or {}).get('shop_name') or clue.serial_no}", customer=clue.customer, status="草稿", owner=identity["username"], department=clue.department, description=body.description, data={"fee_type": body.fee_type, "amount": body.amount, "clue_id": clue.id, "clue_no": clue.serial_no, "investigator": clue.owner, "source": "调查线索费用申请"})
     db.add(fee); await db.flush(); clue.data = {**(clue.data or {}), "fee_application_id": fee.id, "fee_no": serial_no, "fee_amount": body.amount, "fee_type": body.fee_type}
     db.add_all([WorkflowEvent(record_id=clue.id, action="申请调查费用", from_status=clue.status, to_status=clue.status, operator=identity["username"], comment=f"{serial_no}，{body.fee_type}，{body.amount:.2f}"), WorkflowEvent(record_id=fee.id, action="由调查线索生成费用申请", to_status="草稿", operator=identity["username"], comment=clue.serial_no)])
     await db.commit(); await db.refresh(fee); await db.refresh(clue)
@@ -1809,7 +1809,7 @@ async def create_notary_from_clue(clue_id: int, identity: dict = Depends(current
             raise HTTPException(status_code=409, detail=f"该线索已生成公证记录 {existing.serial_no}")
     serial = f"GZ{datetime.now():%Y%m%d%H%M%S%f}"
     notary = BusinessRecord(
-        module="notary", serial_no=serial, title=f"{clue.title}—公证审核",
+        module="notary", serial_no=serial, title=f"{clue.title or (clue.data or {}).get('shop_name') or clue.serial_no}—公证审核",
         customer=clue.customer, status="等待材料", owner=clue.owner, department=clue.department,
         description="由调查线索自动生成",
         data={"clue_id": clue.id, "clue_no": clue.serial_no, "platform": clue_data.get("platform", ""), "product": clue_data.get("product", ""), "case_id": clue_data.get("converted_case_id"), "case_no": clue_data.get("converted_case_no", "")},

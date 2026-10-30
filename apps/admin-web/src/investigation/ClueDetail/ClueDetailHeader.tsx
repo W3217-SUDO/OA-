@@ -61,12 +61,13 @@ export default function ClueDetailHeader({
             <StatusTag status={investigationDetail.status} />
           ),
         },
-        {
+        // BUG20261030008：线索没有标题/事项，不显示这一行。
+        ...(investigationDetail.module === "clue" ? [] : [{
           key: "title",
           label: "调查事项",
           children: investigationDetail.title,
           span: 2,
-        },
+        }]),
         {
           key: "customer",
           label: "权利人",
@@ -280,7 +281,7 @@ export default function ClueDetailHeader({
               {
                 key: "shop-name",
                 label: "店铺名称",
-                children: investigationDetail.data.shop_name || investigationDetail.title || "—",
+                children: investigationDetail.data.shop_name || "—",
               },
               {
                 key: "shop-id",

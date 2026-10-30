@@ -54,13 +54,16 @@ export default function EditRecordModal({
     >
       <Form form={editForm} layout="vertical">
         <div className="form-grid">
-          <Form.Item
-            label="标题/事项"
-            name="title"
-            rules={[{ required: true }]}
-          >
-            <Input />
-          </Form.Item>
+          {/* BUG20261030008：线索没有标题/事项（和旧系统一致），店铺名称单独一项。 */}
+          {editTarget?.module !== "clue" && (
+            <Form.Item
+              label="标题/事项"
+              name="title"
+              rules={[{ required: true }]}
+            >
+              <Input />
+            </Form.Item>
+          )}
           <Form.Item label="权利人/客户" name="customer">
             <Input />
           </Form.Item>

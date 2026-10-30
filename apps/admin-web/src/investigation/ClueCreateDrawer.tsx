@@ -63,14 +63,6 @@ export default function ClueCreateDrawer({
               options={systemPersonOptions}
             />
           </Form.Item>
-          <Form.Item
-            className="span-2"
-            label="标题/事项"
-            name="title"
-            rules={[{ required: true }]}
-          >
-            <Input />
-          </Form.Item>
           <Form.Item label="客户" name="customer">
             <Input disabled />
           </Form.Item>

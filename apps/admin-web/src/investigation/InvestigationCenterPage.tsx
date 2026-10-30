@@ -541,7 +541,7 @@ export default function InvestigationCenterPage({
         ) &&
         contains(row.customer, "rights_holder") &&
         contains(data.region || data.address, "region") &&
-        contains(row.title, "shop_name") &&
+        contains(data.shop_name, "shop_name") &&
         contains(
           data.warehouse || data.certificate_storage_location,
           "warehouse",
@@ -597,7 +597,8 @@ export default function InvestigationCenterPage({
       const { data: created } = await api.post("/investigations/records", {
         module: targetModule,
         serial_no: targetModule === "clue" ? "" : values.serial_no,
-        title: values.title,
+        // BUG20261030008：线索不填标题/事项。
+        title: targetModule === "clue" ? "" : values.title,
         customer: values.customer || "",
         status: initialStatus,
         owner: values.owner || profile.username || "admin",
@@ -1750,7 +1751,7 @@ export default function InvestigationCenterPage({
         editTarget.module === "clue" &&
         !["草稿", "已驳回"].includes(editTarget.status);
       await api.patch(`/investigations/records/${editTarget.id}`, {
-        title: v.title,
+        ...(editTarget.module === "clue" ? {} : { title: v.title }),
         customer: v.customer || "",
         description: v.description || "",
         ...(resubmit ? { status: "待审批" } : {}),
@@ -2182,7 +2183,7 @@ export default function InvestigationCenterPage({
         {
           title: "店铺名称",
           width: 180,
-          render: (_: unknown, r: Row) => r.data.shop_name || r.title || "—",
+          render: (_: unknown, r: Row) => r.data.shop_name || "—",
         },
         {
           title: "店铺Id",
@@ -2267,7 +2268,7 @@ export default function InvestigationCenterPage({
           </Button>
         ),
       },
-      { title: "标题/事项", dataIndex: "title", width: 240, ellipsis: true },
+      ...(tab === "clue" ? [] : [{ title: "标题/事项", dataIndex: "title", width: 240, ellipsis: true }]),
       {
         title: "客户",
         dataIndex: "customer",

@@ -83,5 +83,25 @@ class InvestigationClueLegacyFieldsRow10Test(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(edited["data"]["has_product"])
 
 
+    async def test_clue_without_title_is_saved(self):
+        """BUG20261030008：线索不填标题/事项也能保存。"""
+        async with self.sessions() as db:
+            db.add(User(username="admin", display_name="管理员", department="上海", password_hash="x", role="admin"))
+            source_task = BusinessRecord(
+                module="task", serial_no="RW-CODEX-1030-008", title="来源调查任务",
+                customer="CODEX客户", status="进行中", owner="admin", department="上海",
+                data={"investigation_record_id": 1},
+            )
+            db.add(source_task)
+            await db.commit()
+            created = await create_investigation_record(
+                RecordInput(module="clue", serial_no="", title="", customer="CODEX客户", owner="admin",
+                            data={"source_task_id": source_task.id, "shop_name": "CODEX无标题店铺", "product": "矿泉水", "sales_channel": "淘宝"}),
+                IDENTITY, db,
+            )
+        self.assertEqual(created["title"], "")
+        self.assertEqual(created["data"]["shop_name"], "CODEX无标题店铺")
+
+
 if __name__ == "__main__":
     unittest.main()
