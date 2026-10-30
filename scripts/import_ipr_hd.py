@@ -35,12 +35,8 @@ LEGACY_SOURCE = "ipr_hd"
 SCHEMA = "legacy_ipr_hd"
 ACTOR = "ipr-hd-import"
 LOCAL_TZ = timezone(timedelta(hours=8))
-MIRROR_TABLES = (
-    "IPR_Case", "IPR_CaseType", "IPR_CasePhase", "IPR_Case_Customer", "IPR_Case_Customer_Contacts",
-    "CRM_Customer", "CRM_Customer_Contacts", "FAM_AR_CaseFee", "FAM_AR_CaseFee_Log", "FAM_Invoice_File",
-    "IPR_Case_Event", "IPR_Case_Event_AFM", "IPR_Case_Monitoring", "IPR_Case_Event_NotIn",
-    "IPR_Case_Log", "IPR_Case_File", "IPR_Case_FileType", "IPR_User",
-)
+# 导出目录里的表全部进副本（以 _schema.json 为准）；以下几张是导入逻辑必需的。
+REQUIRED_TABLES = ("IPR_Case", "IPR_CaseType", "IPR_CasePhase", "IPR_Case_Customer", "CRM_Customer", "HR_Staff")
 PEOPLE_COLUMNS = (
     ("case_officer_name", "CaseOfficer"), ("case_origin_people_name", "CaseOriginPeople"),
     ("procurator_name", "Procurator"), ("copywriter_name", "Copywriter"), ("case_submitter_name", "CaseSubmitter"),
@@ -86,6 +82,9 @@ class HdImport:
             "unknown_case_types": [], "unresolved_people": [],
         }
         self.schema = json.loads((source / "_schema.json").read_text(encoding="utf-8"))
+        missing = [table for table in REQUIRED_TABLES if table not in self.schema]
+        if missing:
+            raise SystemExit(f"导出目录缺少必需的表：{missing}")
         self.tables: dict[str, list[dict]] = {}
 
     def load(self, table: str) -> list[dict]:
@@ -97,7 +96,7 @@ class HdImport:
     # ---------- 原样副本 ----------
     def mirror(self) -> None:
         self.db.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(sql.Identifier(SCHEMA)))
-        for table in MIRROR_TABLES:
+        for table in sorted(self.schema):
             columns = self.schema.get(table)
             if not columns:
                 self.report[f"mirror_missing:{table}"] += 1
@@ -195,7 +194,8 @@ class HdImport:
     def cases(self, customer_ids: dict[str, int]) -> dict[str, int]:
         types = {text(r["CaseTypeId"]): text(r["CaseTypeName"]) for r in self.load("IPR_CaseType")}
         phases = {text(r["CasePhaseId"]): text(r["CasePhaseName"]) for r in self.load("IPR_CasePhase")}
-        people = {text(r.get("UserName")).lower(): text(r.get("EmployeeName")) for r in self.load("IPR_User")}
+        # HD 员工表：StaffName 是账号，StaffChName 是姓名。
+        people = {text(r.get("StaffName")).lower(): text(r.get("StaffChName")) for r in self.load("HR_Staff")}
         users = {r["username"]: r["display_name"] for r in self.db.execute("SELECT username, display_name FROM users").fetchall()}
         customers = {text(r["CustomerId"]): r for r in self.load("CRM_Customer")}
         monitored = {text(r.get("CaseId")) for r in self.load("IPR_Case_Monitoring") if text(r.get("IsActived")).upper() == "T"}
@@ -210,6 +210,9 @@ class HdImport:
         ids: dict[str, int] = {}
         for row in self.load("IPR_Case"):
             case_id, no = text(row["CaseId"]), text(row.get("CaseNo"))
+            if not no:
+                self.report["ipr_case_missing_no"] += 1
+                continue
             type_name = types.get(text(row.get("CaseTypeId")), "")
             if type_name and type_name not in type_params:
                 self.lists["unknown_case_types"].append({"case_no": no, "case_type": type_name})
