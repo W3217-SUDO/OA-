@@ -172,6 +172,7 @@ const CaseCenterPage = lazyWithVersionRecovery("case", () => import("./CaseCente
 const IprCenterPage = lazyWithVersionRecovery("ipr", () => import("./ipr"));
 const IprOfficialFilePage = lazyWithVersionRecovery("ipr-office-files", () => import("./IprOfficialFilePage"));
 const IprCustomFileImportPage = lazyWithVersionRecovery("ipr-custom-file-import", () => import("./IprCustomFileImportPage"));
+const IprCaseRebootPage = lazyWithVersionRecovery("ipr-case-reboot", () => import("./IprCaseRebootPage"));
 const TaskCenterPage = lazyWithVersionRecovery("task", () => import("./tp"));
 const VipTaskCenterPage = lazyWithVersionRecovery("vip-task", () => import("./VipTaskCenterPage"));
 const BusinessPage = lazyWithVersionRecovery("business", () => import("./BusinessPage"));
@@ -393,11 +394,12 @@ const menuItems: NavItem[] = [
     key: "ipr",
     label: "知识产权中心",
     children: [
+      { key: "ipr-case-reboot", label: "案件重提" },
+      { key: "ipr-case-files", label: "案件文件", children: [{ key: "ipr-custom-file-import", label: "案件自定义文件导入" }] },
       { key: "ipr-patent", label: "专利案件" },
       { key: "ipr-trademark", label: "商标案件" },
       { key: "ipr-review", label: "知识产权立案审核" },
       { key: "ipr-office-files", label: "知识产权官文" },
-      { key: "ipr-custom-file-import", label: "案件自定义文件导入" },
       { key: "ipr-source-person", label: "我是案源人" },
       { key: "ipr-procurator", label: "我是代理人" },
       { key: "ipr-copywriter", label: "我是撰稿人" },
@@ -1871,6 +1873,8 @@ export default function App() {
       <IprOfficialFilePage />
     ) : route === "ipr-custom-file-import" ? (
       <IprCustomFileImportPage />
+    ) : route === "ipr-case-reboot" ? (
+      <IprCaseRebootPage />
     ) : route.startsWith("ipr-") ? (
       <IprCenterPage initialView={active} onNavigate={navigate} />
     ) : route === "case-legacy-ls-history" ? (

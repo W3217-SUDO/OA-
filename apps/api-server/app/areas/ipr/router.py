@@ -727,6 +727,29 @@ async def preview_ipr_case_reboot(case_id: int, identity: dict = Depends(current
     }
 
 
+@router.get(f"{settings.api_prefix}/ipr/case-reboot/lookup")
+async def lookup_ipr_case_reboot(case_no: str = Query(min_length=1, max_length=64), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """BUG20261030004：“案件重提”菜单按原案号找案件，返回确认页要显示的案件信息。"""
+    case_id = await db.scalar(select(BusinessRecord.id).where(
+        BusinessRecord.module == "ipr_case", BusinessRecord.serial_no == case_no.strip(),
+    ))
+    if not case_id:
+        raise HTTPException(status_code=404, detail=f"没有找到案号为 {case_no.strip()} 的知识产权案件")
+    preview = await preview_ipr_case_reboot(case_id, identity, db)
+    source = await db.get(BusinessRecord, case_id)
+    data = dict(source.data or {})
+    return {
+        **preview,
+        "case_kind": data.get("case_kind") or "",
+        "case_type": data.get("case_type") or "",
+        "customer": source.customer or "",
+        "application_no": data.get("application_no") or "",
+        "application_date": data.get("application_date") or "",
+        "procurator": data.get("procurator_name") or data.get("procurator") or "",
+        "can_reboot": source.status in {"草稿", "已驳回", "在办", "已结案"},
+    }
+
+
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/reboot", status_code=status.HTTP_201_CREATED)
 async def reboot_ipr_case(case_id: int, body: IprCaseRebootInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Create a separately-tracked resubmission without mutating the source case."""
@@ -754,6 +777,9 @@ async def reboot_ipr_case(case_id: int, body: IprCaseRebootInput, identity: dict
     for key in {"closed_at", "closed_by", "reopened_at", "reopened_by", "reboot_case_ids", "reboot_case_nos", "last_rebooted_at", "last_rebooted_by"}:
         new_data.pop(key, None)
     new_data.pop("conflict_review", None)
+    # BUG20261030004：从迁移案件重提出来的是新案件，不带旧系统案件标识，否则会被当成迁移案件、隐藏操作按钮。
+    for key in {"legacy_ipr_case_id", "legacy_case_id", "legacy_record", "migration_source", "source_table", "page_mapping_revision"}:
+        new_data.pop(key, None)
     new_data.update({
         "reboot_root_serial": root_serial,
         "reboot_source_case_id": source.id,

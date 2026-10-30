@@ -169,6 +169,9 @@ async def initialize_startup_data(
             ) or (
                 key in {"documents-official", "documents-my", "documents-company"}
                 and existing_menus[key].updated_by == "system"
+            ) or (
+                # BUG20261030004：知识产权中心按老系统重新排序、“案件自定义文件导入”挪到“案件文件”下；管理员手工改过的不动。
+                key.startswith("ipr-") and existing_menus[key].updated_by == "system"
             ):
                 existing_menus[key].parent_key = parent_key
                 existing_menus[key].label = label
