@@ -231,10 +231,23 @@ async def find_customer(run: Run, args: dict) -> dict:
     name = str(args.get("customer_name") or "").strip()
     if not name:
         raise HTTPException(422, "请提供 customer_name（客户名称）或 customer_id")
-    result = await run.read("oa_list_customers_get", {"query": {"customer_name": name, "page_size": 50}}, "按名称查客户")
-    rows = _items(result)
+    rows = await _customers_named(run, name, 50)
     exact = [row for row in rows if str(row.get("title") or "").strip() == name]
     return _one(exact or rows, "客户", name)
+
+
+async def _customers_named(run: Run, name: str, page_size: int) -> list[dict]:
+    """客户列表默认只查“我的客户”；查不到再按全所范围查（没有全所查看权限时原接口会拒绝，按没找到处理）。"""
+    rows = _items(await run.read("oa_list_customers_get", {"query": {"customer_name": name, "page_size": page_size}}, "按名称查客户（我的客户）"))
+    if any(str(row.get("title") or "").strip() == name for row in rows):
+        return rows
+    try:
+        company = await run.read("oa_list_customers_get", {"query": {"customer_name": name, "scope": "company", "page_size": page_size}},
+                                 "按名称查客户（全所客户）")
+    except StepFailed as exc:
+        exc.step.update(status="跳过", note="当前账号不能按全所范围查客户")
+        return rows
+    return _items(company) or rows
 
 
 async def find_record(run: Run, module: str, serial_no: str | None, record_id: int | None, label: str) -> dict:
@@ -243,9 +256,10 @@ async def find_record(run: Run, module: str, serial_no: str | None, record_id: i
     serial_no = str(serial_no or "").strip()
     if not serial_no:
         raise HTTPException(422, f"请提供{label}编号或 ID")
-    result = await run.read("oa_list_records_get", {"query": {"module": module, "serial_no": serial_no, "page_size": 20}}, f"按编号查{label}")
-    rows = _items(result)
-    return _one([row for row in rows if str(row.get("serial_no") or "").strip() == serial_no] or rows, label, serial_no)
+    # serial_no 筛选只在合同列表生效，keyword 对所有模块都按编号/名称模糊匹配；只认编号完全一致的那条，不拿近似结果顶替。
+    result = await run.read("oa_list_records_get", {"query": {"module": module, "serial_no": serial_no, "keyword": serial_no, "page_size": 20}},
+                            f"按编号查{label}")
+    return _one([row for row in _items(result) if str(row.get("serial_no") or "").strip() == serial_no], label, serial_no)
 
 
 async def find_case(run: Run, args: dict) -> dict:
@@ -313,8 +327,8 @@ async def _customer_overview(run: Run, args: dict) -> dict:
                uses=("oa_customer_conflicts_get", "oa_list_customers_get"))
 async def _customer_conflict(run: Run, args: dict) -> dict:
     conflicts = await run.read("oa_customer_conflicts_get", {"query": {"name": args["name"]}}, "利益冲突检索")
-    similar = await run.read("oa_list_customers_get", {"query": {"customer_name": args["name"], "page_size": 20}}, "近似客户")
-    return {"conflicts": conflicts, "similar_customers": [_brief(row, "id", "serial_no", "title", "owner") for row in _items(similar)]}
+    similar = await _customers_named(run, args["name"], 20)
+    return {"conflicts": conflicts, "similar_customers": [_brief(row, "id", "serial_no", "title", "owner") for row in similar]}
 
 
 CONTACT = {"type": "object", "additionalProperties": False, "required": ["name"], "properties": {
@@ -739,12 +753,13 @@ async def _clues_to_cases(run: Run, args: dict) -> dict:
 @business_tool("biz_case_overview", "案件总览（费用/附件/任务/办案指引）",
                "按我方案号查案件，并带出案件费用、附件、任务和办案指引（含付款三要素是否齐全的提示）。",
                CASE_REF, write=False,
-               uses=("oa_search_ordinary_cases_post", "oa_get_record_get", "oa_list_records_get", "oa_list_attachments_get",
+               uses=("oa_search_ordinary_cases_post", "oa_get_record_get", "oa_list_case_relations_get", "oa_list_attachments_get",
                      "oa_list_case_tasks_get", "oa_get_case_workflow_guide_get"))
 async def _case_overview(run: Run, args: dict) -> dict:
     case = await find_case(run, args)
     detail = await run.read("oa_get_record_get", {"path": {"record_id": case["id"]}}, "案件详情")
-    fees = await run.read("oa_list_records_get", {"query": {"module": "finance", "case_no": case.get("serial_no"), "page_size": 100}}, "案件费用")
+    relations = await run.read("oa_list_case_relations_get", {"path": {"case_id": case["id"]}, "query": {"include": "fees"}}, "案件费用")
+    fees = (relations or {}).get("fees") or [] if isinstance(relations, dict) else []
     files = await run.read("oa_list_attachments_get", {"query": {"record_id": case["id"], "page_size": 100}}, "案件附件")
     tasks = await run.read("oa_list_case_tasks_get", {"path": {"case_id": case["id"]}}, "案件任务")
     guide = await run.read("oa_get_case_workflow_guide_get", {"path": {"case_id": case["id"]}}, "办案指引")
@@ -1016,7 +1031,7 @@ async def _incoming_find(run: Run, args: dict) -> dict:
                uses=("oa_get_incoming_payment_get", "oa_claim_incoming_payment_post", "oa_incoming_payment_allocation_candidates_get", "oa_allocate_incoming_payment_post"))
 async def _claim_allocate(run: Run, args: dict) -> dict:
     scope = {"finance_scope": args.get("finance_scope", "firm")}
-    payment = await run.read("oa_get_incoming_payment_get", {"path": {"payment_id": args["payment_id"]}}, "读取到账")
+    payment = await run.read("oa_get_incoming_payment_get", {"path": {"payment_id": args["payment_id"]}, "query": scope}, "读取到账")
     if args.get("customer"):
         await run.write("oa_claim_incoming_payment_post", {"path": {"payment_id": args["payment_id"]}, "query": scope,
                                                            "body": _drop_empty({"customer": args["customer"], "comment": args.get("comment")})}, "认领到客户")
