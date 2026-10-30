@@ -121,7 +121,7 @@ DEFAULT_SYSTEM_MENUS = [
     ("case", "", "案件中心", "file-text", 60), ("case-new", "case", "新建案件", "", 61), ("case-mine", "case", "我的案件", "", 62), ("case-dept", "case", "部门案件", "", 63), ("case-company", "case", "公司案件", "", 64), ("case-files", "case", "案件文件", "", 65), ("case-archive", "case", "案件归档审核", "", 66),
     # BUG20261030004（高勤兰、思法汇成确认）：按老系统顺序 专利监控、专利转文、专利转票、专利年费、商标监控、商标转文、商标转票、案件重提、案件文件，
     # 原有菜单排在后面；1~7 号位留给分批上线的监控、转文、转票、年费。
-    ("ipr", "", "知识产权中心", "file-text", 67), ("ipr-case-reboot", "ipr", "案件重提", "", 8), ("ipr-case-files", "ipr", "案件文件", "", 9),
+    ("ipr", "", "知识产权中心", "file-text", 67), ("ipr-patent-annual-fee", "ipr", "专利年费", "", 4), ("ipr-case-reboot", "ipr", "案件重提", "", 8), ("ipr-case-files", "ipr", "案件文件", "", 9),
     ("ipr-custom-file-import", "ipr-case-files", "案件自定义文件导入", "", 1),
     ("ipr-patent", "ipr", "专利案件", "", 10), ("ipr-trademark", "ipr", "商标案件", "", 11), ("ipr-review", "ipr", "知识产权立案审核", "", 12), ("ipr-office-files", "ipr", "知识产权官文", "", 13),
     ("ipr-source-person", "ipr", "我是案源人", "", 14), ("ipr-procurator", "ipr", "我是代理人", "", 15), ("ipr-copywriter", "ipr", "我是撰稿人", "", 16), ("ipr-officer", "ipr", "我是处理人", "", 17), ("ipr-business-owner", "ipr", "我是案件管理人", "", 18),

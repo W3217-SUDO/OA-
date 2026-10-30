@@ -173,6 +173,7 @@ const IprCenterPage = lazyWithVersionRecovery("ipr", () => import("./ipr"));
 const IprOfficialFilePage = lazyWithVersionRecovery("ipr-office-files", () => import("./IprOfficialFilePage"));
 const IprCustomFileImportPage = lazyWithVersionRecovery("ipr-custom-file-import", () => import("./IprCustomFileImportPage"));
 const IprCaseRebootPage = lazyWithVersionRecovery("ipr-case-reboot", () => import("./IprCaseRebootPage"));
+const IprAnnualFeePage = lazyWithVersionRecovery("ipr-patent-annual-fee", () => import("./IprAnnualFeePage"));
 const TaskCenterPage = lazyWithVersionRecovery("task", () => import("./tp"));
 const VipTaskCenterPage = lazyWithVersionRecovery("vip-task", () => import("./VipTaskCenterPage"));
 const BusinessPage = lazyWithVersionRecovery("business", () => import("./BusinessPage"));
@@ -394,6 +395,7 @@ const menuItems: NavItem[] = [
     key: "ipr",
     label: "知识产权中心",
     children: [
+      { key: "ipr-patent-annual-fee", label: "专利年费" },
       { key: "ipr-case-reboot", label: "案件重提" },
       { key: "ipr-case-files", label: "案件文件", children: [{ key: "ipr-custom-file-import", label: "案件自定义文件导入" }] },
       { key: "ipr-patent", label: "专利案件" },
@@ -1875,6 +1877,8 @@ export default function App() {
       <IprCustomFileImportPage />
     ) : route === "ipr-case-reboot" ? (
       <IprCaseRebootPage />
+    ) : route === "ipr-patent-annual-fee" ? (
+      <IprAnnualFeePage />
     ) : route.startsWith("ipr-") ? (
       <IprCenterPage initialView={active} onNavigate={navigate} />
     ) : route === "case-legacy-ls-history" ? (
