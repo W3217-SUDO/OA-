@@ -74,7 +74,7 @@ class CasePaymentUnitRow14Test(unittest.IsolatedAsyncioTestCase):
     async def test_platform_payment_uses_newly_created_master_record(self) -> None:
         created = await self.client.post(f"{API}/finance/fees/{self.platform_fee_id}/payment-types", json={"nature": "个人", "payee": "第14行平台收款单位", "account_bank": "第14行平台银行", "account": "R14-PLATFORM-ACCOUNT"})
         self.assertEqual(created.status_code, 201, created.text)
-        submitted = await self.client.post(f"{API}/finance/fees/{self.platform_fee_id}/submit", json={"amount": 210, "payment_type_id": created.json()["id"], "payment_remark": "第14行平台费用"})
+        submitted = await self.client.post(f"{API}/finance/fees/{self.platform_fee_id}/submit", json={"amount": 210, "payment_type_id": created.json()["id"], "payment_remark": "第14行平台费用", "deadline": "2026-11-30"})
         self.assertEqual(submitted.status_code, 200, submitted.text)
         self.assertEqual(submitted.json()["data"]["payment_payee"], "第14行平台收款单位")
 

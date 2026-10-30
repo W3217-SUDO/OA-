@@ -71,6 +71,7 @@ export interface CaseFinanceDependencies {
         payment_type_id?: number | undefined;
         payment_payee?: string | undefined;
         payment_account?: string | undefined;
+        deadline?: string | undefined;
     }[]>>;
     readonly setFeeCase: React.Dispatch<React.SetStateAction<CaseRow | null>>;
     readonly setCasePaymentTypesLoading: React.Dispatch<React.SetStateAction<boolean>>;
@@ -93,6 +94,7 @@ export interface CaseFinanceDependencies {
         payment_type_id?: number | undefined;
         payment_payee?: string | undefined;
         payment_account?: string | undefined;
+        deadline?: string | undefined;
     }[];
     readonly createdCaseFees: CaseRow[];
     readonly setCaseFeeSubmitting: React.Dispatch<React.SetStateAction<boolean>>;
@@ -491,6 +493,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                 setCreatedCaseFees(payable);
                 setCaseFeePaymentDrafts(payable.map((row) => ({
                     payment_remark: "",
+                    deadline: String(row.data.deadline || "").slice(0, 10),
                     payment_payee: row.data.expense_scope === "内部" ? String(row.data.payee || row.owner || "") : undefined,
                     payment_account: row.data.expense_scope === "内部" ? String(row.data.payee || row.owner || "") : undefined,
                 })));
@@ -513,6 +516,11 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
             message.warning("请选择系统付款单位");
             return;
         }
+        // BUG20261030002：官方费用申请付款必须填缴费截止日期。
+        if (caseFeePaymentDrafts.some((item, index) => createdCaseFees[index]?.data.fee_type === "官方费用" && !item.deadline)) {
+            message.warning("官方费用请填写缴费截止日期");
+            return;
+        }
         if (caseFeePaymentDrafts.some((item, index) => createdCaseFees[index]?.data.expense_scope === "内部" && (!item.payment_payee?.trim() || !item.payment_account?.trim()))) {
             message.warning("请输入内部费用收款人和付款账号");
             return;
@@ -528,6 +536,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                         payment_account: String(item.payment_account || "").trim(),
                     } : { payment_type_id: item.payment_type_id }),
                     payment_remark: String(item.payment_remark || "").trim(),
+                    ...(item.deadline ? { deadline: item.deadline } : {}),
                     comment: String(item.payment_remark || `案件 ${feeCase?.serial_no || ""} 申请付款`).trim(),
                 });
             }
@@ -647,6 +656,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
             amount: remaining,
             payment_remark: row.data.payment_remark || row.description || "",
             payment_type_id: options?.some((item) => item.id === storedPaymentTypeId) ? storedPaymentTypeId : undefined,
+            deadline: row.data.deadline || row.data.due_date ? dayjs(String(row.data.deadline || row.data.due_date).slice(0, 10)) : undefined,
         });
         setPaymentTypeSearch("");
         setPaymentRequestFee(row);

@@ -241,6 +241,10 @@ async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: di
             payee = body.payment_payee.strip()
             if not payee:
                 raise HTTPException(status_code=422, detail="请输入收款单位")
+        # BUG20261030002（范明明 2026-10-30）：官方费用申请付款必须有缴费截止日期，没填不能提交。
+        deadline = str(body.deadline) if body.deadline else str(data.get("deadline") or data.get("due_date") or "")[:10]
+        if data.get("fee_type") == "官方费用" and not deadline:
+            raise HTTPException(status_code=422, detail="官方费用申请付款必须填写缴费截止日期")
         payment_remark = body.payment_remark.strip()
         requested = _round_fee_amount(body.amount)
         paid = _round_fee_amount(float(await db.scalar(select(func.coalesce(func.sum(FinanceTransaction.amount), 0)).where(
@@ -269,6 +273,7 @@ async def submit_finance_fee(fee_id: int, body: FinanceActionInput, identity: di
             "payment_nature": str((payment_type.extra or {}).get("nature") or payment_type.name or "") if payment_type else "",
             "payment_account_bank": str((payment_type.extra or {}).get("account_bank") or (payment_type.extra or {}).get("bank") or "") if payment_type else "",
             "payment_remark": payment_remark,
+            **({"deadline": deadline} if deadline else {}),
             "payee": payee,
             "payment_applied_at": applied_at,
             # BUG20261029001：请款单申请日期是本次点“申请付款”的日期，不是费用新建日期。

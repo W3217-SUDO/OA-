@@ -187,6 +187,8 @@ class FinanceActionInput(BaseModel):
     payment_account: str = Field(default="", max_length=128)
     payment_payee: str = Field(default="", max_length=256)
     payment_remark: str = Field(default="", max_length=1000)
+    # BUG20261030002：官方费用申请付款必须带缴费截止日期。
+    deadline: date | None = None
 
 
 class FinanceFeeMoveCaseInput(BaseModel):

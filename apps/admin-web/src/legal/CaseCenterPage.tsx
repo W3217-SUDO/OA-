@@ -560,7 +560,7 @@ export default function CaseCenterPage({
   const [editingFeeRow, setEditingFeeRow] = useState<CaseRow | null>(null);
   const [caseFeeCreateStep, setCaseFeeCreateStep] = useState(0);
   const [createdCaseFees, setCreatedCaseFees] = useState<CaseRow[]>([]);
-  const [caseFeePaymentDrafts, setCaseFeePaymentDrafts] = useState<Array<{ payment_remark: string; payment_type_id?: number; payment_payee?: string; payment_account?: string }>>([]);
+  const [caseFeePaymentDrafts, setCaseFeePaymentDrafts] = useState<Array<{ payment_remark: string; payment_type_id?: number; payment_payee?: string; payment_account?: string; deadline?: string }>>([]);
   const [caseFeeSubmitting, setCaseFeeSubmitting] = useState(false);
   const [paymentRequestFee, setPaymentRequestFee] = useState<CaseRow | null>(null);
   const [feeInformTarget, setFeeInformTarget] = useState<CaseRow | null>(null);
@@ -3725,10 +3725,11 @@ export default function CaseCenterPage({
             <div className="case-fee-payment-head"><span>案号</span><span>费用类型</span><span>金额</span><span>收款人</span><span>付款账号</span></div>
             {createdCaseFees.map((row, index) => <div className="case-fee-payment-row" key={row.id}><span>{feeCase?.serial_no || "—"}</span><span>{row.data.expense_subtype || row.data.fee_type || "—"}</span><span>{row.data.payment_remaining_amount ?? row.data.amount}</span><Input aria-label="收款人" placeholder="收款人" value={caseFeePaymentDrafts[index]?.payment_payee || ""} onChange={(event) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_payee: event.target.value } : item))} /><Input aria-label="付款账号" placeholder="付款账号" value={caseFeePaymentDrafts[index]?.payment_account || ""} onChange={(event) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_account: event.target.value } : item))} /></div>)}
           </div> : <div className="case-fee-payment-table case-fee-payment-unit-table">
-            <div className="case-fee-payment-head"><span>合同号</span><span>案号</span><span>费用类型</span><span>金额</span><span>付款备注</span><span>收款单位</span><span>操作</span></div>
+            <div className="case-fee-payment-head"><span>合同号</span><span>案号</span><span>费用类型</span><span>金额</span><span>付款备注</span><span>缴费截止日期</span><span>收款单位</span><span>操作</span></div>
             {createdCaseFees.map((row, index) => <div className="case-fee-payment-row" key={row.id}>
               <span>{row.data.contract_no || "—"}</span><span>{feeCase?.serial_no || "—"}</span><span>{row.data.expense_subtype || row.data.fee_type || "—"}</span><span>{row.data.amount ?? 0}</span>
               <Input value={caseFeePaymentDrafts[index]?.payment_remark || ""} placeholder="付款备注" onChange={(event) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_remark: event.target.value } : item))} />
+              <DatePicker aria-label="缴费截止日期" style={{ width: "100%" }} placeholder={row.data.fee_type === "官方费用" ? "官费必填" : "选填"} status={row.data.fee_type === "官方费用" && !caseFeePaymentDrafts[index]?.deadline ? "error" : undefined} value={caseFeePaymentDrafts[index]?.deadline ? dayjs(caseFeePaymentDrafts[index].deadline) : null} onChange={(value) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, deadline: value ? value.format("YYYY-MM-DD") : "" } : item))} />
               <Select showSearch filterOption={false} loading={casePaymentTypesLoading} placeholder={row.data.fee_type === "官方费用" ? "官费可不选收款单位" : "输入关键字选择收款单位"} options={casePaymentTypeSelectOptions} value={caseFeePaymentDrafts[index]?.payment_type_id} onOpenChange={(open) => openCasePaymentTypeOptions(row.id, open)} onSearch={(keyword) => searchCasePaymentTypes(row.id, keyword)} onChange={(value) => setCaseFeePaymentDrafts((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, payment_type_id: value } : item))} notFoundContent={casePaymentTypesLoading ? "加载中..." : casePaymentTypesError ? <Button type="link" onClick={() => void loadCasePaymentTypes(row.id, paymentTypeSearch)}>{casePaymentTypesError}，点击重试</Button> : <Button type="link" icon={<PlusOutlined />} onClick={() => openPaymentTypeCreator(row.id, index)}>新增“{paymentTypeSearch || "付款单位"}”</Button>} />
               <Button type="text" title="新增付款单位" aria-label="新增付款单位" icon={<PlusOutlined />} disabled={casePaymentTypesLoading || Boolean(casePaymentTypesError)} onClick={() => openPaymentTypeCreator(row.id, index)} />
             </div>)}
@@ -3842,13 +3843,14 @@ export default function CaseCenterPage({
         {casePaymentTypesError && paymentRequestFee && <Alert type="error" title={casePaymentTypesError} action={<Button size="small" onClick={() => void loadCasePaymentTypes(paymentRequestFee.id, paymentTypeSearch)}>重新加载</Button>} />}
         <Form form={paymentRequestForm} component={false}>
           <div className="case-fee-payment-table case-fee-payment-request-table case-fee-payment-unit-table">
-            <div className="case-fee-payment-head"><span>合同号</span><span>案号</span><span>费用类型</span><span>金额</span><span>付款备注</span><span>收款单位</span><span>操作</span></div>
+            <div className="case-fee-payment-head"><span>合同号</span><span>案号</span><span>费用类型</span><span>金额</span><span>付款备注</span><span>缴费截止日期</span><span>收款单位</span><span>操作</span></div>
             <div className="case-fee-payment-row">
               <span>{paymentRequestFee?.data.contract_no || "—"}</span>
               <span>{paymentRequestFee?.data.case_no || viewingCounselCase?.serial_no || "—"}</span>
               <span>{paymentRequestFee?.data.expense_subtype || paymentRequestFee?.data.fee_type || paymentRequestFee?.title || "—"}</span>
               <Form.Item name="amount" rules={[{ required: true, message: "请输入申请付款金额" }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item>
               <Form.Item name="payment_remark"><Input placeholder="付款备注" /></Form.Item>
+              <Form.Item name="deadline" rules={[{ required: paymentRequestFee?.data.fee_type === "官方费用", message: "官方费用请填写缴费截止日期" }]}><DatePicker aria-label="缴费截止日期" placeholder={paymentRequestFee?.data.fee_type === "官方费用" ? "官费必填" : "选填"} style={{ width: "100%" }} /></Form.Item>
               <Form.Item name="payment_type_id" rules={[{ required: paymentRequestFee?.data.fee_type !== "官方费用", message: "请选择系统付款单位" }]}><Select showSearch filterOption={false} loading={casePaymentTypesLoading} placeholder={paymentRequestFee?.data.fee_type === "官方费用" ? "官费可不选收款单位" : "输入关键字选择收款单位"} options={casePaymentTypeSelectOptions} onOpenChange={(open) => paymentRequestFee && openCasePaymentTypeOptions(paymentRequestFee.id, open)} onSearch={(keyword) => paymentRequestFee && searchCasePaymentTypes(paymentRequestFee.id, keyword)} notFoundContent={casePaymentTypesLoading ? "加载中..." : casePaymentTypesError ? <Button type="link" onClick={() => paymentRequestFee && void loadCasePaymentTypes(paymentRequestFee.id, paymentTypeSearch)}>{casePaymentTypesError}，点击重试</Button> : <Button type="link" icon={<PlusOutlined />} onClick={() => paymentRequestFee && openPaymentTypeCreator(paymentRequestFee.id)}>新增“{paymentTypeSearch || "付款单位"}”</Button>} /></Form.Item>
               <Button type="text" title="新增付款单位" aria-label="新增付款单位" icon={<PlusOutlined />} disabled={casePaymentTypesLoading || Boolean(casePaymentTypesError)} onClick={() => paymentRequestFee && openPaymentTypeCreator(paymentRequestFee.id)} />
             </div>

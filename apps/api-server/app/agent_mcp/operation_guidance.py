@@ -48,7 +48,8 @@ _GUIDANCE = {
     ("POST", "/documents/court-service/fees/{fee_id}/confirm", "confirm_court_intake_fee"): {
         "title": "确认收文费用",
         "purpose": "律师确认后，把一键收文生成的官方费用草稿提交缴纳（自动匹配收款单位），并按最后缴费期限建提醒任务。",
-        "usage": ["path.fee_id 填一键收文返回的 fees[].fee_id；body.remind 是否建提醒（默认是），body.remind_owner 提醒负责人账号（默认当前用户）。"],
+        "usage": ["path.fee_id 填一键收文返回的 fees[].fee_id；body.remind 是否建提醒（默认是），body.remind_owner 提醒负责人账号（默认当前用户）。",
+                  "官方费用必须有缴费截止日期：返回 needs_deadline=true 时没有提交，请向律师问清截止日期后带 body.deadline（YYYY-MM-DD）再调用一次。"],
         "prerequisites": ["必须先得到律师/用户明确同意提交缴纳。"],
         "limitations": ["只处理法院收文生成的费用单；已提交的不会重复提交，同名提醒不会重复建。"],
         "search_terms": ["确认收文费用", "提交缴纳", "诉讼费缴纳", "缴费提醒"],

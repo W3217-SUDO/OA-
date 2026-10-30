@@ -1645,6 +1645,8 @@ async def create_refund_page_case_fees(
                     raise HTTPException(status_code=409, detail=f"第 {index} 行申请付款金额不能超过费用金额 {abs(amount):.2f}")
                 if request_item.fee_type == "代理费":
                     raise HTTPException(status_code=409, detail=f"第 {index} 行代理费不允许申请付款")
+                if request_item.fee_type == "官方费用" and not request_item.deadline:
+                    raise HTTPException(status_code=422, detail=f"第 {index} 行官方费用申请付款必须填写缴费截止日期")
                 if request_item.fee_type == "内部费用":
                     payee_username = request_item.payee_username.strip()
                     payee_user = await db.scalar(select(User).where(User.username == payee_username, User.is_active.is_(True)))

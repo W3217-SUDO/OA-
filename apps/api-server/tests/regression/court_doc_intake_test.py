@@ -347,6 +347,33 @@ class CourtIntakeTest(_CourtApiBase):
             chosen = await self.client.post(f"{API}/documents/court-service/intake", json={"link": LINK, "case_id": self.case_id})
         self.assertEqual((chosen.json()["status"], chosen.json()["match"]["level"]), ("待确认入库", "用户确认"))
 
+    async def test_fee_without_deadline_asks_for_it_instead_of_failing(self):
+        """BUG20261030002：通知书没识别到缴费截止日期时不提交、不报错，返回 needs_deadline；补填后再确认才提交。"""
+        async with self.sessions() as db:
+            fee = BusinessRecord(module="finance", serial_no="FY-TEST-NODL", title="一审诉讼费", status="草稿",
+                                 owner=IDENTITY["username"], department="测试部", description="【法院收文】缴费通知",
+                                 data={"amount": 900, "fee_type": "官方费用", "expense_subtype": "一审诉讼费", "deadline": ""})
+            db.add(fee)
+            await db.commit()
+            fee_id = fee.id
+        submitted = {}
+
+        async def submit(fee_id, body, identity, db):
+            submitted["deadline"] = (await db.get(BusinessRecord, fee_id)).data.get("deadline")
+            return {"status": "待审批"}
+
+        with patch("app.areas.finance.fee_workflows.list_finance_fee_payment_types", AsyncMock(return_value={"items": []})), \
+                patch("app.areas.finance.fee_workflows.submit_finance_fee", submit):
+            asked = await self.client.post(f"{API}/documents/court-service/fees/{fee_id}/confirm", json={"remind": False})
+            self.assertEqual(asked.status_code, 200, asked.text)
+            self.assertEqual((asked.json()["needs_deadline"], asked.json()["submitted"]), (True, False))
+            self.assertNotIn("deadline", submitted)
+            done = await self.client.post(f"{API}/documents/court-service/fees/{fee_id}/confirm",
+                                          json={"remind": False, "deadline": "2026-11-20"})
+        self.assertEqual(done.status_code, 200, done.text)
+        self.assertTrue(done.json()["submitted"])
+        self.assertEqual(submitted["deadline"], "2026-11-20")
+
 
 class IntakeConversationTitleTest(unittest.TestCase):
     def test_intake_conversations_are_titled_by_case_number_and_tagged_with_skill(self):

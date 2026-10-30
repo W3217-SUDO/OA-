@@ -221,7 +221,8 @@ class September30CaseFinanceTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_official_fee_payment_application_allows_no_unit_only_for_official(self):
         route = f"{API}/finance/fees/{self.fee_id}/submit"
-        body = {"amount": 100, "comment": "官费申请付款"}
+        # BUG20261030002：官方费用申请付款必须带缴费截止日期。
+        body = {"amount": 100, "comment": "官费申请付款", "deadline": "2026-11-30"}
         async with self.sessions() as db:
             fee = await db.get(BusinessRecord, self.fee_id)
             fee.data = {**fee.data, "fee_type": "官方费用", "expense_subtype": "一审诉讼费"}
@@ -274,7 +275,7 @@ class September30CaseFinanceTest(unittest.IsolatedAsyncioTestCase):
     async def test_batch_official_payment_does_not_require_payment_unit(self):
         body = {"items": [{"case_id": self.case_id, "contract_record_id": self.contract_id,
             "fee_type_id": self.leaf_id, "fee_type": "官方费用", "amount": 10,
-            "payment_amount": 10}], "handler": IDENTITY["username"], "submit_payment": True}
+            "payment_amount": 10, "deadline": "2026-11-30"}], "handler": IDENTITY["username"], "submit_payment": True}
         response = await self.client.post(f"{API}/finance/case-fees/batch", json=body)
         self.assertEqual(response.status_code, 201, response.text)
         created = response.json()["items"][0]

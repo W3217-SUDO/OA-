@@ -41,6 +41,7 @@ class CourtFeeConfirmInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     remind: bool = Field(default=True, description="是否同时建缴费期限提醒任务")
     remind_owner: str = Field(default="", max_length=64, description="提醒任务负责人账号；留空为当前用户")
+    deadline: date | None = Field(default=None, description="缴费截止日期；通知书没识别到期限时必须由律师补填")
 
 
 def _core_names(name: str) -> list[str]:
@@ -388,6 +389,15 @@ async def confirm_court_intake_fee(fee_id: int, body: CourtFeeConfirmInput, iden
     if not str(fee.description or data.get("description") or "").startswith(FEE_MARKER):
         raise HTTPException(409, "只能确认法院收文生成的费用单")
     result = {"fee_id": fee.id, "serial_no": fee.serial_no}
+    # BUG20261030002：官方费用申请付款必须有缴费截止日期。通知书没识别到期限时不提交也不报错，
+    # 返回 needs_deadline，由收文助手问律师补填后带 deadline 再确认。
+    if body.deadline:
+        data["deadline"] = body.deadline.isoformat()
+        fee.data = data
+    if fee.status in {"草稿", "已退回"} and not str(data.get("deadline") or data.get("due_date") or "").strip():
+        result.update({"submitted": False, "fee_status": fee.status, "needs_deadline": True,
+                       "note": "缴费通知书里没有识别到缴费截止日期，请向律师确认截止日期后带 deadline 再次确认"})
+        return result
     if fee.status in {"草稿", "已退回"}:
         account = re.search(r"账号 ([0-9]{6,40})", str(fee.description or ""))
         options = (await list_finance_fee_payment_types(fee_id, "", identity=identity, db=db))["items"]
