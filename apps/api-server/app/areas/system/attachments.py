@@ -1,6 +1,6 @@
 """系统附件上传、查看与删除接口。"""
 from app.core.storage import attachment_local_path
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 import jwt
 from app.core.storage import _xls_preview_sheets
 from app.core.constants import AI_SPACE_CATEGORY, ARCHIVE_REQUIRED_CATEGORIES, ATTACHMENT_TEXT_PREVIEW_MAX_CHARS, case_formal_document_folder_blocked, case_formal_document_folders_for_case_type, FINANCE_DEFAULT_VOUCHER_CATEGORY, INVESTIGATION_MATERIAL_CATEGORIES, JAR_FEE_MODULE, PDF_PREVIEW_MAX_DIMENSION, PDF_PREVIEW_MAX_PIXELS, PDF_PREVIEW_MAX_WIDTH, PDF_PREVIEW_MIN_WIDTH, SEAL_APPLICATION_FILE_CATEGORY, SEAL_STAMPED_FILE_CATEGORY, UPLOAD_ROOT, logger
@@ -370,7 +370,7 @@ async def upload_attachment(
     return _attachment_dict(item, record)
 
 @router.get(f"{settings.api_prefix}/attachments/{{attachment_id}}/download")
-async def download_attachment(attachment_id: int, case_id: int | None = Query(default=None, ge=1), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def download_attachment(request: Request, attachment_id: int, case_id: int | None = Query(default=None, ge=1), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.areas.aws.receipt_sources import can_read_receipt_attachment
     from app.core.investigation_access import ensure_investigation_material_access
     from app.core.permissions import (
@@ -399,8 +399,14 @@ async def download_attachment(attachment_id: int, case_id: int | None = Query(de
     from app.core.oss_attachments import oss_attachment_signed_url
     signed_url = oss_attachment_signed_url(item)
     if signed_url:
-        return RedirectResponse(signed_url, status_code=307)
-    path = _attachment_storage_path(item)
+        # BUG20261030011（范文玲）：页面用带登录令牌的 XHR 取文件（预览、下载），跳转到 OSS 后被浏览器跨域拦下报 Network Error。
+        # 带令牌的请求由服务器取回文件再转交；直接打开链接的仍跳转 OSS。
+        if not request.headers.get("authorization"):
+            return RedirectResponse(signed_url, status_code=307)
+        from app.core.storage import ensure_attachment_local
+        path = await ensure_attachment_local(item)
+    else:
+        path = _attachment_storage_path(item)
     if path is None:
         raise HTTPException(status_code=404, detail="附件文件不存在")
     return FileResponse(path, media_type=item.content_type, filename=item.original_name)
