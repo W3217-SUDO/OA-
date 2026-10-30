@@ -282,6 +282,52 @@ def payment_query_amount(record, dialect):
     return cast(func.nullif(value, ""), Float)
 
 
+# 请款单审批的“类型”只留官方费用里这几种和其他费用，其余（代理费、核定成本等）默认不显示，
+# 管理员可打开“显示全部类型”审批（范明明 BUG20261030003，2026-10-30）。
+PAYMENT_AUDIT_OFFICIAL_SUBTYPES = frozenset({"诉讼费", "一审诉讼费", "二审诉讼费", "再审诉讼费", "公证费", "保全费", "执行费"})
+PAYMENT_AUDIT_OTHER_FEE_TYPE = "其他费用"
+
+
+def _audit_type_pairs(module: str, data: dict | None) -> list[tuple[str, str]]:
+    data = data or {}
+    if module == "contract_payment":
+        lines = data.get("lines")
+        return [(str(line.get("fee_type") or ""), str(line.get("expense_subtype") or ""))
+                for line in (lines if isinstance(lines, list) else []) if isinstance(line, dict)]
+    return [(str(data.get("fee_type") or ""), str(data.get("expense_subtype") or data.get("fee_type_name") or ""))]
+
+
+def payment_audit_official_type(module: str, data: dict | None) -> bool:
+    """官方费用里勾选的那几种（待缴官费按这个数）。合同付款单看付款明细，明细须先带上 expense_subtype。"""
+    return any(base == "官方费用" and sub in PAYMENT_AUDIT_OFFICIAL_SUBTYPES for base, sub in _audit_type_pairs(module, data))
+
+
+def payment_audit_type_visible(module: str, data: dict | None) -> bool:
+    return payment_audit_official_type(module, data) or any(
+        base == PAYMENT_AUDIT_OTHER_FEE_TYPE for base, _sub in _audit_type_pairs(module, data))
+
+
+async def attach_line_expense_subtypes(items: list[dict], db) -> None:
+    """合同付款单的付款明细只记了大类（官方费用/代理费），细分类型在案件费用上，补到每条明细里。"""
+    def lines_of(item):
+        lines = (item.get("data") or {}).get("lines")
+        return lines if isinstance(lines, list) else []
+    fee_ids = {int(line["case_fee_id"]) for item in items for line in lines_of(item)
+               if isinstance(line, dict) and str(line.get("case_fee_id") or "").isdigit()}
+    if not fee_ids:
+        return
+    fees = {row.id: row.data or {} for row in (await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(fee_ids)))).all()}
+    for item in items:
+        data = item.get("data") or {}
+        lines = data.get("lines")
+        if not isinstance(lines, list):
+            continue
+        data["lines"] = [{**line, "expense_subtype": line.get("expense_subtype") or str(
+            fees.get(int(line["case_fee_id"]), {}).get("expense_subtype") or fees.get(int(line["case_fee_id"]), {}).get("fee_type_name") or "")}
+            if isinstance(line, dict) and str(line.get("case_fee_id") or "").isdigit() else line for line in lines]
+        item["data"] = data
+
+
 def payment_application_fee_condition():
     """请款列表里的费用行：外部费用，且真实提交过付款申请（旧系统 ap_payment 或本系统提交过）。"""
     from sqlalchemy import and_, func, or_
@@ -420,6 +466,7 @@ async def query_payments(filters, identity, db):
         record.created_at.desc(), record.id.desc(),
     ).offset((page - 1) * page_size).limit(page_size))).all())
     items = await _contract_customer_record_dicts(rows, allowed, db, identity=identity)
+    await attach_line_expense_subtypes([item for item in items if item.get("module") == "contract_payment"], db)
     from app.core.finance import _finance_fee_payment_status
     for source, payload in zip(rows, items):
         if source.module == "finance":

@@ -74,9 +74,9 @@ async def payment_audit_total(identity, db):
 
 
 async def payment_audit_official_total(identity, db):
-    """BUG20261028003（范明明 2026-10-29）：“待缴官费”= 请款单审批里待审批的官方费用（不含代理费等和合同付款）。"""
+    """BUG20261028003（范明明 2026-10-29）：“待缴官费”= 请款单审批里待审批、类型是勾选的那几种官方费用的请款单。"""
     # 与请款单审批取数同一条件（请款费用行、待审批、本人数据范围），再限定费用类型。
-    from sqlalchemy import func, select
+    from sqlalchemy import and_, select
 
     from app.core.contract_payment_lifecycle import payment_application_fee_condition
     from app.core.permissions import _record_scope_conditions, _require_record_module_menu
@@ -97,11 +97,18 @@ async def payment_audit_official_total(identity, db):
         if error.status_code in {403, 404}:
             return 0
         raise
-    return int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
-        payment_application_fee_condition(), BusinessRecord.status == "待审批",
-        BusinessRecord.data["fee_type"].as_string() == "官方费用",
-        *(await _record_scope_conditions(identity, db)),
-    )) or 0)
+    # 和请款单审批“类型”同一口径：官方费用里勾选的那几种，合同付款单按付款明细（BUG20261030003）。
+    from sqlalchemy import or_
+
+    from app.core.contract_payment_lifecycle import attach_line_expense_subtypes, payment_audit_official_type
+    rows = (await db.execute(select(BusinessRecord.module, BusinessRecord.data).where(
+        or_(and_(payment_application_fee_condition(), BusinessRecord.data["fee_type"].as_string() == "官方费用"),
+            BusinessRecord.module == "contract_payment"),
+        BusinessRecord.status == "待审批", *(await _record_scope_conditions(identity, db)),
+    ))).all()
+    items = [{"module": module, "data": dict(data or {})} for module, data in rows]
+    await attach_line_expense_subtypes([item for item in items if item["module"] == "contract_payment"], db)
+    return sum(1 for item in items if payment_audit_official_type(item["module"], item["data"]))
 
 
 async def internal_review_total(identity, db, kind="other"):
