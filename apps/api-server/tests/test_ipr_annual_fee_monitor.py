@@ -40,6 +40,16 @@ class IprAnnualFeeMonitorTest(unittest.TestCase):
         self.assertEqual([row["serial_no"] for row in afm._filter_rows(rows, {"case_no": "2015108"}, None, None)], ["SHPI1500668"])
         self.assertEqual([row["serial_no"] for row in afm._filter_rows(rows, {"applicant": "汉欣"}, date(2019, 1, 1), None)], ["SHPU1910840"])
 
+    def test_monitor_and_amount_rules(self):
+        base = {"paid": False, "monitor_blocked": False, "informed": False, "inform_amount": 0, "gained_amount": 0, "bill_amount": 0}
+        self.assertFalse(afm._out_of_monitor(base))
+        self.assertTrue(afm._out_of_monitor({**base, "paid": True}))
+        self.assertTrue(afm._out_of_monitor({**base, "monitor_blocked": True}))
+        self.assertEqual(afm._amounts_text(base), "未通知")
+        self.assertEqual(afm._amounts_text({**base, "informed": True, "inform_amount": 180, "bill_amount": 180}), "180/0/180")
+        self.assertEqual(afm._legacy_source({}), "ipr_sh")
+        self.assertEqual(afm._legacy_source({"legacy_source": "ipr_hd"}), "ipr_hd")
+
     def test_late_fee_first_month_free(self):
         row = {"due_date": date(2026, 6, 10), "annual_fee": 2000}
         self.assertEqual(afm._late_fee(row, date(2026, 6, 10)), 0)
