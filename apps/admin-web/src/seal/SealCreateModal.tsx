@@ -86,21 +86,21 @@ export function SealCreateModal({
         >
           取消
         </Button>,
-        <Button
-          key="save"
-          loading={submitting}
-          onClick={onSave}
-        >
-          保存草稿
-        </Button>,
-        <Button
-          key="submit"
-          type="primary"
-          loading={submitting}
-          onClick={onSubmit}
-        >
-          保存并提交审批
-        </Button>,
+        // 待审批的申请已提交过，修改后只保存，仍为待审批。
+        ...(editingApplication?.status === "待审批"
+          ? [
+              <Button key="save" type="primary" loading={submitting} onClick={onSave}>
+                保存修改
+              </Button>,
+            ]
+          : [
+              <Button key="save" loading={submitting} onClick={onSave}>
+                保存草稿
+              </Button>,
+              <Button key="submit" type="primary" loading={submitting} onClick={onSubmit}>
+                保存并提交审批
+              </Button>,
+            ]),
       ]}
       onCancel={onCancel}
     >

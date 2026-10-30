@@ -655,8 +655,9 @@ export default function SealCenterPage({
       return;
     }
     const row = selected[0];
-    if (row.status !== "草稿") {
-      message.info("仅草稿用印申请可以修改");
+    // BUG20261030010：待审批（审批人还没审）也可以修改，保存后仍为待审批。
+    if (row.status !== "草稿" && row.status !== "待审批") {
+      message.info("只有草稿或待审批（审批人还没审）的用印申请可以修改；已审过的请先撤回");
       return;
     }
     openApplication(row);
@@ -1435,8 +1436,15 @@ export default function SealCenterPage({
       title: "用印状态",
       dataIndex: "status",
       width: 105,
-      render: (v: string) => (
-        <StatusTag status={v} label={displayStatus(v)} />
+      render: (v: string, r: SealRow) => (
+        <>
+          <StatusTag status={v} label={displayStatus(v)} />
+          {v === "待审批" && r.data?.modified_after_submit_at ? (
+            <div style={{ fontSize: 12, color: "#d46b08", marginTop: 2 }} title={`申请人提交后修改于 ${dayjs(r.data.modified_after_submit_at).format("YYYY-MM-DD HH:mm")}`}>
+              已修改 {dayjs(r.data.modified_after_submit_at).format("M-D HH:mm")}
+            </div>
+          ) : null}
+        </>
       ),
     },
     {

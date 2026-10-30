@@ -20,6 +20,8 @@ from fastapi import APIRouter
 from starlette.concurrency import run_in_threadpool
 
 router = APIRouter()
+# 申请人可修改用印申请（内容、用印文件）的状态。
+SEAL_EDITABLE_STATUSES = {"草稿", "待审批"}
 
 
 @router.post(f"{settings.api_prefix}/seals/applications/batch/files/delete")
@@ -47,8 +49,8 @@ async def batch_delete_seal_attachments(body: AttachmentBatchInput, identity: di
             raise HTTPException(status_code=422, detail="选中的附件未关联用印申请")
         record = await _ensure_record_module(item.record_id, "seal", identity, db)
         await _require_record_owner_or_manager(record, identity, db)
-        if record.status != "草稿":
-            raise HTTPException(status_code=409, detail="只有草稿用印申请可以删除用印文件")
+        if record.status not in SEAL_EDITABLE_STATUSES:
+            raise HTTPException(status_code=409, detail="只有草稿或待审批用印申请可以删除用印文件")
         if item.category != "用印文件":
             raise HTTPException(status_code=422, detail="用印申请附件类型无效")
         from app.core.storage import ensure_attachment_local
@@ -323,7 +325,8 @@ async def update_seal_application(record_id: int, body: SealApplicationInput, id
     item = await _get_seal_application(record_id, identity, db)
     await _require_record_owner_or_manager(item, identity, db)
     await _require_seal_base_action(identity, db, "apply")
-    if item.status != "草稿": raise HTTPException(status_code=409, detail="只有草稿用印申请可以修改")
+    # BUG20261030010（范文玲）：待审批（审批人还没审）也可以修改，保存后仍为待审批；用印只有一级审批，审过就不再是待审批。
+    if item.status not in SEAL_EDITABLE_STATUSES: raise HTTPException(status_code=409, detail="只有草稿或待审批（审批人还没审）的用印申请可以修改")
     asset = await db.get(SealAsset, body.seal_asset_id)
     if not asset: raise HTTPException(status_code=404, detail="印章不存在")
     if asset.status != "可用": raise HTTPException(status_code=409, detail=f"印章当前状态为“{asset.status}”，不能申请")
@@ -333,8 +336,10 @@ async def update_seal_application(record_id: int, body: SealApplicationInput, id
     case_no, contract_no, customer, use_type, case_record_id, contract_record_id, _customer_record_id = await _validated_seal_relations(body, identity, db)
     item.title = body.title.strip(); item.customer = customer; item.description = body.description.strip()
     existing_names = str((item.data or {}).get("document_names") or "")
-    item.data = {"case_record_id": case_record_id, "case_no": case_no, "contract_record_id": contract_record_id, "contract_no": contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "seal_types": seal_types, "copies": body.copies, "print_quantity": body.print_quantity if body.print_quantity is not None else body.copies, "remark": body.remark.strip(), "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "document_names": existing_names or body.document_names}
-    db.add(WorkflowEvent(record_id=item.id, action="修改用印草稿", from_status="草稿", to_status="草稿", operator=identity["username"], comment=f"{asset.name}｜{body.copies}份｜{body.purpose}"))
+    previous_status = item.status
+    modified_after_submit = {"modified_after_submit_at": datetime.now().isoformat(timespec="seconds"), "modified_after_submit_by": identity["username"]} if previous_status == "待审批" else {}
+    item.data = {**(item.data or {}), **modified_after_submit, "case_record_id": case_record_id, "case_no": case_no, "contract_record_id": contract_record_id, "contract_no": contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "seal_types": seal_types, "copies": body.copies, "print_quantity": body.print_quantity if body.print_quantity is not None else body.copies, "remark": body.remark.strip(), "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "document_names": existing_names or body.document_names}
+    db.add(WorkflowEvent(record_id=item.id, action="修改用印草稿" if previous_status == "草稿" else "修改待审批用印申请", from_status=previous_status, to_status=previous_status, operator=identity["username"], comment=f"{asset.name}｜{body.copies}份｜{body.purpose}"))
     await _sync_legacy_official_document(item, identity, db)
     await db.commit(); await db.refresh(item)
     return await _seal_record_dict(item, db, identity=identity)
@@ -416,8 +421,8 @@ async def upload_seal_application_files(
     )
     record = await _get_seal_application(record_id, identity, db)
     await _require_record_owner_or_manager(record, identity, db)
-    if record.status not in {"草稿", "待用印"}:
-        raise HTTPException(status_code=409, detail="仅草稿或待用印用印申请可以上传用印文件")
+    if record.status not in {*SEAL_EDITABLE_STATUSES, "待用印"}:
+        raise HTTPException(status_code=409, detail="仅草稿、待审批或待用印用印申请可以上传用印文件")
     if record.status == "待用印":
         await _require_seal_base_action(identity, db, "stamp")
     else:

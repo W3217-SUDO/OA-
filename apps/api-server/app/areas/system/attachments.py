@@ -246,8 +246,8 @@ async def upload_attachment(
             await _require_record_owner_or_manager(record, identity, db)
         if record.module == "seal":
             await _require_record_owner_or_manager(record, identity, db)
-            if record.status not in {"草稿", "待用印"}:
-                raise HTTPException(status_code=409, detail="仅草稿或待用印用印申请可以上传用印文件")
+            if record.status not in {"草稿", "待审批", "待用印"}:
+                raise HTTPException(status_code=409, detail="仅草稿、待审批或待用印用印申请可以上传用印文件")
             if record.status == "待用印":
                 if identity.get("role") not in {"admin", "manager"}:
                     raise HTTPException(status_code=403, detail="只有用印管理员可以上传盖章文件")
@@ -705,7 +705,7 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
     if record and record.module == "seal":
         record = await _ensure_record_module(record.id, "seal", identity, db)
         await _require_record_owner_or_manager(record, identity, db)
-        may_delete_application_file = record.status == "草稿" and item.category == SEAL_APPLICATION_FILE_CATEGORY
+        may_delete_application_file = record.status in {"草稿", "待审批"} and item.category == SEAL_APPLICATION_FILE_CATEGORY
         may_delete_stamped_file = (
             record.status == "待用印"
             and item.category == SEAL_STAMPED_FILE_CATEGORY

@@ -19,7 +19,8 @@ export type SealAssetDefault = { id: SealSelectionKey; seal_type?: string; statu
 
 export const sealRouteMapping = {
   "seal-my": { view: "my", statuses: [] },
-  "seal-my-pending": { view: "my", statuses: ["\u5f85\u5ba1\u6279"] },
+  // BUG20261030010：只保存未提交的草稿也列在“待审批”里，可修改、提交。
+  "seal-my-pending": { view: "my", statuses: ["\u8349\u7a3f", "\u5f85\u5ba1\u6279"] },
   "seal-my-stamping": { view: "my", statuses: ["\u5f85\u7528\u5370"] },
   "seal-my-used": { view: "my", statuses: ["\u5df2\u7528\u5370", "\u5df2\u5f52\u6863"] },
   "seal-my-refused": { view: "my", statuses: ["\u5df2\u62d2\u7edd"] },
