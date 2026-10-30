@@ -80,8 +80,9 @@ def audit_time(value):
 
 
 class HdImport:
-    def __init__(self, db, source: Path, batch: str, oss_keys: Path | None = None):
+    def __init__(self, db, source: Path, batch: str, oss_keys: Path | None = None, exclude: set[str] | None = None):
         self.db, self.source, self.batch, self.oss_keys = db, source, batch, oss_keys
+        self.exclude = exclude or set()
         self.report = Counter()
         self.lists: dict[str, list] = {
             "customer_name_or_code_matches": [], "case_serial_conflicts": [], "customer_serial_prefixed": [],
@@ -98,6 +99,10 @@ class HdImport:
             path = self.source / f"{table}.jsonl"
             self.tables[table] = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()] if path.exists() else []
         return self.tables[table]
+
+    def import_cases(self) -> list[dict]:
+        """要导入的案件：去掉 --exclude-case-no 指定的（副本表照样完整保留）。"""
+        return [r for r in self.load("IPR_Case") if text(r.get("CaseNo")) not in self.exclude]
 
     # ---------- 原样副本 ----------
     def mirror(self) -> None:
@@ -125,8 +130,10 @@ class HdImport:
 
     # ---------- 客户 ----------
     def customers(self) -> dict[str, int]:
-        cases = self.load("IPR_Case")
-        used = {text(r.get("CustomerId")) for r in cases} | {text(r.get("CustomerId")) for r in self.load("IPR_Case_Customer")}
+        cases = self.import_cases()
+        kept = {text(r["CaseId"]) for r in cases}
+        used = {text(r.get("CustomerId")) for r in cases} | {
+            text(r.get("CustomerId")) for r in self.load("IPR_Case_Customer") if text(r.get("CaseId")) in kept}
         used.discard("")
         source = {text(r["CustomerId"]): r for r in self.load("CRM_Customer")}
         contacts: dict[str, list] = {}
@@ -214,7 +221,8 @@ class HdImport:
         by_legacy = {text((r["data"] or {}).get("legacy_ipr_case_id")): r for r in existing if (r["data"] or {}).get("legacy_source") == LEGACY_SOURCE}
         taken = {r["serial_no"]: r for r in self.db.execute("SELECT id, serial_no, module FROM business_records WHERE deleted_at IS NULL").fetchall()}
         ids: dict[str, int] = {}
-        for row in self.load("IPR_Case"):
+        self.report["ipr_case_excluded"] = len(self.load("IPR_Case")) - len(self.import_cases())
+        for row in self.import_cases():
             case_id, no = text(row["CaseId"]), text(row.get("CaseNo"))
             if not no:
                 self.report["ipr_case_missing_no"] += 1
@@ -293,19 +301,23 @@ class HdImport:
             source_table varchar(96) NOT NULL, source_id varchar(128) NOT NULL,
             target_table varchar(96) NOT NULL, target_id bigint NOT NULL, record_id bigint NOT NULL,
             PRIMARY KEY(source_table, source_id))""")
-        done = {r["source_id"] for r in self.db.execute(
-            "SELECT source_id FROM hz_alignment_event_links WHERE source_table=%s", (f"{SCHEMA}.IPR_Case_Log",)).fetchall()}
+        # 回滚只逻辑删除日志、不删对应关系；已删的允许重新导入（换绑到新日志）。
+        links = {r["source_id"]: r["live"] for r in self.db.execute(
+            """SELECT l.source_id, (e.deleted_at IS NULL) AS live FROM hz_alignment_event_links l
+               LEFT JOIN workflow_events e ON e.id = l.target_id WHERE l.source_table=%s""", (f"{SCHEMA}.IPR_Case_Log",)).fetchall()}
         for row in self.load("IPR_Case_Log"):
             log_id, case = text(row.get("LogId")), text(row.get("CaseId"))
-            if log_id in done or case not in case_ids or ("IsActived" in row and not enabled(row.get("IsActived"))):
+            if links.get(log_id) or case not in case_ids or ("IsActived" in row and not enabled(row.get("IsActived"))):
                 continue
             event_id = self.db.execute(
                 """INSERT INTO workflow_events (record_id, action, from_status, to_status, operator, comment, created_at)
                    VALUES (%s, '旧系统操作记录', '', '', %s, %s, COALESCE(%s, now())) RETURNING id""",
                 (case_ids[case], text(row.get("CreateUser"))[:64], text(row.get("Content")), audit_time(row.get("CreateTime"))),
             ).fetchone()["id"]
-            self.db.execute("INSERT INTO hz_alignment_event_links VALUES (%s, %s, 'workflow_events', %s, %s)",
-                            (f"{SCHEMA}.IPR_Case_Log", log_id, event_id, case_ids[case]))
+            self.db.execute(
+                """INSERT INTO hz_alignment_event_links VALUES (%s, %s, 'workflow_events', %s, %s)
+                   ON CONFLICT (source_table, source_id) DO UPDATE SET target_id=EXCLUDED.target_id, record_id=EXCLUDED.record_id""",
+                (f"{SCHEMA}.IPR_Case_Log", log_id, event_id, case_ids[case]))
             self.report["workflow_events_created"] += 1
 
     def files(self, case_ids: dict[str, int]) -> None:
@@ -321,7 +333,7 @@ class HdImport:
         lowered = {key.lower(): key for key in objects}
         types = {text(r["FileTypeId"]): text(r["FileTypeName"]) for r in self.load("IPR_Case_FileType")}
         done = {r["stored_name"] for r in self.db.execute(
-            "SELECT stored_name FROM file_attachments WHERE stored_name LIKE %s", (STORED_NAME_PREFIX + "%",)).fetchall()}
+            "SELECT stored_name FROM file_attachments WHERE stored_name LIKE %s AND deleted_at IS NULL", (STORED_NAME_PREFIX + "%",)).fetchall()}
         for row in self.load("IPR_Case_File"):
             file_id, case = text(row.get("FileId")), text(row.get("CaseId"))
             if text(row.get("Actived")).upper() != "T" or case not in case_ids:
@@ -405,6 +417,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--source", help="HD 导出 JSONL 目录")
     parser.add_argument("--oss-keys", help="HD.IPR 的 OSS 对象清单（每行 [key, etag, size] 的 JSONL）；不给就不写附件")
+    parser.add_argument("--exclude-case-no", default="", help="不导入的案号，逗号分隔（如非知识产权的劳动纠纷、占位案件）")
     parser.add_argument("--rollback", action="store_true", help="按 --batch 逻辑删除该批次（配合 --apply 才提交）")
     parser.add_argument("--batch", default=f"ipr_hd_{datetime.now():%Y%m%d}", help="迁移批次号，写入 migration_source")
     parser.add_argument("--report", required=True, help="报告输出文件（仓库外）")
@@ -420,7 +433,8 @@ def main() -> None:
             result = {"batch": args.batch, "counts": rollback(db, args.batch), "timings_seconds": {}}
         elif args.source:
             result = HdImport(db, Path(args.source).expanduser(), args.batch,
-                                                Path(args.oss_keys).expanduser() if args.oss_keys else None).run()
+                                                Path(args.oss_keys).expanduser() if args.oss_keys else None,
+                                                {v.strip() for v in args.exclude_case_no.split(",") if v.strip()}).run()
         else:
             raise SystemExit("请指定 --source 或 --rollback")
         if args.apply:
