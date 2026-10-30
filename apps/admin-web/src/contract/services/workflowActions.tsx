@@ -555,6 +555,7 @@ export function createContractWorkflowActions(context: ContractWorkflowDependenc
         try {
             const response = await api.post(`/contracts/${changing.id}/changes`, {
                 ...v,
+                approvers: v.approvers ? [v.approvers] : [],
                 end_date: v.end_date?.format("YYYY-MM-DD"),
                 signed_at: v.signed_at?.format("YYYY-MM-DD"),
             });
@@ -572,7 +573,9 @@ export function createContractWorkflowActions(context: ContractWorkflowDependenc
                 if (!attachmentFeedback.ok)
                     throw new Error(attachmentFeedback.message);
             }
-            message.success("合同变更已直接保存");
+            message.success(response.data?.resubmitted_for_approval
+                ? "合同变更已保存，已重新提交合同审批"
+                : changing.status === "审批中" ? "合同变更已保存，已同步到待审批合同" : "合同变更已保存");
             setChanging(null);
             setChangeFile(null);
             await load();
@@ -580,25 +583,6 @@ export function createContractWorkflowActions(context: ContractWorkflowDependenc
         }
         catch (error: any) {
             message.error(extractContractErrorMessage(error, "合同变更失败"));
-        }
-    };
-    const reviewChange = async (contract: Contract, approved: boolean) => {
-        const { contractCapabilities, denyContractAction, setSelectedRowKeys, load } = context;
-        if (!contractCapabilities(contract).canReviewChange) {
-            denyContractAction();
-            return;
-        }
-        try {
-            const response = await api.post(`/contracts/${contract.id}/changes/review`, { approved, comment: approved ? "同意合同变更" : "变更内容需补充后重新提交" });
-            const feedback = normalizeContractActionResponse(response, "合同变更审批失败");
-            if (!feedback.ok)
-                throw new Error(feedback.message);
-            message.success(approved ? "合同变更已审批通过" : "合同变更已驳回");
-            setSelectedRowKeys([]);
-            await load();
-        }
-        catch (error: any) {
-            message.error(extractContractErrorMessage(error, "合同变更审批失败"));
         }
     };
     const openChanges = async (r: Contract) => {
@@ -796,5 +780,5 @@ export function createContractWorkflowActions(context: ContractWorkflowDependenc
             setApproverSettingsSaving(false);
         }
     };
-    return { saveContractObject, deleteContractObject, recoverWizard, openSubmitWizardFromList, save, submitWizard, approveWizard, createSealApplication, submit, openReview, approve, saveChange, reviewChange, openChanges, createContractEvent, openInvestigation, createInvestigation, advanceInvestigationWizard, startSelectedSeal, openApproverSettings, saveApproverSettings };
+    return { saveContractObject, deleteContractObject, recoverWizard, openSubmitWizardFromList, save, submitWizard, approveWizard, createSealApplication, submit, openReview, approve, saveChange, openChanges, createContractEvent, openInvestigation, createInvestigation, advanceInvestigationWizard, startSelectedSeal, openApproverSettings, saveApproverSettings };
 }

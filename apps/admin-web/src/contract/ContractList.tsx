@@ -51,7 +51,7 @@ interface ContractListProps {
   selectedActionPolicy: ReturnType<typeof contractListActionPolicy>;
   selectedSecondaryActionPolicy: ReturnType<typeof contractSecondaryActionPolicy>;
   selectedContractCapabilities: ContractWorkflowCapabilities;
-  auditActionPolicy: { canReview: boolean; canReviewChange: boolean; canExport: boolean };
+  auditActionPolicy: { canReview: boolean; canExport: boolean };
   profileDisplayName: string;
   profileUsername: string;
   totals: Record<string, number>;
@@ -81,7 +81,6 @@ interface ContractListProps {
   onInvoice: (contractIds: Key[]) => void;
   onInvestigation: (contract: Contract) => void;
   onApprove: (contract: Contract) => void;
-  onReviewChange: (contract: Contract, approved: boolean) => void;
   onExportExcel: () => void;
   onExportCsv: () => void;
   onImport: () => void;
@@ -131,7 +130,6 @@ export function ContractList({
   onInvoice,
   onInvestigation,
   onApprove,
-  onReviewChange,
   onExportExcel,
   onExportCsv,
 }: ContractListProps) {
@@ -689,33 +687,6 @@ export function ContractList({
                 >
                   合同审批
                 </Button>
-              )}
-              {auditActionPolicy.canReviewChange && (
-                <>
-                  <Button
-                    disabled={!selectedContractCapabilities.canReviewChange}
-                    onClick={() =>
-                      needSelected(() => {
-                        if (selected?.data.pending_change?.status !== "待审批") return message.warning("所选合同没有待审批变更");
-                        onReviewChange(selected!, true);
-                      })
-                    }
-                  >
-                    通过合同变更
-                  </Button>
-                  <Button
-                    danger
-                    disabled={!selectedContractCapabilities.canReviewChange}
-                    onClick={() =>
-                      needSelected(() => {
-                        if (selected?.data.pending_change?.status !== "待审批") return message.warning("所选合同没有待审批变更");
-                        onReviewChange(selected!, false);
-                      })
-                    }
-                  >
-                    驳回合同变更
-                  </Button>
-                </>
               )}
             </Space>
           </div>

@@ -856,7 +856,6 @@ JOB_ROLE_ACTION_KEY_GRANTS: dict[str, tuple[str, ...]] = {
     "合同编辑": ("contract.application.update",),
     "合同提交审批": ("contract.application.submit",),
     "合同变更": ("contract.application.change",),
-    "合同变更审批": ("contract.application.change.approve",),
     "合同归档": ("contract.archive.close",),
     "合同付款申请": ("contract.payment.create",),
     "合同付款审批": ("contract.payment.approve",),

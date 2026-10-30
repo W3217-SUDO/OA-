@@ -340,12 +340,12 @@ export function ContractDetailView({ viewing, isContractDetailView, detailActive
                       <input
                         type="file"
                         accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.png,.jpg,.jpeg,.zip,.rar"
-                        disabled={!viewing || ["审批中", "已归档"].includes(viewing.status)}
+                        disabled={!viewing || viewing.status === "已归档"}
                         onChange={(event) => onContractFileChange(event.target.files?.[0] || null)}
                       />
                       <Button
                         onClick={onUploadAttachment}
-                        disabled={!contractFile || !viewing || ["审批中", "已归档"].includes(viewing.status)}
+                        disabled={!contractFile || !viewing || viewing.status === "已归档"}
                       >
                         上传附件
                       </Button>
@@ -418,13 +418,13 @@ export function ContractDetailView({ viewing, isContractDetailView, detailActive
                                 </Button>
                                 <Popconfirm
                                   title="确认删除该合同附件？"
-                                  disabled={!viewing || ["审批中", "已归档"].includes(viewing.status)}
+                                  disabled={!viewing || viewing.status === "已归档"}
                                   onConfirm={() => onDeleteAttachment(item)}
                                 >
                                   <Button
                                     type="link"
                                     danger
-                                    disabled={!viewing || ["审批中", "已归档"].includes(viewing.status)}
+                                    disabled={!viewing || viewing.status === "已归档"}
                                   >
                                     删除
                                   </Button>

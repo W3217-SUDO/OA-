@@ -15,7 +15,7 @@ from app.core.dependencies import (
 )
 from app.models_shared import (
     ContractApprovalInput, ContractApproverSettingsInput, ContractArchiveClosureInput, ContractAttachmentBatchDeleteInput, ContractChangeInput,
-    ContractChangeReviewInput, ContractDraftInput, ContractEventInput, ContractInvestigationInput, ContractObjectInput,
+    ContractDraftInput, ContractEventInput, ContractInvestigationInput, ContractObjectInput,
     ContractPaymentApplicationInput, ContractPaymentPayInput, ContractPaymentReviewInput, ContractPaymentWriteoffInput, ContractSealApplicationInput,
     ContractSubmitInput, ContractWholeDeleteInput, FinancePaymentTypeCreateInput,
 )
@@ -412,10 +412,10 @@ async def create_contract_seal_application(contract_id: int, body: ContractSealA
     # Contract approval and seal approval are distinct channels.  An explicitly
     # submitted sync-seal request must enter the seal approver's queue at once;
     # only an explicit save-without-submit remains a draft.
-    direct_submission = contract.status in {CONTRACT_APPROVED_STATUS, "已完成"} and body.submit
+    # 合同审批中（含变更后待审批）也能直接发起用印，不受合同审批影响（范文玲 BUG20261030012）。
+    direct_submission = (contract.status in {CONTRACT_APPROVED_STATUS, "已完成"}
+                         or (contract.status == "审批中" and not sync_seal_draft)) and body.submit
     submitted = direct_submission or (sync_seal_draft and body.submit)
-    if contract.status == "审批中" and not sync_seal_draft:
-        raise HTTPException(status_code=409, detail="当前合同状态不支持提交用印审批")
     if body.submit and not (sync_seal_draft or direct_submission):
         raise HTTPException(status_code=409, detail="当前合同状态不支持提交用印审批")
     if contract.status in {"\u8349\u7a3f", "\u5df2\u62d2\u7edd"}:
@@ -1348,9 +1348,18 @@ async def change_contract(contract_id: int, body: ContractChangeInput, identity:
         if after is not None and after != before:
             changes.append({"field": key, "label": labels[key], "before": before, "after": after})
     if not changes: raise HTTPException(status_code=422, detail="至少填写一项发生变化的合同内容")
-    # The legacy contract-change page writes the edited contract immediately.
-    # Keep the audit payload, but do not put the request behind a second approval
-    # queue: the row-13 requirement explicitly says the change succeeds directly.
+    # 已审批通过的合同变更后重新进入合同审批（待审批合同），审批人从合同审批流程人员里选一名（范文玲 BUG20261030012）。
+    reapprove = contract.status == CONTRACT_APPROVED_STATUS
+    approvers = [item.strip() for item in body.approvers if item.strip()]
+    if reapprove:
+        from app.core.contracts import _is_contract_approver
+        if len(approvers) != 1: raise HTTPException(status_code=422, detail="审批通过的合同变更后要重新审批，请选择一名合同审批人")
+        approver_user = await db.scalar(select(User).where(User.username == approvers[0], User.is_active.is_(True)))
+        if not approver_user: raise HTTPException(status_code=422, detail="审批人不存在或已停用")
+        if not await _is_contract_approver(approver_user, db):
+            raise HTTPException(status_code=422, detail="所选人员不在合同审批流程人员名单中")
+    # 变更内容直接写入合同：审批中的合同同步到这条待审批合同，不另开审批；审批通过的合同随后重新提交审批，
+    # 驳回时变更内容保留、合同变为已拒绝，由提交人修改后重新提交（BUG20261030012）。
     for change in changes:
         key = change["field"]; value = change.get("after")
         if key == "title": contract.title = str(value)
@@ -1371,42 +1380,26 @@ async def change_contract(contract_id: int, body: ContractChangeInput, identity:
     # the list/detail views cannot keep showing a blocked change.
     contract.data = {**data, "pending_change": detail}
     db.add(WorkflowEvent(record_id=contract.id, action="合同变更完成", from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=json.dumps(detail, ensure_ascii=False)))
+    if reapprove:
+        await db.execute(delete(ContractApprovalStep).where(ContractApprovalStep.contract_record_id == contract.id))
+        db.add(ContractApprovalStep(contract_record_id=contract.id, step_order=1, approver=approvers[0], status="待审批"))
+        old_status = contract.status
+        contract.status = "审批中"
+        contract.data = {
+            **(contract.data or {}), "approval_count": 1, "submitted_at": now, "submitted_by": identity["username"],
+            "submit_comment": f"合同变更：{body.reason.strip()}", "current_approver": approvers[0], "sync_seal": False,
+        }
+        db.add(WorkflowEvent(record_id=contract.id, action="提交合同审批", from_status=old_status, to_status="审批中",
+                             operator=identity["username"], comment=f"合同变更后重新审批，审批人：{approvers[0]}"))
     await db.commit(); await db.refresh(contract)
-    return {"contract": await _record_dict_for_identity(contract, identity, db), **detail}
+    return {"contract": await _record_dict_for_identity(contract, identity, db), **detail, "resubmitted_for_approval": reapprove}
 
 
 @router.post(f"{settings.api_prefix}/contracts/{{contract_id}}/changes/review")
-async def review_contract_change(contract_id: int, body: ContractChangeReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.formatters import (
-        _normalize_external_contract_numbers,
-    )
-    from app.core.permissions import (
-        _ensure_record_visible, _record_dict_for_identity, _require_contract_action,
-    )
-    await _require_contract_action(identity, db, "contract.application.change.approve", "审批合同变更")
-    contract = await _ensure_record_visible(contract_id, identity, db)
-    if contract.module != "contract": raise HTTPException(status_code=404, detail="合同不存在")
-    data = dict(contract.data or {}); pending = data.get("pending_change") or {}
-    if pending.get("status") != "待审批": raise HTTPException(status_code=409, detail="该合同没有待审批的变更")
-    if not body.approved and not body.comment.strip(): raise HTTPException(status_code=422, detail="驳回时必须填写原因")
-    if body.approved:
-        for change in pending.get("changes", []):
-            key = change.get("field"); value = change.get("after")
-            if key == "title": contract.title = str(value)
-            elif key == "owner": contract.owner = str(value)
-            elif key == "department": contract.department = str(value)
-            elif key == "external_contract_numbers": data = _normalize_external_contract_numbers({**data, "external_contract_numbers": value})
-            elif key == "contract_type": data["type"] = value
-            elif key in {"amount", "end_date", "signed_at"}: data[key] = value
-            elif key in {"contract_body", "fee_type", "description"}: data[key] = value
-        data["last_changed_at"] = datetime.now().isoformat(timespec="seconds")
-        data["change_count"] = int(data.get("change_count", 0)) + 1
-    reviewed = {**pending, "status": "已通过" if body.approved else "已驳回", "reviewed_by": identity["username"], "reviewed_at": datetime.now().isoformat(timespec="seconds"), "review_comment": body.comment.strip()}
-    contract.data = {**data, "pending_change": reviewed}
-    action = "合同变更审批通过" if body.approved else "合同变更审批驳回"
-    db.add(WorkflowEvent(record_id=contract.id, action=action, from_status=contract.status, to_status=contract.status, operator=identity["username"], comment=json.dumps(reviewed, ensure_ascii=False)))
-    await db.commit(); await db.refresh(contract)
-    return {"contract": await _record_dict_for_identity(contract, identity, db), **reviewed}
+async def review_contract_change(contract_id: int, identity: dict = Depends(current_identity)):
+    """“通过/驳回合同变更”已删除：合同变更后直接走合同审批（范文玲 BUG20261030012）。
+    路由按位置注册，保留占位，只返回已取消。"""
+    raise HTTPException(status_code=410, detail="合同变更审批已取消，变更后请在待审批合同里用“合同审批”审批")
 
 
 @router.post(f"{settings.api_prefix}/contracts/{{contract_id}}/attachments/delete")

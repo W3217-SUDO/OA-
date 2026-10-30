@@ -101,7 +101,6 @@ export type ContractWorkflowCapabilities = {
   canEdit: boolean;
   canSubmit: boolean;
   canChange: boolean;
-  canReviewChange: boolean;
   canPayment: boolean;
   canInvoice: boolean;
   canArchive: boolean;

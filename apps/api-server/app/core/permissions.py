@@ -1050,8 +1050,9 @@ async def _require_contract_attachment_write_access(record: BusinessRecord, iden
     endpoints cannot be used to bypass that guard.
     """
     await _require_record_owner_or_manager(record, identity, db)
-    if record.status in {"审批中", "已归档"}:
-        raise HTTPException(status_code=409, detail="审批中或已归档合同不能上传或删除附件")
+    # 审批中（含变更后待审批）不影响上传、删除附件（范文玲 BUG20261030012），只有已归档只读。
+    if record.status == "已归档":
+        raise HTTPException(status_code=409, detail="已归档合同不能上传或删除附件")
 
 
 def _require_task_owner_or_initiator(task: BusinessRecord, identity: dict, *, action: str) -> None:

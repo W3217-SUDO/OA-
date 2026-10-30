@@ -416,6 +416,7 @@ interface ContractChangeModalProps {
   onOk: () => void;
   onChangeFile: (file: File | null) => void;
   mode?: "modal" | "page";
+  approvalOptions?: { value: string; label: string }[];
 }
 
 export function ContractChangeModal({
@@ -428,7 +429,10 @@ export function ContractChangeModal({
   onOk,
   onChangeFile,
   mode = "modal",
+  approvalOptions = [],
 }: ContractChangeModalProps) {
+  // 审批通过的合同变更后重新进入合同审批，审批人和新建合同审批同一名单（BUG20261030012）。
+  const reapprove = changing?.status === "审批通过";
   const content = (
     <>
       <Steps className="contract-create-steps" current={0} items={CONTRACT_CREATE_STEP_TITLES.map((title) => ({ title }))} />
@@ -447,6 +451,18 @@ export function ContractChangeModal({
         <Form.Item label="变更原因" name="reason" rules={[{ required: true, min: 2 }]}>
           <Input.TextArea rows={3} />
         </Form.Item>
+        {reapprove && (
+          <Form.Item label="合同审批人" name="approvers" extra="合同已审批通过，保存变更后重新进入待审批合同" rules={[{ required: true, message: "请选择一名合同审批人" }]}>
+            <KeywordPersonSelect
+              listAll
+              showSearch
+              optionFilterProp="label"
+              options={approvalOptions}
+              placeholder="请选择后台已配置的合同审批人"
+              notFoundContent="没有可用审批人，请由管理员设置在职员工的合同审批资格"
+            />
+          </Form.Item>
+        )}
         <div className="form-grid">
           <Form.Item label="合同主体" name="contract_body">
             <Select options={["律所", "平台"].map((value) => ({ value, label: value }))} />

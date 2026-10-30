@@ -364,7 +364,7 @@ export default function ContractCenterPage({
     get setAttachmentBatchSaving() { return setAttachmentBatchSaving; },
   });
 
-  const { saveContractObject, deleteContractObject, openSubmitWizardFromList, save, submitWizard, approveWizard, createSealApplication, submit, openReview, approve, saveChange, reviewChange, createContractEvent, openInvestigation, createInvestigation, advanceInvestigationWizard, startSelectedSeal, openApproverSettings, saveApproverSettings } = createContractWorkflowActions({
+  const { saveContractObject, deleteContractObject, openSubmitWizardFromList, save, submitWizard, approveWizard, createSealApplication, submit, openReview, approve, saveChange, createContractEvent, openInvestigation, createInvestigation, advanceInvestigationWizard, startSelectedSeal, openApproverSettings, saveApproverSettings } = createContractWorkflowActions({
     get viewing() { return viewing; },
     get contractCapabilities() { return contractCapabilities; },
     get denyContractAction() { return denyContractAction; },
@@ -626,6 +626,7 @@ export default function ContractCenterPage({
       signed_at: r.data.signed_at ? dayjs(r.data.signed_at) : undefined,
       owner: r.owner,
       department: r.department,
+      approvers: r.status === "审批通过" ? (r.data as any).current_approver || undefined : undefined,
     });
     onNavigate?.(`contract-change-${r.id}-${encodeURIComponent(r.serial_no)}`);
   };
@@ -651,6 +652,7 @@ export default function ContractCenterPage({
         signed_at: contract.data.signed_at ? dayjs(contract.data.signed_at) : undefined,
         owner: contract.owner,
         department: contract.department,
+        approvers: contract.status === "审批通过" ? (contract.data as any).current_approver || undefined : undefined,
       });
     }).catch(() => message.error("合同变更页面加载失败"));
   }, [initialView, changing?.id]);
@@ -948,7 +950,7 @@ export default function ContractCenterPage({
   const isAuditView = initialView === "contract-audit" || initialView.startsWith("contract-audit-");
   const auditActionPolicy = canAccessContractView(initialView, profile)
     ? contractAuditActionPolicy(initialView)
-    : { canReview: false, canReviewChange: false, canExport: false };
+    : { canReview: false, canExport: false };
   const stepItems = steps.map((s) => ({
     title: `第${s.step_order}级：${personName(s.approver_display_name || s.approver)}`,
     description: (
@@ -1120,7 +1122,6 @@ export default function ContractCenterPage({
           onInvoice={(keys) => void startContractInvoice(keys)}
           onInvestigation={(contract) => void openInvestigation(contract)}
           onApprove={(contract) => void openReview(contract)}
-          onReviewChange={reviewChange}
           onExportExcel={exportExcel}
           onExportCsv={exportCsv}
           onImport={() => void load()}
@@ -1658,6 +1659,7 @@ export default function ContractCenterPage({
         }}
         onOk={saveChange}
         onChangeFile={setChangeFile}
+        approvalOptions={approvalOptions}
       />
 
       <ContractChangeHistoryModal

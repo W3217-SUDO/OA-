@@ -84,6 +84,8 @@ class ContractChangeInput(BaseModel):
     signed_at: date | None = None
     owner: str | None = Field(default=None, max_length=64)
     department: str | None = Field(default=None, max_length=128)
+    # 已审批通过的合同变更后重新进入合同审批，审批人与新建合同审批同一名单（BUG20261030012）。
+    approvers: list[str] = Field(default_factory=list, max_length=1)
 
 
 class ContractChangeReviewInput(BaseModel):

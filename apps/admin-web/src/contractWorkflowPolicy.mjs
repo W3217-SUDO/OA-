@@ -1,6 +1,7 @@
 export const CONTRACT_ATTACHMENT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.png,.jpg,.jpeg,.zip,.rar";
 export const CONTRACT_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
-export const CONTRACT_ATTACHMENT_LOCKED_STATUSES = ["审批中", "已归档"];
+// 审批中（含变更后待审批）不影响附件操作（范文玲 BUG20261030012），只有已归档只读。
+export const CONTRACT_ATTACHMENT_LOCKED_STATUSES = ["已归档"];
 export const CONTRACT_DRAFT_EDITABLE_STATUSES = ["草稿", "已拒绝"];
 // The generic contract list endpoint accepts at most 100 rows per request.
 // Keep the client options aligned with that contract so restored state cannot
@@ -186,7 +187,6 @@ export const CONTRACT_WORKFLOW_ACTION_KEYS = {
   update: ["contract.application.update", "contract.update"],
   submit: ["contract.application.submit", "contract.submit"],
   change: ["contract.application.change", "contract.change.submit", "contract.change"],
-  changeReview: ["contract.application.change.approve", "contract.change.review"],
   payment: ["contract.payment.create", "contract.payment.apply"],
   invoice: ["contract.invoice.apply"],
   archive: ["contract.archive.close"],
@@ -220,7 +220,7 @@ export const extractContractErrorMessage = (error, fallback) => {
 };
 export const contractAuditActionPolicy = (view) => {
   const canReview = view === "contract-audit" || view === "contract-audit-pending";
-  return { canReview, canReviewChange: canReview, canExport: true };
+  return { canReview, canExport: true };
 };
 export const contractListActionPolicy = (status) => {
   const normalized = String(status || "").trim();
@@ -254,7 +254,6 @@ export const contractWorkflowActionPolicy = (profile = {}, contract = {}, option
   const secondaryPolicy = contractSecondaryActionPolicy(status);
   const editable = ["\u8349\u7a3f", "\u5df2\u62d2\u7edd"].includes(status);
   const awaitingApproval = status === "\u5ba1\u6279\u4e2d";
-  const pendingChange = String(data.pending_change?.status || options.pendingChangeStatus || "").trim() === "\u5f85\u5ba1\u6279";
   const currentApprover = String(options.currentApprover || data.current_approver || data.approval_capabilities?.current_approver || "").trim();
   const currentUser = String(profile.username || "").trim();
   const serverApprovalCapability = options.canApproveCurrent ?? data.approval_capabilities?.can_approve_current;
@@ -275,7 +274,6 @@ export const contractWorkflowActionPolicy = (profile = {}, contract = {}, option
     // Contract changes are applied immediately; an old pending_change payload
     // must not keep the edit action disabled after the workflow migration.
     canChange: allowed("change", secondaryPolicy.canEdit),
-    canReviewChange: allowed("changeReview", pendingChange, true),
     canPayment: allowed("payment", listPolicy.canPayment),
     canInvoice: allowed("invoice", listPolicy.canInvoice),
     canArchive: allowed("archive", secondaryPolicy.canArchive),

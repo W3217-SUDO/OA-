@@ -696,9 +696,8 @@ async def _contract_object_writable(contract: BusinessRecord, identity: dict, db
     await _require_record_owner_or_manager(contract, identity, db)
     if contract.status == "已归档":
         raise HTTPException(status_code=409, detail="已归档合同的合同标的只读")
-    if contract.status == "审批中":
-        raise HTTPException(status_code=409, detail="合同审批中不能修改合同标的；请先撤回或等待审批结果")
-    if contract.status not in {"草稿", "已拒绝", CONTRACT_APPROVED_STATUS, "已完成"}:
+    # 合同审批中（含变更后待审批）不影响合同其他操作（范文玲 BUG20261030012）。
+    if contract.status not in {"草稿", "已拒绝", "审批中", CONTRACT_APPROVED_STATUS, "已完成"}:
         raise HTTPException(status_code=409, detail="当前合同状态不能维护合同标的")
 
 

@@ -99,9 +99,9 @@ class CaseRelatedAttachmentStatusRow4Test(unittest.IsolatedAsyncioTestCase):
         return response
 
     async def test_case_workbench_bypasses_only_related_contract_status_lock(self):
-        generic = await self.upload(self.contract_id, name="generic-blocked.txt")
-        self.assertEqual(generic.status_code, 409, generic.text)
-        self.assertIn("审批中或已归档合同不能上传或删除附件", generic.json()["detail"])
+        # BUG20261030012（范文玲 2026-10-30）：合同审批中不影响上传附件，只有已归档只读。
+        generic = await self.upload(self.contract_id, name="generic-allowed.txt")
+        self.assertEqual(generic.status_code, 201, generic.text)
 
         scoped = await self.upload(self.contract_id, source_case_id=self.case_id)
         self.assertEqual(scoped.status_code, 201, scoped.text)
