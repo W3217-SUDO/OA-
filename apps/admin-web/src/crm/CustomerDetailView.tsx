@@ -3,7 +3,6 @@ import {
   Alert,
   Button,
   Card,
-  Form,
   Input,
   Popconfirm,
   Select,
@@ -15,13 +14,11 @@ import Table from "../components/ResizableTable";
 import { ReloadOutlined, UploadOutlined } from "@ant-design/icons";
 import { displayChinesePersonName, displayChinesePersonNames } from "../contractPeoplePresentation.mjs";
 import { canDeleteCustomerAttachment, getCustomerAttachmentDate } from "../customerUiBatchI15.mjs";
-import type { FormInstance } from "antd";
 import type {
   Attachment,
   Contact,
   Customer,
   CustomerEvent,
-  CustomerNotice,
   DirectoryUser,
   Note,
 } from "./types";
@@ -36,12 +33,10 @@ interface CustomerDetailViewProps {
   recordError: string;
   historyError: string;
   attachmentError: string;
-  customerEventError: string;
   sharedObjectsError: string;
   contactPage: number;
   contactPageSize: number;
   contactTotal: number;
-  customerEvents: CustomerNotice[];
   events: CustomerEvent[];
   attachments: Attachment[];
   sharedObjects: string[];
@@ -50,7 +45,6 @@ interface CustomerDetailViewProps {
   canManage: boolean;
   canManageContacts?: boolean;
   canManageNotes?: boolean;
-  customerEventForm: FormInstance;
   onTabChange: (key: string) => void;
   onClose: () => void;
   onRefreshContacts: () => void;
@@ -74,10 +68,9 @@ interface CustomerDetailViewProps {
   onOpenLicenseUpload: () => void;
   onOpenContracts: () => void;
   onNewContract: () => void;
-  onCreateCustomerEvent: () => void;
 }
 
-export function CustomerDetailView({ initialView, customer, directory, customerTypeOptions, detailTab, detailLoading, recordError, historyError, customerEventError, sharedObjectsError, contactPage, contactPageSize, contactTotal, customerEvents, events, attachments, sharedObjects, customerLicenseAttachment, customerLicenseThumb, canManage, canManageContacts = canManage, canManageNotes = canManage, customerEventForm, onTabChange, onClose, onRefreshContacts, onContactPageChange, onNewContact, onViewContact, onEditContact, onSetContactPrimary, onSetContactActive, onSetContactInactive, onUploadContactPhoto, onViewContactPhoto, onViewDocument, onDownloadDocument, onDeleteDocument, onDeleteNote, onEditNote, onNewNote, onNewDocument, onOpenLicenseUpload, onOpenContracts, onNewContract, onCreateCustomerEvent }: CustomerDetailViewProps) {
+export function CustomerDetailView({ initialView, customer, directory, customerTypeOptions, detailTab, detailLoading, recordError, historyError, sharedObjectsError, contactPage, contactPageSize, contactTotal, events, attachments, sharedObjects, customerLicenseAttachment, customerLicenseThumb, canManage, canManageContacts = canManage, canManageNotes = canManage, onTabChange, onClose, onRefreshContacts, onContactPageChange, onNewContact, onViewContact, onEditContact, onSetContactPrimary, onSetContactActive, onSetContactInactive, onUploadContactPhoto, onViewContactPhoto, onViewDocument, onDownloadDocument, onDeleteDocument, onDeleteNote, onEditNote, onNewNote, onNewDocument, onOpenLicenseUpload, onOpenContracts, onNewContract }: CustomerDetailViewProps) {
   const userLabels = (values: unknown) => displayChinesePersonNames(values, directory);
   const userLabel = (value: string) => displayChinesePersonName(value, directory);
 
@@ -278,31 +271,7 @@ export function CustomerDetailView({ initialView, customer, directory, customerT
               />
             ),
           },
-          {
-            key: "customer-events",
-            label: `客户注意事项（${customerEvents.length}）`,
-            children: (
-              <>
-                {customerEventError && <Alert type="warning" showIcon message={customerEventError} style={{ marginBottom: 8 }} />}
-                <Table rowKey="id" size="small" pagination={false} dataSource={customerEvents} locale={{ emptyText: "暂无客户注意事项" }} columns={[
-                  { title: "事项", dataIndex: "action", width: 150 },
-                  { title: "内容", dataIndex: "comment" },
-                  { title: "操作人", dataIndex: "operator", width: 100, render: (value: string) => userLabel(value) },
-                  { title: "时间", dataIndex: "created_at", width: 165 },
-                ]} />
-                {canManageNotes && (
-                  <Card size="small" title="新增客户注意事项" style={{ marginTop: 16 }}>
-                    <Form form={customerEventForm} layout="vertical">
-                      <Form.Item label="事项内容" name="content" rules={[{ required: true, message: "请输入客户注意事项" }]}>
-                        <Input.TextArea rows={3} maxLength={1000} showCount />
-                      </Form.Item>
-                      <Button type="primary" onClick={onCreateCustomerEvent}>保存客户注意事项</Button>
-                    </Form>
-                  </Card>
-                )}
-              </>
-            ),
-          },
+          // 客户注意事项页签去掉：和操作记录读的是同一份客户日志（BUG20261030 280155，范文玲）。
           {
             key: "shared-objects",
             label: `共享对象（${sharedObjects.length}）`,

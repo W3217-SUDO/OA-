@@ -24,7 +24,6 @@ import type {
   Contact,
   Customer,
   CustomerEvent,
-  CustomerNotice,
   DirectoryUser,
   Note,
 } from "./types";
@@ -36,12 +35,10 @@ interface CustomerDetailDrawerProps {
   detailLoading: boolean;
   historyError: string;
   attachmentError: string;
-  customerEventError: string;
   sharedObjectsError: string;
   contactPage: number;
   contactPageSize: number;
   contactTotal: number;
-  customerEvents: CustomerNotice[];
   events: CustomerEvent[];
   attachments: Attachment[];
   sharedObjects: string[];
@@ -51,7 +48,6 @@ interface CustomerDetailDrawerProps {
   directory: DirectoryUser[];
   contactForm: FormInstance;
   noteForm: FormInstance;
-  customerEventForm: FormInstance;
   documentForm: FormInstance;
   documentFileRef: React.RefObject<HTMLInputElement | null>;
   documentFile: File | null;
@@ -77,10 +73,9 @@ interface CustomerDetailDrawerProps {
   onDocumentFileChange: (file: File | null) => void;
   onOpenContracts: () => void;
   onNewContract: () => void;
-  onCreateCustomerEvent: () => void;
 }
 
-export function CustomerDetailDrawer({ open, customer, detailTab, detailLoading, historyError, attachmentError, customerEventError, sharedObjectsError, contactPage, contactPageSize, contactTotal, customerEvents, events, attachments, sharedObjects, canManage, canManageContacts = canManage, canManageNotes = canManage, directory, contactForm, noteForm, customerEventForm, documentForm, documentFileRef, onClose, onTabChange, onRefreshContacts, onContactPageChange, onAddContact, onViewContact, onEditContact, onDeleteContact, onSetContactPrimary, onSetContactActive, onSetContactInactive, onUploadContactPhoto, onViewContactPhoto, onAddNote, onDeleteNote, onViewDocument, onDownloadDocument, onDeleteDocument, onUploadDocument, onDocumentFileChange, onOpenContracts, onNewContract, onCreateCustomerEvent }: CustomerDetailDrawerProps) {
+export function CustomerDetailDrawer({ open, customer, detailTab, detailLoading, historyError, attachmentError, sharedObjectsError, contactPage, contactPageSize, contactTotal, events, attachments, sharedObjects, canManage, canManageContacts = canManage, canManageNotes = canManage, directory, contactForm, noteForm, documentForm, documentFileRef, onClose, onTabChange, onRefreshContacts, onContactPageChange, onAddContact, onViewContact, onEditContact, onDeleteContact, onSetContactPrimary, onSetContactActive, onSetContactInactive, onUploadContactPhoto, onViewContactPhoto, onAddNote, onDeleteNote, onViewDocument, onDownloadDocument, onDeleteDocument, onUploadDocument, onDocumentFileChange, onOpenContracts, onNewContract }: CustomerDetailDrawerProps) {
 
   const userLabel = (value: string) => displayChinesePersonName(value, directory);
 
@@ -253,31 +248,7 @@ export function CustomerDetailDrawer({ open, customer, detailTab, detailLoading,
               </>
             ),
           },
-          {
-            key: "customer-events",
-            label: `客户注意事项（${customerEvents.length}）`,
-            children: (
-              <>
-                {customerEventError && <Alert type="warning" showIcon message={customerEventError} style={{ marginBottom: 8 }} />}
-                <Table rowKey="id" size="small" pagination={false} dataSource={customerEvents} locale={{ emptyText: "暂无客户注意事项" }} columns={[
-                  { title: "事项", dataIndex: "action", width: 150 },
-                  { title: "内容", dataIndex: "comment" },
-                  { title: "操作人", dataIndex: "operator", width: 100, render: (value: string) => userLabel(value) },
-                  { title: "时间", dataIndex: "created_at", width: 165 },
-                ]} />
-                {canManageNotes && (
-                  <Card size="small" title="新增客户注意事项" style={{ marginTop: 16 }}>
-                    <Form form={customerEventForm} layout="vertical">
-                      <Form.Item label="事项内容" name="content" rules={[{ required: true, message: "请输入客户注意事项" }]}>
-                        <Input.TextArea rows={3} maxLength={1000} showCount />
-                      </Form.Item>
-                      <Button type="primary" onClick={onCreateCustomerEvent}>保存客户注意事项</Button>
-                    </Form>
-                  </Card>
-                )}
-              </>
-            ),
-          },
+          // 客户注意事项页签去掉：和操作记录读的是同一份客户日志（BUG20261030 280155，范文玲）。
           {
             key: "shared-objects",
             label: `共享对象（${sharedObjects.length}）`,

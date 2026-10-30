@@ -915,7 +915,7 @@ CUSTOMER_ROLE_ACTIONS = (
     ("crm.customer.restore", "客户恢复"), ("crm.customer.assign", "分配客户"),
     ("crm.customer.release", "释放到公海"), ("crm.customer.claim", "公海客户拾回"),
     ("crm.customer.share", "共享客户"), ("crm.customer.portal", "开通/停用客户服务端"),
-    ("crm.customer.contact.manage", "维护客户联系人"), ("crm.customer.note.manage", "维护事项记录及注意事项"),
+    ("crm.customer.contact.manage", "维护客户联系人"), ("crm.customer.note.manage", "维护事项记录"),
     ("crm.customer.change.apply", "申请客户分级/关键信息变更"),
 )
 

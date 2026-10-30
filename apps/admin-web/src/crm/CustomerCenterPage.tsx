@@ -17,8 +17,6 @@ import {
   buildCustomerListParams,
   buildContactStatusRequest,
   runContactStatusUpdate,
-  buildCustomerEventRequest,
-  buildCustomerEventListPath,
   buildCustomerFileListPath,
   buildCustomerFileDownloadPath,
   getCustomerActionMessage,
@@ -46,7 +44,6 @@ import {
 import {
   normalizeCustomerAttachmentItems,
   normalizeCustomerCollectionItems,
-  normalizeCustomerEventItems,
   normalizeCustomerHistoryItems,
   normalizeCustomerSharedObjectItems,
   getCustomerResponseMessage,
@@ -67,7 +64,6 @@ import {
   type Contact,
   type Customer,
   type CustomerEvent,
-  type CustomerNotice,
   type DirectoryUser,
   type Note,
   type Profile,
@@ -135,8 +131,6 @@ export default function CustomerCenterPage({
   const [events, setEvents] = useState<CustomerEvent[]>([]);
   const [historyError, setHistoryError] = useState("");
   const [recordError, setRecordError] = useState("");
-  const [customerEvents, setCustomerEvents] = useState<CustomerNotice[]>([]);
-  const [customerEventError, setCustomerEventError] = useState("");
   const [sharedObjects, setSharedObjects] = useState<string[]>([]);
   const [sharedObjectsError, setSharedObjectsError] = useState("");
   const [detailLoading, setDetailLoading] = useState(false);
@@ -167,7 +161,6 @@ export default function CustomerCenterPage({
   const [contactEditForm] = Form.useForm();
   const [noteForm] = Form.useForm();
   const [noteEditForm] = Form.useForm();
-  const [customerEventForm] = Form.useForm();
   const [documentForm] = Form.useForm();
 
   const documentFileRef = useRef<HTMLInputElement>(null);
@@ -652,12 +645,9 @@ export default function CustomerCenterPage({
     let historyErrorMessage = "";
     let recordErrorMessage = "";
     let attachmentErrorMessage = "";
-    let customerEventItems: CustomerNotice[] = [];
-    let customerEventErrorMessage = "";
     let sharedObjectItems: string[] = [];
     let sharedObjectsErrorMessage = "";
     const customerGuid = getCustomerGuid(target);
-    const customerEventListPath = buildCustomerEventListPath(customerGuid);
     const customerFileListPath = buildCustomerFileListPath(customerGuid);
     const contactListRequest = buildCustomerContactListRequest(target.id, nextContactPage, nextContactPageSize);
     const fallbackContactResponse = {
@@ -669,7 +659,7 @@ export default function CustomerCenterPage({
       },
     };
     try {
-      const [recordRes, fileRes, historyRes, customerEventRes, sharedObjectsRes, contactRes] = await Promise.all([
+      const [recordRes, fileRes, historyRes, sharedObjectsRes, contactRes] = await Promise.all([
         api.get("/customers", {
           params: {
             scope: originalCustomerScope,
@@ -695,12 +685,6 @@ export default function CustomerCenterPage({
           historyErrorMessage = error?.response?.data?.detail || "操作记录加载失败";
           return { data: { items: [] } };
         }),
-        customerEventListPath
-          ? api.get(customerEventListPath).catch((error) => {
-              customerEventErrorMessage = error?.response?.data?.detail || "客户注意事项加载失败";
-              return { data: { items: [] } };
-            })
-          : Promise.resolve({ data: { items: [] } }),
         api.get(`/customers/${target.id}/shared-objects`).catch((error) => {
           sharedObjectsErrorMessage = error?.response?.data?.detail || "共享对象加载失败";
           return { data: { items: [] } };
@@ -733,22 +717,6 @@ export default function CustomerCenterPage({
         historyErrorMessage = getCustomerResponseMessage(error, "操作记录加载失败");
       }
       try {
-        customerEventItems = normalizeCustomerEventItems(customerEventRes.data) as CustomerNotice[];
-      } catch (error: any) {
-        customerEventErrorMessage = getCustomerResponseMessage(error, "客户注意事项加载失败");
-      }
-      if (!customerEventListPath) {
-        const resolvedEventPath = buildCustomerEventListPath(getCustomerGuid(resolvedCustomer));
-        if (resolvedEventPath) {
-          try {
-            const resolvedEventRes = await api.get(resolvedEventPath);
-            customerEventItems = normalizeCustomerEventItems(resolvedEventRes.data) as CustomerNotice[];
-          } catch (error: any) {
-            customerEventErrorMessage = getCustomerResponseMessage(error, "客户注意事项加载失败");
-          }
-        }
-      }
-      try {
         sharedObjectItems = normalizeCustomerSharedObjectItems(sharedObjectsRes.data);
       } catch (error: any) {
         sharedObjectsErrorMessage = getCustomerResponseMessage(error, "共享对象加载失败");
@@ -758,8 +726,6 @@ export default function CustomerCenterPage({
       setHistoryError(historyErrorMessage);
       setRecordError(recordErrorMessage);
       setAttachmentError(attachmentErrorMessage);
-      setCustomerEvents(customerEventItems);
-      setCustomerEventError(customerEventErrorMessage);
       setSharedObjects(sharedObjectItems);
       setSharedObjectsError(sharedObjectsErrorMessage);
       setDetailLoading(false);
@@ -811,8 +777,6 @@ export default function CustomerCenterPage({
     setEvents([]);
     setHistoryError("");
     setRecordError("");
-    setCustomerEvents([]);
-    setCustomerEventError("");
     setSharedObjects([]);
     setSharedObjectsError("");
     try {
@@ -1177,28 +1141,6 @@ export default function CustomerCenterPage({
     }
   };
 
-  const createCustomerEvent = async () => {
-    if (!contacts) return;
-    const request = buildCustomerEventRequest(
-      getCustomerGuid(contacts),
-      customerEventForm.getFieldValue("content"),
-    );
-    if (!request) {
-      message.warning(getCustomerGuid(contacts) ? "请输入客户注意事项" : "客户编号缺失，无法保存注意事项");
-      return;
-    }
-    try {
-      const response = await api.post(request.url, request.data);
-      assertCustomerMutationSuccess(response?.data);
-      message.success("客户注意事项已保存");
-      customerEventForm.resetFields();
-      await refreshDetail();
-    } catch (error: any) {
-      const legacyError = error?.response?.data?.detail || "客户注意事项保存失败";
-      message.error(getCustomerMutationErrorMessage(error, legacyError));
-    }
-  };
-
   // ========== Actions ==========
   const selected = rows.find((row) => selectedRowKeys.includes(row.id));
 
@@ -1387,12 +1329,10 @@ export default function CustomerCenterPage({
           recordError={recordError}
           historyError={historyError}
           attachmentError={attachmentError}
-          customerEventError={customerEventError}
           sharedObjectsError={sharedObjectsError}
           contactPage={contactPage}
           contactPageSize={contactPageSize}
           contactTotal={contactTotal}
-          customerEvents={customerEvents}
           events={events}
           attachments={attachments}
           sharedObjects={sharedObjects}
@@ -1401,7 +1341,6 @@ export default function CustomerCenterPage({
           canManage={canManageCurrentCustomer}
           canManageContacts={canManageCurrentCustomer && customerActionAllowed(profile, "crm.customer.contact.manage")}
           canManageNotes={canManageCurrentCustomer && customerActionAllowed(profile, "crm.customer.note.manage")}
-          customerEventForm={customerEventForm}
           onTabChange={handleCustomerDetailTabChange}
           onClose={handleDetailViewClose}
           onRefreshContacts={refreshCustomerContacts}
@@ -1425,7 +1364,6 @@ export default function CustomerCenterPage({
           onOpenLicenseUpload={openLicenseUpload}
           onOpenContracts={() => openCustomerContracts(contacts)}
           onNewContract={() => openCustomerContractCreate(contacts)}
-          onCreateCustomerEvent={createCustomerEvent}
         />
       )}
 
@@ -1555,12 +1493,10 @@ export default function CustomerCenterPage({
         detailLoading={detailLoading}
         historyError={historyError}
         attachmentError={attachmentError}
-        customerEventError={customerEventError}
         sharedObjectsError={sharedObjectsError}
         contactPage={contactPage}
         contactPageSize={contactPageSize}
         contactTotal={contactTotal}
-        customerEvents={customerEvents}
         events={events}
         attachments={attachments}
         sharedObjects={sharedObjects}
@@ -1570,7 +1506,6 @@ export default function CustomerCenterPage({
         directory={directory}
         contactForm={contactForm}
         noteForm={noteForm}
-        customerEventForm={customerEventForm}
         documentForm={documentForm}
         documentFileRef={documentFileRef}
         documentFile={documentFile}
@@ -1596,7 +1531,6 @@ export default function CustomerCenterPage({
         onDocumentFileChange={setDocumentFile}
         onOpenContracts={() => contacts && openCustomerContracts(contacts)}
         onNewContract={() => contacts && openCustomerContractCreate(contacts)}
-        onCreateCustomerEvent={createCustomerEvent}
       />
 
       {/* 各种小 Modal */}
