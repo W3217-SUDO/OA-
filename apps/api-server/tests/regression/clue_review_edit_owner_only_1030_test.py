@@ -51,6 +51,23 @@ class ClueReviewEditOwnerOnlyTest(unittest.IsolatedAsyncioTestCase):
             updated = await self.edit(status, {"username": "codex-inv", "role": "user"})
             self.assertEqual(updated["data"]["shop_name"], "改后店铺", status)
 
+    async def test_submitter_can_withdraw_to_draft_or_resubmit(self):
+        """BUG20261030015：暂存线索退回待提交（审批人看不到），提交审批保存后留在待审批。"""
+        async with self.sessions() as db:
+            resubmitted = await update_investigation_record(
+                self.ids["待审批"], RecordUpdate(status="待审批", data={"shop_name": "提交时店铺"}), {"username": "codex-inv", "role": "user"}, db)
+        self.assertEqual(resubmitted["status"], "待审批")
+        self.assertEqual(resubmitted["data"]["resubmitted_by"], "codex-inv")
+        async with self.sessions() as db:
+            withdrawn = await update_investigation_record(
+                self.ids["待审批"], RecordUpdate(status="草稿", data={"shop_name": "暂存店铺"}), {"username": "codex-inv", "role": "user"}, db)
+        self.assertEqual(withdrawn["status"], "草稿")
+        self.assertEqual(withdrawn["data"]["shop_name"], "暂存店铺")
+        with self.assertRaises(HTTPException) as raised:
+            async with self.sessions() as db:
+                await update_investigation_record(self.ids["待客户审核"], RecordUpdate(status="草稿"), {"username": "codex-inv", "role": "user"}, db)
+        self.assertEqual(raised.exception.status_code, 409)
+
     async def test_collection_stage_unchanged_for_admin(self):
         updated = await self.edit("待取证", {"username": "admin", "role": "admin"})
         self.assertEqual(updated["data"]["shop_name"], "改后店铺")

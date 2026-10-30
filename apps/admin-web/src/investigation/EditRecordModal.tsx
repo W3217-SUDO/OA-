@@ -1,6 +1,8 @@
 import { POPUP_WIDTH } from "../components/common/popupSize";
 import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
-import { Modal, Form, Input, Select, Radio, DatePicker, Cascader, Space } from "antd";
+import { useEffect, useState } from "react";
+import { Modal, Form, Input, Select, Radio, DatePicker, Cascader, Space, Button, Typography, message } from "antd";
+import { api } from "../api";
 import type { Row, PersonOption, Contract } from "./types";
 import { INVESTIGATION_REGION_GROUPS } from "../investigationRegionOptions.mjs";
 import { CLUE_INFRINGEMENT_METHOD_OPTIONS, CLUE_SALES_CHANNEL_OPTIONS } from "./constants";
@@ -14,6 +16,56 @@ interface EditRecordModalProps {
   contracts?: Contract[];
   onOk: () => void;
   onCancel: () => void;
+  // BUG20261030015：我的调查线索-待审批线索修改时可上传附件（不限格式），按钮为暂存线索/提交审批/取消。
+  clueDraft?: {
+    files: File[];
+    onFilesChange: (files: File[]) => void;
+    onSaveDraft: () => void;
+    onSubmit: () => void;
+  };
+}
+
+type ClueAttachment = { id: number; original_name: string };
+
+function ClueAttachmentField({ recordId, files, onFilesChange }: { recordId: number; files: File[]; onFilesChange: (files: File[]) => void }) {
+  const [items, setItems] = useState<ClueAttachment[]>([]);
+  const load = async () => {
+    try {
+      const { data } = await api.get("/attachments", { params: { record_id: recordId } });
+      setItems(Array.isArray(data) ? data : data?.items || []);
+    } catch {
+      setItems([]);
+    }
+  };
+  useEffect(() => { void load(); }, [recordId]);
+  const remove = (item: ClueAttachment) => Modal.confirm({
+    title: `删除附件“${item.original_name}”？`,
+    okText: "删除",
+    cancelText: "取消",
+    onOk: async () => {
+      try {
+        await api.delete(`/attachments/${item.id}`);
+        message.success("附件已删除");
+        await load();
+      } catch (error: any) {
+        message.error(error?.response?.data?.detail || "附件删除失败");
+      }
+    },
+  });
+  return (
+    <Form.Item className="span-2" label="附件">
+      <input multiple type="file" onChange={(event) => onFilesChange(Array.from(event.target.files || []))} />
+      <Typography.Text type="secondary" style={{ display: "block" }}>
+        {files.length ? `已选择 ${files.length} 个文件，保存时上传` : "可上传调查线索相关材料，格式不限"}
+      </Typography.Text>
+      {items.map((item) => (
+        <div key={item.id}>
+          {item.original_name}
+          <Button type="link" size="small" danger onClick={() => remove(item)}>删除</Button>
+        </div>
+      ))}
+    </Form.Item>
+  );
 }
 
 export default function EditRecordModal({
@@ -24,6 +76,7 @@ export default function EditRecordModal({
   contracts = [],
   onOk,
   onCancel,
+  clueDraft,
 }: EditRecordModalProps) {
   const scope = Form.useWatch("authorization_scope_type", editForm);
   if (editTarget?.module === "investigation") return (
@@ -51,6 +104,13 @@ export default function EditRecordModal({
       cancelText="取消"
       onOk={onOk}
       onCancel={onCancel}
+      footer={clueDraft ? (
+        <Space>
+          <Button onClick={clueDraft.onSaveDraft}>暂存线索</Button>
+          <Button type="primary" onClick={clueDraft.onSubmit}>提交审批</Button>
+          <Button onClick={onCancel}>取消</Button>
+        </Space>
+      ) : undefined}
     >
       <Form form={editForm} layout="vertical">
         <div className="form-grid">
@@ -169,6 +229,9 @@ export default function EditRecordModal({
         <Form.Item label="说明" name="description">
           <Input.TextArea rows={3} />
         </Form.Item>
+        {clueDraft && editTarget && (
+          <ClueAttachmentField recordId={editTarget.id} files={clueDraft.files} onFilesChange={clueDraft.onFilesChange} />
+        )}
       </Form>
     </Modal>
   );

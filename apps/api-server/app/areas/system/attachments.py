@@ -272,7 +272,8 @@ async def upload_attachment(
     # 案件继续走自己的专用格式校验接口。
     allowed = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".zip", ".rar"}
     is_employee_avatar = bool(record and record.module == "hr" and category == "员工头像")
-    if not is_employee_avatar and (not record or record.module != "case") and suffix not in allowed:
+    # BUG20261030015：调查线索附件同样不限格式（和旧系统一致），仍受大小和线索权限约束。
+    if not is_employee_avatar and (not record or record.module not in {"case", "clue"}) and suffix not in allowed:
         raise HTTPException(status_code=422, detail="不支持的文件格式")
     content = await file.read()
     if is_employee_avatar:
@@ -669,7 +670,12 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
     from app.core.generated_file_records import PRIVATE_MODULES
     if record and record.module in PRIVATE_MODULES:
         raise HTTPException(status_code=409, detail="个人 AI 文件不能通过通用附件接口删除持久记录")
-    if record and record.module in {"clue", "evidence"} and "admin" not in identity["_actual_role_ids"]:
+    # BUG20261030015：提交线索的调查员本人在线索审批通过前（待提交、已驳回、待审批）可删除自己线索的附件。
+    clue_submitter_delete = bool(
+        record and record.module == "clue" and record.status in {"草稿", "已驳回", "待审批"}
+        and identity["username"] in {record.owner, str((record.data or {}).get("publisher") or "")}
+    )
+    if record and record.module in {"clue", "evidence"} and "admin" not in identity["_actual_role_ids"] and not clue_submitter_delete:
         raise HTTPException(status_code=403, detail="仅系统管理员可以删除线索或证据附件")
     if record and record.module == "conflict_review":
         raise HTTPException(status_code=409, detail="利益冲突审查证据必须使用审查专用入口管理")
@@ -728,7 +734,7 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
     if record and record.module == "hr":
         await _require_hr_attachment_write_access(record, item.category, identity, db)
         may_manage_hr_document = True
-    if identity["role"] != "admin" and not may_manage_hr_document and not may_manage_customer_document and not may_manage_case_document and not may_manage_task_attachment and not may_manage_seal_attachment and not may_manage_official_outgoing_attachment:
+    if identity["role"] != "admin" and not may_manage_hr_document and not may_manage_customer_document and not may_manage_case_document and not may_manage_task_attachment and not may_manage_seal_attachment and not may_manage_official_outgoing_attachment and not clue_submitter_delete:
         raise HTTPException(status_code=403, detail="仅管理员可删除附件；客户负责人可删除客户文档，部门负责人可删除员工档案")
     path = attachment_local_path(item)
     await db.delete(item)

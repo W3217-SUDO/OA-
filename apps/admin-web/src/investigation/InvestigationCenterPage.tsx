@@ -155,6 +155,7 @@ export default function InvestigationCenterPage({
   const [investigationCreateOpen, setInvestigationCreateOpen] = useState(false);
   const [clueCreateOpen, setClueCreateOpen] = useState(false);
   const [clueFiles, setClueFiles] = useState<File[]>([]);
+  const [editClueFiles, setEditClueFiles] = useState<File[]>([]);
   const [collectionFiles, setCollectionFiles] = useState<File[]>([]);
   const [reviewing, setReviewing] = useState<Row | null>(null);
   const [clueReviewing, setClueReviewing] = useState<Row | null>(null);
@@ -1732,7 +1733,8 @@ export default function InvestigationCenterPage({
       priority: row.data.priority || "普通",
     });
   };
-  const saveEdit = async () => {
+  // BUG20261030015：我的调查线索-待审批线索修改：暂存线索退回待提交，提交审批保存后留在待审批；可带附件。
+  const saveEdit = async (clueMode?: "draft" | "submit") => {
     if (!editTarget) return;
     const v = await editForm.validateFields();
     try {
@@ -1752,7 +1754,7 @@ export default function InvestigationCenterPage({
         ...(editTarget.module === "clue" ? {} : { title: v.title }),
         customer: v.customer || "",
         description: v.description || "",
-        ...(resubmit ? { status: "待审批" } : {}),
+        ...(clueMode === "draft" ? { status: "草稿" } : resubmit ? { status: "待审批" } : {}),
         data: {
           region: v.region || "",
           address: v.address || "",
@@ -1778,9 +1780,20 @@ export default function InvestigationCenterPage({
           priority: v.priority || editTarget.data.priority,
         },
       });
+      for (const file of clueMode ? editClueFiles : []) {
+        const form = new FormData();
+        form.append("file", file);
+        form.append("record_id", String(editTarget.id));
+        form.append("category", "调查线索附件");
+        form.append("remark", "修改线索附件");
+        await api.post("/attachments", form);
+      }
       message.success(
-        resubmit ? "线索已修改并重新进入待审核" : "调查资料已修改",
+        clueMode === "draft" ? "线索已暂存，退回待提交线索"
+          : clueMode === "submit" ? "线索已修改并提交审批"
+            : resubmit ? "线索已修改并重新进入待审核" : "调查资料已修改",
       );
+      setEditClueFiles([]);
       setEditTarget(null);
       load();
     } catch (error: any) {
@@ -3578,8 +3591,14 @@ export default function InvestigationCenterPage({
         editForm={editForm}
         contracts={editContracts}
         systemPersonOptions={systemPersonOptions}
-        onOk={saveEdit}
-        onCancel={() => setEditTarget(null)}
+        onOk={() => void saveEdit()}
+        onCancel={() => { setEditClueFiles([]); setEditTarget(null); }}
+        clueDraft={editTarget?.module === "clue" && editTarget.status === "待审批" && initialTab === "clue-my-pending" ? {
+          files: editClueFiles,
+          onFilesChange: setEditClueFiles,
+          onSaveDraft: () => void saveEdit("draft"),
+          onSubmit: () => void saveEdit("submit"),
+        } : undefined}
       />
       <AssignInvestigatorModal
         open={Boolean(assignTarget)}

@@ -276,7 +276,10 @@ async def update_investigation_record(record_id: int, body: RecordUpdate, identi
         if not editor:
             raise HTTPException(status_code=401, detail="当前用户不存在")
         await _require_investigation_clue_write_permission(editor, db)
-    if requested_status and requested_status != record.status and not reflow_clue:
+    # BUG20261030015：待审批线索修改时可“暂存线索”退回待提交（从审批人列表撤下），或“提交审批”保存后留在待审批。
+    withdraw_clue = record.module == "clue" and requested_status == "草稿" and record.status == "待审批"
+    resubmit_pending_clue = record.module == "clue" and requested_status == "待审批" and record.status == "待审批"
+    if requested_status and requested_status != record.status and not reflow_clue and not withdraw_clue:
         raise HTTPException(status_code=409, detail="调查中心状态必须通过专用审批或办理入口变更")
     if changes.get("owner") and changes["owner"] != record.owner:
         raise HTTPException(status_code=409, detail="调查员/负责人必须通过分配调查员入口修改")
@@ -349,7 +352,13 @@ async def update_investigation_record(record_id: int, body: RecordUpdate, identi
             "rejection_reason": "", "resubmitted_at": datetime.now().isoformat(timespec="seconds"),
             "resubmitted_by": identity["username"],
         }
-    db.add(WorkflowEvent(record_id=record.id, action="修改并重新提交线索审批" if reflow_clue else "修改调查中心资料", from_status=old_status, to_status=record.status, operator=identity["username"], comment="通过调查中心专用入口修改基础资料"))
+    if withdraw_clue:
+        record.status = "草稿"
+    if resubmit_pending_clue:
+        record.data = {**(record.data or {}), "resubmitted_at": datetime.now().isoformat(timespec="seconds"), "resubmitted_by": identity["username"]}
+    action = ("修改并重新提交线索审批" if reflow_clue or resubmit_pending_clue
+              else "暂存线索（撤回审批）" if withdraw_clue else "修改调查中心资料")
+    db.add(WorkflowEvent(record_id=record.id, action=action, from_status=old_status, to_status=record.status, operator=identity["username"], comment="通过调查中心专用入口修改基础资料"))
     await _sync_legacy_projection(record, identity, db)
     await db.commit()
     await db.refresh(record)
