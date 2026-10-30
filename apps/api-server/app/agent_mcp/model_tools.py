@@ -17,6 +17,7 @@ from .service import call_tool, list_tool_groups, search_tools
 from .tool_groups import require_group
 from .model_context import bounded_model_payload, discovered_tools_view, model_result_view
 from .model_errors import model_error, unsupported_stream
+from .business_tools import TOOLS as BUSINESS_TOOLS, is_business_tool, run_business_tool
 
 
 MAX_TOOL_CALLS = 24
@@ -69,6 +70,7 @@ MODEL_TOOLS = [
     },
 ]
 
+MODEL_TOOLS.extend(tool.to_model_function() for tool in BUSINESS_TOOLS.values())  # 按操作手册业务组合的工具
 
 class ModelToolSession:
     """仅在本轮模型请求内保留发现结果，不保存登录凭据。"""
@@ -134,6 +136,8 @@ class ModelToolSession:
             result.update({"group_id": group_id, "subgroup_id": subgroup_id})
             self.discovered.update({tool["name"]: catalog.get(tool["name"]) for tool in result["tools"]})
             return result
+        if is_business_tool(name):
+            return {"result": await run_business_tool(name, arguments, call=self._call_catalog)}
         if name != "oa_call_tool":
             raise HTTPException(status_code=422, detail="模型只能使用 OA 工具发现与受控调用")
         if set(arguments) != {"name", "arguments"} or not isinstance(arguments.get("name"), str):
@@ -142,14 +146,18 @@ class ModelToolSession:
         if tool is None:
             raise HTTPException(status_code=422, detail="必须先搜索并读取该工具的完整 schema，再调用")
         tool.validate_arguments(arguments["arguments"])
-        call_key = json.dumps([tool.name, arguments["arguments"]], ensure_ascii=False, sort_keys=True)
+        return {"result": await self._call_catalog(tool.name, arguments["arguments"])}
+
+    async def _call_catalog(self, name: str, arguments: dict) -> Any:
+        """调用一个目录工具（oa_call_tool 与业务工具的内部步骤共用）：同一待确认请求不重复生成，资源链接收集给前端。"""
+        call_key = json.dumps([name, arguments], ensure_ascii=False, sort_keys=True)
         if call_key in self._prepared:
-            return {"result": self._prepared[call_key]}
+            return self._prepared[call_key]
         if self.case_id is None:
-            result = await call_tool(tool.name, arguments["arguments"], conversation_id=self.conversation_id)
+            result = await call_tool(name, arguments, conversation_id=self.conversation_id)
         else:
             with tool_origin(self.case_id):
-                result = await call_tool(tool.name, arguments["arguments"], conversation_id=self.conversation_id)
+                result = await call_tool(name, arguments, conversation_id=self.conversation_id)
         if isinstance(result, dict) and result.get("status") == "pending":
             request_id = result.get("request_id")
             preview = result.get("preview")
@@ -163,7 +171,7 @@ class ModelToolSession:
             })
             self._prepared[call_key] = result
         self._collect_resources(result)
-        return {"result": result}
+        return result
 
     def _discover_groups(self, query: str | None) -> dict[str, Any]:
         result = list_tool_groups(query)

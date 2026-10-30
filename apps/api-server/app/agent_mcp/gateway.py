@@ -20,6 +20,7 @@ from app.agent_mcp.router import router
 from app.agent_mcp.safety import safe_result
 from app.agent_mcp.service import call_tool, describe_tool, list_group_tools, list_tool_groups, search_tools
 from app.agent_mcp import usage_skill
+from app.agent_mcp.business_tools import TOOLS as BUSINESS_TOOLS, is_business_tool, run_business_tool, visible_tools
 from app.agent_mcp.model_context import discovered_tools_view
 from app.config import settings
 from app.core.lifecycle import lifespan
@@ -112,9 +113,10 @@ async def _list_tools(_, params):
     if params is not None and params.cursor:
         raise MCPError(-32602, "工具目录不接收未知分页游标")
     context = get_auth_context()
-    if context.readonly and not context.groups:
-        return types.ListToolsResult(tools=_token_entry_tools(context.write_allowed))  # 没选业务：只给入口工具，按需发现
     catalog = get_catalog(context.application)
+    business = [types.Tool.model_validate(tool.to_mcp()) for tool in visible_tools(catalog, context)]  # 按操作手册业务组合的工具
+    if context.readonly and not context.groups:
+        return types.ListToolsResult(tools=[*_token_entry_tools(context.write_allowed), *business])  # 没选业务：只给入口工具，按需发现
     from app.agent_mcp.personal_tokens import direct_write_view, token_tool_allowed
     scoped = bool(context.readonly and context.groups)
     tools = [
@@ -135,6 +137,7 @@ async def _list_tools(_, params):
     if scoped:  # 选了业务时也带上按需取参数定义的入口
         tools.insert(0, types.Tool(name="oa_describe_tool", title="查看接口参数定义", description="按接口名取完整参数定义（path/query/body/files 与必填项）。调用任何业务接口前先用它。",
                                    input_schema=DESCRIBE_SCHEMA, annotations=types.ToolAnnotations(read_only_hint=True, open_world_hint=False)))
+    tools[0:0] = business
     tools.insert(0, _guide_tool())  # “先读这个”永远排第一
     return types.ListToolsResult(tools=tools)
 
@@ -154,7 +157,13 @@ async def _call_tool(_, params):
             pass
         is_write = bool(spec is not None and spec.is_write)
         detail = ""
-        if is_write:  # 写入类调用留完整请求（方法、路径、参数）和失败原因
+        if is_business_tool(name):  # 业务工具记一条：执行模式的写工具按写入记，并留下内部各步骤
+            is_write = BUSINESS_TOOLS[name].write and bool(arguments.get("confirm"))
+            steps = (result.structured_content or {}).get("steps") if isinstance(result.structured_content, dict) else None
+            detail = json.dumps({"business_tool": name, "arguments": arguments,
+                                 "steps": [{key: step.get(key) for key in ("step", "tool", "kind", "status", "request_id")} for step in steps or []],
+                                 **({"error": str(result.structured_content)[:300]} if result.is_error else {})}, ensure_ascii=False, default=str)
+        elif is_write:  # 写入类调用留完整请求（方法、路径、参数）和失败原因
             pending = isinstance(result.structured_content, dict) and result.structured_content.get("status") == "pending"
             detail = json.dumps({"method": spec.method, "path": spec.path, "arguments": arguments,
                                  **({"status": "pending"} if pending else {}),
@@ -205,12 +214,15 @@ async def _dispatch_tool(params):
             if not target.is_write and params.name == "oa_call_write_tool":
                 raise HTTPException(422, "这是只读接口，请改用 oa_call_read_tool")
             result = await call_tool(arguments["name"], arguments.get("arguments") or {})
+        elif is_business_tool(params.name):
+            result = await run_business_tool(params.name, arguments, context=get_auth_context())
         else:
             result = await call_tool(params.name, arguments)
         content = [types.TextContent(type="text", text=json.dumps(result, ensure_ascii=False, allow_nan=False))]
         if isinstance(result, dict) and result.get("type") == "resource_link":
             content = [types.ResourceLink(uri=result["uri"], name=result["name"], mime_type=result["mimeType"])]
-        return types.CallToolResult(content=content, structured_content=result if isinstance(result, dict) else {"result": result})
+        return types.CallToolResult(content=content, structured_content=result if isinstance(result, dict) else {"result": result},
+                                    is_error=bool(isinstance(result, dict) and result.get("isError")))
     except HTTPException as exc:
         error = safe_result({"status_code": exc.status_code, "detail": exc.detail}, get_auth_context().bearer)
         return types.CallToolResult(
@@ -288,7 +300,8 @@ def install_gateway(application) -> None:
         "sunhold-oa", title="OA业务操作", instructions=usage_skill.INSTRUCTIONS, on_list_tools=_list_tools, on_call_tool=_call_tool,
         on_list_resources=_list_resources, on_read_resource=_read_resource, on_list_prompts=_list_prompts, on_get_prompt=_get_prompt,
         get_tool_input_schema=lambda name: (
-            META_SCHEMAS[name] if name in META_SCHEMAS else get_catalog(application).get(name).input_schema
+            META_SCHEMAS[name] if name in META_SCHEMAS else BUSINESS_TOOLS[name].input_schema if is_business_tool(name)
+            else get_catalog(application).get(name).input_schema
         ),
     )
     http_application = server.streamable_http_app(

@@ -344,7 +344,7 @@ class ReadOnlyGatewayTest(unittest.IsolatedAsyncioTestCase):
         catalog = SimpleNamespace(tools=[remover], get=lambda name: remover)
         with patch.object(gateway, "get_auth_context", lambda: self._context(7, write=True)), patch.object(gateway, "get_catalog", lambda _app: catalog):
             listed = await gateway._list_tools(None, None)
-        self.assertEqual({tool.name for tool in listed.tools},  # 有写入权限时多一个写入入口，且业务接口仍不逐个列出
+        self.assertEqual({tool.name for tool in listed.tools if not tool.name.startswith("biz_")},  # 有写入权限时多一个写入入口，且业务接口仍不逐个列出（biz_ 业务工具另测）
                          {"oa_get_usage_guide", "oa_list_tool_groups", "oa_list_group_tools", "oa_search_tools", "oa_describe_tool", "oa_call_read_tool", "oa_call_write_tool"})
         write_entry = next(item for item in listed.tools if item.name == "oa_call_write_tool")
         self.assertFalse(write_entry.annotations.read_only_hint)
