@@ -2,19 +2,20 @@
 
 在监控中的专利：案件上点过“加入/放弃年费监控”的以此为准；迁移的老案件没点过的，按老系统案件阶段“年费监控”算。
 应缴日按申请日周年日算，第 N 年年费在第 N 年开始（申请日 + N-1 年）前缴纳，逾期 6 个月内可补缴。
-高勤兰 10-30 199162：已缴不手动登记，按老系统看这一年度的年费官费有没有上传缴费凭证（官费收据）；
-老系统年费记录在 IPR_Case_FeeItem（FeeTypeId=3，Yearly=第几年度，Amount/ActualAmount/BillAmount=通/回/付）。
+高勤兰 10-30 199162：已缴不手动登记，照老系统按“对冲”判断：上传的官费收据（文件类型配置了对冲的年费类型）
+挂到这一年度的年费请款上，请款 HasHedgingFile 即为已对冲 = 已缴。老系统现行费用在上海 IPR 的 FAM_AR_CaseFee
+（AnnualYear=第几年度，Amount/CashedAmount/PaidAmount=通/回/付），迁移后放在 legacy_ipr_sh schema；
+迁移前没有这张表，全部按未缴显示。2017 年以前的 IPR_Case_FeeItem 旧费用模块不再用。
 """
 from calendar import monthrange
 from urllib.parse import quote
 
-from docx.enum.section import WD_ORIENT
 from fastapi import APIRouter
 
-from app.core.constants import WORD_DOCUMENT_CONTENT_TYPE
+from app.core.constants import UPLOAD_ROOT, WORD_DOCUMENT_CONTENT_TYPE
 from app.core.dependencies import (
-    AsyncSession, BusinessRecord, Depends, Document, HTTPException, Query, Response,
-    and_, current_identity, date, get_db, io, or_, select, settings, text,
+    AsyncSession, BusinessRecord, Depends, Document, File, FileAttachment, Form, HTTPException, Path, Query, Response,
+    UploadFile, WorkflowEvent, and_, current_identity, date, get_db, io, json, or_, select, settings, text, uuid4,
 )
 
 router = APIRouter()
@@ -26,7 +27,12 @@ _FEE_TABLE = {
     "外观设计": [(3, 600), (5, 900), (8, 1200), (10, 2000), (15, 3000)],
 }
 _QUARTER_NAMES = {1: "一", 2: "二", 3: "三", 4: "四"}
-_LEGACY_ANNUAL_FEE_TYPE_ID = 3
+# 上海 IPR 费用类型里的年费（对冲规则 3300007：11020/21020/31020），待迁移时按现库再核对一次。
+_ANNUAL_FEE_TYPE_IDS = [11020, 21020, 31020]
+_GRANTED_PHASES = {"年费监控", "授权", "发证", "滞纳金阶段"}
+_UPLOAD_SUFFIXES = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".zip", ".rar"}
+_HANDLING_FEE = 100  # 老系统模板：年费手续费 100 元/项
+_LEGACY_FEE_TABLE = 'legacy_ipr_sh."FAM_AR_CaseFee"'
 # 列表上方的筛选，照老系统：参数名 -> 行里比对的字段。
 _FILTER_FIELDS = {
     "applicant": ("applicant",), "customer": ("customer",), "case_source": ("case_source",),
@@ -123,23 +129,22 @@ def _views(today: date) -> list[dict]:
 
 
 async def _legacy_annual_fee_items(serial_nos: list[str], db: AsyncSession) -> dict[tuple[str, int], dict]:
-    """老系统年费记录：同一案件同一年度取一条，有官费收据的优先。"""
+    """老系统年费请款：同一案件同一年度合并，任一笔已对冲即算已缴。"""
+    if not await db.scalar(text(f"SELECT to_regclass('{_LEGACY_FEE_TABLE}') IS NOT NULL")):
+        return {}
     found: dict[tuple[str, int], dict] = {}
     for offset in range(0, len(serial_nos), 500):
         rows = (await db.execute(text(
-            'SELECT "CaseNo", "Yearly", "Amount", "ActualAmount", "BillAmount", "BillNo", "BillFileName" '
-            'FROM "IPR_Case_FeeItem" WHERE "FeeTypeId" = :fee_type AND coalesce("IsActive", \'T\') = \'T\' '
-            'AND "Yearly" IS NOT NULL AND "CaseNo" = ANY(:case_nos)'
-        ), {"fee_type": _LEGACY_ANNUAL_FEE_TYPE_ID, "case_nos": serial_nos[offset:offset + 500]})).all()
-        for case_no, yearly, amount, actual, bill_amount, bill_no, bill_file in rows:
-            paid = bool((bill_no or "").strip() or (bill_file or "").strip())
-            key = (str(case_no), int(yearly))
-            if key in found and found[key]["paid"] and not paid:
-                continue
-            found[key] = {
-                "paid": paid, "inform_amount": float(amount or 0),
-                "gained_amount": float(actual or 0), "bill_amount": float(bill_amount or 0),
-            }
+            f'SELECT "CaseNo", "AnnualYear", "Amount", "CashedAmount", "PaidAmount", "HasHedgingFile" FROM {_LEGACY_FEE_TABLE} '
+            'WHERE "CaseFeeTypeId" = ANY(:fee_types) AND coalesce("IsActived", \'T\') <> \'F\' '
+            'AND "AnnualYear" IS NOT NULL AND "CaseNo" = ANY(:case_nos)'
+        ), {"fee_types": _ANNUAL_FEE_TYPE_IDS, "case_nos": serial_nos[offset:offset + 500]})).all()
+        for case_no, year_no, amount, cashed, paid_amount, hedged in rows:
+            item = found.setdefault((str(case_no), int(year_no)), {"paid": False, "inform_amount": 0.0, "gained_amount": 0.0, "bill_amount": 0.0})
+            item["paid"] = item["paid"] or str(hedged or "").strip().upper() in {"T", "1", "TRUE"}
+            item["inform_amount"] += float(amount or 0)
+            item["gained_amount"] += float(cashed or 0)
+            item["bill_amount"] += float(paid_amount or 0)
     return found
 
 
@@ -169,7 +174,9 @@ async def _monitored_fee_rows(identity: dict, db: AsyncSession, start: date, end
                 "case_id": record.id, "serial_no": record.serial_no,
                 "case_name": data.get("case_name") or record.title or "", "case_type": data.get("case_type") or "",
                 "case_phase": data.get("case_phase") or "",
-                "customer": record.customer or "", "applicant": data.get("applicant_name") or data.get("applicant") or record.customer or "",
+                "customer": record.customer or "", "customer_record_id": data.get("customer_record_id"),
+                "granted": bool(_parse_date(data.get("authorization_date"))) or str(data.get("case_phase") or "") in _GRANTED_PHASES,
+                "applicant": data.get("applicant_name") or data.get("applicant") or record.customer or "",
                 "application_no": data.get("application_no") or "", "application_date": application_date,
                 "procurator": data.get("procurator_name") or data.get("procurator") or "",
                 "case_source": data.get("case_origin_people_name") or "",
@@ -272,26 +279,167 @@ async def export_ipr_annual_fee_monitor_excel(query: _ListQuery = Depends(), ide
     return _excel_response(f"年费清单-{selected['label']}-{date.today()}.xls", _EXPORT_HEADERS, [_export_values(row) for row in rows])
 
 
+def _late_fee(row: dict, today: date) -> int:
+    """滞纳金：逾期不满一个月不收，之后每满一个月加收当年全额年费的 5%（模板所引专利法实施细则规定）。"""
+    if row["due_date"] >= today:
+        return 0
+    months = 0
+    while months < 6 and _add_months(row["due_date"], months + 1) < today:
+        months += 1
+    return round(row["annual_fee"] * 0.05 * months)
+
+
+def _fill_placeholders(paragraph, values: dict[str, str]) -> None:
+    """先在单个 run 内替换保留格式；占位符被拆在多个 run 里时整段合并后替换。"""
+    for run in paragraph.runs:
+        for key, value in values.items():
+            if key in run.text:
+                run.text = run.text.replace(key, value)
+    if "$" in paragraph.text and paragraph.runs:
+        merged = paragraph.text
+        for key, value in values.items():
+            merged = merged.replace(key, value)
+        if merged != paragraph.text:
+            paragraph.runs[0].text = merged
+            for run in paragraph.runs[1:]:
+                run.text = ""
+
+
+async def _customer_letter_fields(customer_record_id, fallback_name: str, db: AsyncSession) -> dict[str, str]:
+    record = None
+    try:
+        record = await db.get(BusinessRecord, int(customer_record_id)) if customer_record_id else None
+    except (TypeError, ValueError):
+        record = None
+    data = dict(record.data or {}) if record and record.module == "customer" else {}
+    contacts = [item for item in data.get("contacts") or [] if isinstance(item, dict) and item.get("is_valid", True)]
+    contact = next((item for item in contacts if item.get("is_primary")), contacts[0] if contacts else {})
+    return {
+        "$CUSTOMERNAME": (record.title if record and record.module == "customer" else "") or fallback_name,
+        "$CONTRACTNAME": str(contact.get("name") or ""),
+        "$ZIP": str(data.get("zip") or data.get("zip_code") or data.get("postal_code") or ""),
+        "$ADDRESS": str(data.get("address") or data.get("registered_address") or ""),
+        "$TEL": str(contact.get("office_phone") or contact.get("phone") or data.get("phone") or ""),
+        "$FAX": str(data.get("fax") or ""),
+    }
+
+
 @router.get(f"{settings.api_prefix}/ipr/annual-fee-monitor/export/word")
 async def export_ipr_annual_fee_monitor_word(query: _ListQuery = Depends(), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    """生成年费清单(Word)：表格同 Excel。"""
-    selected, rows = await _list_rows(query, identity, db)
-    document = Document()
-    section = document.sections[0]
-    section.orientation, section.page_width, section.page_height = WD_ORIENT.LANDSCAPE, section.page_height, section.page_width
-    document.add_heading(f"专利年费清单（{selected['label']}）", level=1)
-    document.add_paragraph(f"生成日期：{date.today()}　共 {len(rows)} 件")
-    table = document.add_table(rows=1, cols=len(_EXPORT_HEADERS))
-    table.style = "Table Grid"
-    for cell, header in zip(table.rows[0].cells, _EXPORT_HEADERS):
-        cell.text = header
-    for row in rows:
-        for cell, value in zip(table.add_row().cells, _export_values(row)):
+    """生成年费清单(Word)：照老系统模板 3300034“通知交纳年费”，只含已授权专利，勾选的案件须是同一客户。"""
+    from app.areas.ipr.annual_fee_notice_template import annual_fee_notice_template
+    if not query.keys:
+        raise HTTPException(status_code=422, detail="请先勾选要生成年费清单的案件")
+    _, rows = await _list_rows(query, identity, db)
+    if not rows:
+        raise HTTPException(status_code=422, detail="勾选的案件不在当前列表中，请刷新后重新勾选")
+    if any(not row["granted"] for row in rows):
+        names = "、".join(row["serial_no"] for row in rows if not row["granted"])
+        raise HTTPException(status_code=422, detail=f"只能对已授权专利生成年费清单：{names} 尚未授权")
+    if len({(row["customer_record_id"], row["customer"]) for row in rows}) > 1:
+        raise HTTPException(status_code=422, detail="勾选的案件须属于同一客户")
+    today = date.today()
+    late_fees = [_late_fee(row, today) for row in rows]
+    annual_total = sum(row["annual_fee"] for row in rows) + sum(late_fees)
+    handling_total = _HANDLING_FEE * len(rows)
+    values = await _customer_letter_fields(rows[0]["customer_record_id"], rows[0]["customer"], db)
+    values.update({
+        "$FWR": str(today), "$1": str(min(row["due_date"] for row in rows)),
+        "$2": str(annual_total), "$3": str(handling_total), "$4": str(annual_total + handling_total),
+    })
+    document = Document(io.BytesIO(annual_fee_notice_template()))
+    paragraphs = list(document.paragraphs)
+    for table in document.tables:
+        for cells in table.rows:
+            for cell in cells.cells:
+                paragraphs.extend(cell.paragraphs)
+    # $1~$4 之外的占位符更长，先替换长的，避免 $1 误伤其它占位符。
+    ordered = dict(sorted(values.items(), key=lambda item: -len(item[0])))
+    for paragraph in paragraphs:
+        if "$" in paragraph.text:
+            _fill_placeholders(paragraph, ordered)
+    fee_table = document.tables[-1]
+    for index, (row, late) in enumerate(zip(rows, late_fees), start=1):
+        cells = fee_table.add_row().cells
+        for cell, value in zip(cells, [
+            str(index), row["serial_no"], row["case_name"], row["application_no"], str(row["application_date"]),
+            f"第{row['year_no']}年度", str(row["annual_fee"]), str(late), str(_HANDLING_FEE),
+        ]):
             cell.text = value
     buffer = io.BytesIO()
     document.save(buffer)
-    filename = f"年费清单-{selected['label']}-{date.today()}.docx"
+    filename = f"通知缴纳年费-{values['$CUSTOMERNAME'] or rows[0]['serial_no']}-{today}.docx"
     return Response(
         content=buffer.getvalue(), media_type=WORD_DOCUMENT_CONTENT_TYPE,
-        headers={"Content-Disposition": f"attachment; filename=annual-fees.docx; filename*=UTF-8''{quote(filename)}"},
+        headers={"Content-Disposition": f"attachment; filename=annual-fee-notice.docx; filename*=UTF-8''{quote(filename)}"},
     )
+
+
+@router.post(f"{settings.api_prefix}/ipr/annual-fee-monitor/upload", status_code=201)
+async def upload_ipr_annual_fee_monitor_file(
+    file: UploadFile = File(...), case_ids: str = Form(...), category: str = Form(...), document_date: date = Form(...),
+    remark: str = Form(""), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """上传文件：照老系统，勾选案件、选文件类型，同一个文件挂到每个勾选的案件。
+
+    年费监控里的迁移案件状态是老系统阶段（如“年费监控”），不是“在办”，所以不走通用批量上传的在办限制，
+    只要求案件在年费监控中、当前用户是案件负责人或管理者。对冲（把收据挂到年费请款上算已缴）待老系统费用迁入后接上。
+    """
+    from app.core.ipr import _active_ipr_case_file_type
+    from app.core.permissions import _ensure_record_module, _require_record_owner_or_manager, _require_role_action
+    from app.core.storage import _attachment_dict
+    await _require_role_action(identity, db, "ipr.case.file.manage")
+    try:
+        target_ids = list(dict.fromkeys(int(value) for value in json.loads(case_ids)))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        raise HTTPException(status_code=422, detail="请勾选要上传文件的案件")
+    if not target_ids or len(target_ids) > 200:
+        raise HTTPException(status_code=422, detail="请勾选 1~200 个案件")
+    normalized_category = category.strip()
+    if not normalized_category or len(normalized_category) > 64 or len(remark.strip()) > 1000:
+        raise HTTPException(status_code=422, detail="文件类型或说明不符合要求")
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in _UPLOAD_SUFFIXES:
+        raise HTTPException(status_code=422, detail="不支持的文件格式")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=422, detail="文件不能为空")
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="单个文件不能超过 20MB")
+    monitored = set((await db.scalars(select(BusinessRecord.id).where(BusinessRecord.id.in_(target_ids), _monitoring_condition()))).all())
+    records, file_types = [], {}
+    for target_id in target_ids:
+        record = await _ensure_record_module(target_id, "ipr_case", identity, db)
+        if record.id not in monitored:
+            raise HTTPException(status_code=409, detail=f"案件 {record.serial_no} 不在年费监控中；本次未上传任何文件")
+        await _require_record_owner_or_manager(record, identity, db)
+        file_types[record.id] = await _active_ipr_case_file_type(record, normalized_category, db)
+        records.append(record)
+    original_name = Path(file.filename or "document").name
+    paths, attachments = [], []
+    try:
+        for record in records:
+            file_type = file_types[record.id]
+            target = UPLOAD_ROOT / f"{uuid4().hex}{suffix}"
+            target.write_bytes(content)
+            paths.append(target)
+            attachment = FileAttachment(
+                record_id=record.id, category=normalized_category, file_type_code=file_type.code, original_name=original_name,
+                stored_name=target.name, content_type=file.content_type or "application/octet-stream", size=len(content), path=str(target),
+                uploader=identity["username"], remark=remark.strip(), document_date=document_date,
+                requires_transmission=bool((file_type.extra or {}).get("requires_transmission")),
+            )
+            attachments.append(attachment)
+            db.add(attachment)
+            db.add(WorkflowEvent(record_id=record.id, action="专利年费上传文件", from_status=record.status, to_status=record.status,
+                                 operator=identity["username"], comment=f"{normalized_category}｜{original_name}｜文档日期 {document_date}"))
+        await db.commit()
+        for attachment in attachments:
+            await db.refresh(attachment)
+    except Exception:
+        await db.rollback()
+        for path in paths:
+            path.unlink(missing_ok=True)
+        raise
+    by_id = {record.id: record for record in records}
+    return {"created": len(attachments), "items": [_attachment_dict(item, by_id[item.record_id]) for item in attachments]}

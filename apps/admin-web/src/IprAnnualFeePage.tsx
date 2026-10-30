@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
-import type { Dayjs } from "dayjs";
-import { Button, Card, DatePicker, Empty, Form, Input, Space, message } from "antd";
+import { useCallback, useEffect, useRef, useState } from "react";
+import dayjs, { type Dayjs } from "dayjs";
+import { Button, Card, DatePicker, Empty, Form, Input, Modal, Select, Space, message } from "antd";
 import Table from "./components/ResizableTable";
 import { api } from "./api";
 
@@ -38,6 +38,14 @@ const FILTERS: { name: keyof FilterValues; label: string }[] = [
   { name: "case_source", label: "案源人" }, { name: "case_no", label: "案号/申请号" },
 ];
 const errorDetail = (error: any, fallback: string) => error?.response?.data?.detail || fallback;
+// 下载接口出错时返回的是 Blob，要先读出文字再取 detail。
+const blobErrorDetail = async (error: any, fallback: string) => {
+  const data = error?.response?.data;
+  if (data instanceof Blob) {
+    try { return JSON.parse(await data.text())?.detail || fallback; } catch { return fallback; }
+  }
+  return errorDetail(error, fallback);
+};
 const initialView = () => new URLSearchParams(window.location.search).get(VIEW_PARAM) || "";
 const amountText = (value: number) => String(Math.round(value || 0));
 const rowKey = (row: FeeRow) => `${row.case_id}-${row.fee_year}`;
@@ -61,6 +69,12 @@ export default function IprAnnualFeePage() {
   const [loading, setLoading] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [form] = Form.useForm<FilterValues>();
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [fileTypes, setFileTypes] = useState<{ value: string; label: string }[]>([]);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploadForm] = Form.useForm<{ category: string; document_date: Dayjs; remark?: string }>();
 
   const loadSummary = useCallback(async () => {
     try {
@@ -108,6 +122,10 @@ export default function IprAnnualFeePage() {
 
   // 生成年费清单：勾选了导出勾选的，没勾导出当前列表全部（带上当前筛选）。
   const exportList = async (kind: "excel" | "word") => {
+    if (kind === "word" && !selectedKeys.length) {
+      message.warning("请先勾选要生成年费清单的案件（须同一客户、已授权）");
+      return;
+    }
     const label = current?.label || "专利年费";
     try {
       const response = await api.get(`/ipr/annual-fee-monitor/export/${kind}`, {
@@ -121,7 +139,52 @@ export default function IprAnnualFeePage() {
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      message.error(errorDetail(error, "生成年费清单失败"));
+      message.error(await blobErrorDetail(error, "生成年费清单失败"));
+    }
+  };
+
+  // 上传文件：照老系统，勾选案件、选文件类型，同一个文件挂到每个勾选的案件。
+  const openUpload = async () => {
+    if (!selectedKeys.length) {
+      message.warning("请先勾选要上传文件的案件");
+      return;
+    }
+    uploadForm.setFieldsValue({ category: undefined, document_date: dayjs(), remark: "" });
+    setUploadFile(null);
+    if (fileRef.current) fileRef.current.value = "";
+    setUploadOpen(true);
+    if (!fileTypes.length) {
+      try {
+        const { data } = await api.get<{ items: { name: string }[] }>("/ipr/case-file-types", { params: { case_kind: "专利" } });
+        setFileTypes(data.items.map((item) => ({ value: item.name, label: item.name })));
+      } catch (error) {
+        message.error(errorDetail(error, "文件类型加载失败"));
+      }
+    }
+  };
+
+  const submitUpload = async () => {
+    const values = await uploadForm.validateFields();
+    if (!uploadFile) {
+      message.warning("请选择要上传的文件");
+      return;
+    }
+    const caseIds = Array.from(new Set(selectedKeys.map((key) => Number(key.split("-")[0]))));
+    const body = new FormData();
+    body.append("file", uploadFile);
+    body.append("case_ids", JSON.stringify(caseIds));
+    body.append("category", values.category);
+    body.append("document_date", values.document_date.format("YYYY-MM-DD"));
+    body.append("remark", values.remark || "");
+    setUploading(true);
+    try {
+      const { data } = await api.post<{ created: number }>("/ipr/annual-fee-monitor/upload", body);
+      message.success(`已上传到 ${data.created} 个案件`);
+      setUploadOpen(false);
+    } catch (error) {
+      message.error(errorDetail(error, "上传文件失败"));
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -199,7 +262,31 @@ export default function IprAnnualFeePage() {
         <Space wrap style={{ marginTop: 8 }}>
           <Button onClick={() => void exportList("excel")}>生成年费清单(Excel)</Button>
           <Button onClick={() => void exportList("word")}>生成年费清单(Word)</Button>
+          <Button onClick={() => void openUpload()}>上传文件</Button>
         </Space>
+        <Modal
+          open={uploadOpen}
+          title={`上传文件（已勾选 ${selectedKeys.length} 项）`}
+          onCancel={() => setUploadOpen(false)}
+          onOk={() => void submitUpload()}
+          confirmLoading={uploading}
+          okText="上传"
+        >
+          <Form form={uploadForm} layout="vertical">
+            <Form.Item name="category" label="文件类型" rules={[{ required: true, message: "请选择文件类型" }]}>
+              <Select showSearch optionFilterProp="label" options={fileTypes} />
+            </Form.Item>
+            <Form.Item name="document_date" label="文档日期" rules={[{ required: true, message: "请选择文档日期" }]}>
+              <DatePicker style={{ width: "100%" }} />
+            </Form.Item>
+            <Form.Item label="文件" required>
+              <input ref={fileRef} type="file" onChange={(event) => setUploadFile(event.target.files?.[0] || null)} />
+            </Form.Item>
+            <Form.Item name="remark" label="说明">
+              <Input.TextArea rows={2} maxLength={1000} />
+            </Form.Item>
+          </Form>
+        </Modal>
       </Card>
     </div>
   );

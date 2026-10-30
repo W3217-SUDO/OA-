@@ -40,6 +40,30 @@ class IprAnnualFeeMonitorTest(unittest.TestCase):
         self.assertEqual([row["serial_no"] for row in afm._filter_rows(rows, {"case_no": "2015108"}, None, None)], ["SHPI1500668"])
         self.assertEqual([row["serial_no"] for row in afm._filter_rows(rows, {"applicant": "汉欣"}, date(2019, 1, 1), None)], ["SHPU1910840"])
 
+    def test_late_fee_first_month_free(self):
+        row = {"due_date": date(2026, 6, 10), "annual_fee": 2000}
+        self.assertEqual(afm._late_fee(row, date(2026, 6, 10)), 0)
+        self.assertEqual(afm._late_fee(row, date(2026, 7, 10)), 0)
+        self.assertEqual(afm._late_fee(row, date(2026, 7, 11)), 100)
+        self.assertEqual(afm._late_fee(row, date(2026, 10, 29)), 400)
+
+    def test_notice_template_placeholders_filled(self):
+        import io
+        from docx import Document
+        from app.areas.ipr.annual_fee_notice_template import annual_fee_notice_template
+        document = Document(io.BytesIO(annual_fee_notice_template()))
+        values = {"$CUSTOMERNAME": "甲公司", "$CONTRACTNAME": "张三", "$ZIP": "200000", "$ADDRESS": "上海", "$TEL": "1", "$FAX": "",
+                  "$FWR": "2026-10-30", "$1": "2026-11-01", "$2": "300", "$3": "100", "$4": "400"}
+        ordered = dict(sorted(values.items(), key=lambda item: -len(item[0])))
+        paragraphs = list(document.paragraphs) + [p for t in document.tables for r in t.rows for c in r.cells for p in c.paragraphs]
+        for paragraph in paragraphs:
+            if "$" in paragraph.text:
+                afm._fill_placeholders(paragraph, ordered)
+        text = "\n".join(p.text for p in paragraphs)
+        self.assertNotIn("$", text)
+        self.assertIn("总计为：400", "".join(text.split()))
+        self.assertEqual([c.text for c in document.tables[-1].rows[0].cells][:3], ["序号", "案件编号", "案件名称"])
+
     def test_first_paid_year_and_leap_day(self):
         self.assertEqual(afm._first_paid_year_no({"first_annual_year": "3"}, date(2015, 5, 1)), 3)
         self.assertEqual(afm._first_paid_year_no({"authorization_date": "2016-04-30T00:00:00"}, date(2015, 5, 1)), 1)
