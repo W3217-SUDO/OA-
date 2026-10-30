@@ -16,7 +16,7 @@ from app.models_shared import (
     BatchClueCaseInput, ClueBatchCollectionInput, ClueBatchSubmitInput, ClueCaseContractResolveInput, ClueCollectionInput,
     ClueReviewInput, ClueSourceContractBindingInput, ClueTurnOnAuditInput, EvidenceCreateInput, EvidenceUpdateInput,
     InvestigationAssignmentInput, InvestigationBatchDeleteInput, InvestigationFeeInput, InvestigationPartyInput, InvestigationTaskInput,
-    InvestigationRecordInput, InvestigationRecordUpdate, RecordInput, RecordUpdate, TaskActionInput,
+    InvestigationRecordInput, InvestigationRecordUpdate, TaskActionInput,
 )
 from fastapi import APIRouter
 from app.areas.investigation.task_details import router as task_detail_router

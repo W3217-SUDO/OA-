@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from typing import Any, Awaitable, Callable
+from typing import Awaitable, Callable
 
 from fastapi import HTTPException
 from jsonschema import Draft202012Validator
