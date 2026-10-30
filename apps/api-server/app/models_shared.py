@@ -14,7 +14,7 @@ from app.api_schemas.agents import (
     AgentDocumentConfirmInput as AgentDocumentConfirmInput,
 )
 from app.api_schemas.records import (
-    RecordInput as RecordInput,
+    InvestigationRecordInput as InvestigationRecordInput, InvestigationRecordUpdate as InvestigationRecordUpdate, RecordInput as RecordInput,
     RecordUpdate as RecordUpdate,
     TransitionInput as TransitionInput,
 )
@@ -165,7 +165,7 @@ from app.api_schemas.cases import (
     CaseCourtInfoInput as CaseCourtInfoInput,
     CaseExecutionStatusInput as CaseExecutionStatusInput,
     CasePhaseChangeInput as CasePhaseChangeInput,
-    CaseCreateInput as CaseCreateInput,
+    CaseCreateInput as CaseCreateInput, CaseFullCreateInput as CaseFullCreateInput,
     CaseLitigantAgentInput as CaseLitigantAgentInput,
     CasePartyIdentityInput as CasePartyIdentityInput,
     CaseLitigantsInput as CaseLitigantsInput,

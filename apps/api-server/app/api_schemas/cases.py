@@ -4,6 +4,8 @@ from datetime import date, datetime
 from pydantic import BaseModel, Field, field_validator
 from typing import Literal
 
+from app.api_schemas.data_keys import CASE_CLIENT_POSITION_VALUES, CASE_TYPE_VALUES
+
 
 class CaseAssignmentInput(BaseModel):
     customer_manager: str = ""
@@ -174,10 +176,12 @@ class CaseCreateInput(BaseModel):
     title: str = Field(min_length=1, max_length=256)
     status: str = "新案待分配"
     owner: str = Field(default="", max_length=128)
-    case_type: str = Field(default="刑事案件", min_length=1, max_length=64)
+    case_type: str = Field(default="刑事案件", min_length=1, max_length=64, json_schema_extra={"enum": CASE_TYPE_VALUES},
+                           description="案件类型；每类需对应的新建权限")
     opponent: str = ""
     court: str = ""
-    client_position: str = ""
+    client_position: str = Field(default="", json_schema_extra={"enum": CASE_CLIENT_POSITION_VALUES}, description=(
+        "客户诉讼地位。民事/行政/仲裁：原告/申请人、被告/被申请人、第三人；刑事：被告人/犯罪嫌疑人、被害人；法律顾问不填"))
     cause_or_charge: str = Field(default="", max_length=256)
     right_type: str = ""
     counsel_type: str = ""
@@ -205,6 +209,9 @@ class CaseCreateInput(BaseModel):
     courtroom: str = ""
     judicial_remark: str = ""
     description: str = ""
+    attachment_ids: list[int] = Field(default_factory=list, max_length=20, description=(
+        "案件文档：本人已上传、未关联业务的附件 ID；建案后挂到本案件，目录见 attachment_category。原两步上传方式继续可用。"))
+    attachment_category: str = Field(default="普通附件", max_length=64, description="attachment_ids 放入的案件文档目录，默认“普通附件”")
 
 
 class CaseLitigantAgentInput(BaseModel):
@@ -238,6 +245,29 @@ class CaseLitigantsInput(BaseModel):
 
 class CaseCreationCompleteInput(BaseModel):
     comment: str = Field(default="", max_length=500)
+
+
+class CaseFullJudicialInput(BaseModel):
+    """建案一步到位里的法院信息（一审）；完整司法机关字段见 PUT /cases/{case_id}/judicial。"""
+    court: str = Field(default="", max_length=256, description="法院")
+    court_case_no: str = Field(default="", max_length=128, description="案号")
+    courtroom: str = Field(default="", max_length=128, description="法庭")
+    judge: str = Field(default="", max_length=128, description="法官")
+    clerk: str = Field(default="", max_length=128, description="书记员")
+    filing_date: date | None = Field(default=None, description="立案日期")
+    hearing_date: date | None = Field(default=None, description="开庭日期")
+    hearing_time: str = Field(default="", max_length=8, description="开庭时间 HH:MM")
+    judicial_remark: str = Field(default="", max_length=1000, description="司法机关备注")
+
+
+class CaseFullCreateInput(CaseCreateInput):
+    """建案一步到位：等同新建案件页面的三步（基本信息 → 当事人 → 司法机关/完成）。
+    法律顾问案件第三步是“完成”；其他案件第三步写司法机关（法院）信息并完成。完成后进入“待立案审批”，须案件主管审批。"""
+    litigants: "CaseLitigantsInput | None" = Field(default=None, description=(
+        "当事人：原告/被告/第三人名称及证件（*_identities 每项须有名称、组织类型、证件号）；非顾问案件至少一名被告"))
+    judicial: "CaseFullJudicialInput | None" = Field(default=None, description=(
+        "一审法院信息（非法律顾问案件的第三步；可只填已知的）。刑事公安/检察院、二审再审信息建案后在案件里补"))
+    completion_comment: str = Field(default="", max_length=500, description="完成新建的说明")
 
 
 class CaseCounselBasicInput(BaseModel):
@@ -391,6 +421,8 @@ class CounselCaseSearchInput(BaseModel):
 
 
 class CaseJudicialInput(BaseModel):
+    """新建案件第三步（司法机关信息并完成新建），只在建案流程中可用（案件处于“当事人已填”步骤）。
+    建案完成后修改法院信息请用 PUT /cases/{case_id}/court-info（页面“修改法院信息”，字段按审级加 first_/second_/retrial_ 前缀）。"""
     # 当前网页端使用的兼容法院字段。
     court: str = Field(default="", max_length=256)
     court_case_no: str = Field(default="", max_length=128)
@@ -495,3 +527,6 @@ class CaseUnarchiveRequestInput(BaseModel):
 class CaseUnarchiveReviewInput(BaseModel):
     approved: bool
     comment: str = Field(default="", max_length=1000)
+
+
+CaseFullCreateInput.model_rebuild()

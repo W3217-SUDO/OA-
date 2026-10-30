@@ -16,7 +16,7 @@ from app.models_shared import (
     BatchClueCaseInput, ClueBatchCollectionInput, ClueBatchSubmitInput, ClueCaseContractResolveInput, ClueCollectionInput,
     ClueReviewInput, ClueSourceContractBindingInput, ClueTurnOnAuditInput, EvidenceCreateInput, EvidenceUpdateInput,
     InvestigationAssignmentInput, InvestigationBatchDeleteInput, InvestigationFeeInput, InvestigationPartyInput, InvestigationTaskInput,
-    RecordInput, RecordUpdate, TaskActionInput,
+    InvestigationRecordInput, InvestigationRecordUpdate, RecordInput, RecordUpdate, TaskActionInput,
 )
 from fastapi import APIRouter
 from app.areas.investigation.task_details import router as task_detail_router
@@ -136,7 +136,7 @@ async def clue_import_template(_: dict = Depends(current_identity)):
 
 
 @router.post(f"{settings.api_prefix}/investigations/records", status_code=status.HTTP_201_CREATED)
-async def create_investigation_record(body: RecordInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def create_investigation_record(body: InvestigationRecordInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import _require_role_action
     await _require_role_action(identity, db, "investigation.record.create")
     from app.core.clue_audit_scope import investigation_customer_data
@@ -159,7 +159,11 @@ async def create_investigation_record(body: RecordInput, identity: dict = Depend
         raise HTTPException(status_code=422, detail="调查中心记录类型无效")
     if body.module in {"notary", "evidence"}:
         raise HTTPException(status_code=422, detail="公证和证据必须从线索专用办理入口创建")
-    payload = body.model_dump()
+    from app.core.attachment_links import attach_uploaded_files, check_unlinked_attachments
+    attachments = await check_unlinked_attachments(getattr(body, "attachment_ids", []), identity, db)  # 内部调用可能仍传普通 RecordInput
+    if attachments and body.module != "clue":
+        raise HTTPException(status_code=422, detail="attachment_ids 只用于新建线索；调查任务资料请从合同发布入口或附件接口上传")
+    payload = body.record_payload() if isinstance(body, InvestigationRecordInput) else body.model_dump()
     if body.module == "clue":
         payload["serial_no"] = await _next_investigation_clue_serial(db)
     if await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == payload["serial_no"])):
@@ -230,11 +234,14 @@ async def create_investigation_record(body: RecordInput, identity: dict = Depend
     await _sync_legacy_projection(record, identity, db)
     await db.commit()
     await db.refresh(record)
+    if attachments:
+        await attach_uploaded_files(record.id, attachments, "调查线索附件", identity, db, remark="新建线索附件")
+        await db.refresh(record)
     return _record_dict(record)
 
 
 @router.patch(f"{settings.api_prefix}/investigations/records/{{record_id}}")
-async def update_investigation_record(record_id: int, body: RecordUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def update_investigation_record(record_id: int, body: InvestigationRecordUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import _require_role_action
     await _require_role_action(identity, db, "investigation.record.update")
     from app.core.legacy_sync import (

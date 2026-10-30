@@ -394,6 +394,8 @@ async def create_customer(body: CustomerCreateInput, identity: dict = Depends(cu
         serial_no = await _next_customer_serial_no(db)
     if await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == serial_no)):
         raise HTTPException(status_code=409, detail="业务编号已存在")
+    from app.core.attachment_links import attach_uploaded_files, check_unlinked_attachments
+    attachments = await check_unlinked_attachments(body.attachment_ids, identity, db)
     record = BusinessRecord(
         module="customer", serial_no=serial_no, title=title, customer=title, status=customer_status,
         owner=owner, department=department, description=body.description.strip(), data=data,
@@ -403,6 +405,9 @@ async def create_customer(body: CustomerCreateInput, identity: dict = Depends(cu
     db.add(WorkflowEvent(record_id=record.id, action="创建客户", to_status=record.status, operator=identity["username"], comment="通过新建客户专用入口创建"))
     await _sync_legacy_projection(record, identity, db)
     await db.commit(); await db.refresh(record)
+    if attachments:
+        await attach_uploaded_files(record.id, attachments, "客户文档", identity, db)
+        await db.refresh(record)
     return await _record_dict_for_identity(record, identity, db)
 
 

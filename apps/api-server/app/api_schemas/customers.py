@@ -1,6 +1,8 @@
 """customers 领域请求数据契约。"""
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, create_model, field_validator, model_validator
+
+from app.api_schemas.data_keys import CUSTOMER_DATA_KEYS, CUSTOMER_DATA_LABELS, CUSTOMER_ORGANIZATION_TYPE_VALUES, data_schema, merge_named
 
 
 class CustomerShareInput(BaseModel):
@@ -42,9 +44,33 @@ class CustomerManagersInput(BaseModel):
     comment: str = ""
 
 
-class CustomerPatchInput(BaseModel):
-    description: str | None = Field(default=None, max_length=2000)
-    data: dict = Field(default_factory=dict)
+class _CustomerPatchBase(BaseModel):
+    """客户编辑：只改传入的字段（与原 data 合并）。可直接用具名参数（invoice_title、taxpayer_id…），也可放在 data 里，二者等价。"""
+    description: str | None = Field(default=None, max_length=2000, description="备注")
+    data: dict = Field(default_factory=dict, json_schema_extra=data_schema(CUSTOMER_DATA_KEYS, "客户档案字段"))
+
+    @model_validator(mode="after")
+    def _merge_named_fields(self):
+        named = {key: getattr(self, key, None) for key in CUSTOMER_DATA_LABELS}
+        self.data = merge_named(self.data, named, "客户")
+        return self
+
+
+def _customer_named_field(key: str):
+    label = CUSTOMER_DATA_LABELS[key]
+    if key == "contact_accounts":
+        return (list[str] | None, Field(default=None, max_length=20, description=label))
+    if key in {"is_shared", "is_assisted", "fee_reduction"}:
+        return (str | bool | None, Field(default=None, description=label))
+    if key == "organization_type":
+        return (str | None, Field(default=None, description=label, json_schema_extra={"enum": CUSTOMER_ORGANIZATION_TYPE_VALUES}))
+    return (str | None, Field(default=None, max_length=2000, description=label))
+
+
+CustomerPatchInput = create_model(
+    "CustomerPatchInput", __base__=_CustomerPatchBase, __module__=__name__,
+    **{key: _customer_named_field(key) for key in CUSTOMER_DATA_LABELS},
+)
 
 
 class CustomerEventInput(BaseModel):
@@ -113,9 +139,10 @@ class CustomerCreateInput(BaseModel):
     department: str = ""
     description: str = ""
     customer_managers: list[str] = Field(default_factory=list, max_length=20)
-    customer_type: str | None = None
-    organization_type: str | None = None
-    identity_no: str | None = None
+    customer_type: str | None = Field(default=None, description=CUSTOMER_DATA_LABELS["customer_type"])
+    organization_type: str | None = Field(default=None, description=CUSTOMER_DATA_LABELS["organization_type"],
+                                          json_schema_extra={"enum": CUSTOMER_ORGANIZATION_TYPE_VALUES})
+    identity_no: str | None = Field(default=None, description=CUSTOMER_DATA_LABELS["identity_no"])
     level: str | None = None
     is_shared: str | bool | None = None
     is_assisted: str | bool | None = None
@@ -152,4 +179,6 @@ class CustomerCreateInput(BaseModel):
     registration_postal_code: str | None = None
     registered_capital: str | None = None
     registration_year: str | None = None
-    data: dict = Field(default_factory=dict)
+    data: dict = Field(default_factory=dict, json_schema_extra=data_schema(CUSTOMER_DATA_KEYS, "客户档案字段（与同名顶层参数等价）"))
+    attachment_ids: list[int] = Field(default_factory=list, max_length=20, description=(
+        "客户文档：本人已上传、未关联业务的附件 ID；保存后挂到本客户（类别“客户文档”）。原两步上传方式继续可用。"))

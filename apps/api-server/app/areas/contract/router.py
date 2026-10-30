@@ -142,6 +142,8 @@ async def create_contract_draft(body: ContractDraftInput, identity: dict = Depen
         _record_dict_for_identity, _require_contract_action,
     )
     await _require_contract_action(identity, db, "contract.application.create", "新建")
+    from app.core.attachment_links import attach_uploaded_files, check_unlinked_attachments
+    attachments = await check_unlinked_attachments(body.attachment_ids, identity, db)
     data = _normalize_external_contract_numbers(dict(body.data or {}))
     if body.staff_id:
         staff = await db.get(BusinessRecord, body.staff_id)
@@ -179,6 +181,9 @@ async def create_contract_draft(body: ContractDraftInput, identity: dict = Depen
         db.add(WorkflowEvent(record_id=item.id, action="创建合同草稿", to_status="草稿", operator=identity["username"], comment="通过合同专用入口创建"))
         await _sync_legacy_projection(item, identity, db)
         await db.commit(); await db.refresh(item)
+    if attachments:
+        await attach_uploaded_files(item.id, attachments, "合同附件", identity, db, remark="合同起草时上传")
+        await db.refresh(item)
     return await _record_dict_for_identity(item, identity, db)
 
 

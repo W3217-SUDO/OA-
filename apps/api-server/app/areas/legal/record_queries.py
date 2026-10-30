@@ -1,4 +1,6 @@
 """通用业务记录查询接口。"""
+from typing import Annotated
+
 from app.core.dependencies import (
     AsyncSession, BusinessRecord, ContractApprovalStep, Depends, Query, User, and_, current_identity, false, func, get_db, or_, select, settings,
 )
@@ -12,7 +14,10 @@ router.include_router(case_special_queries_router)
 @router.get(f"{settings.api_prefix}/records")
 async def list_records(
     module: str = Query(min_length=1, max_length=32),
-    keyword: str = "", record_status: str = "", scope: str = Query("all", pattern="^(all|mine|recycle|department|company|audit)$"), statuses: str = "",
+    keyword: str = "", record_status: str = "", scope: str = Query("all", pattern="^(all|mine|recycle|department|company|audit)$"),
+    statuses: Annotated[str, Query(description=(
+        "仅 module=clue 生效：线索状态，逗号分隔。实际状态值：草稿、待审批、待客户审核、已驳回、已拒绝、待取证、已取证、已转案件；"
+        "也接受页面名称：待提交=草稿、待审核=待审批、已拒绝线索=已驳回+已拒绝、已取证线索=已取证+已转案件"))] = "",
     customer_id: int | None = Query(default=None, gt=0), customer: str = "", customer_no: str = "", exclude_archived: bool = False,
     title: str = "", serial_no: str = "", record_type: str = Query("", alias="type"),
     case_no: str = "", fee_type: str = "", contract_body: str = "", source_person: str = "",
@@ -138,7 +143,9 @@ async def list_records(
     if module == "case" and scope == "mine":
         conditions.append(await _case_mine_scope_condition(identity, db))
     if module == "clue" and statuses:
-        requested_statuses = [value.strip() for value in statuses.split(",") if value.strip()]
+        aliases = {"待提交": ["草稿"], "待审核": ["待审批", "待审核"], "已拒绝线索": ["已驳回", "已拒绝"], "已取证线索": ["已取证", "已转案件"]}
+        requested_statuses = list(dict.fromkeys(
+            status for value in statuses.split(",") if value.strip() for status in aliases.get(value.strip(), [value.strip()])))
         if requested_statuses:
             conditions.append(BusinessRecord.status.in_(requested_statuses))
     if module == "clue" and scope == "mine":

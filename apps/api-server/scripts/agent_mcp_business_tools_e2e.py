@@ -1,4 +1,4 @@
-"""业务工具端到端（手动运行）：真实应用（隔离 SQLite）+ 登录 + 个人令牌 + /api/v1/mcp。用法：python tests/regression/agent_mcp_business_tools_e2e.py <apps/api-server 目录>"""
+"""业务工具与接口对齐端到端（手动运行）：真实应用（隔离 SQLite）+ 登录 + 个人令牌 + /api/v1/mcp。用法：python scripts/agent_mcp_business_tools_e2e.py <apps/api-server 目录>"""
 import asyncio, json, os, secrets, sys, uuid
 from pathlib import Path
 
@@ -75,6 +75,7 @@ async def main():
 
             ov, err, raw = await call("biz_customer_overview", {"customer_name": cname})
             check("customer_overview finds customer and contact", not err and ov["customer"]["title"] == cname and len(ov["contacts"]) == 1, raw)
+            ov_customer_id = ov["customer"]["id"]
 
             mt, err, raw = await call("biz_customer_maintain", {"customer_name": cname, "profile": {"invoice_phone": "021-1234"},
                                                                  "note": {"content": PREFIX + "回访"}, "confirm": True})
@@ -211,6 +212,76 @@ async def main():
             check("biz=case,workbench shows case tools and hides customer tools", "biz_customer_create" not in scoped and "biz_case_fill_payment_elements" in scoped, scoped)
             res, err, raw = await call("biz_customer_create", {**args, "title": cname + "2"}, path="/api/v1/mcp?biz=case")
             check("out-of-scope business tool refused", err, raw)
+
+            # 8 接口层对齐（G1–G12）：原子工具直接可用，旧写法照常
+            async def atomic(name, arguments, write=True):
+                return await call("oa_call_write_tool" if write else "oa_call_read_tool", {"name": name, "arguments": arguments})
+
+            async def upload(name):
+                r = await http.post("/api/v1/agent-tools/upload", files={"file": (name, b"%PDF-1.4\n%codex\n%%EOF\n", "application/pdf")}, headers=H)
+                body = r.json()
+                return body.get("id") or (body.get("attachment") or {}).get("id")
+
+            att = await upload(PREFIX + "合同2.pdf")
+            res, err, raw = await atomic("oa_create_contract_draft_post", {"body": {"title": PREFIX + "合同G", "customer": cname, "owner": "admin", "department": "上海分所",
+                                                                               "description": "G1", "contract_type": "争议解决合同", "fee_type": "全风险代理",
+                                                                               "contract_body": "律所", "signed_at": "2026-10-30", "attachment_ids": [att]}})
+            check("G1/G2/G4 contract: named fields + attachment in one call", not err and (res.get("data") or {}).get("type") == "争议解决合同"
+                  and (res.get("data") or {}).get("fee_type") == "全风险代理", raw)
+            g_contract_id = res.get("id")
+            files = (await http.get("/api/v1/attachments", params={"record_id": g_contract_id}, headers=H)).json()
+            check("G4 attachment copied onto contract", any(f.get("category") == "合同附件" for f in (files.get("items") if isinstance(files, dict) else files) or []), files)
+            res, err, raw = await atomic("oa_submit_contract_post", {"path": {"contract_id": g_contract_id}, "body": {"approvers": ["admin"]}})
+            check("G10 contract submit works with attachment from create", not err, raw)
+            r = await http.post("/api/v1/contracts", json={"title": PREFIX + "合同旧", "customer": cname, "owner": "admin", "department": "上海分所",
+                                                           "description": "old", "data": {"type": "法律顾问合同", "fee_type": "固定收费", "amount": 0, "signed_at": "2026-10-30"}}, headers=H)
+            check("old contract payload (frontend shape) still works", r.status_code == 201 and r.json()["data"]["type"] == "法律顾问合同", r.text[:300])
+            r = await http.post("/api/v1/contracts", json={"title": PREFIX + "合同冲突", "customer": cname, "owner": "admin", "department": "上海分所",
+                                                           "data": {"type": "法律顾问合同"}, "contract_type": "其他"}, headers=H)
+            check("conflicting contract_type vs data.type rejected", r.status_code == 422, r.text[:300])
+            r = await http.post(f"/api/v1/attachments", files={"file": ("x.pdf", b"%PDF-1.4\n", "application/pdf")}, data={"record_id": str(g_contract_id), "category": "合同附件"}, headers=H)
+            used = r.json().get("id")
+            r = await http.post("/api/v1/contracts", json={"title": PREFIX + "合同附件已用", "customer": cname, "owner": "admin", "department": "上海分所",
+                                                           "contract_type": "其他", "fee_type": "固定收费", "attachment_ids": [used]}, headers=H)
+            check("G4 refuses attachment already linked elsewhere (before creating)", r.status_code == 422 and not (await http.get("/api/v1/records", params={"module": "contract", "title": PREFIX + "合同附件已用"}, headers=H)).json().get("items"), r.text[:300])
+
+            res, err, raw = await atomic("oa_patch_customer_patch", {"path": {"customer_id": ov_customer_id}, "body": {"invoice_phone": "021-9999", "level": "签约客户"}})
+            check("G1 customer patch with named fields", not err and (res.get("data") or {}).get("invoice_phone") == "021-9999", raw)
+            res, err, raw = await atomic("oa_create_customer_post", {"body": {"title": PREFIX + "错类型", "organization_type": "企业", "customer_managers": ["admin"]}})
+            check("G11 organization_type enum enforced in MCP schema", err and "枚举" in json.dumps(raw, ensure_ascii=False), raw)
+
+            ip2, err, raw = await atomic("oa_create_contract_investigation_post", {"path": {"contract_id": contract_id}, "body": {
+                "title": PREFIX + "调查G3", "authorized_from": "2026-10-01", "authorized_to": "2027-09-30", "authorization_range": "全国", "authorization_area": "全国"}})
+            check("G3 new names authorization_range/area", not err and (ip2.get("data") or {}).get("region") in ("全国", None) , raw)
+            inv_rows = (await http.get("/api/v1/records", params={"module": "investigation", "serial_no": inv_no}, headers=H)).json().get("items", [])
+            att2 = await upload(PREFIX + "线索.pdf")
+            res, err, raw = await atomic("oa_create_investigation_record_post", {"body": {"module": "clue", "serial_no": "", "title": "", "source_task_id": inv_rows[0]["id"],
+                                                                                    "sales_channel": "电商平台", "product": PREFIX + "产品G", "shop_name": PREFIX + "店G",
+                                                                                    "investigated_at": "2026-10-30", "indictees": [{"name": PREFIX + "主体"}], "attachment_ids": [att2]}})
+            data = res.get("data") or {}
+            check("G1/G4 clue named fields merged + attachment", not err and data.get("sales_channel") == "电商平台" and data.get("platform") == "电商平台"
+                  and data.get("indictee") == PREFIX + "主体", raw)
+            g_clue_id = res.get("id")
+            res2, err, raw = await atomic("oa_update_investigation_record_patch", {"path": {"record_id": g_clue_id}, "body": {"product": PREFIX + "产品改"}})
+            d2 = res2.get("data") or {}
+            check("G1 clue PATCH with named field keeps other keys", not err and d2.get("product") == PREFIX + "产品改" and d2.get("shop_name") == PREFIX + "店G", raw)
+            g_clue_no = data.get("serial_no") or (res.get("serial_no") if isinstance(res, dict) else None)
+            res, err, raw = await atomic("oa_list_records_get", {"query": {"module": "clue", "statuses": "待提交"}}, write=False)
+            check("G12 statuses=待提交 (page name) finds draft clue", not err and any(x.get("status") == "草稿" for x in res.get("items", [])), raw)
+
+            full = {"contract_record_id": contract_id, "title": PREFIX + "一步建案", "case_type": "民事案件", "client_position": "原告/申请人",
+                    "handling_lawyers": ["admin"], "cause_or_charge": "侵害商标权纠纷",
+                    "litigants": {"plaintiffs": [cname], "plaintiff_identities": [{"name": cname, "organization_type": "公司企业", "identity_no": "91310000MA1TEST02X"}],
+                                  "defendants": [PREFIX + "被告2"], "defendant_identities": [{"name": PREFIX + "被告2", "organization_type": "公司企业", "identity_no": "91310000MA1TEST03X"}]},
+                    "judicial": {"court": "上海知识产权法院"}}
+            res, err, raw = await atomic("oa_create_case_complete_post", {"body": full})
+            check("G6 one-step case creation reaches 待立案审批", not err and res.get("status") == "待立案审批", raw)
+            res, err, raw = await atomic("oa_update_case_judicial_put", {"path": {"case_id": res.get("id") or case_id}, "body": {"court": "x"}})
+            check("G8 judicial after creation points to court-info", err and "court-info" in json.dumps(raw, ensure_ascii=False), raw)
+            res, err, raw = await atomic("oa_claim_customer_post", {"path": {"customer_id": ov_customer_id}, "body": {"comment": "测试"}})
+            check("G9 legacy IsSuccess=false surfaces as MCP error", err and "IsSuccess" in json.dumps(raw, ensure_ascii=False), raw)
+            r = await http.post(f"/api/v1/customers/{ov_customer_id}/claim", json={"comment": "测试"}, headers=H)
+            check("G9 web page still gets HTTP 200 envelope", r.status_code == 200 and r.json().get("IsSuccess") is False, r.text[:200])
 
             # 7 普通账号、只读令牌：看不到业务写工具，调用写工具被拒
             uname = "codex-biz-" + uuid.uuid4().hex[:6]

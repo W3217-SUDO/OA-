@@ -25,7 +25,7 @@ from app.core.dependencies import (
 from app.models_shared import (
     ArchiveCheckInput, ArchiveReviewInput, CaseArbitrationBasicInput, CaseAssignmentInput,
     CaseAssistedFeeConfirmInput, CaseAssistedFeeCreateInput, CaseAssistedFeeUpdateInput, CaseBatchDeleteInput, CaseBatchFeeInput, CaseBatchUpdateInput, CaseCommissionBatchInput, CaseCommissionPreviewInput, CaseCounselBasicInput, CaseCourtInfoInput,
-    CaseCreateInput, CaseCreationCompleteInput, CaseCreationReviewInput, CaseExecutionStatusInput, CaseHearingLawyerInput,
+    CaseCreateInput, CaseFullCreateInput, CaseCreationCompleteInput, CaseCreationReviewInput, CaseExecutionStatusInput, CaseHearingLawyerInput,
     CaseJudicialInput, CaseLitigantsInput, CaseLogInput, CaseMergeInput, CaseNormalBasicInput,
     CaseNotaryInfoInput, CasePhaseChangeInput, CaseProgressInput, CaseSettlementAmountInput,
     CaseTaskFinishedInput, CaseUnarchiveRequestInput, CaseUnarchiveReviewInput, CounselCaseSearchInput, CriminalCourtMaintenanceInput, CriminalProcuratorateMaintenanceInput,
@@ -1280,6 +1280,8 @@ async def list_case_reference_options(identity: dict = Depends(current_identity)
 @router.post(f"{settings.api_prefix}/cases", status_code=status.HTTP_201_CREATED)
 async def create_case(body: CaseCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """从有效合同建立案件；客户、部门和合同编号均以合同资料为准。"""
+    from app.core.attachment_links import check_unlinked_attachments
+    attachments = await check_unlinked_attachments(body.attachment_ids, identity, db)
     from app.core.cases import (
         _case_team_payload, _next_case_serial, _resolve_active_case_people,
     )
@@ -1472,7 +1474,33 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
     await _sync_legacy_projection(record, identity, db)
     await db.commit()
     await db.refresh(record)
+    if attachments:
+        from app.core.attachment_links import attach_uploaded_files
+        await attach_uploaded_files(record.id, attachments, body.attachment_category or "普通附件", identity, db)
+        await db.refresh(record)
     return _record_dict(record)
+
+
+@router.post(f"{settings.api_prefix}/cases/create-complete", status_code=status.HTTP_201_CREATED)
+async def create_case_complete(body: CaseFullCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """建案一步到位：依次执行新建案件页面的三步——新建（POST /cases）→ 当事人（PUT /cases/{id}/litigants）→
+    法律顾问案件“完成”（complete-creation）/其他案件司法机关信息并完成（judicial）。每步沿用原入口的权限与校验；
+    某步失败时已建的案件保留在对应步骤（与页面中途离开相同），返回 case_id 与失败原因，可在案件新建页继续。"""
+    created = await create_case(CaseCreateInput.model_validate(body.model_dump(include=set(CaseCreateInput.model_fields))), identity, db)
+    case_id, done = int(created["id"]), ["新建案件"]
+    try:
+        await update_case_litigants(case_id, body.litigants or CaseLitigantsInput(), identity, db)
+        done.append("当事人")
+        if body.case_type == "法律顾问":
+            result = await complete_case_creation(case_id, CaseCreationCompleteInput(comment=body.completion_comment), identity, db)
+        else:
+            result = await update_case_judicial(case_id, CaseJudicialInput(**(body.judicial.model_dump() if body.judicial else {})), identity, db)
+        done.append("完成新建")
+    except HTTPException as exc:
+        raise HTTPException(exc.status_code, detail={
+            "message": f"案件 {created.get('serial_no')} 已新建，但“{'当事人' if len(done) == 1 else '完成新建'}”一步失败；请勿重复新建，可在案件新建页继续",
+            "case_id": case_id, "serial_no": created.get("serial_no"), "completed_steps": done, "error": exc.detail}) from exc
+    return result if isinstance(result, dict) else created
 
 
 @router.delete(f"{settings.api_prefix}/cases/{{case_id}}", status_code=status.HTTP_204_NO_CONTENT)
@@ -2515,8 +2543,11 @@ async def update_case_judicial(case_id: int, body: CaseJudicialInput, identity: 
     await _require_record_owner_or_manager(case_record, identity, db)
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="归档中的案件不能修改司法机关信息")
-    if str((case_record.data or {}).get("case_creation_step") or "") != "litigants":
-        raise HTTPException(status_code=409, detail="请先完成当事人信息")
+    creation_step = str((case_record.data or {}).get("case_creation_step") or "")
+    if creation_step == "completed":
+        raise HTTPException(status_code=409, detail="案件已完成新建，司法机关步骤只用于建案；修改法院信息请用 PUT /cases/{case_id}/court-info（页面“修改法院信息”）")
+    if creation_step != "litigants":
+        raise HTTPException(status_code=409, detail="请先完成当事人信息（PUT /cases/{case_id}/litigants）")
     case_type = str((case_record.data or {}).get("case_type") or "")
     if case_type == "法律顾问":
         raise HTTPException(status_code=409, detail="法律顾问案件不使用司法机关步骤")

@@ -211,7 +211,13 @@ async def execute_original(
         return {"status_code": response.status_code}
     content_type = response.headers.get("content-type", "application/octet-stream").lower()
     if "attachment" not in response.headers.get("content-disposition", "").lower() and "json" in content_type:
-        return safe_result(response.json(), context.bearer)
+        payload = response.json()
+        # 部分沿用旧系统的接口在业务拒绝时仍回 HTTP 200 + {"IsSuccess": false, "Message": ...}（网页按此显示提示，保持不变）；
+        # 对智能体统一按失败返回，避免把“未执行”当成功。
+        if isinstance(payload, dict) and payload.get("IsSuccess") is False:
+            raise HTTPException(409, safe_result({"message": str(payload.get("Message") or "原接口返回业务失败"),
+                                                 "legacy_response": payload}, context.bearer))
+        return safe_result(payload, context.bearer)
     # 原业务接口只执行一次；生成字节交给统一 OSS 服务，失败不得重放原写接口。
     try:
         return await cache_result(
