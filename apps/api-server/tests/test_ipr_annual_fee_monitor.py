@@ -29,6 +29,17 @@ class IprAnnualFeeMonitorTest(unittest.TestCase):
         self.assertEqual(afm._standard_fee("实用新型", 10), 2000)
         self.assertEqual(afm._standard_fee("外观设计", 11), 3000)
 
+    def test_relief_rate_and_filters(self):
+        self.assertEqual(afm._relief_rate({"cost_slow_rate": "0.85"}), 0.85)
+        self.assertEqual(afm._relief_rate({"cost_slow_rate": "1.00"}), 0.0)
+        self.assertEqual(afm._relief_rate({}), 0.0)
+        rows = [
+            {"serial_no": "SHPU1910840", "application_no": "2019224588808", "applicant": "上海汉欣", "application_date": date(2019, 12, 31)},
+            {"serial_no": "SHPI1500668", "application_no": "2015108778345", "applicant": "上海语路", "application_date": date(2015, 12, 4)},
+        ]
+        self.assertEqual([row["serial_no"] for row in afm._filter_rows(rows, {"case_no": "2015108"}, None, None)], ["SHPI1500668"])
+        self.assertEqual([row["serial_no"] for row in afm._filter_rows(rows, {"applicant": "汉欣"}, date(2019, 1, 1), None)], ["SHPU1910840"])
+
     def test_first_paid_year_and_leap_day(self):
         self.assertEqual(afm._first_paid_year_no({"first_annual_year": "3"}, date(2015, 5, 1)), 3)
         self.assertEqual(afm._first_paid_year_no({"authorization_date": "2016-04-30T00:00:00"}, date(2015, 5, 1)), 1)

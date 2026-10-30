@@ -2,16 +2,16 @@
 
 在监控中的专利：案件上点过“加入/放弃年费监控”的以此为准；迁移的老案件没点过的，按老系统案件阶段“年费监控”算。
 应缴日按申请日周年日算，第 N 年年费在第 N 年开始（申请日 + N-1 年）前缴纳，逾期 6 个月内可补缴。
-缴费记录写在 ipr_case_annual_fees（fee_year 为应缴日所在公历年），已缴的不再进年费监控。
+高勤兰 10-30 199162：已缴不手动登记，按老系统看这一年度的年费官费有没有上传缴费凭证（官费收据）；
+老系统年费记录在 IPR_Case_FeeItem（FeeTypeId=3，Yearly=第几年度，Amount/ActualAmount/BillAmount=通/回/付）。
 """
 from calendar import monthrange
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
 
 from app.core.dependencies import (
-    AsyncSession, BusinessRecord, Decimal, Depends, HTTPException, IprCaseAnnualFee, Query, WorkflowEvent,
-    and_, current_identity, date, get_db, or_, select, settings,
+    AsyncSession, BusinessRecord, Depends, HTTPException, Query,
+    and_, current_identity, date, get_db, or_, select, settings, text,
 )
 
 router = APIRouter()
@@ -23,14 +23,13 @@ _FEE_TABLE = {
     "外观设计": [(3, 600), (5, 900), (8, 1200), (10, 2000), (15, 3000)],
 }
 _QUARTER_NAMES = {1: "一", 2: "二", 3: "三", 4: "四"}
-_PAID = "已缴"
-
-
-class IprAnnualFeePaidInput(BaseModel):
-    case_id: int = Field(ge=1)
-    fee_year: int = Field(ge=2000, le=2100)
-    paid_date: date | None = None
-    notes: str = Field(default="", max_length=500)
+_LEGACY_ANNUAL_FEE_TYPE_ID = 3
+# 列表上方的筛选，照老系统：参数名 -> 行里比对的字段。
+_FILTER_FIELDS = {
+    "applicant": ("applicant",), "customer": ("customer",), "case_source": ("case_source",),
+    "case_type": ("case_type",), "writer": ("writer",), "case_no": ("serial_no", "application_no"),
+    "case_phase": ("case_phase",), "procurator": ("procurator",),
+}
 
 
 def _add_months(value: date, months: int) -> date:
@@ -66,6 +65,15 @@ def _standard_fee(kind: str, year_no: int) -> int:
         if year_no <= last_year:
             return amount
     return 0
+
+
+def _relief_rate(data: dict) -> float:
+    """案件上的费减比例：0.85 即费减 85%；1.00 是迁移数据里“无费减”的写法。"""
+    try:
+        rate = float(str(data.get("cost_slow_rate") or "0").strip())
+    except ValueError:
+        return 0.0
+    return rate if 0 < rate < 1 else 0.0
 
 
 def _first_paid_year_no(data: dict, application_date: date) -> int:
@@ -111,17 +119,32 @@ def _views(today: date) -> list[dict]:
     return items
 
 
+async def _legacy_annual_fee_items(serial_nos: list[str], db: AsyncSession) -> dict[tuple[str, int], dict]:
+    """老系统年费记录：同一案件同一年度取一条，有官费收据的优先。"""
+    found: dict[tuple[str, int], dict] = {}
+    for offset in range(0, len(serial_nos), 500):
+        rows = (await db.execute(text(
+            'SELECT "CaseNo", "Yearly", "Amount", "ActualAmount", "BillAmount", "BillNo", "BillFileName" '
+            'FROM "IPR_Case_FeeItem" WHERE "FeeTypeId" = :fee_type AND coalesce("IsActive", \'T\') = \'T\' '
+            'AND "Yearly" IS NOT NULL AND "CaseNo" = ANY(:case_nos)'
+        ), {"fee_type": _LEGACY_ANNUAL_FEE_TYPE_ID, "case_nos": serial_nos[offset:offset + 500]})).all()
+        for case_no, yearly, amount, actual, bill_amount, bill_no, bill_file in rows:
+            paid = bool((bill_no or "").strip() or (bill_file or "").strip())
+            key = (str(case_no), int(yearly))
+            if key in found and found[key]["paid"] and not paid:
+                continue
+            found[key] = {
+                "paid": paid, "inform_amount": float(amount or 0),
+                "gained_amount": float(actual or 0), "bill_amount": float(bill_amount or 0),
+            }
+    return found
+
+
 async def _monitored_fee_rows(identity: dict, db: AsyncSession, start: date, end: date) -> list[dict]:
     from app.core.ipr import _ipr_case_list_conditions
     conditions = await _ipr_case_list_conditions(identity, db, case_kind="专利")
     records = list((await db.scalars(select(BusinessRecord).where(*conditions, _monitoring_condition()))).all())
-    paid = {}
-    if records:
-        for row in (await db.scalars(select(IprCaseAnnualFee).where(
-            IprCaseAnnualFee.case_record_id.in_([item.id for item in records]),
-            IprCaseAnnualFee.fee_year.between(start.year, end.year),
-        ))).all():
-            paid[(row.case_record_id, row.fee_year)] = row
+    legacy = await _legacy_annual_fee_items([item.serial_no for item in records], db) if records else {}
     rows = []
     for record in records:
         data = dict(record.data or {})
@@ -130,6 +153,7 @@ async def _monitored_fee_rows(identity: dict, db: AsyncSession, start: date, end
         if not application_date or not kind:
             continue
         term, first_paid = _term_years(kind, application_date), _first_paid_year_no(data, application_date)
+        relief = _relief_rate(data)
         for year in range(start.year, end.year + 1):
             year_no = year - application_date.year + 1
             if year_no <= first_paid or year_no > term:
@@ -137,20 +161,35 @@ async def _monitored_fee_rows(identity: dict, db: AsyncSession, start: date, end
             due = _add_months(application_date, 12 * (year_no - 1))
             if not start <= due <= end:
                 continue
-            fee = paid.get((record.id, year))
+            fee = legacy.get((record.serial_no, year_no)) or {}
             rows.append({
                 "case_id": record.id, "serial_no": record.serial_no,
                 "case_name": data.get("case_name") or record.title or "", "case_type": data.get("case_type") or "",
-                "customer": record.customer or "", "applicant": data.get("applicant_name") or data.get("applicant") or "",
+                "case_phase": data.get("case_phase") or "",
+                "customer": record.customer or "", "applicant": data.get("applicant_name") or data.get("applicant") or record.customer or "",
                 "application_no": data.get("application_no") or "", "application_date": application_date,
                 "procurator": data.get("procurator_name") or data.get("procurator") or "",
-                "fee_year": year, "year_no": year_no, "fee_name": f"第{year_no}年年费",
-                "standard_amount": _standard_fee(kind, year_no), "due_date": due,
-                "late_deadline": _add_months(due, 6),
-                "status": fee.status if fee else "待缴", "paid_date": fee.paid_date if fee else None,
-                "annual_fee_id": fee.id if fee else None,
+                "case_source": data.get("case_origin_people_name") or "",
+                "writer": data.get("copywriter_name") or data.get("writer") or "",
+                "fee_year": year, "year_no": year_no, "due_date": due,
+                "period_end": _add_months(due, 12) - date.resolution,
+                "annual_fee": round(_standard_fee(kind, year_no) * (1 - relief)), "relief_rate": round(relief * 100),
+                "inform_amount": fee.get("inform_amount", 0), "gained_amount": fee.get("gained_amount", 0),
+                "bill_amount": fee.get("bill_amount", 0), "paid": bool(fee.get("paid")),
             })
     rows.sort(key=lambda item: (item["due_date"], item["serial_no"]))
+    return rows
+
+
+def _filter_rows(rows: list[dict], filters: dict[str, str], date_from: date | None, date_to: date | None) -> list[dict]:
+    for name, value in filters.items():
+        word = (value or "").strip()
+        if word:
+            rows = [row for row in rows if any(word in str(row[field]) for field in _FILTER_FIELDS[name])]
+    if date_from:
+        rows = [row for row in rows if row["application_date"] >= date_from]
+    if date_to:
+        rows = [row for row in rows if row["application_date"] <= date_to]
     return rows
 
 
@@ -163,14 +202,19 @@ async def ipr_annual_fee_monitor_summary(identity: dict = Depends(current_identi
     rows = await _monitored_fee_rows(identity, db, min(item["start"] for item in views), max(item["end"] for item in views))
     items = []
     for view in views:
-        count = sum(1 for row in rows if view["start"] <= row["due_date"] <= view["end"] and not (view["unpaid_only"] and row["status"] == _PAID))
+        count = sum(1 for row in rows if view["start"] <= row["due_date"] <= view["end"] and not (view["unpaid_only"] and row["paid"]))
         items.append({"key": view["key"], "group": view["group"], "label": view["label"], "count": count})
     return {"items": items}
 
 
 @router.get(f"{settings.api_prefix}/ipr/annual-fee-monitor/items")
 async def list_ipr_annual_fee_monitor_items(
-    view: str = Query(min_length=1, max_length=32), keyword: str = Query(default="", max_length=100),
+    view: str = Query(min_length=1, max_length=32),
+    applicant: str = Query(default="", max_length=100), customer: str = Query(default="", max_length=100),
+    case_source: str = Query(default="", max_length=100), case_type: str = Query(default="", max_length=100),
+    writer: str = Query(default="", max_length=100), case_no: str = Query(default="", max_length=100),
+    case_phase: str = Query(default="", max_length=100), procurator: str = Query(default="", max_length=100),
+    date_from: date | None = None, date_to: date | None = None,
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.permissions import _require_record_module_menu
@@ -180,56 +224,9 @@ async def list_ipr_annual_fee_monitor_items(
         raise HTTPException(status_code=422, detail="年费清单/监控项目无效，请刷新页面")
     rows = await _monitored_fee_rows(identity, db, selected["start"], selected["end"])
     if selected["unpaid_only"]:
-        rows = [row for row in rows if row["status"] != _PAID]
-    word = keyword.strip()
-    if word:
-        rows = [row for row in rows if any(word in str(row[key]) for key in ("serial_no", "case_name", "customer", "applicant", "application_no"))]
+        rows = [row for row in rows if not row["paid"]]
+    rows = _filter_rows(rows, {
+        "applicant": applicant, "customer": customer, "case_source": case_source, "case_type": case_type,
+        "writer": writer, "case_no": case_no, "case_phase": case_phase, "procurator": procurator,
+    }, date_from, date_to)
     return {"items": rows, "total": len(rows), "label": selected["label"], "group": selected["group"]}
-
-
-async def _annual_fee_case(case_id: int, fee_year: int, identity: dict, db: AsyncSession) -> tuple[BusinessRecord, dict]:
-    from app.core.permissions import _ensure_record_module, _require_role_action
-    await _require_role_action(identity, db, "ipr.case.reminder.manage")
-    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
-    rows = [row for row in await _monitored_fee_rows(identity, db, date(fee_year, 1, 1), date(fee_year, 12, 31)) if row["case_id"] == record.id]
-    if not rows:
-        raise HTTPException(status_code=404, detail="该案件这一年没有需要缴纳的年费，或已不在年费监控中")
-    return record, rows[0]
-
-
-@router.post(f"{settings.api_prefix}/ipr/annual-fee-monitor/paid")
-async def mark_ipr_annual_fee_paid(body: IprAnnualFeePaidInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    """登记已缴：写入案件年费记录，之后不再进年费监控。"""
-    from app.core.finance import _sync_ipr_annual_fee_reminder
-    record, item = await _annual_fee_case(body.case_id, body.fee_year, identity, db)
-    paid_date = body.paid_date or date.today()
-    row = await db.scalar(select(IprCaseAnnualFee).where(IprCaseAnnualFee.case_record_id == record.id, IprCaseAnnualFee.fee_year == body.fee_year))
-    if row is None:
-        row = IprCaseAnnualFee(
-            case_record_id=record.id, fee_year=body.fee_year, fee_name=item["fee_name"],
-            amount=Decimal(item["standard_amount"]), currency="CNY", due_date=item["due_date"], created_by=identity["username"],
-        )
-        db.add(row)
-    row.status, row.paid_date, row.reminder_date = _PAID, paid_date, None
-    if body.notes.strip():
-        row.notes = body.notes.strip()
-    await db.flush()
-    await _sync_ipr_annual_fee_reminder(row, record, identity, db)
-    db.add(WorkflowEvent(record_id=record.id, action="登记知识产权案件年费已缴", from_status=record.status, to_status=record.status,
-                         operator=identity["username"], comment=f"{item['fee_name']}（应缴日 {item['due_date']}）；缴费日期：{paid_date}"))
-    await db.commit()
-    return {"case_id": record.id, "fee_year": body.fee_year, "status": row.status, "paid_date": row.paid_date}
-
-
-@router.post(f"{settings.api_prefix}/ipr/annual-fee-monitor/unpaid")
-async def undo_ipr_annual_fee_paid(body: IprAnnualFeePaidInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    """撤销已缴：登记错了改回待缴，重新进年费监控。"""
-    record, item = await _annual_fee_case(body.case_id, body.fee_year, identity, db)
-    row = await db.scalar(select(IprCaseAnnualFee).where(IprCaseAnnualFee.case_record_id == record.id, IprCaseAnnualFee.fee_year == body.fee_year))
-    if row is None or row.status != _PAID:
-        raise HTTPException(status_code=409, detail="这一年的年费还没有登记已缴")
-    row.status, row.paid_date = "待缴", None
-    db.add(WorkflowEvent(record_id=record.id, action="撤销知识产权案件年费已缴", from_status=record.status, to_status=record.status,
-                         operator=identity["username"], comment=f"{item['fee_name']}（应缴日 {item['due_date']}）"))
-    await db.commit()
-    return {"case_id": record.id, "fee_year": body.fee_year, "status": row.status}
