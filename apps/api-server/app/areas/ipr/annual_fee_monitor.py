@@ -6,12 +6,15 @@
 老系统年费记录在 IPR_Case_FeeItem（FeeTypeId=3，Yearly=第几年度，Amount/ActualAmount/BillAmount=通/回/付）。
 """
 from calendar import monthrange
+from urllib.parse import quote
 
+from docx.enum.section import WD_ORIENT
 from fastapi import APIRouter
 
+from app.core.constants import WORD_DOCUMENT_CONTENT_TYPE
 from app.core.dependencies import (
-    AsyncSession, BusinessRecord, Depends, HTTPException, Query,
-    and_, current_identity, date, get_db, or_, select, settings, text,
+    AsyncSession, BusinessRecord, Depends, Document, HTTPException, Query, Response,
+    and_, current_identity, date, get_db, io, or_, select, settings, text,
 )
 
 router = APIRouter()
@@ -207,26 +210,88 @@ async def ipr_annual_fee_monitor_summary(identity: dict = Depends(current_identi
     return {"items": items}
 
 
-@router.get(f"{settings.api_prefix}/ipr/annual-fee-monitor/items")
-async def list_ipr_annual_fee_monitor_items(
-    view: str = Query(min_length=1, max_length=32),
-    applicant: str = Query(default="", max_length=100), customer: str = Query(default="", max_length=100),
-    case_source: str = Query(default="", max_length=100), case_type: str = Query(default="", max_length=100),
-    writer: str = Query(default="", max_length=100), case_no: str = Query(default="", max_length=100),
-    case_phase: str = Query(default="", max_length=100), procurator: str = Query(default="", max_length=100),
-    date_from: date | None = None, date_to: date | None = None,
-    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
-):
+class _ListQuery:
+    """列表、导出共用的查询条件：左侧项目 + 上方筛选；导出时 keys 为勾选的“案件id-年份”。"""
+
+    def __init__(
+        self,
+        view: str = Query(min_length=1, max_length=32),
+        applicant: str = Query(default="", max_length=100), customer: str = Query(default="", max_length=100),
+        case_source: str = Query(default="", max_length=100), case_type: str = Query(default="", max_length=100),
+        writer: str = Query(default="", max_length=100), case_no: str = Query(default="", max_length=100),
+        case_phase: str = Query(default="", max_length=100), procurator: str = Query(default="", max_length=100),
+        date_from: date | None = None, date_to: date | None = None,
+        keys: str = Query(default="", max_length=20000),
+    ):
+        self.view, self.date_from, self.date_to = view, date_from, date_to
+        self.filters = {
+            "applicant": applicant, "customer": customer, "case_source": case_source, "case_type": case_type,
+            "writer": writer, "case_no": case_no, "case_phase": case_phase, "procurator": procurator,
+        }
+        self.keys = {item.strip() for item in keys.split(",") if item.strip()}
+
+
+async def _list_rows(query: _ListQuery, identity: dict, db: AsyncSession) -> tuple[dict, list[dict]]:
     from app.core.permissions import _require_record_module_menu
     await _require_record_module_menu("ipr_case", identity, db, action="查看")
-    selected = next((item for item in _views(date.today()) if item["key"] == view), None)
+    selected = next((item for item in _views(date.today()) if item["key"] == query.view), None)
     if not selected:
         raise HTTPException(status_code=422, detail="年费清单/监控项目无效，请刷新页面")
     rows = await _monitored_fee_rows(identity, db, selected["start"], selected["end"])
     if selected["unpaid_only"]:
         rows = [row for row in rows if not row["paid"]]
-    rows = _filter_rows(rows, {
-        "applicant": applicant, "customer": customer, "case_source": case_source, "case_type": case_type,
-        "writer": writer, "case_no": case_no, "case_phase": case_phase, "procurator": procurator,
-    }, date_from, date_to)
+    rows = _filter_rows(rows, query.filters, query.date_from, query.date_to)
+    if query.keys:
+        rows = [row for row in rows if f"{row['case_id']}-{row['fee_year']}" in query.keys]
+    return selected, rows
+
+
+_EXPORT_HEADERS = ["申请人", "专利名称", "案件类型", "案件编号", "申请号", "申请日", "年度", "年费", "费减", "案源人", "本案通/回/付"]
+
+
+def _export_values(row: dict) -> list[str]:
+    amounts = "/".join(str(round(row[key] or 0)) for key in ("inform_amount", "gained_amount", "bill_amount"))
+    return [
+        row["applicant"], row["case_name"], row["case_type"], row["serial_no"], row["application_no"], str(row["application_date"]),
+        f"第{row['year_no']}年度：{row['due_date']}至{row['period_end']}", str(row["annual_fee"]), f"{row['relief_rate']}%",
+        row["case_source"], amounts,
+    ]
+
+
+@router.get(f"{settings.api_prefix}/ipr/annual-fee-monitor/items")
+async def list_ipr_annual_fee_monitor_items(query: _ListQuery = Depends(), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    selected, rows = await _list_rows(query, identity, db)
     return {"items": rows, "total": len(rows), "label": selected["label"], "group": selected["group"]}
+
+
+@router.get(f"{settings.api_prefix}/ipr/annual-fee-monitor/export/excel")
+async def export_ipr_annual_fee_monitor_excel(query: _ListQuery = Depends(), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """生成年费清单(Excel)：勾选了导出勾选的，没勾导出当前列表全部。"""
+    from app.core.system import _excel_response
+    selected, rows = await _list_rows(query, identity, db)
+    return _excel_response(f"年费清单-{selected['label']}-{date.today()}.xls", _EXPORT_HEADERS, [_export_values(row) for row in rows])
+
+
+@router.get(f"{settings.api_prefix}/ipr/annual-fee-monitor/export/word")
+async def export_ipr_annual_fee_monitor_word(query: _ListQuery = Depends(), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """生成年费清单(Word)：表格同 Excel。"""
+    selected, rows = await _list_rows(query, identity, db)
+    document = Document()
+    section = document.sections[0]
+    section.orientation, section.page_width, section.page_height = WD_ORIENT.LANDSCAPE, section.page_height, section.page_width
+    document.add_heading(f"专利年费清单（{selected['label']}）", level=1)
+    document.add_paragraph(f"生成日期：{date.today()}　共 {len(rows)} 件")
+    table = document.add_table(rows=1, cols=len(_EXPORT_HEADERS))
+    table.style = "Table Grid"
+    for cell, header in zip(table.rows[0].cells, _EXPORT_HEADERS):
+        cell.text = header
+    for row in rows:
+        for cell, value in zip(table.add_row().cells, _export_values(row)):
+            cell.text = value
+    buffer = io.BytesIO()
+    document.save(buffer)
+    filename = f"年费清单-{selected['label']}-{date.today()}.docx"
+    return Response(
+        content=buffer.getvalue(), media_type=WORD_DOCUMENT_CONTENT_TYPE,
+        headers={"Content-Disposition": f"attachment; filename=annual-fees.docx; filename*=UTF-8''{quote(filename)}"},
+    )

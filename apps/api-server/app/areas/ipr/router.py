@@ -1596,6 +1596,8 @@ from app.areas.ipr.annual_fee_monitor import (  # noqa: E402
     router as annual_fee_monitor_router,
     ipr_annual_fee_monitor_summary as ipr_annual_fee_monitor_summary,
     list_ipr_annual_fee_monitor_items as list_ipr_annual_fee_monitor_items,
+    export_ipr_annual_fee_monitor_excel as export_ipr_annual_fee_monitor_excel,
+    export_ipr_annual_fee_monitor_word as export_ipr_annual_fee_monitor_word,
 )
 router.include_router(annual_fee_monitor_router)
 

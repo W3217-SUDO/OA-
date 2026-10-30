@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Dayjs } from "dayjs";
-import { Button, Card, DatePicker, Empty, Form, Input, message } from "antd";
+import { Button, Card, DatePicker, Empty, Form, Input, Space, message } from "antd";
 import Table from "./components/ResizableTable";
 import { api } from "./api";
 
@@ -40,6 +40,7 @@ const FILTERS: { name: keyof FilterValues; label: string }[] = [
 const errorDetail = (error: any, fallback: string) => error?.response?.data?.detail || fallback;
 const initialView = () => new URLSearchParams(window.location.search).get(VIEW_PARAM) || "";
 const amountText = (value: number) => String(Math.round(value || 0));
+const rowKey = (row: FeeRow) => `${row.case_id}-${row.fee_year}`;
 
 const queryParams = (values: FilterValues) => {
   const params: Record<string, string> = {};
@@ -58,6 +59,7 @@ export default function IprAnnualFeePage() {
   const [view, setView] = useState(initialView);
   const [rows, setRows] = useState<FeeRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [form] = Form.useForm<FilterValues>();
 
   const loadSummary = useCallback(async () => {
@@ -76,6 +78,7 @@ export default function IprAnnualFeePage() {
     try {
       const { data } = await api.get<{ items: FeeRow[] }>("/ipr/annual-fee-monitor/items", { params: { view: key, ...queryParams(values) } });
       setRows(data.items);
+      setSelectedKeys([]);
     } catch (error) {
       message.error(errorDetail(error, "专利年费列表加载失败"));
     } finally {
@@ -101,6 +104,25 @@ export default function IprAnnualFeePage() {
     params.delete(VIEW_PARAM);
     params.set("record_id", String(row.case_id));
     window.location.search = params.toString();
+  };
+
+  // 生成年费清单：勾选了导出勾选的，没勾导出当前列表全部（带上当前筛选）。
+  const exportList = async (kind: "excel" | "word") => {
+    const label = current?.label || "专利年费";
+    try {
+      const response = await api.get(`/ipr/annual-fee-monitor/export/${kind}`, {
+        params: { view, ...queryParams(form.getFieldsValue()), keys: selectedKeys.join(",") || undefined },
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(response.data);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `年费清单-${label}.${kind === "excel" ? "xls" : "docx"}`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      message.error(errorDetail(error, "生成年费清单失败"));
+    }
   };
 
   const reset = () => {
@@ -152,7 +174,8 @@ export default function IprAnnualFeePage() {
           </Form.Item>
         </Form>
         <Table<FeeRow>
-          rowKey={(row) => `${row.case_id}-${row.fee_year}`}
+          rowKey={rowKey}
+          rowSelection={{ selectedRowKeys: selectedKeys, onChange: (keys) => setSelectedKeys(keys.map(String)) }}
           size="small"
           loading={loading}
           dataSource={rows}
@@ -173,6 +196,10 @@ export default function IprAnnualFeePage() {
             { title: "本案通/回/付", key: "amounts", width: 130, render: (_: unknown, row) => `${amountText(row.inform_amount)}/${amountText(row.gained_amount)}/${amountText(row.bill_amount)}` },
           ]}
         />
+        <Space wrap style={{ marginTop: 8 }}>
+          <Button onClick={() => void exportList("excel")}>生成年费清单(Excel)</Button>
+          <Button onClick={() => void exportList("word")}>生成年费清单(Word)</Button>
+        </Space>
       </Card>
     </div>
   );
