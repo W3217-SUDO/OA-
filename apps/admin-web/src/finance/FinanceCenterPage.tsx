@@ -2037,13 +2037,6 @@ function FinanceCenterContent({
           (canManage || row.owner === currentUser.username || row.data?.applicant === currentUser.username) && (
             <Button type="link" onClick={() => void feeAction(row, "submit")}>重新提交</Button>
           )}
-        {initialView === "finance-payment-mine" &&
-          ["待审批", "已审批", "待付款"].includes(row.status) &&
-          ["admin", "manager", "auditor"].includes(role) && (
-            <Button type="link" onClick={() => openPaymentRollback(row)}>
-              回滚请款
-            </Button>
-          )}
       </Space>
     ) : initialView === "finance-internal-payment" ? (
       <Space size={0}>
@@ -2417,7 +2410,9 @@ function FinanceCenterContent({
     ];
   };
   const paymentOriginalColumns = createPaymentOriginalColumns({
-    openPaymentDetail, openPaymentRollback, canRollback: ["admin", "manager", "auditor"].includes(role),
+    // BUG20261030001（范文玲 10-30）：我的请款单不要回滚，行内和右键都不出现；待付款、审核等页面照旧。
+    openPaymentDetail, openPaymentRollback,
+    canRollback: initialView !== "finance-payment-mine" && ["admin", "manager", "auditor"].includes(role),
     rowMenuExtras: paymentMineMenuExtras,
     get originalOperation() { return originalOperation; },
     get paymentStatus() { return paymentStatus; },
