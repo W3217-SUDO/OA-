@@ -201,3 +201,29 @@
   }
   .investigation-audit-resize { display: none; }
 }
+/* BUG20261030006：手机卡片模式整页滚动，底部功能按钮（新增线索等）原来排在全部卡片和分页之后，任务多时要翻到底才看得到；
+   改为固定在屏幕底部导航之上、排成一排，按钮多时横向滑动。钉钉内核 Chrome 100：不用 :has/color-mix/dvh，
+   先写不带 env() 的 bottom 作回退。卡片区底部留出按钮栏高度，最后一张卡片不被盖住。 */
+@media (max-width: 720px) {
+  .investigation-original > .ant-card-body {
+    padding-bottom: 64px;
+  }
+  .investigation-original > .ant-card-body > .investigation-actions-bottom {
+    position: fixed;
+    right: 0;
+    bottom: 64px;
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    left: 0;
+    z-index: 999;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin: 0;
+    padding: 8px 12px;
+    background: var(--oa-surface);
+    border-top: 1px solid var(--oa-border);
+    box-shadow: 0 -4px 12px rgba(20, 39, 50, 0.08);
+  }
+  .investigation-original > .ant-card-body > .investigation-actions-bottom > * {
+    flex: 0 0 auto;
+  }
+}
