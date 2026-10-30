@@ -28,7 +28,6 @@ Modal,
 Popover,
 Select,
 Space,
-Switch,
 Tabs
 } from "antd";
 import Table from "../components/ResizableTable";
@@ -142,7 +141,6 @@ import { createFinanceQueriesActions } from "./services/queriesActions";
 import { createFinanceRefundsActions } from "./services/refundsActions";
 import { createFinanceSettlementsActions, markSettlementCommissionPaid } from "./services/settlementsActions";
 import { createFinanceWorkflowActions, reviewFinanceFlowRequest } from "./services/workflowActions";
-import { isPaymentAuditOfficialType, isPaymentAuditTypeVisible, paymentAuditFeeTypeItems } from "./paymentAuditTypes";
 import type {
 ArchiveSettlementTarget,
 ArchiveSettlementRow,
@@ -433,9 +431,6 @@ function FinanceCenterContent({
   const [loading, setLoading] = useState(false);
   const [financeDataReady, setFinanceDataReady] = useState(false);
   const [role, setRole] = useState(sessionUser.role || "user");
-  // 请款单审批默认只显示勾选的官方费用类型和其他费用；被屏蔽类型（代理费、核定成本等）只有这里能审，管理员可打开全部类型。
-  const isActualAdmin = sessionUser.actual_role === "admin" || (sessionUser.actual_role_ids || []).includes("admin");
-  const [showAllPaymentAuditTypes, setShowAllPaymentAuditTypes] = useState(false);
   const [currentUser, setCurrentUser] = useState({
     username: sessionUser.username || "",
     displayName: sessionUser.display_name || "",
@@ -1760,9 +1755,7 @@ function FinanceCenterContent({
     if (initialView === "finance-payment-audit") {
       result = result.filter((item) => item.status === "待审批");
       if (dashboardQueue === "official-fee-audit") {
-        result = result.filter(isPaymentAuditOfficialType);
-      } else if (!showAllPaymentAuditTypes) {
-        result = result.filter(isPaymentAuditTypeVisible);
+        result = result.filter((item) => item.module === "finance" && item.data?.fee_type === "官方费用");
       }
     }
     if (initialView === "finance-payment-waiting") {
@@ -1840,8 +1833,6 @@ function FinanceCenterContent({
     initialView,
     currentUser,
     contractPaymentSource,
-    dashboardQueue,
-    showAllPaymentAuditTypes,
   ]);
   useEffect(() => {
     if (tab === "legacy-history") void loadLegacyFinanceHistory(1, legacyFinanceMeta.pageSize);
@@ -1875,7 +1866,6 @@ function FinanceCenterContent({
           disabled={disabled || contractPaymentSource.active}
           onChange={(value) => setOriginalField(key, value.join(","))}
           onCatalogLoaded={setFeeTypeCatalog}
-          restrict={initialView === "finance-payment-audit" && !showAllPaymentAuditTypes ? paymentAuditFeeTypeItems : undefined}
         />
       ) : control === "date" ? (
         <Space.Compact>
@@ -2794,8 +2784,7 @@ function FinanceCenterContent({
       <label className="finance-original-field" key={`${key}-${index}`}>
         <span>{spec.label}</span>
         {spec.label === "费用类型" ? (
-          <FeeTypePicker multiple value={Array.isArray(value) ? value : value ? [value] : []} onChange={(next) => setOriginalField(key, next)} onCatalogLoaded={setFeeTypeCatalog}
-            restrict={initialView === "finance-payment-audit" && !showAllPaymentAuditTypes ? paymentAuditFeeTypeItems : undefined} />
+          <FeeTypePicker multiple value={Array.isArray(value) ? value : value ? [value] : []} onChange={(next) => setOriginalField(key, next)} onCatalogLoaded={setFeeTypeCatalog} />
         ) : spec.control === "multi" ? (
           <Popover
             open={multiPickerOpen === key}
@@ -4150,22 +4139,14 @@ function FinanceCenterContent({
     if (key === "tasks") void openSettlementContext("task-create");
     if (key === "logs") void openSettlementContext("log-create");
   };
-  const paymentAuditAllTypesField = initialView === "finance-payment-audit" && isActualAdmin && dashboardQueue !== "official-fee-audit" ? [
-    <label className="finance-original-field" key="payment-audit-all-types" title="代理费、核定成本等类型的请款单默认不显示，只有这里能审批">
-      <span>显示全部类型</span>
-      <span style={{ display: "flex", alignItems: "center", minHeight: 32 }}>
-        <Switch size="small" style={{ width: "auto", flex: "none" }} checked={showAllPaymentAuditTypes} onChange={setShowAllPaymentAuditTypes} aria-label="显示全部类型" />
-      </span>
-    </label>,
-  ] : [];
   const originalFields = activeRouteConfig
-    ? [...activeRouteConfig.fields.map(configuredField), ...paymentAuditAllTypesField]
+    ? activeRouteConfig.fields.map(configuredField)
     : originalKind === "internal"
       ? internalQueryFields
       : originalKind === "fee-query"
         ? feeQueryFields
         : initialView === "finance-payment-audit"
-          ? [...auditQueryFields, ...paymentAuditAllTypesField]
+          ? auditQueryFields
           : paymentQueryFields;
   const contractPaymentSourceNotice = !contractPaymentSource.active ? null : !contractPaymentSource.ok ? (
     <Alert

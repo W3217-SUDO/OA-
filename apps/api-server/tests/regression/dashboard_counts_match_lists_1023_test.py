@@ -7,8 +7,6 @@
 
 import unittest
 
-from app.core.contract_payment_lifecycle import payment_audit_official_type
-
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
@@ -50,7 +48,7 @@ class DashboardCountsMatchListsTest(unittest.IsolatedAsyncioTestCase):
                 record("contract_payment", "CP-2", "待审批"),
                 record("contract_payment", "CP-3", "已审批"),
                 record("finance_settlement", "ST-1", "待审批", finance_scope="firm"),
-                record("finance", "FEE-OFFICIAL", "待审批", fee_type="官方费用", expense_subtype="一审诉讼费", expense_scope="律所", payment_applied_at="2026-10-29"),
+                record("finance", "FEE-OFFICIAL", "待审批", fee_type="官方费用", expense_scope="律所", payment_applied_at="2026-10-29"),
                 record("finance", "FEE-AGENCY", "待审批", fee_type="代理费", expense_scope="律所", payment_applied_at="2026-10-29"),
                 record("finance", "FEE-NOT-APPLIED", "待审批", fee_type="官方费用", expense_scope="律所"),
             ])
@@ -91,11 +89,11 @@ class DashboardCountsMatchListsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cards["待审核归档"], 3, "“归档审核”与“待归档审核”都计入；亏损内审/亏损审核不计入")
         self.assertEqual(cards["待审核预损费用"], loss_internal)
         self.assertEqual(cards["待审核预损费用"], 1)
-        # BUG20261028003/BUG20261030003：只算请款单审批里勾选的那几种官方费用（不含其他费用、代理费、核定成本等）。
+        # BUG20261028003（2026-10-29）：只算请款单审批里待审批的官方费用（不含其他费用和合同付款）。
         payment = await self.client.get(f"{API}/finance/payment-applications/query", params={"scope": "audit", "page": 1, "page_size": 200})
         self.assertEqual(payment.status_code, 200, payment.text)
         official = [item for item in payment.json()["items"]
-                    if payment_audit_official_type(item.get("module"), item.get("data"))]
+                    if item.get("module") == "finance" and (item.get("data") or {}).get("fee_type") == "官方费用"]
         self.assertEqual(cards["待审批官方费用"], len(official))
         self.assertEqual(cards["待审批官方费用"], 1)
         # 能打开请款单审批的人（管理者），提醒指标“待缴官费”同口径，点进去是请款单审批（只看官方费用）。

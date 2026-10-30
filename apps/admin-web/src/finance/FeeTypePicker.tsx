@@ -45,10 +45,8 @@ export function matchesFeeTypeSelection(value: unknown, catalog: FeeTypeCatalog,
 }
 
 // 所有业务选择器读取同一目录；筛选保留类型代码，编辑保存末级类型 ID。
-export function FeeTypePicker({ value, onChange, onSelectOption, onCatalogLoaded, multiple = false, editing = false, scope, disabled = false, restrict }: {
+export function FeeTypePicker({ value, onChange, onSelectOption, onCatalogLoaded, multiple = false, editing = false, scope, disabled = false }: {
   value?: any; onChange?: (value: any) => void;
-  /** 只在筛选里列出部分类型（如请款单审批）。 */
-  restrict?: (items: FeeTypeOption[]) => FeeTypeOption[];
   onSelectOption?: (item: FeeTypeOption) => void;
   onCatalogLoaded?: (catalog: FeeTypeCatalog) => void;
   multiple?: boolean; editing?: boolean; scope?: string; disabled?: boolean;
@@ -66,7 +64,7 @@ export function FeeTypePicker({ value, onChange, onSelectOption, onCatalogLoaded
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [editing]);
-  if (multiple && !editing) return <FeeTypeCheckboxPicker items={restrict ? restrict(items) : items} value={value} onChange={onChange} disabled={disabled} loading={loading} />;
+  if (multiple && !editing) return <FeeTypeCheckboxPicker items={items} value={value} onChange={onChange} disabled={disabled} loading={loading} />;
   return <TreeSelect allowClear showSearch treeNodeFilterProp="title" style={{ width: "100%" }}
     placeholder="请选择费用类型" loading={loading} disabled={disabled} value={editing ? aliases[String(value)]?.id || value : (Array.isArray(value) ? value : value ? [value] : [])}
     treeData={buildFeeTypeTree(items, editing, scope)} treeCheckable={multiple} showCheckedStrategy={TreeSelect.SHOW_ALL} maxTagCount="responsive"
