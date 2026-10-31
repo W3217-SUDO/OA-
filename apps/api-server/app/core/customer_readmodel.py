@@ -192,7 +192,9 @@ async def customer_person_names(db: AsyncSession, page_items: list) -> dict[str,
         if not isinstance(managers, list):
             managers = [managers]
         source = data.get("customer_source") or data.get("source_person") or item.owner
-        needed.update(str(value or "").strip().casefold() for value in [*managers, source])
+        # 旧系统的多位客户管理人迁移在 coordinators，同样显示姓名。
+        coordinators = data.get("coordinators") if isinstance(data.get("coordinators"), list) else []
+        needed.update(str(value or "").strip().casefold() for value in [*managers, *coordinators, source])
         needed.add(str(item.owner or "").strip().casefold())
     needed.discard("")
     names: dict[str, str] = {}
