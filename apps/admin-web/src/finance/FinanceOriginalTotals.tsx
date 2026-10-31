@@ -112,7 +112,7 @@ export function PaymentPackageTotalBody({ rows, headers, children, ...bodyProps 
   return <tbody {...bodyProps}>
     <tr className="finance-payment-package-grand-total">
       {headers.map((header, index) => <td key={`${header}-${index}`}>
-        {header === "付款总金额" ? packageTotal(rows) : null}
+        {header === "付款总金额" || header === "计划付款金额" ? packageTotal(rows) : null}
       </td>)}
     </tr>
     {children}
@@ -122,7 +122,7 @@ export function PaymentPackageTotalBody({ rows, headers, children, ...bodyProps 
 export function PaymentPackagePageSummary({ rows, headers }: { rows: TotalRows; headers: string[] }) {
   return <Table.Summary.Row className="finance-payment-package-summary">
     {headers.map((header, index) => <Table.Summary.Cell key={header} index={index}>
-      {header === "付款总金额" ? packageTotal(rows) : null}
+      {header === "付款总金额" || header === "计划付款金额" ? packageTotal(rows) : null}
     </Table.Summary.Cell>)}
   </Table.Summary.Row>;
 }

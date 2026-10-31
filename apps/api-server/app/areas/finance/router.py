@@ -1523,6 +1523,13 @@ from app.areas.finance.internal_payments import (
 router.include_router(internal_payments_router)
 
 
+from app.areas.finance.bank_flows import (
+    router as bank_flows_router,
+    list_bank_flows as list_bank_flows,
+)
+router.include_router(bank_flows_router)
+
+
 from app.areas.finance.fee_workflows import (
     router as fee_workflows_router,
     finance_fee_readiness as finance_fee_readiness,

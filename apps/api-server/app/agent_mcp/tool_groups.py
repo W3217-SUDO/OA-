@@ -171,7 +171,7 @@ def classify_tool(route, method: str) -> tuple[str, str | None]:
     if root == "finance":
         section = path.lower().removeprefix("finance/").partition("/")[0]
         mapping = {
-            "incoming-payments": "16", "customer-options": "16", "ar-summary": "17", "contract-ledger": "17",
+            "incoming-payments": "16", "bank-flows": "16", "customer-options": "16", "ar-summary": "17", "contract-ledger": "17",
             "fees": "15", "case-fees": "15", "fee-informs": "15", "jar-fees": "15", "receipt-files": "15",
             "internal-fees": "18", "internal-review-requests": "18", "internal-applications": "18",
             "archive-settlements": "18", "general-settlements": "18", "settlements": "18",

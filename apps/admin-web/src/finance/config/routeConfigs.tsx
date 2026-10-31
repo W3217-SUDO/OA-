@@ -57,13 +57,14 @@ export function createRouteConfigs(context: {
         "finance-payment-package-manage": {
             fields: [
                 context.f("付款包号码"),
-                context.f("付款状态", { options: ["待核销", "已付款"] }),
+                context.f("付款状态", { options: ["待核销", "已付款", "待核对关联"] }),
                 context.f("收款单位"),
                 context.f("付款日期", { control: "date" }),
             ],
             source: "paymentPackages",
             clear: true,
-            headers: ["操作", "付款包号码", "付款状态", "收款单位", "付款总金额", "付款日期", "制单人", "备注"],
+            // 列按旧系统 付款管理 › 付款包列表（PaymentPackingList）。
+            headers: ["操作", "付款包号码", "付款单数量", "计划付款金额", "状态", "付款日期", "付款性质", "付款类型", "收款单位", "备注"],
             note: "付款包号不可修改；仅待核销付款包可调整费用构成和备注。",
         },
         "finance-receipts-icbc": {

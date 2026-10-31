@@ -108,6 +108,8 @@ FINANCE_CONDITIONAL_QUERIES = {
 # 未知提交结果必须实时核对，仍执行同样的路由和依赖完整性检查。
 FINANCE_REALTIME_QUERIES = {
     "/finance/fees/{fee_id}/court-refund/request": "get_finance_fee_court_refund_request",
+    # 银行原始流水读迁移镜像表，镜像表没有财务缓存触发器，不进缓存。
+    "/finance/bank-flows": "list_bank_flows",
 }
 
 FINANCIAL_RECORD_MODULES = frozenset({

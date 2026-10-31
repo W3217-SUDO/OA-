@@ -2560,8 +2560,8 @@ function FinanceCenterContent({
     f("收款人"),
     f("付款包状态", {
       options: ["请选择", "待核销", "已付款"],
-      defaultValue: "请选择",
-      disabled: initialView === "finance-internal-writeoff",
+      defaultValue: initialView === "finance-internal-writeoff" ? "待核销" : initialView === "finance-internal-done" ? "已付款" : "请选择",
+      disabled: initialView === "finance-internal-writeoff" || initialView === "finance-internal-done",
     }),
     f("费用类型", { options: ["请选择", "内部费用", "内部提成"] }),
   ];
@@ -3176,6 +3176,10 @@ function FinanceCenterContent({
       付款时间: data.paid_date || tx?.transaction_date || data.payment_date,
       付款包号码: row.serial_no,
       付款总金额: data.total_amount ?? data.amount,
+      付款单数量: data.fee_count,
+      计划付款金额: data.total_amount ?? data.amount,
+      付款性质: data.payment_nature,
+      付款类型: data.payment_type_name,
       付款单据号: data.invoice_no || data.writeoff_voucher_no,
       申请金额: data.payment_request_amount ?? data.amount,
       金额: data.amount ?? row.amount,
@@ -3289,7 +3293,7 @@ function FinanceCenterContent({
     if (
       typeof value === "number" &&
       activeRouteConfig?.source === "paymentPackages" &&
-      header === "付款总金额"
+      (header === "付款总金额" || header === "计划付款金额")
     )
       return String(Number(value));
     if (

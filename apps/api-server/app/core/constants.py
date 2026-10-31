@@ -160,7 +160,7 @@ DEFAULT_SYSTEM_MENUS += [
     ("clue-audit", "investigation", "调查线索审核", "", 72), ("clue-audit-pending", "clue-audit", "待审批线索", "", 1), ("clue-audit-customer", "clue-audit", "待客户审核", "", 2), ("clue-audit-refused", "clue-audit", "已拒绝线索", "", 3), ("clue-audit-collect", "clue-audit", "待取证线索", "", 4), ("clue-audit-collected", "clue-audit", "已取证线索", "", 5),
     ("clue-company", "investigation", "公司调查线索", "", 73), ("clue-company-draft", "clue-company", "待提交线索", "", 1), ("clue-company-pending", "clue-company", "待审核线索", "", 2), ("clue-company-collect", "clue-company", "待取证线索", "", 3), ("clue-company-collected", "clue-company", "已取证线索", "", 4), ("clue-company-refused", "clue-company", "已拒绝线索", "", 5), ("clue-company-no-fee", "clue-company", "未申请费用线索", "", 6), ("clue-company-fee", "clue-company", "已申请费用线索", "", 7),
     ("notary-import-storage", "notary", "公证书号仓库信息导入", "", 1), ("notary-import-files", "notary", "公证书文件导入", "", 2), ("notary-import-invoices", "notary", "发票文件导入", "", 3), ("notary-query-files", "notary", "公证文件查询", "", 4),
-    ("finance-receipts", "finance", "回款管理", "", 1), ("finance-receipts-icbc", "finance-receipts", "回款(工行)", "", 1), ("finance-receipts-citic", "finance-receipts", "回款(中信)", "", 2), ("finance-receipts-boc", "finance-receipts", "回款(中行)", "", 3), ("finance-receipts-cmb", "finance-receipts", "回款(招商)", "", 4), ("finance-receipts-new", "finance-receipts", "新增回款", "", 5), ("finance-receipts-manage", "finance-receipts", "回款管理", "", 6), ("finance-receipts-claim", "finance-receipts", "回款领取", "", 7), ("finance-receipts-pending", "finance-receipts", "待分配回款", "", 8), ("finance-receipts-allocated", "finance-receipts", "已分配回款", "", 9), ("finance-receipts-query", "finance-receipts", "到账查询", "", 10),
+    ("finance-receipts", "finance", "回款管理", "", 1), ("finance-receipts-icbc", "finance-receipts", "回款(工行)", "", 1), ("finance-receipts-citic", "finance-receipts", "回款(中信)", "", 2), ("finance-receipts-boc", "finance-receipts", "回款(中行)", "", 3), ("finance-receipts-gdicbc", "finance-receipts", "回款(国定工行)", "", 4), ("finance-receipts-cmb", "finance-receipts", "回款(招商)", "", 5), ("finance-receipts-bank-flow", "finance-receipts", "银行原始流水", "", 6), ("finance-receipts-new", "finance-receipts", "新增回款", "", 7), ("finance-receipts-manage", "finance-receipts", "回款管理", "", 8), ("finance-receipts-claim", "finance-receipts", "回款领取", "", 9), ("finance-receipts-pending", "finance-receipts", "待分配回款", "", 10), ("finance-receipts-allocated", "finance-receipts", "已分配回款", "", 11), ("finance-receipts-query", "finance-receipts", "到账查询", "", 12),
     ("finance-payment", "finance", "付款管理", "", 2), ("finance-payment-mine", "finance-payment", "我的请款单", "", 1), ("finance-payment-audit", "finance-payment", "请款单审批", "", 2), ("finance-payment-waiting", "finance-payment", "待付款列表", "", 3), ("finance-payment-print", "finance-payment", "付款单打印", "", 4), ("finance-payment-package-manage", "finance-payment", "付款打包-管理", "", 5), ("finance-payment-writeoff", "finance-payment", "待核销列表", "", 6), ("finance-payment-query", "finance-payment", "付款单查询", "", 7),
     ("finance-internal", "finance", "内部费用", "", 3), ("finance-internal-mine", "finance-internal", "我的请款单", "", 1), ("finance-internal-settle", "finance-internal", "内部提成-待结算", "", 2), ("finance-internal-archive", "finance-internal", "内部提成-待归档", "", 3), ("finance-internal-audit", "finance-internal", "内部提成-待审核", "", 4), ("finance-internal-fee-audit", "finance-internal", "内部费用-待审核", "", 5), ("finance-internal-refused", "finance-internal", "内部提成-已拒绝", "", 6), ("finance-internal-void", "finance-internal", "内部提成-已作废", "", 7), ("finance-internal-refund-audit", "finance-internal", "内部提成(退费)-待审核", "", 8), ("finance-internal-payment", "finance-internal", "待付款列表", "", 9), ("finance-internal-writeoff", "finance-internal", "待核销列表", "", 10), ("finance-internal-query", "finance-internal", "付款单查询", "", 11), ("finance-internal-done", "finance-internal", "已核销列表", "", 12), ("finance-internal-detail", "finance-internal", "内部费用明细", "", 13), ("finance-internal-company", "finance-internal", "内部费用明细(公司)", "", 14),
     ("finance-jar", "finance", "JAR交案费管理", "", 8),
@@ -168,7 +168,7 @@ DEFAULT_SYSTEM_MENUS += [
     ("finance-settlement", "finance", "结算管理", "", 5), ("finance-settlement-pending", "finance-settlement", "待结算", "", 1), ("finance-settlement-audit", "finance-settlement", "待审核", "", 2), ("finance-settlement-payment", "finance-settlement", "待付款", "", 3), ("finance-settlement-paid", "finance-settlement", "已付款", "", 4), ("finance-settlement-refused", "finance-settlement", "已拒绝", "", 5),
     ("finance-archive-fee", "finance", "归档费结算", "", 6), ("finance-archive-fee-pending", "finance-archive-fee", "待归档", "", 1), ("finance-archive-fee-payment", "finance-archive-fee", "待支付", "", 2), ("finance-archive-fee-paid", "finance-archive-fee", "已支付", "", 3), ("finance-archive-fee-refused", "finance-archive-fee", "已拒绝", "", 4),
     ("finance-fee-query", "finance", "费用查询", "", 7),
-    ("platform-finance-overview", "platform-finance", "回款管理", "", 1), ("platform-finance-overview-icbc", "platform-finance-overview", "回款(工行)", "", 1), ("platform-finance-overview-citic", "platform-finance-overview", "回款(中信)", "", 2), ("platform-finance-overview-boc", "platform-finance-overview", "回款(中行)", "", 3), ("platform-finance-overview-cmb", "platform-finance-overview", "回款(招商)", "", 10), ("platform-finance-overview-gdicbc", "platform-finance-overview", "回款(固定工行)", "", 11), ("platform-finance-overview-new", "platform-finance-overview", "新增回款", "", 4), ("platform-finance-overview-manage", "platform-finance-overview", "回款管理", "", 5), ("platform-finance-overview-claim", "platform-finance-overview", "回款领取", "", 6), ("platform-finance-overview-pending", "platform-finance-overview", "待分配回款", "", 7), ("platform-finance-overview-allocated", "platform-finance-overview", "已分配回款", "", 8), ("platform-finance-overview-query", "platform-finance-overview", "到账查询", "", 9),
+    ("platform-finance-overview", "platform-finance", "回款管理", "", 1), ("platform-finance-overview-icbc", "platform-finance-overview", "回款(工行)", "", 1), ("platform-finance-overview-citic", "platform-finance-overview", "回款(中信)", "", 2), ("platform-finance-overview-boc", "platform-finance-overview", "回款(中行)", "", 3), ("platform-finance-overview-cmb", "platform-finance-overview", "回款(招商)", "", 10), ("platform-finance-overview-gdicbc", "platform-finance-overview", "回款(国定工行)", "", 11), ("platform-finance-overview-new", "platform-finance-overview", "新增回款", "", 4), ("platform-finance-overview-manage", "platform-finance-overview", "回款管理", "", 5), ("platform-finance-overview-claim", "platform-finance-overview", "回款领取", "", 6), ("platform-finance-overview-pending", "platform-finance-overview", "待分配回款", "", 7), ("platform-finance-overview-allocated", "platform-finance-overview", "已分配回款", "", 8), ("platform-finance-overview-query", "platform-finance-overview", "到账查询", "", 9),
     ("platform-finance-invoice", "platform-finance", "开票管理", "", 3), ("platform-finance-invoice-mine", "platform-finance-invoice", "我的开票", "", 1), ("platform-finance-invoice-pending", "platform-finance-invoice", "待处理开票", "", 2), ("platform-finance-invoice-company", "platform-finance-invoice", "公司开票", "", 3),
         ("reports-brand", "reports", "品牌资金运营情况统计", "", 1), ("reports-lawyer", "reports", "律师资金运营情况统计", "", 2), ("reports-refund", "reports", "退费进度案件统计", "", 3), ("reports-execution-1", "reports", "执行进度案件统计1", "", 4), ("reports-execution-2", "reports", "执行进度案件统计2", "", 5), ("reports-execution-3", "reports", "执行进度案件统计3", "", 6), ("reports-customer-roi", "reports", "客户ROI统计", "", 7), ("reports-large-screen", "reports", "报表大屏", "", 8), ("reports-staff-roi", "reports", "员工业绩ROI统计", "", 9),
 ]
@@ -207,7 +207,8 @@ DEFAULT_SYSTEM_MENUS += [
 
 
 # 仅隐藏导航，路由和业务授权继续保留。
-DEFAULT_HIDDEN_MENU_KEYS = {"finance-payment-package-manage", "finance-internal-void"}
+# 付款打包-管理按旧系统 付款管理 › 付款包列表 显示（陶威 2026-10-31 要求新旧系统对齐）。
+DEFAULT_HIDDEN_MENU_KEYS = {"finance-internal-void"}
 
 SYSTEM_MENU_ROUTE_KEYS = {key for key, *_ in DEFAULT_SYSTEM_MENUS}
 
@@ -1104,14 +1105,14 @@ ROLE_TREE_HIDDEN_ACTION_CODES = frozenset({
     # 系统里也没有地方按它们放行（系统中心只认管理员），角色权限里不再显示。
     *(item["code"] for item in SYSTEM_ACTION_DEFINITIONS if item["menu_key"] == "system" or item["menu_key"].startswith("system-")),
     # 同上（范文玲 2026-10-29 13:40）：请款单审批、我的请款单页面没有编辑/删除费用按钮（只用于改、删别人的费用草稿）；
-    # 付款打包-管理左侧菜单不显示。这些开关不在角色权限里显示，现有授权按原样保留。
-    "finance.fee.update", "finance.fee.delete", "finance.payment.update", "finance.payment.delete",
+    # 这些开关不在角色权限里显示，现有授权按原样保留。付款打包-管理 10-31 起显示，它的编辑/删除付款包回到角色权限里。
+    "finance.fee.update", "finance.fee.delete",
 })
 
 # 左侧菜单不显示的页面（与前端 App.tsx 左侧菜单的过滤一致）：角色权限里不显示（范文玲 2026-10-29 13:45），
 # 角色原有的这些页面授权保存时按原样保留。
 ROLE_TREE_HIDDEN_MENU_KEYS = frozenset({
-    "task-reminders", "vip-tasks", "finance-jar", "finance-payment-package-manage", "finance-internal-void", "system-users",
+    "task-reminders", "vip-tasks", "finance-jar", "finance-internal-void", "system-users",
     "documents-outgoing", "documents-register", "documents-files", "documents-template", "documents-agent", "documents-archive",
 })
 # 同一个功能控制多个页面的按钮时，角色权限里在这些页面下都显示（同一开关，勾一处各处同步）。

@@ -179,6 +179,7 @@ const VipTaskCenterPage = lazyWithVersionRecovery("vip-task", () => import("./Vi
 const BusinessPage = lazyWithVersionRecovery("business", () => import("./BusinessPage"));
 const DocumentCenterPage = lazyWithVersionRecovery("document", () => import("./aws"));
 const FinanceCenterPage = lazyWithVersionRecovery("finance", () => import("./FinanceCenterPage"));
+const BankFlowPage = lazyWithVersionRecovery("finance-receipts-bank-flow", () => import("./finance/BankFlowPage"));
 const SystemCenterPage = lazyWithVersionRecovery("system", () => import("./system"));
 const IprFileTypeSettingsPage = lazyWithVersionRecovery("ipr-file-types", () => import("./IprFileTypeSettingsPage"));
 const LawFirmPage = lazyWithVersionRecovery("law-firms", () => import("./LawFirmPage"));
@@ -668,7 +669,6 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
       item.key !== "task-reminders" &&
       item.key !== "vip-tasks" &&
       item.key !== "finance-jar" &&
-      item.key !== "finance-payment-package-manage" &&
       item.key !== "finance-internal-void" &&
       item.key !== "system-users" &&
       (item.parent_key !== "documents" || ["documents-official", "documents-my", "documents-company"].includes(item.key)),
@@ -1898,6 +1898,8 @@ export default function App() {
       <AgentDocumentPage onNavigate={navigate} />
     ) : route.startsWith("documents-") ? (
       <DocumentCenterPage initialView={route} onNavigate={navigate} />
+    ) : active === "platform-finance-overview-gdicbc" ? (
+      <BankFlowPage fixedBank="gdicbc" />
     ) : route.startsWith("platform-finance-") ? (
       <FinanceCenterPage
         initialView={financeRouteFromPlatform(active)}
@@ -1910,6 +1912,10 @@ export default function App() {
       <CommunicationLogPage onNavigate={navigate} />
     ) : ["user-center", "user-account"].includes(route) ? (
       <UserCenterPage />
+    ) : active === "finance-receipts-bank-flow" ? (
+      <BankFlowPage />
+    ) : active === "finance-receipts-gdicbc" ? (
+      <BankFlowPage fixedBank="gdicbc" />
     ) : route.startsWith("finance-") ? (
       <FinanceCenterPage initialView={active} onNavigate={navigate} />
     ) : ["hr-department-new", "hr-departments", "hr-roles"].includes(route) ? (

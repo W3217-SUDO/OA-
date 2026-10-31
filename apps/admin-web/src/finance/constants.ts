@@ -205,17 +205,27 @@ export const paymentPackageRequestParams = (
     };
   }
   const pageId = initialView === "finance-internal-writeoff" ? "5001003006" : "";
-  const status = String(
+  // 内部费用 待核销列表只看待核销、已核销列表只看已付款（旧系统 PackingList 按页面固定状态）；“请选择”不是状态。
+  const chosen = String(query.status || query.routeField3 || "").trim();
+  const status =
     initialView === "finance-internal-writeoff"
       ? "待核销"
-      : query.status || query.routeField3 || "",
-  ).trim();
+      : initialView === "finance-internal-done"
+        ? "已付款"
+        : chosen === "请选择"
+          ? ""
+          : chosen;
+  const text = (value: unknown) => String(value || "").trim();
+  const paymentDate = query.routeField1?.format ? query.routeField1.format("YYYY-MM-DD") : "";
   return {
     page,
     page_size: pageSize,
     package_scope: "internal",
     ...(pageId ? { page_id: pageId } : {}),
     ...(status ? { status } : {}),
+    ...(text(query.routeField0) ? { package_no: text(query.routeField0) } : {}),
+    ...(paymentDate ? { payment_date_from: paymentDate, payment_date_to: paymentDate } : {}),
+    ...(text(query.routeField2) ? { payee: text(query.routeField2) } : {}),
   };
 };
 

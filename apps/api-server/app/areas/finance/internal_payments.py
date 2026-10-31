@@ -1,5 +1,6 @@
 """内部结算与付款申请接口。"""
 from fastapi import APIRouter
+from sqlalchemy import or_
 from app.core.dependencies import AsyncSession, BusinessRecord, Depends, HTTPException, Query, Response, User, WorkflowEvent, current_identity, date, datetime, delete, func, get_db, quote, select, settings, status
 from app.models_shared import FinancePaymentPackageCreateInput, FinancePaymentPackagePreviewInput, FinancePaymentPackageUpdateInput, FinancePaymentPackageWriteoffInput, FinancePaymentRollbackInput, FinanceSettlementMarkInput
 from app.core.constants import PAYMENT_METHOD_OPTIONS
@@ -119,6 +120,53 @@ async def export_payment_package_word(
         headers={"Content-Disposition": disposition},
     )
 
+async def _package_list_fields(rows: list[BusinessRecord], db: AsyncSession) -> dict[int, dict]:
+    """付款包列表按旧系统补显示列（只用于返回，不改数据）：付款单数量、付款性质、付款类型、备注；
+    导入的内部付款包没有收款人，按包里第一笔付款明细的收款人显示。"""
+    from app.models import SystemParameter
+
+    type_codes = {
+        f"LEGACY-PAYMENT-{legacy.get('PaymentTypeId')}"
+        for row in rows
+        for legacy in [((row.data or {}).get("legacy_record") or {})]
+        if (row.data or {}).get("legacy_kind") == "ap_packing" and legacy.get("PaymentTypeId")
+    }
+    types = {item.code: item for item in (await db.scalars(select(SystemParameter).where(
+        SystemParameter.category == "payment_type", SystemParameter.code.in_(type_codes),
+    ))).all()} if type_codes else {}
+    first_fee_ids = {
+        int(ids[0]) for row in rows
+        for ids in [(row.data or {}).get("fee_ids") or []]
+        if not (row.data or {}).get("payee") and ids and str(ids[0]).isdigit()
+    }
+    fee_payees = {fee_id: str((data or {}).get("payee") or "") for fee_id, data in (await db.execute(
+        select(BusinessRecord.id, BusinessRecord.data).where(BusinessRecord.id.in_(first_fee_ids))
+    )).all()} if first_fee_ids else {}
+    fields: dict[int, dict] = {}
+    for row in rows:
+        data = row.data or {}
+        legacy = data.get("legacy_record") or {}
+        payment_type = types.get(f"LEGACY-PAYMENT-{legacy.get('PaymentTypeId')}")
+        extra = (payment_type.extra or {}) if payment_type else {}
+        ids = data.get("fee_ids") or []
+        item = {
+            "fee_count": len(ids) if ids else len(data.get("items") or []),
+            "payment_nature": data.get("payment_nature") or extra.get("nature") or "",
+            "payment_type_name": data.get("payment_type_name") or extra.get("legacy_payment_type_name") or "",
+        }
+        if not data.get("remark") and legacy.get("Remark"):
+            item["remark"] = str(legacy.get("Remark")).strip()
+        if not data.get("payee") and ids and str(ids[0]).isdigit() and fee_payees.get(int(ids[0])):
+            item["payee"] = fee_payees[int(ids[0])]
+        fields[row.id] = item
+    return fields
+
+
+def _package_payee_matches(row: BusinessRecord, extra: dict, text: str, names: set[str]) -> bool:
+    payee = str((row.data or {}).get("payee") or extra.get("payee") or "")
+    return text.lower() in payee.lower() or payee.lower() in names
+
+
 @router.get(f"{settings.api_prefix}/finance/payment-packages")
 async def list_internal_payment_packages(
     page: int = Query(1, ge=1),
@@ -154,21 +202,38 @@ async def list_internal_payment_packages(
         conditions.append(BusinessRecord.status == effective_status)
     if package_no.strip():
         conditions.append(BusinessRecord.serial_no.ilike(f"%{package_no.strip()}%"))
-    if payee.strip():
+    # 内部付款包的收款人是员工账号，导入的还要按付款明细推出来，收款人筛选改在取出后按姓名/账号过滤。
+    filter_payee_later = bool(payee.strip()) and package_scope == "internal"
+    if payee.strip() and not filter_payee_later:
         conditions.append(BusinessRecord.data["payee"].as_string().ilike(f"%{payee.strip()}%"))
     if payment_date_from:
         conditions.append(BusinessRecord.data["payment_date"].as_string() >= str(payment_date_from))
     if payment_date_to:
         conditions.append(BusinessRecord.data["payment_date"].as_string() <= str(payment_date_to))
-    total = await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions)) or 0
     query = select(BusinessRecord).where(*conditions).order_by(
         BusinessRecord.created_at.desc(), BusinessRecord.id.desc()
     )
-    if page_size is not None:
-        query = query.offset((page - 1) * page_size).limit(page_size)
-    items = (await db.scalars(query)).all()
+    if filter_payee_later:
+        candidates = (await db.scalars(query)).all()
+        extra_fields = await _package_list_fields(candidates, db)
+        text = payee.strip()
+        names = {item.lower() for item in (await db.scalars(select(User.username).where(
+            or_(User.username.ilike(f"%{text}%"), User.display_name.ilike(f"%{text}%"))
+        ))).all()}
+        matched = [row for row in candidates if _package_payee_matches(row, extra_fields[row.id], text, names)]
+        total = len(matched)
+        items = matched[(page - 1) * page_size:page * page_size] if page_size is not None else matched
+    else:
+        total = await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions)) or 0
+        if page_size is not None:
+            query = query.offset((page - 1) * page_size).limit(page_size)
+        items = (await db.scalars(query)).all()
+        extra_fields = await _package_list_fields(items, db)
+    dicts = await _record_dicts_for_identity(items, identity, db)
+    for row, payload in zip(items, dicts):
+        payload["data"] = {**(payload.get("data") or {}), **extra_fields.get(row.id, {})}
     return {
-        "items": await apply_finance_person_displays(await _record_dicts_for_identity(items, identity, db), db),
+        "items": await apply_finance_person_displays(dicts, db),
         "total": int(total),
         "page": page,
         "page_size": page_size if page_size is not None else len(items),
