@@ -876,6 +876,15 @@ async def _seal_authorization_context(identity: dict, db: AsyncSession) -> dict:
     if user and user.is_active and bool((user.profile or {}).get("seal_approval_enabled")):
         action_keys.add(SEAL_ACTION_CODES["approve"])
         granted["approve"] = True
+    # 人事中心设了行政用印人后，只有名单里的人能盖章（BUG20261031002 第④⑤步）；没设时按原岗位权限。
+    from app.core.seal_approval import is_configured_stamp_user
+    configured_stamp = await is_configured_stamp_user(username, db) if username else None
+    if configured_stamp is not None:
+        granted["stamp"] = configured_stamp
+        if configured_stamp:
+            action_keys.add(SEAL_ACTION_CODES["stamp"])
+        else:
+            action_keys.discard(SEAL_ACTION_CODES["stamp"])
     return {"identity": identity, "action_keys": action_keys, **granted}
 
 

@@ -1,4 +1,5 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+from pydantic import BaseModel, Field
 from app.core.constants import (
     CASE_ACTIONS_EXPLICIT_MARKER, MENUS_EXACT_MARKER, FIELD_KEYS, HR_SUBRECORD_KINDS, JOB_ROLE_ACTION_KEY_GRANTS, ROLE_DATA_SCOPES, ROLE_TREE_HIDDEN_ACTION_CODES, ROLE_TREE_DERIVED_ACTION_CODES, SYSTEM_ACTION_DEFINITIONS, SYSTEM_ADMIN_JOB_PERMISSIONS,
     SYSTEM_MENU_ROUTE_KEYS, WORKFLOW_TRANSITIONS,
@@ -1111,3 +1112,65 @@ async def transition_employee(employee_id: int, body: HrTransitionInput, identit
     item.status = body.to_status; item.data = data
     db.add(WorkflowEvent(record_id=item.id, action=action, from_status=previous, to_status=item.status, operator=identity["username"], comment=body.comment or reason))
     await db.commit(); await db.refresh(item); return _record_dict(item, await _allowed_field_keys(identity, db))
+
+
+class SealApprovalSettingsInput(BaseModel):
+    firm_approver: str = Field(default="", max_length=64)
+    stamp_users: list[str] = Field(default_factory=list, max_length=50)
+    department_paths: dict[str, list[str]] = Field(default_factory=dict)
+
+
+async def _seal_approval_settings_payload(db: AsyncSession) -> dict:
+    from app.core.formatters import _user_display_map
+    from app.core.seal_approval import load_seal_approval_settings
+    settings_value = await load_seal_approval_settings(db)
+    departments = (await db.scalars(select(Department).order_by(Department.sort_order, Department.id))).all()
+    usernames = {settings_value["firm_approver"], *settings_value["stamp_users"], *(item.manager for item in departments),
+                 *(person for steps in settings_value["department_paths"].values() for person in steps)} - {""}
+    names = await _user_display_map(usernames, db)
+    rows = []
+    for item in departments:
+        override = settings_value["department_paths"].get(str(item.id), ["", ""])
+        rows.append({
+            "department_id": item.id, "department": item.name, "is_active": item.is_active,
+            "manager": item.manager, "first_override": override[0], "second_override": override[1],
+            "first": override[0] or item.manager, "second": override[1] or settings_value["firm_approver"],
+        })
+    return {**settings_value, "departments": rows, "display_names": {key: str(value) for key, value in names.items()}}
+
+
+@router.get(f"{settings.api_prefix}/hr/seal-approval-settings")
+async def get_seal_approval_settings(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """人事中心“用印审批设置”：所里审批人、行政用印人、各部门合同/用印审批路径（BUG20261031002 第④⑤步）。"""
+    from app.core.permissions import _require_admin
+    _require_admin(identity)
+    return await _seal_approval_settings_payload(db)
+
+
+@router.put(f"{settings.api_prefix}/hr/seal-approval-settings")
+async def put_seal_approval_settings(body: SealApprovalSettingsInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_admin
+    from app.core.seal_approval import save_seal_approval_settings
+    from app.core.system import _record_organization_audit
+    _require_admin(identity)
+    saved = await save_seal_approval_settings(body.model_dump(), identity["username"], db)
+    await _record_organization_audit(db, identity, "修改用印审批设置", "用印审批设置", saved)
+    await db.commit()
+    return await _seal_approval_settings_payload(db)
+
+
+@router.get(f"{settings.api_prefix}/contracts/approval-path")
+@router.get(f"{settings.api_prefix}/seals/approval-path")
+async def preview_seal_approval_path(department: str = "", record_id: int | None = None, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """提交合同审批/用印前显示审批路径：按所属部门（或记录的部门、申请人部门）算，提交人自己那一级跳过。"""
+    from app.core.formatters import _user_display_map
+    from app.core.seal_approval import approval_path_preview, record_department
+    name = department.strip()
+    if not name and record_id:
+        from app.core.permissions import _ensure_record_visible
+        name = await record_department(await _ensure_record_visible(record_id, identity, db), db)
+    if not name:
+        name = await record_department(BusinessRecord(owner=identity["username"], department=""), db)
+    preview = await approval_path_preview(name, identity["username"], db)
+    names = await _user_display_map(set(preview["path"]), db)
+    return {**preview, "path_display": [str(names.get(item) or item) for item in preview["path"]]}

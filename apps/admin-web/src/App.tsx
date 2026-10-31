@@ -184,6 +184,7 @@ const IprFileTypeSettingsPage = lazyWithVersionRecovery("ipr-file-types", () => 
 const LawFirmPage = lazyWithVersionRecovery("law-firms", () => import("./LawFirmPage"));
 const HrCenterPage = lazyWithVersionRecovery("hr", () => import("./HrCenterPage"));
 const HrPerformancePage = lazyWithVersionRecovery("hr-performance", () => import("./HrPerformancePage"));
+const HrSealApprovalPage = lazyWithVersionRecovery("hr-seal-approval", () => import("./HrSealApprovalPage"));
 const OrganizationCenterPage = lazyWithVersionRecovery("organization", () => import("./OrganizationCenterPage"));
 const WarehousePage = lazyWithVersionRecovery("warehouse", () => import("./WarehousePage"));
 const ReportCenterPage = lazyWithVersionRecovery("report", () => import("./ReportCenterPage"));
@@ -577,6 +578,7 @@ const menuItems: NavItem[] = [
       { key: "hr-performance", label: "绩效管理" },
       { key: "hr-departments", label: "部门管理" },
       { key: "hr-roles", label: "角色管理" },
+      { key: "hr-seal-approval", label: "用印审批设置" },
     ],
   },
   {
@@ -1913,6 +1915,8 @@ export default function App() {
       <OrganizationCenterPage initialView={route} />
     ) : route === "hr-performance" ? (
       <HrPerformancePage onNavigate={navigate} />
+    ) : route === "hr-seal-approval" ? (
+      <HrSealApprovalPage />
     ) : route.startsWith("hr-") ? (
       <HrCenterPage initialView={route} />
     ) : route.startsWith("warehouse") ? (

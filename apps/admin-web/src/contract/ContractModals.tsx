@@ -1,4 +1,5 @@
 import { POPUP_WIDTH } from "../components/common/popupSize";
+import ApprovalPathNotice from "./ApprovalPathNotice";
 import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { CheckOutlined,CloseOutlined } from "@ant-design/icons";
 import type { FormInstance } from "antd";
@@ -216,8 +217,6 @@ export function ContractSubmitModal({
   open,
   submitting,
   submitForm,
-  approvalOptions,
-  contractApproverLabel,
   saving,
   onCancel,
   onOk,
@@ -234,15 +233,8 @@ export function ContractSubmitModal({
       onCancel={onCancel}
     >
       <Form form={submitForm} layout="vertical">
-        <Form.Item label={contractApproverLabel} name="approvers" rules={[{ required: true }]}>
-          <KeywordPersonSelect
-            listAll
-            showSearch
-            optionFilterProp="label"
-            options={approvalOptions}
-            placeholder="请选择后台已配置的合同审批人"
-            notFoundContent="没有可用审批人，请由管理员设置在职员工的合同审批资格"
-          />
+        <Form.Item label="审批路径">
+          <ApprovalPathNotice recordId={submitting?.id} />
         </Form.Item>
         <Form.Item label="提交说明" name="comment">
           <Input.TextArea rows={3} />
@@ -430,7 +422,6 @@ export function ContractChangeModal({
   onOk,
   onChangeFile,
   mode = "modal",
-  approvalOptions = [],
   ownerOptions = [],
 }: ContractChangeModalProps) {
   // 审批通过的合同变更后重新进入合同审批，审批人和新建合同审批同一名单（BUG20261030012）。
@@ -454,15 +445,8 @@ export function ContractChangeModal({
           <Input.TextArea rows={3} />
         </Form.Item>
         {reapprove && (
-          <Form.Item label="合同审批人" name="approvers" extra="合同已审批通过，保存变更后重新进入待审批合同" rules={[{ required: true, message: "请选择一名合同审批人" }]}>
-            <KeywordPersonSelect
-              listAll
-              showSearch
-              optionFilterProp="label"
-              options={approvalOptions}
-              placeholder="请选择后台已配置的合同审批人"
-              notFoundContent="没有可用审批人，请由管理员设置在职员工的合同审批资格"
-            />
+          <Form.Item label="审批路径" extra="合同已审批通过，保存变更后按所属部门的审批路径重新审批">
+            <ApprovalPathNotice recordId={changing?.id} />
           </Form.Item>
         )}
         <div className="form-grid">

@@ -12,7 +12,7 @@ from app.core import soft_delete
 from app.core.dependencies import current_identity, get_db
 from app.core.permissions import _require_contract_attachment_write_access
 from app.database import Base
-from app.models import BusinessRecord, ContractApprovalStep, User
+from app.models import BusinessRecord, ContractApprovalStep, SystemConfig, User
 
 ADMIN = {"username": "CODEXCCADMIN", "role": "admin", "role_ids": ["admin"], "_actual_role_ids": ["admin"],
          "display_name": "变更测试管理员", "department": "CODEXCC", "action_keys": ["*"]}
@@ -55,10 +55,14 @@ class ContractChangeReapprovalTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_approved_contract_change_goes_back_to_approval(self):
         contract = await self._contract("HT-CC-APPROVED")
+        # BUG20261031002：合同变更走部门审批路径；所里审批人没设置时不能提交。
         missing = await self.client.post(f"{API}/{contract.id}/changes", json={"change_type": "金额调整", "reason": "调整金额", "amount": 200})
         self.assertEqual(missing.status_code, 422, missing.text)
+        async with self.sessions() as db:
+            db.add(SystemConfig(key="seal_approval_settings", label="用印审批设置", value={"firm_approver": "codexapprover"}))
+            await db.commit()
         changed = await self.client.post(f"{API}/{contract.id}/changes", json={
-            "change_type": "金额调整", "reason": "调整金额", "amount": 200, "approvers": ["codexapprover"]})
+            "change_type": "金额调整", "reason": "调整金额", "amount": 200})
         self.assertEqual(changed.status_code, 201, changed.text)
         self.assertTrue(changed.json()["resubmitted_for_approval"])
         contract = await self._contract("HT-CC-APPROVED")

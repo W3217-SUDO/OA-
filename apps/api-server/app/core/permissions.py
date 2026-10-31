@@ -2076,10 +2076,15 @@ async def _seal_application_capabilities(
     selected_approver = str((record.data or {}).get("approver") or "").strip()
     assigned_to_actor = not selected_approver or selected_approver == identity.get("username")
     can_audit = bool(context["approve"] and assigned_to_actor)
+    can_reject = bool(context["reject"] and assigned_to_actor)
+    if (record.data or {}).get("approval_steps"):
+        # 部门审批路径：只由当前这一级的审批人审批，不看用印审批岗位权限（BUG20261031002 第④⑤步）。
+        from app.core.seal_approval import current_seal_step_approver
+        can_audit = can_reject = bool(identity.get("username")) and current_seal_step_approver(record.data or {}) == identity.get("username")
     return {
         "apply": bool(context["apply"] and record.owner == identity.get("username") and record.status == "草稿"),
         "approve": bool(can_audit and record.status == "待审批"),
-        "reject": bool(context["reject"] and assigned_to_actor and record.status == "待审批"),
+        "reject": bool(can_reject and record.status == "待审批"),
         "stamp": bool(context["stamp"] and record.status == "待用印"),
         "archive": bool(context["archive"] and record.status == "已用印"),
         "manage_assets": bool(context["manage_assets"]),

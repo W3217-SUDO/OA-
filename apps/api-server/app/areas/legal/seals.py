@@ -8,7 +8,7 @@ from app.core.constants import (
 from app.core.dependencies import (
     AsyncSession, BusinessRecord, Depends, File, FileAttachment, Form, HTTPException, Path, Query,
     Response, SealAsset, SealAssetAudit, StreamingResponse, UploadFile, WorkflowEvent,
-    current_identity, date, datetime, delete, func, get_db, io, or_, re, select, settings, status,
+    and_, current_identity, date, datetime, delete, func, get_db, io, or_, re, select, settings, status,
     timedelta, uuid4, zipfile,
 )
 from app.models_shared import (
@@ -143,13 +143,14 @@ async def list_seal_applications(view: str = "my", keyword: str = "", record_sta
     conditions = [BusinessRecord.module == "seal"]
     if view == "my": conditions.append(BusinessRecord.owner == identity["username"])
     elif view == "audit":
-        if not (context["approve"] or context["reject"]):
-            return {"items": [], "total": 0, "page": page, "page_size": page_size, "summary": {"total": 0, "pending": 0, "waiting_stamp": 0, "completed": 0}}
+        # 按部门审批路径时，审批人不一定有用印审批岗位权限：轮到自己的都能看到；行政用印人看全部待用印。
         approver = func.trim(func.coalesce(BusinessRecord.data["approver"].as_string(), ""))
-        conditions.extend([
-            BusinessRecord.status.in_({"待审批", "待用印", "已拒绝"}),
-            or_(approver == "", approver == identity["username"]),
-        ])
+        audit_scope = [and_(BusinessRecord.status.in_({"待审批", "待用印", "已拒绝"}), approver == identity["username"])]
+        if context["approve"] or context["reject"]:
+            audit_scope.append(and_(BusinessRecord.status.in_({"待审批", "待用印", "已拒绝"}), approver == ""))
+        if context["stamp"]:
+            audit_scope.append(BusinessRecord.status == "待用印")
+        conditions.append(or_(*audit_scope))
     else:
         conditions.extend(scope_conditions)
     if record_status: conditions.append(BusinessRecord.status == record_status)
@@ -291,7 +292,9 @@ async def create_seal_application(body: SealApplicationInput, identity: dict = D
         raise HTTPException(status_code=422, detail="印章类型不在系统允许范围内")
     case_no, contract_no, customer, use_type, case_record_id, contract_record_id, customer_record_id = await _validated_seal_relations(body, identity, db)
     serial = await _next_seal_application_serial(db)
-    item = BusinessRecord(module="seal", serial_no=serial, title=body.title, customer=customer, status="草稿", owner=identity["username"], description=body.description, data={"case_record_id": case_record_id, "case_no": case_no, "contract_record_id": contract_record_id, "contract_no": contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "seal_types": seal_types, "copies": body.copies, "print_quantity": body.print_quantity if body.print_quantity is not None else body.copies, "remark": body.remark.strip(), "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "document_names": body.document_names})
+    from app.core.seal_approval import record_department
+    applicant_department = await record_department(BusinessRecord(owner=identity["username"], department=""), db)
+    item = BusinessRecord(module="seal", serial_no=serial, title=body.title, customer=customer, status="草稿", owner=identity["username"], department=applicant_department, description=body.description, data={"case_record_id": case_record_id, "case_no": case_no, "contract_record_id": contract_record_id, "contract_no": contract_no, "use_type": use_type, "seal_asset_id": body.seal_asset_id, "seal_type": asset.seal_type, "seal_name": asset.name, "seal_types": seal_types, "copies": body.copies, "print_quantity": body.print_quantity if body.print_quantity is not None else body.copies, "remark": body.remark.strip(), "purpose": body.purpose, "use_date": str(body.use_date), "delivery_method": body.delivery_method, "is_electronic_seal": body.is_electronic_seal, "is_offline_print": body.is_offline_print, "document_names": body.document_names})
     copied_targets: list[Path] = []
     source_attachment_ids = await _resolve_seal_source_attachment_ids(
         body, case_no, contract_no, case_record_id, contract_record_id, customer_record_id, identity, db
@@ -487,9 +490,13 @@ async def submit_seal_application(record_id: int, body: TaskActionInput, identit
     attachment_count = int(await db.scalar(select(func.count()).select_from(FileAttachment).where(FileAttachment.record_id == item.id, FileAttachment.category == "用印文件")) or 0)
     if not attachment_count:
         raise HTTPException(status_code=409, detail="请先上传至少一个用印文件后再提交审批")
+    # 不从合同发起的用印也走“本部门负责人 → 所里审批人 → 行政用印”（思法汇成 10-31 16:11，BUG20261031002）。
+    from app.core.seal_approval import record_department, resolve_approval_path, start_seal_steps
+    seal_path = await resolve_approval_path(await record_department(item, db), item.owner or identity["username"], db)
     await assess_conflict_review(item, identity, db, trigger="contract_seal_submit")
     old = item.status; item.status = "待审批"
-    db.add(WorkflowEvent(record_id=item.id, action="提交用印审批", from_status=old, to_status=item.status, operator=identity["username"], comment=body.comment))
+    item.data = start_seal_steps(dict(item.data or {}), seal_path)
+    db.add(WorkflowEvent(record_id=item.id, action="提交用印审批", from_status=old, to_status=item.status, operator=identity["username"], comment=body.comment or f"审批路径：{' → '.join(seal_path)}"))
     await _sync_legacy_official_audit(item, identity, db, 10, body.comment)
     await db.commit(); await db.refresh(item); return await _seal_record_dict(item, db, identity=identity)
 
@@ -561,15 +568,33 @@ async def approve_seal_application(record_id: int, body: SealApprovalInput, iden
         raise HTTPException(status_code=422, detail="驳回时必须填写审批意见")
     if body.approved:
         await require_conflict_clear(item, db, action="用印审批")
-    old = item.status; item.status = "待用印" if body.approved else "已拒绝"
-    item.data = {
-        **(item.data or {}),
-        "approver": identity["username"],
-        "approved_at": datetime.now().isoformat(timespec="seconds"),
-        "approval_comment": body.comment.strip(),
-    }
-    db.add(WorkflowEvent(record_id=item.id, action="用印审批通过" if body.approved else "用印审批拒绝", from_status=old, to_status=item.status, operator=identity["username"], comment=body.comment))
-    await _sync_legacy_official_audit(item, identity, db, 20 if body.approved else 30, body.comment)
+    old = item.status
+    data = dict(item.data or {})
+    steps = [dict(step) for step in data.get("approval_steps") or [] if isinstance(step, dict)]
+    index = int(data.get("approval_step_index") or 0)
+    now = datetime.now().isoformat(timespec="seconds")
+    next_index = index + 1
+    if steps and 0 <= index < len(steps):
+        # 按部门审批路径逐级审批，最后一级通过后转行政用印（BUG20261031002 第④⑤步）。
+        steps[index].update({"status": "已通过" if body.approved else "已拒绝", "acted_by": identity["username"], "acted_at": now, "comment": body.comment.strip()})
+        if body.approved and next_index < len(steps):
+            steps[next_index]["status"] = "待审批"
+            data.update({"approval_steps": steps, "approval_step_index": next_index, "approver": str(steps[next_index].get("approver") or "")})
+        else:
+            if not body.approved:
+                for step in steps[next_index:]:
+                    step["status"] = "已取消"
+            item.status = "待用印" if body.approved else "已拒绝"
+            data.update({"approval_steps": steps, "approved_at": now, "approval_comment": body.comment.strip()})
+    else:
+        item.status = "待用印" if body.approved else "已拒绝"
+        data.update({"approver": identity["username"], "approved_at": now, "approval_comment": body.comment.strip()})
+    item.data = data
+    step_label = f"第{index + 1}级" if steps else ""
+    action = ("用印节点通过" if item.status == "待审批" else "用印审批通过") if body.approved else "用印审批拒绝"
+    db.add(WorkflowEvent(record_id=item.id, action=action, from_status=old, to_status=item.status, operator=identity["username"], comment=f"{step_label} {body.comment}".strip()))
+    if item.status != "待审批":
+        await _sync_legacy_official_audit(item, identity, db, 20 if body.approved else 30, body.comment)
     await db.commit(); await db.refresh(item); return await _seal_record_dict(item, db, identity=identity)
 
 

@@ -319,7 +319,7 @@ export function createContractWorkflowActions(context: ContractWorkflowDependenc
         }
     };
     const submitWizard = async () => {
-        const { wizardDraft, contractCapabilities, denyContractAction, submitForm, setAttachments, setSubmittingWizard, loadWizardContext, approvalOptions, personName, sealForm, setWizardStep, setOpen, onNavigate, load } = context;
+        const { wizardDraft, contractCapabilities, denyContractAction, submitForm, setAttachments, setSubmittingWizard, loadWizardContext, sealForm, setWizardStep, setOpen, onNavigate, load } = context;
         if (!wizardDraft)
             return;
         if (!contractCapabilities(wizardDraft).canSubmit) {
@@ -337,10 +337,6 @@ export function createContractWorkflowActions(context: ContractWorkflowDependenc
                 message.warning("仅草稿或已拒绝合同可以提交审批");
                 return;
             }
-            if (submissionErrors.includes("approver")) {
-                message.warning("请选择一名合同审批人");
-                return;
-            }
             if (submissionErrors.includes("attachment")) {
                 message.warning("请先上传至少一份合同附件后再提交审批");
                 return;
@@ -351,8 +347,7 @@ export function createContractWorkflowActions(context: ContractWorkflowDependenc
             if (!feedback.ok)
                 throw new Error(feedback.message);
             const contract = await loadWizardContext(wizardDraft.id);
-            const approverName = approvalOptions.find((option) => option.value === values.approvers)?.label || personName(values.approvers);
-            message.success(`合同已进入 ${approverName} 的待审批列表`);
+            message.success("合同已按所属部门的审批路径提交审批");
             if (syncSealRequested) {
                 sealForm.setFieldsValue({
                     copies: 1,
@@ -443,7 +438,7 @@ export function createContractWorkflowActions(context: ContractWorkflowDependenc
             if (contract.status !== "审批中")
                 localStorage.removeItem(WIZARD_STORAGE_KEY);
             message.success(submitApplication
-                ? (data.status === "待审批" ? "合同审批与用印申请已分别提交至对应审批渠道" : "合同用印申请已创建")
+                ? (data.status === "待用印" ? "合同已审批且未改动，用印申请已直接转行政用印" : data.status === "待审批" ? "用印申请已按部门审批路径提交审批" : "合同用印申请已创建")
                 : "合同用印申请草稿已创建，请到用印中心提交审批");
             setWizardDraft(contract);
             await load();
@@ -461,7 +456,7 @@ export function createContractWorkflowActions(context: ContractWorkflowDependenc
         }
     };
     const submit = async () => {
-        const { submitting, contractMutationGates, contractCapabilities, denyContractAction, setSubmitSaving, submitForm, approvalOptions, personName, setSubmitting, load } = context;
+        const { submitting, contractMutationGates, contractCapabilities, denyContractAction, setSubmitSaving, submitForm, setSubmitting, load } = context;
         if (!submitting || !contractMutationGates.current.submit.tryEnter())
             return;
         if (!contractCapabilities(submitting).canSubmit) {
@@ -476,8 +471,7 @@ export function createContractWorkflowActions(context: ContractWorkflowDependenc
             const feedback = normalizeContractActionResponse(response, "提交审批失败");
             if (!feedback.ok)
                 throw new Error(feedback.message);
-            const approverName = approvalOptions.find((option) => option.value === v.approvers)?.label || personName(v.approvers);
-            message.success(`已提交至 ${approverName} 的待审批列表`);
+            message.success("已按所属部门的审批路径提交审批");
             setSubmitting(null);
             await load();
         }

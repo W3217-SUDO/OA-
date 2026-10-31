@@ -78,6 +78,7 @@ _PAGE_MENU_PREFIXES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("/hr/employees", ("hr-all", "hr-new", "@root:hr")),
     ("/hr/departments", ("hr-departments", "@root:hr")),
     ("/hr/job-roles", ("hr-roles", "@root:hr")),
+    ("/hr/seal-approval-settings", ("hr-seal-approval", "@root:hr")),
     ("/hr", ("@root:hr",)),
     ("/customers", ("@root:customer",)),
     ("/party-library", ("@root:party",)),

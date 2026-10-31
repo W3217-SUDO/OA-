@@ -1,5 +1,5 @@
 import { StatusTag } from "../components/common/StatusTag";
-import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
+import ApprovalPathNotice from "./ApprovalPathNotice";
 import { CheckOutlined, CloseOutlined } from "@ant-design/icons";
 import { Alert, Button, Checkbox, DatePicker, Descriptions, Divider, Empty, Form, Input, InputNumber, Radio, Select, Space, Steps, Timeline, } from "antd";
 import { displayContractStatus } from "../contractStatusPresentation.mjs";
@@ -8,7 +8,7 @@ import { CONTRACT_CREATE_STEP_TITLES, CONTRACT_FEE_MODE_OPTIONS, CONTRACT_TYPE_O
 import type { ContractWizardContentProps } from "./ContractCreateWizard";
 import { useConflictReview } from "../conflict-review/useConflictReview";
 import { ConflictReviewNotice } from "../conflict-review/ConflictReviewNotice";
-export function ContractPageWizardContent({ wizardStep, wizardDraft, form, submitForm, reviewForm, sealForm, attachments, historyItems, stepItems, customerOptions, approvalOptions, sealApprovalOptions, sealAssets, currentApproval, canActOnCurrentApproval, contractApproverLabel, personName, onContractFileChange, onApproveWizard, onClearLinkedCustomerContext, onDownloadAttachment }: Pick<ContractWizardContentProps, "wizardStep" | "wizardDraft" | "form" | "submitForm" | "reviewForm" | "sealForm" | "attachments" | "historyItems" | "stepItems" | "customerOptions" | "approvalOptions" | "sealApprovalOptions" | "sealAssets" | "currentApproval" | "canActOnCurrentApproval" | "contractApproverLabel" | "personName" | "onContractFileChange" | "onApproveWizard" | "onClearLinkedCustomerContext" | "onDownloadAttachment">) {
+export function ContractPageWizardContent({ wizardStep, wizardDraft, form, submitForm, reviewForm, sealForm, attachments, historyItems, stepItems, customerOptions, sealAssets, currentApproval, canActOnCurrentApproval, personName, onContractFileChange, onApproveWizard, onClearLinkedCustomerContext, onDownloadAttachment }: Pick<ContractWizardContentProps, "wizardStep" | "wizardDraft" | "form" | "submitForm" | "reviewForm" | "sealForm" | "attachments" | "historyItems" | "stepItems" | "customerOptions" | "approvalOptions" | "sealApprovalOptions" | "sealAssets" | "currentApproval" | "canActOnCurrentApproval" | "contractApproverLabel" | "personName" | "onContractFileChange" | "onApproveWizard" | "onClearLinkedCustomerContext" | "onDownloadAttachment">) {
     const conflict = useConflictReview(wizardDraft?.id, wizardStep > 0);
     return <>
     {wizardStep > 0 && <ConflictReviewNotice guard={conflict} />}
@@ -46,9 +46,7 @@ export function ContractPageWizardContent({ wizardStep, wizardDraft, form, submi
                 <Form.Item label="是否同步用印" name="sync_seal" initialValue={false}>
                   <Radio.Group disabled={!(["草稿", "已拒绝"].includes(wizardDraft?.status || ""))} options={[{ value: true, label: "是" }, { value: false, label: "否" }]}/>
                 </Form.Item>
-                <Form.Item label={contractApproverLabel} name="approvers" rules={[{ required: true, message: "请选择一名合同审批人" }]}>
-                  <KeywordPersonSelect listAll disabled={!("草稿 已拒绝".split(" ").includes(wizardDraft?.status || ""))} showSearch optionFilterProp="label" options={approvalOptions} placeholder="请选择后台已配置的合同审批人" notFoundContent="没有可用审批人，请由管理员在人事中心为在职员工配置合同审批流程资格"/>
-                </Form.Item>
+                <Form.Item label="审批路径"><ApprovalPathNotice recordId={wizardDraft?.id} /></Form.Item>
                 <Form.Item label="提交说明" name="comment"><Input.TextArea disabled={!("草稿 已拒绝".split(" ").includes(wizardDraft?.status || ""))} rows={3}/></Form.Item>
               </Form>
               <p className="contract-draft-tip">合同草稿已经持久化保存。关闭页面后，可在“我的合同”中继续编辑或提交。</p>
@@ -81,9 +79,7 @@ export function ContractPageWizardContent({ wizardStep, wizardDraft, form, submi
                 ]}/>)}
               {(<Form form={sealForm} layout="vertical" className="contract-seal-form">
                   <div className="form-grid">
-                    <Form.Item label="用印审批人" name="approver" rules={[{ required: true, message: "请选择用印审批人" }]}>
-                      <KeywordPersonSelect listAll showSearch optionFilterProp="label" options={sealApprovalOptions} placeholder="请选择用印审批人" notFoundContent="没有可用审批人，请先在人事中心配置用印审批资格"/>
-                    </Form.Item>
+                    <Form.Item className="span-2"><Alert type="info" showIcon title="用印不用选审批人：同步用印的合同审批通过后直接转行政用印；合同已审批且附件没改过的免审批直接转行政用印，改过的按部门审批路径审批后再转行政用印。" /></Form.Item>
                     <Form.Item label="选择印章" name="seal_asset_id" rules={[{ required: true, message: "请选择印章" }]}><Select placeholder="请选择印章类型" notFoundContent="暂无可用印章，请管理员到用印中心维护" options={sealAssets.map((asset) => ({ value: asset.id, label: `${asset.seal_type}｜${asset.name}（${asset.code}）` }))}/></Form.Item>
                     <Form.Item label="用印份数" name="copies" rules={[{ required: true }]}><InputNumber min={1} max={999} style={{ width: "100%" }}/></Form.Item>
                     <Form.Item label="计划用印日期" name="use_date" rules={[{ required: true }]}><DatePicker style={{ width: "100%" }}/></Form.Item>

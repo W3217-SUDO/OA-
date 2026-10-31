@@ -130,7 +130,7 @@ DEFAULT_SYSTEM_MENUS = [
     ("finance", "", "财务中心", "file-text", 90),
     ("platform-finance", "", "平台财务中心", "bank", 100),
     ("user-center", "", "用户中心", "user", 110), ("user-messages", "user-center", "消息通知", "", 111), ("user-communications", "user-center", "沟通日志", "", 112), ("user-account", "user-center", "账户管理", "", 113),
-    ("hr", "", "人事中心", "team", 120), ("hr-new", "hr", "新建员工", "", 1), ("hr-all", "hr", "员工管理", "", 2), ("hr-departments", "hr", "部门管理", "", 3), ("hr-roles", "hr", "角色管理", "", 4), ("hr-performance", "hr", "绩效管理", "", 5),
+    ("hr", "", "人事中心", "team", 120), ("hr-new", "hr", "新建员工", "", 1), ("hr-all", "hr", "员工管理", "", 2), ("hr-departments", "hr", "部门管理", "", 3), ("hr-roles", "hr", "角色管理", "", 4), ("hr-performance", "hr", "绩效管理", "", 5), ("hr-seal-approval", "hr", "用印审批设置", "", 6),
     ("system", "", "系统中心", "user", 130), ("system-parameters", "system", "系统参数", "", 1), ("system-management", "system", "系统管理", "", 2),
     ("warehouse", "", "仓库管理", "file-text", 140), ("warehouse-list", "warehouse", "仓库一览表", "", 1), ("reports", "", "报表中心", "dashboard", 150),
 ]

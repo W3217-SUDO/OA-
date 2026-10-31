@@ -19,8 +19,8 @@ class ContractWholeDeleteInput(BaseModel):
 
 
 class ContractSubmitInput(BaseModel):
-    approvers: list[str] = Field(min_length=1, max_length=10, description=(
-        "合同审批人账号。前置条件：必须是 GET /contracts/approver-settings 返回中 selected=true 的 username；"
+    approvers: list[str] = Field(default_factory=list, max_length=10, description=(
+        "已不再使用：审批人按合同所属部门在人事中心“用印审批设置”里的审批路径自动带出。"
         "合同须至少已有一份“合同附件”，否则提交被拒。"))
     comment: str = Field(default="", description="提交说明")
     sync_seal: bool = False  # 是否同步申请合同用印
@@ -68,7 +68,7 @@ class ContractApprovalInput(BaseModel):
 
 
 class ContractSealApplicationInput(BaseModel):
-    approver: str = Field(min_length=1, max_length=100)
+    approver: str = Field(default="", max_length=100)  # 已不再使用：按部门审批路径
     seal_asset_id: int
     copies: int = Field(ge=1, le=999)
     purpose: str = Field(min_length=1, max_length=500)

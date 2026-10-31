@@ -1,4 +1,5 @@
 import { StatusTag } from "../components/common/StatusTag";
+import ApprovalPathNotice from "./ApprovalPathNotice";
 import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { CheckOutlined,CloseOutlined } from "@ant-design/icons";
 import type { FormInstance } from "antd";
@@ -189,16 +190,8 @@ export function ContractWizardContent({ onDownloadAttachment, onClearLinkedCusto
                 ]}
               />
             </Form.Item>
-            <Form.Item label={contractApproverLabel} name="approvers" rules={[{ required: true, message: "请选择一名合同审批人" }]}>
-              <KeywordPersonSelect
-                listAll
-                disabled={!(["草稿", "已拒绝"].includes(wizardDraft?.status || ""))}
-                showSearch
-                optionFilterProp="label"
-                options={approvalOptions}
-                placeholder="请选择后台已配置的合同审批人"
-                notFoundContent="没有可用审批人，请由管理员设置在职员工的合同审批资格"
-              />
+            <Form.Item label="审批路径">
+              <ApprovalPathNotice recordId={wizardDraft?.id} />
             </Form.Item>
             <Form.Item label="提交说明" name="comment">
               <Input.TextArea disabled={!(["草稿", "已拒绝"].includes(wizardDraft?.status || ""))} rows={3} />
@@ -329,15 +322,8 @@ export function ContractWizardContent({ onDownloadAttachment, onClearLinkedCusto
           {(
             <Form form={sealForm} layout="vertical" className="contract-seal-form">
               <div className="form-grid">
-                <Form.Item label="用印审批人" name="approver" rules={[{ required: true, message: "请选择用印审批人" }]}>
-                  <KeywordPersonSelect
-                    listAll
-                    showSearch
-                    optionFilterProp="label"
-                    options={sealApprovalOptions}
-                    placeholder="请选择用印审批人"
-                    notFoundContent="没有可用审批人，请先在人事中心配置合同审批资格"
-                  />
+                <Form.Item className="span-2">
+                  <Alert type="info" showIcon title="用印不用选审批人：同步用印的合同审批通过后直接转行政用印；合同已审批且附件没改过的免审批直接转行政用印，改过的按部门审批路径审批后再转行政用印。" />
                 </Form.Item>
                 <Form.Item label="选择印章" name="seal_asset_id" rules={[{ required: true, message: "请选择印章" }]}>
                   <Select
