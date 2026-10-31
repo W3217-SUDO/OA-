@@ -96,6 +96,28 @@ class SealApprovalPathTest(unittest.IsolatedAsyncioTestCase):
         settings_page = (await self.client.get("/api/v1/hr/seal-approval-settings")).json()
         self.assertEqual(settings_page["display_names"]["stamper"], "stamper名")
 
+    async def test_department_create_and_update_set_seal_reviewer(self):
+        # BUG20261031003：部门新建/部门设置里的“部门用印审核人”就是该部门审批路径第一步。
+        await self._settings(firm_approver="firm")
+        created = await self.client.post("/api/v1/hr/departments", json={"code": "SS3", "name": "诉讼三部", "manager": "head", "seal_reviewer": "partner"})
+        self.assertEqual(created.status_code, 201, created.text)
+        self.assertEqual((created.json()["seal_reviewer"], created.json()["seal_reviewer_display_name"]), ("partner", "partner名"))
+        async with self.sessions() as db:
+            self.assertEqual((await approval_path_preview("诉讼三部", "clerk", db))["path"], ["partner", "firm"])
+        updated = await self.client.patch(f"/api/v1/hr/departments/{created.json()['id']}", json={"seal_reviewer": ""})
+        self.assertEqual(updated.status_code, 200, updated.text)
+        async with self.sessions() as db:
+            self.assertEqual((await approval_path_preview("诉讼三部", "clerk", db))["path"], ["head", "firm"])
+        bad = await self.client.post("/api/v1/hr/departments", json={"code": "SS4", "name": "诉讼四部", "manager": "head", "seal_reviewer": "nobody"})
+        self.assertEqual(bad.status_code, 422, bad.text)
+        # 思法汇成 17:28 确认：新建部门时部门负责人必填；老部门没负责人也能改其他字段。
+        no_head = await self.client.post("/api/v1/hr/departments", json={"code": "SS5", "name": "诉讼五部"})
+        self.assertEqual(no_head.status_code, 422, no_head.text)
+        async with self.sessions() as db:
+            old_id = await db.scalar(select(Department.id).where(Department.name == "诉讼二部"))
+        renamed = await self.client.patch(f"/api/v1/hr/departments/{old_id}", json={"sort_order": 9})
+        self.assertEqual(renamed.status_code, 200, renamed.text)
+
     async def test_standalone_seal_goes_through_each_step_then_to_stamp(self):
         await self._settings(firm_approver="firm")
         async with self.sessions() as db:

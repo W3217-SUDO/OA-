@@ -99,6 +99,16 @@ class FeedbackConfirmFlowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self._actions(), ["验证通过", "未解决，重新打开"])
         self.assertEqual((await self._transition("确认修改")).status_code, 409)
 
+    async def test_follow_up_plan_from_pending_verification(self):
+        # 待验证时提交人又提新要求：处理人可以再“请确认修改方案”回到待确认（陶威 10-31 定）。
+        self.identity = dict(ADMIN)
+        await self._transition("处理完成，请验证", "已修复")
+        self.assertIn("请确认修改方案", await self._actions())
+        planned = await self._transition("请确认修改方案", "组织树按排序号排整齐")
+        self.assertEqual(planned.json(), {"status": "待确认"})
+        self.identity = dict(STAFF)
+        self.assertEqual((await self._transition("确认修改")).json(), {"status": "待处理"})
+
     async def test_status_counts_include_pending_confirmation(self):
         self.identity = dict(ADMIN)
         await self._transition("请确认修改方案", "打算这样改")

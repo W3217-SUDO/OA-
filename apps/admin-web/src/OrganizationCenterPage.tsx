@@ -39,6 +39,8 @@ type Department = {
   owner_username?: string;
   owner_display_name?: string;
   owner_display_name_missing?: boolean;
+  seal_reviewer?: string;
+  seal_reviewer_display_name?: string;
   overdue_deduction: boolean;
   sort_order: number;
   is_active: boolean;
@@ -333,8 +335,15 @@ export default function OrganizationCenterPage({
     try {
       const value = await createDepartmentForm.validateFields();
       setCreatingDepartment(true);
-      await api.post("/hr/departments", { ...value, is_active: true, manager: "", owner_username: "", parent_department_id: null });
-      message.success("部门已新建，请到人事中心“部门设置”里设置上级部门和负责人。");
+      await api.post("/hr/departments", {
+        ...value,
+        is_active: true,
+        parent_department_id: value.parent_department_id ?? null,
+        manager: value.manager ?? "",
+        owner_username: "",
+        seal_reviewer: value.seal_reviewer ?? "",
+      });
+      message.success("部门已新建；挂靠人可在人事中心“部门设置”里设置。");
       createDepartmentForm.resetFields();
       void load();
     } catch (error: any) {
@@ -445,6 +454,7 @@ export default function OrganizationCenterPage({
           parent_department_id: fields.parent_department_id ?? null,
           manager: fields.manager ?? "",
           owner_username: fields.parent_department_id ? fields.owner_username ?? "" : "",
+          seal_reviewer: fields.seal_reviewer ?? "",
         };
         if (editingDepartment)
           await api.patch(`/hr/departments/${editingDepartment.id}`, value);
@@ -561,6 +571,12 @@ export default function OrganizationCenterPage({
       render: (_value, row) => renderPersonReference(row.manager_display_name, row.manager_display_name_missing),
     },
     {
+      title: "部门用印审核人",
+      dataIndex: "seal_reviewer",
+      width: 130,
+      render: (_value, row) => row.seal_reviewer ? row.seal_reviewer_display_name || row.seal_reviewer : (row.manager ? "同部门负责人" : "—"),
+    },
+    {
       title: "挂靠人",
       dataIndex: "owner_username",
       width: 120,
@@ -657,13 +673,28 @@ export default function OrganizationCenterPage({
   );
   const createDepartmentPanel = (
     <Form form={createDepartmentForm} layout="vertical" className="organization-create-form" initialValues={{ sort_order: departments.length + 1 }}>
-      <Alert type="info" showIcon style={{ marginBottom: 16 }} title="这里只新建部门；上级部门、部门负责人、挂靠人和停用都在人事中心“部门设置”里操作。" />
+      <Alert type="info" showIcon style={{ marginBottom: 16 }} title="挂靠人、停用部门在人事中心“部门设置”里操作。" />
       <div className="organization-form-grid">
         <Form.Item label="部门名称" name="name" rules={[{ required: true, message: "请输入部门名称." }]}>
           <Input />
         </Form.Item>
         <Form.Item label="部门代码" name="code" rules={[{ required: true, message: "请输入部门代码." }]}>
           <Input />
+        </Form.Item>
+        <Form.Item label="上级部门" name="parent_department_id">
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder="请选择（顶级部门）"
+            options={departments.filter((candidate) => candidate.is_active).map((candidate) => ({ value: candidate.id, label: candidate.name }))}
+          />
+        </Form.Item>
+        <Form.Item label="部门负责人" name="manager" rules={[{ required: true, message: "请选择部门负责人" }]}>
+          <Select allowClear showSearch optionFilterProp="search" placeholder="请选择" options={peopleOptions.map((person) => ({ value: person.username, label: person.label, search: person.search_text || person.label }))} />
+        </Form.Item>
+        <Form.Item label="部门用印审核人" name="seal_reviewer" extra="合同审批、用印审批的第一步；不填由部门负责人审核">
+          <Select allowClear showSearch optionFilterProp="search" placeholder="默认部门负责人" options={peopleOptions.map((person) => ({ value: person.username, label: person.label, search: person.search_text || person.label }))} />
         </Form.Item>
         <Form.Item label="排序号" name="sort_order" rules={[{ required: true }]}>
           <InputNumber min={0} style={{ width: "100%" }} />
@@ -827,6 +858,15 @@ export default function OrganizationCenterPage({
                   showSearch
                   optionFilterProp="search"
                   placeholder="请选择"
+                  options={peopleOptions.map((person) => ({ value: person.username, label: person.label, search: person.search_text || person.label }))}
+                />
+              </Form.Item>
+              <Form.Item label="部门用印审核人" name="seal_reviewer" extra="合同审批、用印审批的第一步；不填由部门负责人审核">
+                <Select
+                  allowClear
+                  showSearch
+                  optionFilterProp="search"
+                  placeholder="默认部门负责人"
                   options={peopleOptions.map((person) => ({ value: person.username, label: person.label, search: person.search_text || person.label }))}
                 />
               </Form.Item>

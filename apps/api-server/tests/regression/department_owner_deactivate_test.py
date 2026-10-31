@@ -69,7 +69,7 @@ class DepartmentOwnerDeactivateTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(bad.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY, bad.text)
 
         top = await self.client.post(f"{API}/hr/departments", headers=self.headers, json={
-            "code": "TOP", "name": "顶级部门", "owner_username": "zhang",
+            "code": "TOP", "name": "顶级部门", "manager": "zhang", "owner_username": "zhang",
         })
         self.assertEqual(top.json()["owner_username"], "", "没有上级部门就没有挂靠人")
 

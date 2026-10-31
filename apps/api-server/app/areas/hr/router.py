@@ -538,6 +538,20 @@ async def delete_hr_employee(employee_id: int, identity: dict = Depends(current_
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+async def _with_seal_reviewers(items: list[dict], db: AsyncSession) -> list[dict]:
+    """部门列表带上“部门用印审核人”（BUG20261031003）；没单独设时为空，按部门负责人审核。"""
+    from app.core.formatters import _user_display_map
+    from app.core.seal_approval import department_seal_reviewers
+    reviewers = await department_seal_reviewers(db)
+    names = await _user_display_map(set(reviewers.values()), db) if reviewers else {}
+    for item in items:
+        reviewer = reviewers.get(int(item["id"]), "")
+        item["seal_reviewer"] = reviewer
+        user = names.get(reviewer.lower()) if reviewer else None
+        item["seal_reviewer_display_name"] = (user.display_name or user.username) if user else reviewer
+    return items
+
+
 async def _department_person(value: str, label: str, db: AsyncSession) -> str:
     """部门负责人、挂靠人只能选在职账号；留空表示未设置。"""
     key = (value or "").strip()
@@ -581,7 +595,7 @@ async def list_departments(
     display_users = await _user_display_map({value for item in page_items for value in (item.manager, item.owner_username, item.created_by, item.updated_by)}, db)
     actor_sources = await _department_actor_sources(page_items, db)
     return {
-        "items": [_department_dict(item, names_by_id.get(item.parent_department_id or 0, ""), display_users, actor_sources.get(item.id)) for item in page_items],
+        "items": await _with_seal_reviewers([_department_dict(item, names_by_id.get(item.parent_department_id or 0, ""), display_users, actor_sources.get(item.id)) for item in page_items], db),
         "total": total, "page": effective_page, "page_size": effective_page_size,
     }
 
@@ -605,14 +619,21 @@ async def create_department(body: DepartmentInput, identity: dict = Depends(curr
         parent = await db.get(Department, body.parent_department_id)
         if not parent or not parent.is_active: raise HTTPException(status_code=422, detail="上级部门不存在或已停用")
     manager = await _department_person(body.manager, "部门负责人", db)
+    # 新建部门时部门负责人必填（思法汇成 10-31 17:28，BUG20261031003）；老部门没填的修改其他字段不受影响。
+    if not manager:
+        raise HTTPException(status_code=422, detail="请选择部门负责人")
     owner_username = await _department_person(body.owner_username, "挂靠人", db) if parent else ""
-    item = Department(**body.model_dump(exclude={"code", "name", "manager", "owner_username"}), code=code, name=name, manager=manager, owner_username=owner_username, created_by=identity["username"], updated_by=identity["username"])
+    seal_reviewer = await _department_person(body.seal_reviewer, "部门用印审核人", db)
+    item = Department(**body.model_dump(exclude={"code", "name", "manager", "owner_username", "seal_reviewer"}), code=code, name=name, manager=manager, owner_username=owner_username, created_by=identity["username"], updated_by=identity["username"])
     db.add(item); await db.flush()
+    if seal_reviewer:
+        from app.core.seal_approval import set_department_seal_reviewer
+        await set_department_seal_reviewer(item.id, seal_reviewer, identity["username"], db)
     await _record_organization_audit(db, identity, "创建部门", f"部门:{item.code}", {"department_id": item.id, "code": item.code, "name": item.name})
     actor_sources = await _department_actor_sources([item], db)
     await db.commit(); await db.refresh(item)
     display_users = await _user_display_map({item.manager, item.owner_username, item.created_by, item.updated_by}, db)
-    return _department_dict(item, parent.name if parent else "", display_users, actor_sources.get(item.id))
+    return (await _with_seal_reviewers([_department_dict(item, parent.name if parent else "", display_users, actor_sources.get(item.id))], db))[0]
 
 
 @router.patch(f"{settings.api_prefix}/hr/departments/{{department_id}}")
@@ -641,6 +662,11 @@ async def update_department(department_id: int, body: DepartmentUpdate, identity
             ancestor = await db.get(Department, ancestor.parent_department_id)
             if not ancestor: break
     changes = body.model_dump(exclude_unset=True, exclude_none=True)
+    seal_reviewer = changes.pop("seal_reviewer", None)
+    if seal_reviewer is not None:
+        from app.core.seal_approval import department_seal_reviewers, set_department_seal_reviewer
+        if seal_reviewer.strip() != (await department_seal_reviewers(db)).get(item.id, ""):
+            await set_department_seal_reviewer(item.id, await _department_person(seal_reviewer, "部门用印审核人", db), identity["username"], db)
     if "parent_department_id" in body.model_fields_set:
         changes["parent_department_id"] = body.parent_department_id
     # 只校验本次改动的人，旧数据里不规范的负责人不挡其他字段的保存。
@@ -662,7 +688,7 @@ async def update_department(department_id: int, body: DepartmentUpdate, identity
     await db.commit(); await db.refresh(item)
     parent = await db.get(Department, item.parent_department_id) if item.parent_department_id else None
     display_users = await _user_display_map({item.manager, item.owner_username, item.created_by, item.updated_by}, db)
-    return _department_dict(item, parent.name if parent else "", display_users, actor_sources.get(item.id))
+    return (await _with_seal_reviewers([_department_dict(item, parent.name if parent else "", display_users, actor_sources.get(item.id))], db))[0]
 
 
 @router.delete(f"{settings.api_prefix}/hr/departments/{{department_id}}", status_code=status.HTTP_204_NO_CONTENT)

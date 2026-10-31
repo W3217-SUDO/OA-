@@ -163,3 +163,17 @@ async def record_department(record: BusinessRecord, db: AsyncSession) -> str:
     if _clean(record.department):
         return _clean(record.department)
     return _clean(await db.scalar(select(User.department).where(User.username == record.owner))) if record.owner else ""
+
+
+async def department_seal_reviewers(db: AsyncSession) -> dict[int, str]:
+    """各部门的“部门用印审核人”= 用印审批设置里该部门第一步换的人；没设时按部门负责人（BUG20261031003）。"""
+    return {int(key): steps[0] for key, steps in (await load_seal_approval_settings(db))["department_paths"].items() if steps and steps[0]}
+
+
+async def set_department_seal_reviewer(department_id: int, username: str, actor: str, db: AsyncSession) -> None:
+    settings = await load_seal_approval_settings(db)
+    paths = dict(settings["department_paths"])
+    steps = list(paths.get(str(department_id), ["", ""]))
+    steps[0] = _clean(username)
+    paths[str(department_id)] = steps
+    await save_seal_approval_settings({**settings, "department_paths": paths}, actor, db)
