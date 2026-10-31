@@ -1140,7 +1140,7 @@ async def _delete_case_events_for_case_cleanup(case_id: int, db: AsyncSession) -
 async def _case_search_scope_conditions(body: CounselCaseSearchInput, identity: dict, db: AsyncSession, *, relation_customer=None) -> list:
     """普通案件检索的范围条件；快速路径与完整筛选共用，保证两者可见范围一致。"""
     from app.core.permissions import (
-        _can_search_all_cases_from_global_search, _case_mine_scope_condition, _record_scope_conditions,
+        _can_search_all_cases_from_global_search, _case_mine_scope_condition, _coordinated_case_condition, _record_scope_conditions,
     )
     record_conditions = [BusinessRecord.module == "case", BusinessRecord.status != "已合并"]
     global_company_scope = body.scope == "global" and await _can_search_all_cases_from_global_search(identity, db)
@@ -1157,7 +1157,11 @@ async def _case_search_scope_conditions(body: CounselCaseSearchInput, identity: 
     elif relation_customer is None:
         record_conditions.extend(await _record_scope_conditions(identity, db))
         if body.scope == "mine":
-            record_conditions.append(await _case_mine_scope_condition(identity, db))
+            # 客户协作人的客户案件也进“我的案件”，行上标“协作”、只能查看（陶威 2026-10-31）。
+            record_conditions.append(or_(
+                await _case_mine_scope_condition(identity, db),
+                _coordinated_case_condition(identity["username"], db.get_bind().dialect.name),
+            ))
     return record_conditions
 
 

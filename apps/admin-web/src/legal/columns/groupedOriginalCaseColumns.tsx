@@ -19,7 +19,7 @@ export function createGroupedOriginalCaseColumns(context: {
         render: (_: unknown, row: CaseRow) => {
             switch (key) {
                 case "base":
-                    return <><p><Button type="link" className="case-cell-link" onClick={() => void context.openCounselDetail(row)}>案号:{row.serial_no}</Button></p><p>阶段:{row.status || ""}</p></>;
+                    return <><p><Button type="link" className="case-cell-link" onClick={() => void context.openCounselDetail(row)}>案号:{row.serial_no}</Button>{row.data.my_case_relation === "协作" && <span className="case-coordinator-tag" title="我是该案件客户的协作人，只能查看">协作</span>}</p><p>阶段:{row.status || ""}</p></>;
                 case "parties":
                     return <><p>原告:{row.data.plaintiff || row.customer}</p><p>被告:{row.data.opponent || row.data.defendant || ""}</p></>;
                 case "court":

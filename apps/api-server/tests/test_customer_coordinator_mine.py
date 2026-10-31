@@ -6,7 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.areas.crm.router import list_customers
-from app.core.permissions import _deny_customer_coordinator_write, _ensure_record_visible
+from app.core.permissions import (
+    _case_coordinator_only, _case_view_only_capabilities, _deny_customer_coordinator_write, _ensure_record_visible, mark_coordinated_cases,
+)
 from app.database import Base
 from app.models import BusinessRecord, SystemParameter, User
 
@@ -31,6 +33,10 @@ class CustomerCoordinatorMineTest(unittest.IsolatedAsyncioTestCase):
                                   department="CODEX", data={"customer_managers": ["codexmgr"], "coordinators": ["codexco"]}))
             db.add(BusinessRecord(id=2, module="customer", serial_no="KH2", title="无关客户", status="T", owner="codexother",
                                   department="CODEX", data={"customer_managers": ["codexother"]}))
+            db.add(BusinessRecord(id=11, module="case", serial_no="AJ1", title="协作客户的案件", status="文书准备", owner="codexmgr",
+                                  department="CODEX", customer="管理的客户", data={"customer_record_id": 1}))
+            db.add(BusinessRecord(id=12, module="case", serial_no="AJ2", title="本人承办的案件", status="文书准备", owner="codexco",
+                                  department="CODEX", customer="管理的客户", data={"customer_record_id": 1, "case_team_usernames": ["codexco"]}))
             await db.commit()
 
     async def asyncTearDown(self):
@@ -69,6 +75,21 @@ class CustomerCoordinatorMineTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(caught.exception.status_code, 404)
             with self.assertRaises(HTTPException):
                 await _ensure_record_visible(2, reader, db)
+
+    async def test_coordinator_cases_are_marked_and_view_only(self):
+        async with self.sessions() as db:
+            items = await mark_coordinated_cases([{"id": 11, "data": {}}, {"id": 12, "data": {}}], identity("codexco"), db)
+            self.assertEqual(items[0]["data"].get("my_case_relation"), "协作")
+            self.assertNotIn("my_case_relation", items[1]["data"])
+            reader = {**identity("codexco", "GET"), "_page_menu_capability": False}
+            self.assertEqual((await _ensure_record_visible(11, reader, db)).id, 11)
+            self.assertTrue(await _case_coordinator_only(await db.get(BusinessRecord, 11), identity("codexco", "POST"), db))
+            self.assertFalse(await _case_coordinator_only(await db.get(BusinessRecord, 12), identity("codexco", "POST"), db))
+            with self.assertRaises(HTTPException) as caught:
+                await _deny_customer_coordinator_write(await db.get(BusinessRecord, 11), identity("codexco", "POST"), db)
+            self.assertEqual(caught.exception.status_code, 403)
+        view_only = _case_view_only_capabilities({"can_write": True, "can_create_finance": True, "can_view_case_logs": True, "team_role": "x"})
+        self.assertEqual((view_only["can_write"], view_only["can_create_finance"], view_only["can_view_case_logs"]), (False, False, True))
 
 
 if __name__ == "__main__":

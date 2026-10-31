@@ -1046,10 +1046,12 @@ async def search_counsel_cases(body: CounselCaseSearchInput, identity: dict = De
     total = len(records)
     start = (body.page - 1) * body.page_size
     allowed_fields = await _allowed_field_keys(identity, db)
+    items = await _contract_customer_record_dicts(records[start:start + body.page_size], allowed_fields, db, identity=identity)
+    if body.scope == "mine":
+        from app.core.permissions import mark_coordinated_cases
+        await mark_coordinated_cases(items, identity, db)
     return {
-        "items": await _contract_customer_record_dicts(
-            records[start:start + body.page_size], allowed_fields, db, identity=identity
-        ),
+        "items": items,
         "total": total,
         "page": body.page,
         "page_size": body.page_size,
@@ -1098,6 +1100,9 @@ async def search_ordinary_cases(body: CounselCaseSearchInput, identity: dict = D
         if page_records is None:
             page_records = await read_case_search_page(records, body.page, body.page_size, db)
         items = await _contract_customer_record_dicts(page_records, allowed_fields, db, identity=identity)
+        if body.scope == "mine":
+            from app.core.permissions import mark_coordinated_cases
+            await mark_coordinated_cases(items, identity, db)
     with measure_phase("cases.tasks"):
         await attach_case_list_tasks(items, identity, db)
     return {

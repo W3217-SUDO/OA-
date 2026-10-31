@@ -784,3 +784,16 @@
   .case-fee-move-form .ant-form-item-label{flex:0 0 100%!important;max-width:100%;text-align:left}
   .case-fee-move-form .ant-input{min-height:44px}
 }
+
+/* 我是该案件客户的协作人：案号旁的“协作”标记（只能查看） */
+.case-coordinator-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid #91caff;
+  border-radius: 4px;
+  background: #e6f4ff;
+  color: #0958d9;
+  font-size: 12px;
+  line-height: 18px;
+}

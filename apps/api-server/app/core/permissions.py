@@ -681,6 +681,56 @@ async def _case_mine_scope_condition(identity: dict, db: AsyncSession, *, projec
     )
 
 
+def _coordinated_case_condition(username: str, dialect: str):
+    """案件的客户把该用户列为协作人（陶威 2026-10-31：协作人的客户案件进“我的案件”，只能查看）。"""
+    from sqlalchemy import String, cast
+    from sqlalchemy.orm import aliased
+    customer = aliased(BusinessRecord)
+    coordinated = and_(customer.module == "customer",
+                       customer.data["coordinators"].as_string().contains(f'"{str(username).strip()}"'))
+    reference = BusinessRecord.data["customer_record_id"]
+    if dialect == "postgresql":
+        matched = reference.as_string().in_(select(cast(customer.id, String)).where(coordinated))
+    else:
+        matched = reference.as_integer().in_(select(customer.id).where(coordinated))
+    return and_(BusinessRecord.module == "case", matched)
+
+
+async def _case_coordinator_only(record: BusinessRecord, identity: dict, db: AsyncSession) -> bool:
+    """只因客户协作人身份才看得到这个案件：本人不是案件参与人，原有权限也看不到。"""
+    if record.module != "case" or "admin" in identity.get("_actual_role_ids", []):
+        return False
+    username = str(identity.get("username") or "").strip()
+    if not username or not await db.scalar(select(BusinessRecord.id).where(
+        BusinessRecord.id == record.id, _coordinated_case_condition(username, db.get_bind().dialect.name),
+    )):
+        return False
+    if await db.scalar(select(BusinessRecord.id).where(
+        BusinessRecord.id == record.id, await _case_mine_scope_condition(identity, db),
+    )):
+        return False
+    actual = {**identity, "role": identity.get("_actual_role") or identity.get("role"),
+              "role_ids": identity.get("_actual_role_ids") or identity.get("role_ids") or [],
+              "_page_menu_capability": False, "_request_method": "POST"}
+    return not await db.scalar(select(BusinessRecord.id).where(
+        BusinessRecord.id == record.id, *(await _record_scope_conditions(actual, db)),
+    ))
+
+
+async def mark_coordinated_cases(items: list[dict], identity: dict, db: AsyncSession) -> list[dict]:
+    """“我的案件”里只因客户协作人才出现的案件，行上标“协作”。"""
+    ids = [item["id"] for item in items if item.get("id")]
+    if not ids:
+        return items
+    participant = set((await db.scalars(select(BusinessRecord.id).where(
+        BusinessRecord.id.in_(ids), await _case_mine_scope_condition(identity, db),
+    ))).all())
+    for item in items:
+        if item.get("id") in ids and item["id"] not in participant:
+            item["data"] = {**(item.get("data") or {}), "my_case_relation": "协作"}
+    return items
+
+
 def _investigation_supervisor_condition(username: str):
     data = BusinessRecord.data
     auditor = func.lower(func.trim(func.coalesce(data["auditor"].as_string(), "")))
@@ -747,6 +797,8 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     coordinated_customer = and_(
         BusinessRecord.module == "customer", BusinessRecord.data["coordinators"].as_string().contains(exact_username_token),
     ) if identity.get("_request_method") in {"GET", "HEAD"} else false()
+    coordinated_case = _coordinated_case_condition(user.username, db.get_bind().dialect.name) \
+        if identity.get("_request_method") in {"GET", "HEAD"} else false()
     exact_shared_to = shared_to_text.contains(exact_username_token)
     # A case team member must be able to find the assigned case even if their
     # ordinary role has only "own data" scope.  This is deliberately limited to
@@ -801,14 +853,14 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     if scope == "本部门数据":
         from app.core.department_visibility import visible_department_names
         department_names = await visible_department_names(user.username, user.department, db)
-        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.department.in_(department_names), public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
+        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.department.in_(department_names), public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, coordinated_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
     if scope == "授权审批数据":
         # Approval range is not a blanket view of every pending record.  A
         # contract becomes visible here only for its current pending approver;
         # other modules retain their own owner/share/participant projections
         # until they expose an equally concrete candidate relation.
-        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
-    return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
+        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, coordinated_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
+    return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, coordinated_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
 
 
 async def _visible_legacy_ipr_case_ids(identity: dict, db: AsyncSession) -> set[int]:
@@ -941,7 +993,11 @@ def _customer_people(values) -> set[str]:
 
 async def _deny_customer_coordinator_write(record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
     """协作人在“我的客户”里能看到客户，但只能查看；修改仍归客户管理人（陶威 2026-10-31）。"""
-    if record.module != "customer" or identity.get("_request_method", "GET") in {"GET", "HEAD", "OPTIONS"}:
+    if record.module not in {"customer", "case"} or identity.get("_request_method", "GET") in {"GET", "HEAD", "OPTIONS"}:
+        return
+    if record.module == "case":
+        if await _case_coordinator_only(record, identity, db):
+            raise HTTPException(status_code=403, detail="你是该案件客户的协作人，只能查看，不能修改")
         return
     if "admin" in identity.get("_actual_role_ids", []):
         return
@@ -1749,7 +1805,20 @@ async def _require_case_phase_change_access(case_record: BusinessRecord, identit
     await _require_case_action(identity, db, "case.phase.update")
 
 
+CASE_VIEW_CAPABILITIES = {"can_view_case_tasks", "can_view_case_logs", "can_view_fee_receipt", "can_export_print_table"}
+
+
+def _case_view_only_capabilities(capabilities: dict) -> dict:
+    # 客户协作人只能查看案件，修改、阶段、费用等仍由原有角色操作。
+    return {**{key: (value if key in CASE_VIEW_CAPABILITIES or not key.startswith("can_") else False)
+               for key, value in capabilities.items()},
+            "reason": "你是该案件客户的协作人，只能查看，不能修改"}
+
+
 async def _case_detail_action_capabilities(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> dict:
+    if not identity.get("_coordinator_checked") and await _case_coordinator_only(case_record, identity, db):
+        return _case_view_only_capabilities(
+            await _case_detail_action_capabilities(case_record, {**identity, "_coordinator_checked": True}, db))
     from app.core.cases import (
         _case_action_granted, _case_team_role,
     )
