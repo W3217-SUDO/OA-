@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.database import Base
 from app.main import _require_hr_employee_target_access
-from app.models import BusinessRecord, Department, JobRole, RolePermission, SystemParameter, User
+from app.models import BusinessRecord, JobRole, RolePermission, SystemParameter, User
 
 
 class HrEmployeeTargetAccessContractTest(unittest.IsolatedAsyncioTestCase):
@@ -17,7 +17,7 @@ class HrEmployeeTargetAccessContractTest(unittest.IsolatedAsyncioTestCase):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:")
         tables = [
             BusinessRecord.__table__, JobRole.__table__, RolePermission.__table__,
-            SystemParameter.__table__, User.__table__, Department.__table__,
+            SystemParameter.__table__, User.__table__,
         ]
         async with self.engine.begin() as connection:
             await connection.run_sync(lambda sync: Base.metadata.create_all(sync, tables=tables))

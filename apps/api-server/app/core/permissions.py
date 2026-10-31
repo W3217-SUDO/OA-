@@ -2145,10 +2145,9 @@ async def _require_hr_employee_target_access(
     data_scope = str(permission.get("data_scope") or "")
     if data_scope == "全所数据":
         return
-    if data_scope == "本部门数据":
-        from app.core.department_visibility import visible_department_names
-        if employee.department == actor.department or employee.department in await visible_department_names(actor.username, actor.department, db):
-            return
+    # 人事档案修改不跟部门树放开，仍按同部门（思法汇成 10-31 15:42，BUG20261031002 第③步）。
+    if data_scope == "本部门数据" and employee.department == actor.department:
+        return
     if target_username == actor.username or employee.owner == actor.username:
         return
     raise HTTPException(status_code=403, detail="当前角色的数据范围不包含该员工档案")
