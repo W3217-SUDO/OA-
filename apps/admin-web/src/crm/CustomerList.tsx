@@ -162,7 +162,8 @@ export function CustomerList({ initialView, rows, total, page, pageSize, custome
       width: 120,
       align: "center" as const,
       render: (_: unknown, r: Customer) =>
-        displayDate(initialView === "customer-recent-update" ? r.updated_at : r.data.last_modified_date || r.updated_at),
+        // 迁移客户只被系统对齐改过 updated_at，显示旧系统的最后修改时间；有人在新系统改过（last_modified_by）才用 updated_at。
+        displayDate(initialView === "customer-recent-update" || r.data.last_modified_by ? r.updated_at : r.data.last_modified_date || r.data.last_update_time || r.updated_at),
     },
     {
       title: "沟通记录",

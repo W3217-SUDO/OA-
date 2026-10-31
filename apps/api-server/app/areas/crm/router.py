@@ -1985,6 +1985,13 @@ async def list_customers(
         key: round(sum(legacy_summary_value(item, key) for item in candidate_rows), 2)
         for key in legacy_summary_fields
     }
+    # 官费未到、代理费待收按旧系统视图现算（不再读客户上存的值），合计行覆盖本次查询的全部客户。
+    from app.core.customer_fee_balance import customer_fee_balances
+    summary_customers = (await db.execute(select(BusinessRecord.id, BusinessRecord.serial_no).where(*conditions))).all() \
+        if sql_paged else candidate_rows
+    summary_balances = await customer_fee_balances(db, summary_customers)
+    for key in ("official_fee_unreceived", "agency_fee_due"):
+        summary[key] = round(sum(item[key] for item in summary_balances.values()), 2)
     allowed_fields = await _allowed_field_keys(identity, db)
     if not page_items:
         return {"items": [], "total": total, "page": page, "page_size": page_size, "summary": summary}
@@ -1998,6 +2005,12 @@ async def list_customers(
         raise HTTPException(status_code=409, detail="客户列表在读取时发生变化，请重试")
     page_items = [page_by_id[record_id] for record_id in page_ids]
     relationship_counts = await customer_relationship_counts(db, page_items)
+    page_balances = {item.id: summary_balances[item.id] for item in page_items if item.id in summary_balances}
+    # 联系次数按旧系统算：客户事件（CRM_Customer_Event，已迁入 legacy_customer_history_events）条数 + 新系统里的跟进记录条数。
+    from app.core.customer_fee_balance import legacy_customer_event_counts
+    legacy_contact_counts = await legacy_customer_event_counts(db, [item.id for item in page_items])
+    if len(page_balances) != len(page_items):
+        page_balances = await customer_fee_balances(db, page_items)
     person_names = await customer_person_names(db, page_items)
     response_items = []
 
@@ -2018,6 +2031,8 @@ async def list_customers(
         row["data"] = {
             **row_data,
             **relationship_counts[item.id],
+            **page_balances[item.id],
+            "contact_count": int(legacy_contact_counts.get(item.id) or 0) + len(row_data.get("notes") or []),
             "customer_manager_display_names": [person_display(value) for value in manager_values if str(value or "").strip()],
             "customer_source_display_name": person_display(source_value),
         }

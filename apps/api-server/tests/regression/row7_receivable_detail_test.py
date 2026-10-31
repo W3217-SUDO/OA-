@@ -472,7 +472,8 @@ class Row7ReceivableDetailTest(unittest.IsolatedAsyncioTestCase):
             item for item in dashboard_result["metrics"]
             if item["key"] == "official-fee-unreceived"
         )
-        self.assertEqual(metric["value"], "80.00元")
+        # 旧系统卡片金额 = 我的客户的官费未到（客户视图），点进去是应收明细，两者不要求相等（2026-10-31 对齐）。
+        self.assertEqual(metric["value"], "0.00元")
         self.assertEqual(metric["route"], "dashboard-queue-official-fee-unreceived")
 
         self.assertEqual(detail_result["official_unreceived"], 80.0)

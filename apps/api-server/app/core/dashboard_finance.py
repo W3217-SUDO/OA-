@@ -7,13 +7,15 @@ from app.core.finance import (
     _case_commission_lifecycle_statuses, _finance_fee_payment_status, _matches_unpaid_official_fee,
     _refund_case_fee_status,
 )
-from app.core.fee_refund_query import fee_refund_progress, legacy_refund_progress, read_fee_refunds
+from app.core.fee_refund_query import read_fee_refunds
 from app.core.finance_read_scope import unambiguous_fee_case_nos
 from app.core.formatters import _case_fee_display_type
 from app.core.json_relation_query import scalar_in_values
 from app.core.legacy_sync import _legacy_case_fee_projection
 from app.core.record_projection_query import read_record_projections
-from app.core.system import _allowed_field_keys
+
+
+LEGACY_UNPAID_OFFICIAL_FEE_CODES = {"11010020", "11010030", "11010040", "11010140", "11010090"}
 
 
 async def dashboard_unpaid_fee_rows(identity, db, cases_by_id, cases_by_no, *, fees=None):
@@ -28,6 +30,7 @@ async def dashboard_unpaid_fee_rows(identity, db, cases_by_id, cases_by_no, *, f
             "amount", "paid_amount", "case_id", "case_no", "fee_type", "fee_type_name",
             "case_fee_type_name", "expense_subtype", "writeoff_status", "payment_status",
             "source_fee_id", "commission_type", "commission_lifecycle", "is_refund", "expense_scope",
+            "case_fee_type_id", "inform_date",
         ))
     # 类型条件与最终筛选一致，非官费不读取付款流水或计算提成生命周期。
     candidates = []
@@ -57,7 +60,15 @@ async def dashboard_unpaid_fee_rows(identity, db, cases_by_id, cases_by_no, *, f
             "paid_amount": fee_paid_amount(data, payments.get(fee.id, [])),
             "payment_status": payment_status,
         }
-        if not _matches_unpaid_official_fee(values):
+        code = str(data.get("case_fee_type_id") or "").strip()
+        if code:
+            # 旧系统待缴官费（PageId 5001010002）：这五类官费、2018-04-25 以后通知、还没请款、金额大于已付。
+            if (code not in LEGACY_UNPAID_OFFICIAL_FEE_CODES
+                    or str(data.get("inform_date") or "")[:10] <= "2018-04-25"
+                    or str(data.get("payment_status") or "").strip()
+                    or float(data.get("amount") or 0) <= float(data.get("paid_amount") or 0)):
+                continue
+        elif not _matches_unpaid_official_fee(values):
             continue
         case = cases_by_id.get(int(data.get("case_id") or 0)) or cases_by_no.get(str(data.get("case_no") or ""))
         rows.append({"id": fee.id, "data": {
@@ -65,6 +76,9 @@ async def dashboard_unpaid_fee_rows(identity, db, cases_by_id, cases_by_no, *, f
             "case_no": case.serial_no if case else data.get("case_no", ""),
         }})
     return rows
+
+
+LEGACY_PENDING_REFUND_STATUSES = {"R10", "R20", "R30", "R35", "R40", "R50"}
 
 
 async def dashboard_refund_fee_rows(identity, db, cases):
@@ -94,18 +108,33 @@ async def dashboard_refund_fee_rows(identity, db, cases):
     unique_nos = await unambiguous_fee_case_nos(case_nos, db) if case_nos else set(fees_by_case)
     receipts = await read_fee_receipts(fees, fees_by_case, unique_nos, db, filter_related=True)
     refunds = await read_fee_refunds(fees, db, ids=fee_ids, summary_only=True)
-    show_amount = "finance.amount" in await _allowed_field_keys(identity, db)
     rows = []
     for fee in fees:
         data = fee.data or {}
-        requested, refunded = fee_refund_progress(data, refunds.get(fee.id, []), receipts.get(fee.id, []))
         raw_data = _legacy_case_fee_projection(data)
-        requested, refunded = legacy_refund_progress(raw_data, {
-            "refund_requested_amount": requested if show_amount else None,
-            "refunded_amount": refunded if show_amount else None,
-        })
+        # 旧系统待退费（CaseFeeSearchDao，HasRefundFee）：费用金额 > 0，且
+        # (a) 已登记退费进度（10/20/30/35/40/50）、申请退费金额 > 0 且大于已退金额；或
+        # (b) 律师代理费(退费)（11020061）金额大于已到账。按费用笔数计。
+        if float(data.get("amount") or 0) <= 0:
+            continue
+        legacy = data.get("legacy_record") if isinstance(data.get("legacy_record"), dict) else {}
         status, _ = _refund_case_fee_status(raw_data)
-        if requested <= refunded or status == "R100":
+        # 新系统的退费申请是单独的退费记录，费用上不一定写进度；有退费记录也算已登记。
+        has_status = str(data.get("refund_status") or legacy.get("RefundStatus") or "").strip() != "" or bool(refunds.get(fee.id))
+        # 旧系统直接比较费用上的申请退费金额和已退金额，不把法院退回的到账算成已退。
+        fee_refunds = refunds.get(fee.id, [])
+        raw_requested = max(float(data.get("refund_requested_amount") or data.get("refund_amount") or legacy.get("RefundAmount") or 0),
+                            sum(float((item.data or {}).get("amount") or 0) for item in fee_refunds
+                                if item.status not in {"已驳回", "已作废"}))
+        raw_refunded = max(float(data.get("refunded_amount") or legacy.get("RefundedAmount") or 0),
+                           sum(float((item.data or {}).get("amount") or 0) for item in fee_refunds if item.status == "已退款"))
+        pending_refund = (has_status and status in LEGACY_PENDING_REFUND_STATUSES
+                          and raw_requested > 0 and raw_requested > raw_refunded)
+        fee_code = str(data.get("case_fee_type_id") or legacy.get("CaseFeeTypeId") or "").strip()
+        cashed = max(round(sum(amount for _, amount in receipts.get(fee.id, [])), 2),
+                     float(data.get("cashed_amount") or 0))
+        uncashed_refund_fee = fee_code == "11020061" and float(data.get("amount") or 0) > cashed
+        if not (pending_refund or uncashed_refund_fee):
             continue
         case = linked_cases[fee.id]
         rows.append({"id": fee.id, "data": {

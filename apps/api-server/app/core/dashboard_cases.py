@@ -154,6 +154,7 @@ async def dashboard_cases(identity, db):
     for customer in related_customers:
         person_usernames.add(customer.owner)
         person_usernames.update(_contract_person_values((customer.data or {}).get("customer_managers")))
+        person_usernames.update(_contract_person_values((customer.data or {}).get("coordinators")))
     users_by_username = await _user_display_map(person_usernames, db)
     court_values = {
         str(hearing.get("court") or "").strip()

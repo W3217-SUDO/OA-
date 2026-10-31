@@ -120,13 +120,13 @@ class DashboardRefundWorkbench92Row4Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(row["data"]["refund_status"], "R10")
         async with self.sessions() as db:
             metrics = {item["key"]: item for item in (await dashboard(ADMIN, db, section=None))["metrics"]}
-        self.assertEqual(metrics["refund-pending"]["value"], "1件")
+        # 旧系统：管理员有“公司案件/民事争议”，待退费看全公司（2026-10-31 对齐），无关案件的退费也计入。
+        self.assertEqual(metrics["refund-pending"]["value"], "2件")
         self.assertEqual(metrics["refund-pending"]["route"], "dashboard-queue-refund-pending")
         dashboard_queue = await self.client.get(f"{API}/finance/case-fees/refunds", params={"dashboard_queue": "refund-pending"})
         self.assertEqual(dashboard_queue.status_code, status.HTTP_200_OK, dashboard_queue.text)
-        self.assertEqual(dashboard_queue.json()["total"], 1)
-        self.assertEqual({item["id"] for item in dashboard_queue.json()["items"]}, {self.related_fee_id})
-        self.assertEqual({item["id"] for item in dashboard_queue.json()["cases"]}, {self.related_case_id})
+        self.assertEqual(dashboard_queue.json()["total"], 2)
+        self.assertEqual({item["id"] for item in dashboard_queue.json()["items"]}, {self.related_fee_id, self.unrelated_fee_id})
 
         exported = await self.client.get(f"{API}/finance/case-fees/refunds/export", params={"ids": str(self.related_fee_id)})
         self.assertEqual(exported.status_code, status.HTTP_200_OK)

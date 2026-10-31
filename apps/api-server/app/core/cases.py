@@ -367,14 +367,14 @@ def _case_phase_changed_days(item: BusinessRecord, *, as_of: date | None = None)
     return max(((as_of or date.today()) - _case_phase_changed_date(item)).days, 0)
 
 
-async def _urgent_case_ids(cases: list[BusinessRecord], db: AsyncSession, username: str, *, as_of: date | None = None) -> set[int]:
-    """返回存在逾期或未来十五天内未完成任务的案件。"""
+async def _urgent_case_ids(cases: list[BusinessRecord], db: AsyncSession, *, as_of: date | None = None) -> set[int]:
+    """紧急案件按旧系统（PageId 1001104070）：案件上有未完成的案件任务（不限任务办理人），截止日在三天内或已逾期。"""
     from app.core.formatters import _record_case_links
     from app.core.record_projection_query import read_record_projections
     today = as_of or date.today()
     terminal_statuses = {"已完成", "已验收", "待确认", "已停止", "已撤回", "已拒绝", "已取消", "已删除"}
     tasks = await read_record_projections(db, [
-        BusinessRecord.module == "task", BusinessRecord.owner == username,
+        BusinessRecord.module == "task",
         BusinessRecord.status.not_in(terminal_statuses),
     ], ("source", "deadline", "task_end_time", "TaskEndTime",
         "case_id", "case_record_id", "case_ids", "case_no", "case_nos"))
@@ -392,7 +392,7 @@ async def _urgent_case_ids(cases: list[BusinessRecord], db: AsyncSession, userna
             deadline = date.fromisoformat(raw_deadline[:10])
         except ValueError:
             continue
-        if (deadline - today).days <= 15:
+        if (deadline - today).days <= 3:
             linked_ids, linked_nos = _record_case_links(task)
             urgent_ids.update(linked_ids & case_ids)
             for case_no in linked_nos:
@@ -439,6 +439,9 @@ def _dashboard_latest_case_row(
         customer_data.get("customer_managers")
         or ([customer.owner] if customer and customer.owner else [])
     )
+    # 旧系统最新案件的“客户管理人”= 客户第一位协作人（FirstCoordinatorName），没有协作人时用客户管理人。
+    coordinators = customer_data.get("coordinators") if isinstance(customer_data.get("coordinators"), list) else []
+    first_coordinator = next((str(value).strip() for value in coordinators if str(value or "").strip()), "")
     registered_at = _dashboard_case_date(record)
     return {
         "case_no": record.serial_no,
@@ -452,6 +455,7 @@ def _dashboard_latest_case_row(
         "date": registered_at.date().isoformat() if registered_at != datetime.min else "",
         "manager": _dashboard_people(
             users_by_username,
+            first_coordinator,
             data.get("customer_manager_usernames"),
             data.get("customer_manager_username"),
             data.get("customer_managers"),
@@ -1244,13 +1248,13 @@ async def _query_counsel_cases(
         from app.core.dashboard_scope import CASE_QUEUES
         queue_name = CASE_QUEUES[body.dashboard_queue]
         if queue_name == "urgent":
-            urgent_ids = await _urgent_case_ids(records, db, identity["username"])
+            urgent_ids = await _urgent_case_ids(records, db)
             records = [record for record in records if record.id in urgent_ids]
         else:
             records = [record for record in records if _matches_dashboard_case_queue(record, queue_name)]
     elif body.case_queue:
         if body.case_queue == "urgent":
-            urgent_ids = await _urgent_case_ids(records, db, identity["username"])
+            urgent_ids = await _urgent_case_ids(records, db)
             records = [record for record in records if record.id in urgent_ids]
         else:
             records = [record for record in records if _matches_dashboard_case_queue(record, body.case_queue)]

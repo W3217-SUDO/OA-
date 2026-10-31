@@ -83,7 +83,7 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
                     module="finance", serial_no="FY-DASH-REFUND", title="退费",
                     customer="客户", status="待审批", owner="admin", department="上海",
                     data={
-                        "fee_type": "代理费", "refund_requested_amount": 50,
+                        "fee_type": "代理费", "amount": 50, "refund_requested_amount": 50, "refund_status": "R10",
                         "refunded_amount": 10, "case_id": case.id, "case_no": case.serial_no,
                     },
                 ),
@@ -97,7 +97,8 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
                     customer="客户", status="待处理", owner="admin", department="上海",
                     data={
                         "source": "案件任务", "case_no": "AJ-DASH-URGENT",
-                        "deadline": str(date.today() + timedelta(days=10)),
+                        # 旧系统紧急案件：任务三天内到期或已逾期（2026-10-31 对齐）。
+                        "deadline": str(date.today() + timedelta(days=2)),
                     },
                 ),
                 BusinessRecord(
@@ -135,7 +136,8 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
 
         metrics = {item["key"]: item for item in result["metrics"]}
         self.assertEqual(metrics["official-fee-unpaid"]["value"], "1件")
-        self.assertEqual(metrics["official-fee-unreceived"]["value"], "80.00元")
+        # 未到官费金额按旧系统 = 我的客户（负责人/协作人）的官费未到（已付请款单 - 已到账）；本用例没有客户请款单（2026-10-31 对齐）。
+        self.assertEqual(metrics["official-fee-unreceived"]["value"], "0.00元")
         self.assertEqual(metrics["refund-pending"]["value"], "1件")
         self.assertEqual(metrics["evidence-supplement"]["value"], "1件")
         self.assertEqual(metrics["opinion-supplement"]["value"], "1件")
@@ -236,7 +238,7 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
                     customer="客户", status="草稿", owner="admin", department="测试部",
                     data={"contract_id": contract.id, "case_id": case.id, "case_no": case.serial_no,
                           "fee_type": "官方费用", "amount": 100.03, "received_amount": 20.01,
-                          "refund_requested_amount": 30, "refunded_amount": 1}))
+                          "refund_requested_amount": 30, "refunded_amount": 1, "refund_status": "R10"}))
             await db.commit()
             for identity in (IDENTITY, {"username": "limited", "role": "user"}):
                 full = await dashboard(identity, db, section="metrics")
@@ -257,7 +259,8 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(getattr(narrow, key), getattr(original, key))
                     self.assertIsInstance(narrow.updated_at, datetime)
                 queues = await personal_finance_queues(identity, db)
-                self.assertEqual(len(queues["refund-pending"]), 2 if identity["username"] == "limited" else 0)
+                # 管理员有“公司案件/民事争议”，按旧系统看全公司 4 笔；受限用户只看本人案件 2 笔（2026-10-31 对齐）。
+                self.assertEqual(len(queues["refund-pending"]), 2 if identity["username"] == "limited" else 4)
 
     async def test_dashboard_sections_reuse_guarded_cache_without_changing_full_metrics_api(self):
         from app.areas.system.router import dashboard_http

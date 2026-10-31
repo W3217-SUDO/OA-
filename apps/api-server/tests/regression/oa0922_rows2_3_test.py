@@ -67,14 +67,15 @@ class Rows0922Test(unittest.IsolatedAsyncioTestCase):
         return BusinessRecord(module=module, serial_no=serial, title=serial, customer=customer,
                               owner=IDENTITY["username"], department="测试部", status="有效", data=data or {})
 
-    async def test_urgent_cases_only_include_my_open_tasks_due_within_fifteen_days(self):
+    async def test_urgent_cases_include_open_case_tasks_due_within_three_days(self):
+        # 旧系统紧急案件（PageId 1001104070）：案件上有未完成任务（不限办理人），三天内到期或已逾期（2026-10-31 对齐）。
         today = date(2026, 9, 25)
         async with self.sessions() as db:
             cases = [self.record("case", f"CODEX-0922-urgent-{number}") for number in range(5)]
             db.add_all(cases)
             await db.flush()
             tasks = []
-            for index, days in enumerate((15, 16, -1, 1, 1)):
+            for index, days in enumerate((3, 4, -1, 1, 1)):
                 task = self.record("task", f"CODEX-0922-task-{index}", data={
                     "source": "案件任务", "case_id": cases[index].id,
                     "deadline": (today + timedelta(days=days)).isoformat(),
@@ -85,8 +86,8 @@ class Rows0922Test(unittest.IsolatedAsyncioTestCase):
                 tasks.append(task)
             db.add_all(tasks)
             await db.commit()
-            urgent = await _urgent_case_ids(cases, db, IDENTITY["username"], as_of=today)
-            self.assertEqual(urgent, {cases[0].id, cases[2].id})
+            urgent = await _urgent_case_ids(cases, db, as_of=today)
+            self.assertEqual(urgent, {cases[0].id, cases[2].id, cases[4].id})
 
     async def test_customer_generic_edit_rejects_duplicate_identity_and_persists_valid_change(self):
         async with self.sessions() as db:

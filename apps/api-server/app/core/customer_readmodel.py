@@ -175,8 +175,8 @@ async def customer_relationship_counts(db: AsyncSession, page_items: list) -> di
             if linked is None:
                 continue
             if module == "contract":
-                if status not in {"已归档", "Archived", "archived"}:
-                    counts[linked.id]["contract_count"] += 1
+                # 旧系统 ContractCounts 计全部合同（含已归档、草稿、已拒绝），点进去的列表同样不排除归档。
+                counts[linked.id]["contract_count"] += 1
             elif _is_civil_case_type(data.get("case_type")):
                 counts[linked.id]["civil_case_count"] += 1
     finally:

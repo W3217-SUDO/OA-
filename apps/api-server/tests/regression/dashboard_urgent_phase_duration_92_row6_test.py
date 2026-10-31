@@ -47,7 +47,8 @@ class DashboardUrgentPhaseDuration92Row6Test(unittest.IsolatedAsyncioTestCase):
             data={"case_type": "民事案件", "phase_changed_at": changed.isoformat(), **(data or {})},
         )
 
-    async def test_urgent_card_and_drilldown_share_owned_task_deadline_scope(self):
+    async def test_urgent_card_and_drilldown_share_task_deadline_scope(self):
+        # 旧系统紧急案件：案件上有未完成任务（不限办理人），三天内到期或已逾期（2026-10-31 对齐）。
         overdue = self.case("CODEX-92-R6-OVER", 366)
         boundary = self.case("CODEX-92-R6-BOUNDARY", 365)
         flagged_recent = self.case("CODEX-92-R6-FLAGGED", 20, data={"priority": "紧急", "urgent": True})
@@ -68,14 +69,14 @@ class DashboardUrgentPhaseDuration92Row6Test(unittest.IsolatedAsyncioTestCase):
                     data={"source": "案件任务", "case_no": overdue.serial_no, "deadline": str(date.today())},
                 ),
                 BusinessRecord(
-                    module="task", serial_no="CODEX-92-R6-BOUNDARY-TASK", title="十五天内任务",
+                    module="task", serial_no="CODEX-92-R6-BOUNDARY-TASK", title="三天内任务",
                     customer="测试客户", status="待处理", owner=IDENTITY["username"], department="测试部",
-                    data={"source": "案件任务", "case_no": boundary.serial_no, "deadline": str(date.today() + timedelta(days=15))},
+                    data={"source": "案件任务", "case_no": boundary.serial_no, "deadline": str(date.today() + timedelta(days=3))},
                 ),
                 BusinessRecord(
-                    module="task", serial_no="CODEX-92-R6-LEGACY-TASK", title="十六天后任务",
+                    module="task", serial_no="CODEX-92-R6-LEGACY-TASK", title="四天后任务",
                     customer="测试客户", status="待处理", owner=IDENTITY["username"], department="测试部",
-                    data={"source": "案件任务", "case_no": legacy.serial_no, "deadline": str(date.today() + timedelta(days=16))},
+                    data={"source": "案件任务", "case_no": legacy.serial_no, "deadline": str(date.today() + timedelta(days=4))},
                 ),
                 BusinessRecord(
                     module="task", serial_no="CODEX-92-R6-COUNSEL-TASK", title="逾期法律顾问任务",
@@ -94,7 +95,7 @@ class DashboardUrgentPhaseDuration92Row6Test(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             {item.serial_no for item in drilldown},
-            {"CODEX-92-R6-BOUNDARY", "CODEX-92-R6-COUNSEL"},
+            {"CODEX-92-R6-OVER", "CODEX-92-R6-BOUNDARY", "CODEX-92-R6-COUNSEL"},
         )
         metric = {item["key"]: item for item in result["metrics"]}["urgent-cases"]
         self.assertEqual(metric["value"], f"{len(drilldown)}件")

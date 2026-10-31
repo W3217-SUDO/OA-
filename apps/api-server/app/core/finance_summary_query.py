@@ -14,7 +14,7 @@ FEE_SUMMARY_FIELDS = (
     "case_id", "case_record_id", "case_no", "case_title", "case_type", "case_stage",
     "contract_id", "contract_record_id", "contract_no", "contract_object_id",
     "fee_type", "fee_type_name", "case_fee_type_name", "expense_subtype",
-    "fee_type_id", "fee_type_code", "legacy_fee_type_code", "expense_scope",
+    "fee_type_id", "fee_type_code", "legacy_fee_type_code", "case_fee_type_id", "inform_date", "expense_scope",
     "legacy_case_fee_id", "legacy_fee_id", "source_fee_id", "commission_type",
     "commission_lifecycle", "is_refund", "writeoff_status", "payment_status",
     "document_no", "paid_date", "payment_date", "cashed_date", "receipt_date",

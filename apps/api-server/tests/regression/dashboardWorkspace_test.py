@@ -26,7 +26,7 @@ class DashboardWorkspaceTest(unittest.IsolatedAsyncioTestCase):
                     case = BusinessRecord(module="case", serial_no=f"CODEX-dashboard-{owner}-{key}", title=key, owner="CODEX-dashboard-"+owner, status=phase, data={"case_type":"民事争议", "contract_id":self.contract_id, "case_phase_changed_at":"2020-01-01"}, created_at=datetime(2020,1,1), updated_at=datetime(2020,1,1))
                     db.add(case); await db.flush()
                     self.ids[owner,key]=case.id
-                    fee=BusinessRecord(module="finance", serial_no=f"CODEX-dashboard-fee-{owner}-{key}", title="一审诉讼费", owner=IDENTITY["username"], status="草稿", data={"fee_type":"官方费用", "expense_subtype":"一审诉讼费", "amount":100, "refund_requested_amount":50, "case_id":case.id, "case_no":case.serial_no, "contract_id":self.contract_id})
+                    fee=BusinessRecord(module="finance", serial_no=f"CODEX-dashboard-fee-{owner}-{key}", title="一审诉讼费", owner=IDENTITY["username"], status="草稿", data={"fee_type":"官方费用", "expense_subtype":"一审诉讼费", "amount":100, "refund_requested_amount":50, "refund_status":"R10", "case_id":case.id, "case_no":case.serial_no, "contract_id":self.contract_id})
                     db.add(fee); await db.flush();self.fees[owner,key]=fee.id
             await db.commit()
         app.dependency_overrides.pop(current_identity)
@@ -87,7 +87,8 @@ class DashboardWorkspaceTest(unittest.IsolatedAsyncioTestCase):
         username=self.login("admin")
         async with self.sessions() as db:
             unassigned_metrics=await dashboard_metrics({"username":username,"role":"admin"},db)
-            self.assertEqual(next(x for x in unassigned_metrics["metrics"] if x["key"]=="refund-pending")["value"],"0件")
+            # 旧系统：有“公司案件/民事争议”的人（管理员）待退费看全公司（2026-10-31 对齐），未分配案件也计入。
+            self.assertEqual(next(x for x in unassigned_metrics["metrics"] if x["key"]=="refund-pending")["value"],"8件")
             for case_id in self.ids.values():
                 case=await db.get(BusinessRecord,case_id)
                 case.data={**case.data,"case_team_usernames":[username]}

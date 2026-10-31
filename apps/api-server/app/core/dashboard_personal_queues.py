@@ -1,6 +1,8 @@
 """控制台统计复用各业务页面的筛选和金额投影。"""
+from types import SimpleNamespace
+
 from app.core.cases import _matches_dashboard_case_queue, _urgent_case_ids
-from app.core.dashboard_finance import dashboard_refund_fee_rows, dashboard_unpaid_fee_rows
+from app.core.dashboard_finance import dashboard_unpaid_fee_rows
 from app.core.finance_read_scope import finance_read_scope
 from app.core.request_metrics import measure_phase
 from app.core.dashboard_scope import (
@@ -34,7 +36,7 @@ async def personal_case_queues(identity, db, *, scope_data=None):
 
     with measure_phase("dashboard.urgent"):
         urgent_cases = await dashboard_urgent_cases(identity, db, identity["_dashboard_case_ids"], scope_data=scope_data)
-        urgent_case_ids = await _urgent_case_ids(urgent_cases, db, identity["username"])
+        urgent_case_ids = await _urgent_case_ids(urgent_cases, db)
     for case in urgent_cases:
         if case.id in urgent_case_ids:
             add("urgent-cases", case)
@@ -74,10 +76,13 @@ async def _personal_queues(identity, db, *, finance_only=False):
             if key == "official-fee-unpaid":
                 rows = await dashboard_unpaid_fee_rows(identity, db, by_id, by_no, fees=scope.fees)
             else:
-                rows = await dashboard_refund_fee_rows(refund_identity, db, cases)
+                rows = refund_identity["_dashboard_refund_rows"]
         for row in rows:
             data = row["data"]
             case = by_id.get(data.get("case_id")) or by_no.get(data.get("case_no"))
+            if case is None and key == "refund-pending" and data.get("case_id"):
+                # 全公司待退费的案件不一定在本人范围里，按费用上的案件编号列出。
+                case = SimpleNamespace(id=data["case_id"], serial_no=data.get("case_no", ""), title="", status="")
             if case:
                 # 控制台数字口径 M1：待缴官费与待退费都按费用逐笔计数，与点进去的费用列表一致。
                 add(key, case, fee_id=row["id"])

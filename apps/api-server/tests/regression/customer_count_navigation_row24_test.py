@@ -64,13 +64,14 @@ class CustomerCountNavigationRow24Test(unittest.IsolatedAsyncioTestCase):
         customers = await self.client.get(f"{API}/customers", params={"scope": "mine", "customer_name": "测试客户1", "customer_type": "客户", "page": 1, "page_size": 15})
         self.assertEqual(customers.status_code, 200, customers.text)
         customer_row = next(item for item in customers.json()["items"] if item["id"] == self.customer_id)
-        self.assertEqual(customer_row["data"]["contract_count"], 2)
+        # 旧系统 ContractCounts 含已归档合同，点进去的合同列表也不排除归档（2026-10-31 对齐）。
+        self.assertEqual(customer_row["data"]["contract_count"], 3)
         self.assertEqual(customer_row["data"]["civil_case_count"], 2)
 
-        contracts = await self.client.get(f"{API}/records", params={"module": "contract", "scope": "mine", "customer_id": self.customer_id, "customer": "测试客户1", "exclude_archived": "true", "page": 1, "page_size": 100})
+        contracts = await self.client.get(f"{API}/records", params={"module": "contract", "scope": "mine", "customer_id": self.customer_id, "customer": "测试客户1", "exclude_archived": "false", "page": 1, "page_size": 100})
         self.assertEqual(contracts.status_code, 200, contracts.text)
         self.assertEqual(contracts.json()["total"], customer_row["data"]["contract_count"])
-        self.assertEqual({item["serial_no"] for item in contracts.json()["items"]}, {"HT-R24-ID", "HT-R24-NAME"})
+        self.assertEqual({item["serial_no"] for item in contracts.json()["items"]}, {"HT-R24-ID", "HT-R24-NAME", "HT-R24-ARCHIVED"})
 
         cases = await self.client.post(f"{API}/cases/search", json={"scope": "mine", "case_types": ["民事案件", "民事争议"], "customer_id": self.customer_id, "customer": "测试客户1", "page": 1, "page_size": 100})
         self.assertEqual(cases.status_code, 200, cases.text)

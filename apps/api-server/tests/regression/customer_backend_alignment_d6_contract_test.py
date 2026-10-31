@@ -465,8 +465,9 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(payload["items"]), 1)
         summary = payload["summary"]
         expected = {
-            "agency_fee_due": 11.75,
-            "official_fee_unreceived": 22.5,
+            # 官费未到、代理费待收按旧系统视图现算（客户上存的值不再使用，2026-10-31 对齐）；本用例没有费用。
+            "agency_fee_due": 0.0,
+            "official_fee_unreceived": 0.0,
             "total_paid_case_office_fee_amount": 33.75,
             "total_cashed_case_office_fee_amount": 44.25,
             "total_un_cashed_case_office_fee_amount": 55.5,

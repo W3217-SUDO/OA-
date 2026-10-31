@@ -13,6 +13,6 @@ export const buildContractCustomerQueryFromRelation = (
   const customerNo = String(target.serial_no || "").trim() || undefined;
   const customer = String(target.title || "").trim() || undefined;
   return customerId || customerNo || customer
-    ? { customer_id: customerId, customer_no: customerNo, customer, exclude_archived: true }
+    ? { customer_id: customerId, customer_no: customerNo, customer, exclude_archived: false }
     : null;
 };

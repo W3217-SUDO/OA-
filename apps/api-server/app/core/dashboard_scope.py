@@ -97,7 +97,16 @@ async def company_hearing_conditions(identity, db):
     excluded = {item.name for item in departments if item.id in blocked}
     if not user.department or user.department in excluded or ''.join(user.department.split()) in {'合作律师部', '外部合作调查取证部'}:
         return [false()]
-    return [BusinessRecord.module == 'case', BusinessRecord.status.notin_(['已合并', '已删除', '已回收'])]
+    conditions = [BusinessRecord.module == 'case', BusinessRecord.status.notin_(['已合并', '已删除', '已回收'])]
+    # 旧系统开庭排期：管理员看全公司（PageId 1001103100），其他人看“我的案件”（PageId 100110110，
+    # 含本人办理的案件和本人作为客户管理人/协作人的客户的案件）。
+    if 'admin' in _system_user_role_ids(user):
+        return conditions
+    from app.core.permissions import _coordinated_case_condition
+    return [*conditions, or_(
+        await _case_mine_scope_condition(identity, db),
+        _coordinated_case_condition(user.username, db.get_bind().dialect.name),
+    )]
 
 
 async def dashboard_identity(identity, db, *, personal_cases=False):
@@ -128,13 +137,16 @@ async def load_dashboard_scope(identity, db, *, personal_cases=False, include_su
         linked_cases = select(ContractObject.case_record_id).where(
             scalar_in_values(ContractObject.contract_record_id, owned_ids),
         )
-        conditions.append(or_(
+        own_condition = or_(
             await _case_mine_scope_condition(identity, db),
             BusinessRecord.id.in_(linked_cases),
             scalar_in_values(BusinessRecord.data['contract_id'].as_integer(), owned_ids),
             scalar_in_values(BusinessRecord.data['contract_record_id'].as_integer(), owned_ids),
             scalar_in_values(BusinessRecord.data['contract_no'].as_string(), owned_nos),
-        ))
+        )
+        # 旧系统工作台按“我的案件”（PageId 100110110）统计，含本人作为客户管理人/协作人的客户的案件（1.2.80 已对齐）。
+        from app.core.permissions import _coordinated_case_condition
+        conditions.append(or_(own_condition, _coordinated_case_condition(user.username, db.get_bind().dialect.name)))
     relation_fields = ("contract_id", "contract_record_id", "contract_no")
     case_fields = (*relation_fields, "case_type", "case_phase_name", "case_phase", "case_stage", "business_stage")
     async def personal_annotation(data):
@@ -234,7 +246,9 @@ async def dashboard_request_identity(queue, expected, identity, db):
         return identity
     if queue not in expected:
         raise HTTPException(422, "控制台业务入口无效")
-    scoped_identity = await dashboard_identity(identity, db, personal_cases=queue == "refund-pending")
+    scoped_identity = await dashboard_identity(identity, db)
+    if queue == "refund-pending":
+        return await personal_refund_identity(scoped_identity, db)
     if queue == "urgent-cases":
         cases = await dashboard_urgent_cases(identity, db, scoped_identity["_dashboard_case_ids"])
         case_ids = {case.id for case in cases}
@@ -271,20 +285,44 @@ def _possible_refund_links(links, case_ids, case_nos):
     return False
 
 
+async def _sees_company_refunds(identity, db) -> bool:
+    """旧系统有“公司案件/民事争议”（权限码 1001103010）的人，待退费看本公司全部。"""
+    from app.core.permissions import _permission_payload_for_identity
+    menus = set((await _permission_payload_for_identity(identity, db)).get("menu_keys") or [])
+    return "case-company-civil" in menus
+
+
 async def personal_refund_identity(scoped_identity, db, *, scope_data=None):
-    """从已经加载的控制台范围收窄退款范围，不重复投影合同和费用详情。"""
-    if scope_data is not None and scope_data.personal_case_ids is not None:
-        cases = [case for case in scope_data.cases if case.id in scope_data.personal_case_ids]
+    """待退费范围：有公司民事案件菜单的看全公司，其他人看“我的案件”（含本人作为客户管理人/协作人的客户的案件）。
+    返回的身份只含计入待退费的费用，控制台数字和点进去的列表一致。"""
+    from app.core.dashboard_finance import dashboard_refund_fee_rows
+
+    company = await _sees_company_refunds(scoped_identity, db)
+    if company:
+        cases = (await db.execute(select(BusinessRecord.id, BusinessRecord.serial_no).where(
+            BusinessRecord.module == "case", BusinessRecord.status.notin_(["已合并", "已删除", "已回收"]),
+        ))).all()
     else:
-        case_query = select(BusinessRecord.id, BusinessRecord.serial_no).where(
+        # 旧系统本人条件只看案件角色和客户协作人，不含“本人名下合同的案件”。
+        from app.core.permissions import _coordinated_case_condition
+        cases = (await db.execute(select(BusinessRecord.id, BusinessRecord.serial_no).where(
             scalar_in_values(BusinessRecord.id, scoped_identity["_dashboard_case_ids"]),
-            await _case_mine_scope_condition(scoped_identity, db),
-        )
-        cases = (await db.execute(case_query)).all()
+            or_(await _case_mine_scope_condition(scoped_identity, db),
+                _coordinated_case_condition(scoped_identity["username"], db.get_bind().dialect.name)),
+        ))).all()
     case_ids = {case.id for case in cases}
     case_nos = {case.serial_no for case in cases}
-    candidate_ids = scoped_identity["_dashboard_fee_ids"]
-    if scope_data is not None:
+    if company:
+        data = BusinessRecord.data
+        candidate_ids = set((await db.scalars(select(BusinessRecord.id).where(
+            BusinessRecord.module == "finance", BusinessRecord.status != "已删除",
+            or_(data["refund_status"].as_string().notin_(["", "0"]),
+                data["legacy_record"]["RefundStatus"].as_string().notin_(["", "0"]),
+                data["case_fee_type_id"].as_string() == "11020061"),
+        ))).all())
+    else:
+        candidate_ids = scoped_identity["_dashboard_fee_ids"]
+    if scope_data is not None and not company:
         if scope_data.finance_pool is not None:
             candidate_ids = {row.id for row in scope_data.finance_pool.rows if row.id in candidate_ids
                              and _possible_refund_links(row.links, case_ids, case_nos)}
@@ -297,23 +335,25 @@ async def personal_refund_identity(scoped_identity, db, *, scope_data=None):
             scalar_in_values(BusinessRecord.data["case_record_id"].as_integer(), case_ids),
             scalar_in_values(BusinessRecord.data["case_no"].as_string(), case_nos)),
     ))).all()) if case_ids and candidate_ids else set()
-    return {**scoped_identity, "_dashboard_case_ids": case_ids,
-            "_dashboard_fee_ids": fee_ids, "_dashboard_record_ids": case_ids | fee_ids}
+    refund_identity = {**scoped_identity, "_dashboard_case_ids": case_ids, "_dashboard_fee_ids": fee_ids}
+    rows = await dashboard_refund_fee_rows(refund_identity, db, cases) if fee_ids else []
+    fee_ids = {row["id"] for row in rows}
+    return {**refund_identity, "_dashboard_fee_ids": fee_ids, "_dashboard_record_ids": case_ids | fee_ids,
+            "_dashboard_refund_rows": rows}
 
 
 async def dashboard_urgent_cases(identity, db, personal_case_ids, *, scope_data=None):
-    """紧急案件沿用公司案件菜单权限，否则只取本人可见案件。"""
-    from app.core.permissions import _can_search_all_cases_from_global_search
+    """紧急案件按旧系统只看“我的案件”（本人办理或本人作为客户管理人/协作人的客户的案件），管理员也一样。"""
+    from app.core.permissions import _coordinated_case_condition
 
+    if scope_data is not None and not scope_data.all_cases:
+        return scope_data.cases
     conditions = [
         BusinessRecord.module == "case",
         BusinessRecord.status.notin_(["已合并", "已删除", "已回收"]),
+        or_(await _case_mine_scope_condition(identity, db),
+            _coordinated_case_condition(identity["username"], db.get_bind().dialect.name)),
     ]
-    can_search_all = await _can_search_all_cases_from_global_search(identity, db)
-    if scope_data is not None and (not can_search_all or scope_data.all_cases):
-        return scope_data.cases
-    if not can_search_all:
-        conditions.append(BusinessRecord.id.in_(personal_case_ids))
     return await dashboard_queue_cases(db, conditions)
 
 

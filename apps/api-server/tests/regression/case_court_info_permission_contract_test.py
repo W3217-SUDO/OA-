@@ -109,7 +109,10 @@ class CaseCourtInfoPermissionContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body["data"]["first_court_name"], self.payload()["first_instance_court"])
         self.assertEqual(body["data"]["second_instance_court"], self.payload()["second_court_name"])
 
+        # 工作台开庭排期按旧系统：非管理员只看“我的案件”，由管理员核对全公司排期（2026-10-31 对齐）。
+        self.identity = ADMIN
         dashboard = await self.client.get(f"{API}/dashboard")
+        self.identity = EDITOR
         self.assertEqual(dashboard.status_code, 200, dashboard.text)
         matching = [item for item in dashboard.json()["hearings"] if item["case_no"] == "CODEX-824-COURT-001"]
         self.assertEqual(len(matching), 1)

@@ -84,6 +84,8 @@ export type Customer = {
     file_date?: string;
     last_contact_at?: string;
     last_modified_date?: string;
+    last_modified_by?: string;
+    last_update_time?: string;
     contact_count?: number;
     contract_count?: number;
     civil_case_count?: number;

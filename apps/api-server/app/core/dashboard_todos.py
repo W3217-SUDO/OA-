@@ -20,6 +20,11 @@ async def dashboard_todos(identity, db, *, record_scope=None):
     clue_counts = dict((await db.execute(select(BusinessRecord.status, func.count()).where(
         BusinessRecord.module.in_(modules & {"clue"}), *scope,
     ).group_by(BusinessRecord.status))).all())
+    # 旧系统“待审批线索”= 线索审批列表（PageId 1401004001）里待审批的条数，按线索审批范围（客户管理人/协作人/线索审批岗）计。
+    from app.core.clue_audit_scope import clue_audit_condition
+    pending_clue_reviews = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
+        BusinessRecord.status == "待审批", await clue_audit_condition(identity, db),
+    )) or 0) if "clue" in modules else 0
     labels = [("待处理任务", "待审批官方费用"), ("待审批线索", "待审批内部费用"),
               ("待审批合同", "待审批结算费用"), ("待审批用印", "待归档费用"),
               ("待审核归档", "待审核预损费用")]
@@ -66,7 +71,7 @@ async def dashboard_todos(identity, db, *, record_scope=None):
         ),
         "待审批合同": (0, 0),
         "待审批线索": (
-            clue_counts.get("待审批", 0),
+            pending_clue_reviews,
             clue_counts.get("已驳回", 0) + clue_counts.get("已拒绝", 0),
         ),
         "待审批用印": (0, 0),

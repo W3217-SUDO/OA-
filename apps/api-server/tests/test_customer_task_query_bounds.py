@@ -70,7 +70,7 @@ class CustomerTaskQueryAssertions:
                 module="customer", serial_no="ENTERPRISE-QUERY-CUSTOMER",
                 title="ＡＢＣ公司", customer="", status="正常", owner="query-admin",
                 department="上海", data={
-                    "customer_type": "客户", "agency_fee_due": 11,
+                    "customer_type": "客户", "total_invoiced_amount": 11,
                     "custom_payload": "c" * 4096,
                 },
             )
@@ -111,7 +111,7 @@ class CustomerTaskQueryAssertions:
                 ),
                 BusinessRecord(
                     module="contract", serial_no="ENTERPRISE-QUERY-ARCHIVED",
-                    title="归档合同不计数", customer="ABC公司", status="已归档", owner="other",
+                    title="归档合同也计数", customer="ABC公司", status="已归档", owner="other",
                     data={},
                 ),
             ])
@@ -130,7 +130,7 @@ class CustomerTaskQueryAssertions:
             )
         self.assertEqual(result["items"], [])
         self.assertEqual(result["total"], 1)
-        self.assertEqual(result["summary"]["agency_fee_due"], 11)
+        self.assertEqual(result["summary"]["total_invoiced_amount"], 11)
         self.assertEqual(loaded_related, [])
 
         loaded_page = []
@@ -146,7 +146,8 @@ class CustomerTaskQueryAssertions:
             )
         self.assertEqual(first_page["total"], 1)
         self.assertEqual(first_page["summary"], result["summary"])
-        self.assertEqual(first_page["items"][0]["data"]["contract_count"], 52)
+        # 旧系统 ContractCounts 含已归档合同（2026-10-31 对齐）。
+        self.assertEqual(first_page["items"][0]["data"]["contract_count"], 53)
         self.assertEqual(first_page["items"][0]["data"]["civil_case_count"], 51)
         self.assertEqual(first_page["items"][0]["data"]["custom_payload"], "c" * 4096)
         self.assertEqual([module for module, _ in loaded_page], ["customer"])
@@ -169,7 +170,7 @@ class CustomerTaskQueryAssertions:
             db.add_all(BusinessRecord(
                 module="customer", serial_no=f"BOUNDED-CUSTOMER-{index:04d}", title=f"客户{index}",
                 owner="query-admin", status="正常", department="上海",
-                data={"customer_type": "客户", "agency_fee_due": index, "large_payload": "x" * 4096},
+                data={"customer_type": "客户", "total_invoiced_amount": index, "large_payload": "x" * 4096},
             ) for index in range(501))
             await db.commit()
         loaded = []
@@ -184,7 +185,7 @@ class CustomerTaskQueryAssertions:
                 page=2, page_size=3, identity=self.identity, db=db,
             )
         self.assertEqual(result["total"], 501)
-        self.assertEqual(result["summary"]["agency_fee_due"], 125250)
+        self.assertEqual(result["summary"]["total_invoiced_amount"], 125250)
         self.assertEqual([item["serial_no"] for item in result["items"]], [
             "BOUNDED-CUSTOMER-0497", "BOUNDED-CUSTOMER-0496", "BOUNDED-CUSTOMER-0495",
         ])
