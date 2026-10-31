@@ -1136,7 +1136,7 @@ async def _seal_approval_settings_payload(db: AsyncSession) -> dict:
             "manager": item.manager, "first_override": override[0], "second_override": override[1],
             "first": override[0] or item.manager, "second": override[1] or settings_value["firm_approver"],
         })
-    return {**settings_value, "departments": rows, "display_names": {key: str(value) for key, value in names.items()}}
+    return {**settings_value, "departments": rows, "display_names": {user.username: user.display_name or user.username for user in names.values()}}
 
 
 @router.get(f"{settings.api_prefix}/hr/seal-approval-settings")
@@ -1173,4 +1173,4 @@ async def preview_seal_approval_path(department: str = "", record_id: int | None
         name = await record_department(BusinessRecord(owner=identity["username"], department=""), db)
     preview = await approval_path_preview(name, identity["username"], db)
     names = await _user_display_map(set(preview["path"]), db)
-    return {**preview, "path_display": [str(names.get(item) or item) for item in preview["path"]]}
+    return {**preview, "path_display": [(names[item.lower()].display_name or item) if item.lower() in names else item for item in preview["path"]]}

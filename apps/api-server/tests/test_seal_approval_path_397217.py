@@ -38,7 +38,7 @@ class SealApprovalPathTest(unittest.IsolatedAsyncioTestCase):
         soft_delete.set_actor(ADMIN["username"])
         async with self.sessions() as db:
             for username in ("sealadmin", "head", "firm", "partner", "clerk", "stamper", "other"):
-                db.add(User(username=username, display_name=username, password_hash="isolated-only", department="诉讼一部",
+                db.add(User(username=username, display_name=f"{username}名", password_hash="isolated-only", department="诉讼一部",
                             role="admin" if username == "sealadmin" else "staff"))
             db.add(Department(code="SS1", name="诉讼一部", manager="head"))
             db.add(Department(code="SS2", name="诉讼二部", manager=""))
@@ -91,6 +91,10 @@ class SealApprovalPathTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.client.get("/api/v1/hr/seal-approval-settings")).status_code, 403)
         preview = await self.client.get("/api/v1/seals/approval-path")
         self.assertEqual(preview.json()["path"], ["head", "firm"])
+        self.assertEqual(preview.json()["path_display"], ["head名", "firm名"])
+        self.identity = dict(ADMIN)
+        settings_page = (await self.client.get("/api/v1/hr/seal-approval-settings")).json()
+        self.assertEqual(settings_page["display_names"]["stamper"], "stamper名")
 
     async def test_standalone_seal_goes_through_each_step_then_to_stamp(self):
         await self._settings(firm_approver="firm")
