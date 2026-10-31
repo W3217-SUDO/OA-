@@ -6,7 +6,7 @@ from app.core.dependencies import (
     AsyncSession, BusinessRecord, FileAttachment, FinanceTransaction, HTTPException,
     LawFirm, LawFirmAudit, LawFirmContact, NAMESPACE_URL, Path,
     User, WorkflowEvent, date, datetime,
-    or_, select, uuid4, uuid5, verify_password,
+    and_, func, or_, select, uuid4, uuid5, verify_password,
 )
 from app.core.json_relation_query import scalar_in_values
 from app.models_shared import (
@@ -550,6 +550,85 @@ async def _customer_linked_business_counts(customer: BusinessRecord, db: AsyncSe
             if related.module == "case" and _is_civil_case_type(data.get("case_type")):
                 counts["civil_case_count"] += 1
     return counts
+
+
+# 客户删除规则（陶国南 2026-10-31）：只有客户的创建人可以删除，且客户在系统里没有任何关联数据。
+CUSTOMER_LINKED_MODULE_LABELS = {
+    "contract": "合同", "contract_payment": "请款单", "case": "案件", "ipr_case": "知识产权案件",
+    "clue": "线索", "evidence": "证据", "investigation": "调查", "task": "任务", "invoice": "发票",
+    "finance": "费用", "refund": "退费", "official_outgoing": "公文",
+}
+
+
+async def customer_creators(customers: list[BusinessRecord], db: AsyncSession) -> dict[int, str]:
+    """客户创建人：新系统新建的按“创建客户”记录的操作人，迁移客户按旧系统创建人，都没有时按负责人。"""
+    created = {}
+    ids = [customer.id for customer in customers]
+    if ids:
+        for record_id, operator in (await db.execute(select(WorkflowEvent.record_id, WorkflowEvent.operator).where(
+            WorkflowEvent.record_id.in_(ids), WorkflowEvent.action == "创建客户",
+        ).order_by(WorkflowEvent.id.desc()))).all():
+            created[record_id] = operator
+    result = {}
+    for customer in customers:
+        data = customer.data or {}
+        result[customer.id] = str(data.get("created_by") or created.get(customer.id) or data.get("create_user") or customer.owner or "").strip()
+    return result
+
+
+async def customer_delete_blockers(customers: list[BusinessRecord], db: AsyncSession) -> dict[int, list[str]]:
+    """每个客户已有的关联数据（合同、案件、费用、附件、沟通记录等），有任何一项就不能删除。"""
+    from collections import Counter
+    blockers: dict[int, Counter] = {customer.id: Counter() for customer in customers}
+    if not customers:
+        return {}
+    by_id = {str(customer.id): customer.id for customer in customers}
+    by_no = {str(customer.serial_no or "").strip(): customer.id for customer in customers if str(customer.serial_no or "").strip()}
+    by_title = {str(customer.title or "").strip(): customer.id for customer in customers if str(customer.title or "").strip()}
+    data = BusinessRecord.data
+    dialect = db.get_bind().dialect.name
+    ids_int = [customer.id for customer in customers]
+    record_id = data["customer_record_id"].as_string() if dialect == "postgresql" else data["customer_record_id"].as_integer()
+    customer_id = data["customer_id"].as_string() if dialect == "postgresql" else data["customer_id"].as_integer()
+    id_values = list(by_id) if dialect == "postgresql" else ids_int
+    rows = (await db.execute(select(
+        BusinessRecord.module, data["customer_record_id"].as_string(), data["customer_id"].as_string(),
+        data["customer_no"].as_string(), BusinessRecord.customer,
+    ).where(BusinessRecord.module.in_(list(CUSTOMER_LINKED_MODULE_LABELS)), or_(
+        record_id.in_(id_values), customer_id.in_(id_values), data["customer_no"].as_string().in_(list(by_no) or [""]),
+        and_(BusinessRecord.module.in_(["contract", "case", "ipr_case"]), BusinessRecord.customer.in_(list(by_title) or [""])),
+    )))).all()
+    for module, ref_record, ref_customer, ref_no, title in rows:
+        target = by_id.get(str(ref_record or "")) or by_id.get(str(ref_customer or "")) or by_no.get(str(ref_no or "").strip())
+        if target is None and module in {"contract", "case", "ipr_case"}:
+            target = by_title.get(str(title or "").strip())
+        if target is not None:
+            blockers[target][CUSTOMER_LINKED_MODULE_LABELS[module]] += 1
+    for owner_id, count in (await db.execute(select(FileAttachment.record_id, func.count()).where(
+        FileAttachment.record_id.in_(ids_int)).group_by(FileAttachment.record_id))).all():
+        blockers[owner_id]["附件"] += count
+    for customer in customers:
+        customer_data = customer.data or {}
+        if len(customer_data.get("contacts") or []) > 1:
+            blockers[customer.id]["联系人"] += len(customer_data["contacts"]) - 1
+        if customer_data.get("notes"):  # 沟通/事项记录（沟通记录表由这些记录生成）
+            blockers[customer.id]["事项记录"] += len(customer_data["notes"])
+    return {key: [f"{count} 个{label}" if label not in {"附件", "事项记录", "联系人"} else f"{count} 条{label}"
+                  for label, count in counter.items()] for key, counter in blockers.items()}
+
+
+async def customer_delete_denials(customers: list[BusinessRecord], identity: dict, db: AsyncSession) -> dict[int, str]:
+    """不能删除的客户及原因；系统管理员不受创建人限制，但有关联数据同样不能删。"""
+    actual_admin = "admin" in (identity.get("_actual_role_ids") or identity.get("role_ids") or [])
+    creators = await customer_creators(customers, db)
+    blockers = await customer_delete_blockers(customers, db)
+    denials = {}
+    for customer in customers:
+        if blockers.get(customer.id):
+            denials[customer.id] = f"客户已有{'、'.join(blockers[customer.id])}，不能删除"
+        elif not actual_admin and creators.get(customer.id) != identity.get("username"):
+            denials[customer.id] = "只有客户的创建人可以删除客户"
+    return denials
 
 
 async def _cascade_customer_owner_change(

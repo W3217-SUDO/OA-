@@ -389,6 +389,7 @@ async def create_customer(body: CustomerCreateInput, identity: dict = Depends(cu
     raw_managers = body.customer_managers if "customer_managers" in body.model_fields_set else data.get("customer_managers", [])
     managers = await _resolve_active_customer_managers(list(raw_managers or [owner]), db)
     data["customer_managers"] = [owner, *[manager for manager in managers if manager != owner]]
+    data["created_by"] = identity["username"]  # 删除客户只允许创建人（陶国南 2026-10-31）
     serial_no = body.serial_no.strip()
     if not serial_no:
         serial_no = await _next_customer_serial_no(db)
@@ -836,12 +837,21 @@ async def share_customer(customer_id: int, body: CustomerShareInput, identity: d
         return _legacy_customer_business_failure_response(exc)
 
 
+@router.get(f"{settings.api_prefix}/customers/{{customer_id}}/delete-check")
+async def check_customer_delete(customer_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """选中客户时判断能否删除：只有创建人、且客户没有任何关联数据（陶国南 2026-10-31）。"""
+    from app.core.crm import _customer_or_404, customer_delete_denials
+    customer = await _customer_or_404(customer_id, identity, db)
+    denial = (await customer_delete_denials([customer], identity, db)).get(customer.id)
+    return {"can_delete": denial is None, "reason": denial or ""}
+
+
 @router.post(f"{settings.api_prefix}/customers/{{customer_id}}/recycle")
 async def recycle_customer(customer_id: int, body: CustomerActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import _require_role_action
     await _require_role_action(identity, db, "crm.customer.recycle")
     from app.core.crm import (
-        _customer_event, _customer_linked_business_counts, _locked_customer_or_404,
+        _customer_event, _locked_customer_or_404, customer_delete_denials,
     )
     from app.core.legacy_sync import (
         _legacy_customer_business_failure_response,
@@ -854,14 +864,10 @@ async def recycle_customer(customer_id: int, body: CustomerActionInput, identity
         await _require_record_owner_or_manager(customer, identity, db)
         if customer.status == "公海": raise HTTPException(status_code=409, detail="公海客户必须先领取，不能直接移入回收站")
         if customer.status == "已回收": raise HTTPException(status_code=409, detail="客户已在回收站")
-        linked_counts = await _customer_linked_business_counts(customer, db)
-        if linked_counts["contract_count"] or linked_counts["case_count"]:
-            blockers = []
-            if linked_counts["contract_count"]:
-                blockers.append(f"{linked_counts['contract_count']} 个合同")
-            if linked_counts["case_count"]:
-                blockers.append(f"{linked_counts['case_count']} 个案件")
-            raise HTTPException(status_code=409, detail=f"客户存在{'、'.join(blockers)}，不能删除；请先处理关联合同和案件")
+        # 只有创建人能删，且客户没有任何关联数据（陶国南 2026-10-31）。
+        denial = (await customer_delete_denials([customer], identity, db)).get(customer.id)
+        if denial:
+            raise HTTPException(status_code=409 if denial.startswith("客户已有") else 403, detail=denial)
         old = customer.status
         customer.data = {
             **(customer.data or {}),

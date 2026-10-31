@@ -806,10 +806,10 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     shared_to_text = BusinessRecord.data["shared_to"].as_string()
     shared_with_text = BusinessRecord.data["shared_with"].as_string()
     shared_customer = and_(BusinessRecord.module == "customer", shared_with_text.contains(exact_username_token))
-    # 协作人能打开“我的客户”里的客户详情，只限读取；写操作仍按原范围判断（陶威 2026-10-31）。
+    # 协作人与客户管理人权限一样（陶国南 2026-10-31）。
     coordinated_customer = and_(
         BusinessRecord.module == "customer", BusinessRecord.data["coordinators"].as_string().contains(exact_username_token),
-    ) if identity.get("_request_method") in {"GET", "HEAD"} else false()
+    )
     coordinated_case = _coordinated_case_condition(user.username, db.get_bind().dialect.name) \
         if identity.get("_request_method") in {"GET", "HEAD"} else false()
     exact_shared_to = shared_to_text.contains(exact_username_token)
@@ -999,39 +999,13 @@ async def _ensure_record_visible(record_id: int, identity: dict, db: AsyncSessio
     return record
 
 
-def _customer_people(values) -> set[str]:
-    values = values if isinstance(values, list) else [values]
-    return {str(value).strip() for value in values if str(value or "").strip()}
-
-
 async def _deny_customer_coordinator_write(record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
-    """协作人在“我的客户”里能看到客户，但只能查看；修改仍归客户管理人（陶威 2026-10-31）。"""
-    if record.module not in {"customer", "case"} or identity.get("_request_method", "GET") in {"GET", "HEAD", "OPTIONS"}:
+    """只因客户关系（客户管理人/协作人）看到的案件只能查看，不能修改（陶威 2026-10-31）。"""
+    # 客户本身不限制：协作人与客户管理人权限一样（陶国南 2026-10-31）。
+    if record.module != "case" or identity.get("_request_method", "GET") in {"GET", "HEAD", "OPTIONS"}:
         return
-    if record.module == "case":
-        if await _case_coordinator_only(record, identity, db):
-            raise HTTPException(status_code=403, detail="你不是该案件的办案人员，只能查看，不能修改")
-        return
-    if "admin" in identity.get("_actual_role_ids", []):
-        return
-    data = record.data or {}
-    tokens = _customer_people([identity.get("username"), identity.get("display_name")])
-    if not _customer_people(data.get("coordinators") or []) & tokens:
-        return
-    related = {*_customer_people(record.owner), *_customer_people(data.get("customer_managers") or []),
-               *_customer_people(data.get("customer_source")), *_customer_people(data.get("source_person")),
-               *_customer_people(data.get("shared_with") or [])}
-    if related & tokens:
-        return
-    # 本来就能管这个客户的人（全所/部门客户权限等）不受协作身份影响。
-    actual = {**identity, "role": identity.get("_actual_role") or identity.get("role"),
-              "role_ids": identity.get("_actual_role_ids") or identity.get("role_ids") or [],
-              "_page_menu_capability": False}
-    if await db.scalar(select(BusinessRecord.id).where(
-        BusinessRecord.id == record.id, *(await _record_scope_conditions(actual, db)),
-    )):
-        return
-    raise HTTPException(status_code=403, detail="你是该客户的协作人，只能查看，不能修改")
+    if await _case_coordinator_only(record, identity, db):
+        raise HTTPException(status_code=403, detail="你不是该案件的办案人员，只能查看，不能修改")
 
 
 async def _ensure_pending_clue_audit_record(record_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
@@ -1111,7 +1085,8 @@ async def _require_record_owner_or_manager(record: BusinessRecord, identity: dic
         if _record_module_menu_allowed("customer", identity, permission):
             return
     if identity.get("role") == "admin" or record.owner == identity["username"] or (
-        record.module == "customer" and identity["username"] in (record.data or {}).get("customer_managers", [])
+        record.module == "customer" and identity["username"] in [
+            *((record.data or {}).get("customer_managers") or []), *((record.data or {}).get("coordinators") or [])]
     ):
         return
     user = await db.scalar(select(User).where(User.username == identity["username"]))

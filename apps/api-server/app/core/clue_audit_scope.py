@@ -64,11 +64,16 @@ def _customer_relations():
     return statement, record, customer
 
 
-def _manager_member(customer_data_managers, customer_owner, username):
-    """客户经理列表包含该用户；列表为空时按客户负责人（与原有可见范围规则一致）。"""
+def _manager_member(customer_data_managers, customer_owner, username, customer_coordinators=None):
+    """客户经理列表包含该用户；列表为空时按客户负责人（与原有可见范围规则一致）。
+
+    协作人与客户管理人一样（陶国南 2026-10-31，旧系统调查线索审核也算协作人）。
+    """
+    token = json.dumps(username, ensure_ascii=False)
     return or_(
-        customer_data_managers.contains(json.dumps(username, ensure_ascii=False), autoescape=True),
+        customer_data_managers.contains(token, autoescape=True),
         and_(or_(customer_data_managers.is_(None), customer_data_managers.in_(["", "[]"])), customer_owner == username),
+        *([customer_coordinators.contains(token, autoescape=True)] if customer_coordinators is not None else []),
     )
 
 
@@ -90,7 +95,8 @@ async def clue_audit_condition(identity, db, *, include_job_permission=True, rec
         if not candidate_ids:
             return false()
         statement, record, customer = _customer_relations()
-        member = _manager_member(customer.data["customer_managers"].as_string(), customer.owner, user.username)
+        member = _manager_member(customer.data["customer_managers"].as_string(), customer.owner, user.username,
+                                 customer.data["coordinators"].as_string())
         ids = statement.with_only_columns(record.id).where(
             record.module == "clue", scalar_in_values(record.id, candidate_ids), member)
         return and_(BusinessRecord.module == "clue", BusinessRecord.id.in_(ids))
@@ -99,7 +105,8 @@ async def clue_audit_condition(identity, db, *, include_job_permission=True, rec
     # 差别极大的执行计划（同一账号换个写法可从 0.3 秒变成 60 秒）。
     visible_customer_ids = list((await db.scalars(select(BusinessRecord.id).where(
         BusinessRecord.module == "customer",
-        _manager_member(BusinessRecord.data["customer_managers"].as_string(), BusinessRecord.owner, user.username),
+        _manager_member(BusinessRecord.data["customer_managers"].as_string(), BusinessRecord.owner, user.username,
+                        BusinessRecord.data["coordinators"].as_string()),
     ))).all())
     if not visible_customer_ids:
         return false()

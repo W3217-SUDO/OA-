@@ -61,23 +61,34 @@ class CustomerCoordinatorMineTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("my_customer_relation", manager["items"][0]["data"])
         self.assertEqual((await self.mine("codexother"))["items"][0]["id"], 2)
 
-    async def test_coordinator_can_read_but_not_write(self):
+    async def test_coordinator_can_write_customer_like_manager(self):
+        # 陶国南 2026-10-31：协作人与客户管理人权限一样。
         async with self.sessions() as db:
             customer = await db.get(BusinessRecord, 1)
-            await _deny_customer_coordinator_write(customer, identity("codexco", "GET"), db)
-            with self.assertRaises(HTTPException) as caught:
-                await _deny_customer_coordinator_write(customer, identity("codexco", "POST"), db)
-            self.assertEqual(caught.exception.status_code, 403)
-            await _deny_customer_coordinator_write(customer, identity("codexmgr", "POST"), db)
-            await _deny_customer_coordinator_write(customer, identity("codexco", "POST", role="admin"), db)
+            await _deny_customer_coordinator_write(customer, identity("codexco", "POST"), db)
+            reader = {**identity("codexco", "POST"), "_page_menu_capability": False}
+            self.assertEqual((await _ensure_record_visible(1, reader, db)).id, 1)
 
-    async def test_coordinator_opens_detail_only_for_reads(self):
+    async def test_only_creator_without_linked_data_can_delete(self):
+        from app.core.crm import customer_delete_denials
+        async with self.sessions() as db:
+            db.add(BusinessRecord(id=3, module="customer", serial_no="KH3", title="新建空客户", status="T", owner="codexmgr",
+                                  department="CODEX", data={"customer_managers": ["codexmgr"], "created_by": "codexmgr"}))
+            await db.commit()
+            customers = [await db.get(BusinessRecord, record_id) for record_id in (1, 3)]
+            mine = await customer_delete_denials(customers, identity("codexmgr"), db)
+            self.assertIn("案件", mine[1])
+            self.assertNotIn(3, mine)
+            other = await customer_delete_denials(customers, identity("codexco"), db)
+            self.assertEqual(other[3], "只有客户的创建人可以删除客户")
+            admin = await customer_delete_denials(customers, identity("codexco", role="admin"), db)
+            self.assertNotIn(3, admin)
+            self.assertIn(1, admin)
+
+    async def test_coordinator_opens_detail(self):
         reader = {**identity("codexco", "GET"), "_page_menu_capability": False}
         async with self.sessions() as db:
             self.assertEqual((await _ensure_record_visible(1, reader, db)).id, 1)
-            with self.assertRaises(HTTPException) as caught:
-                await _ensure_record_visible(1, {**reader, "_request_method": "POST"}, db)
-            self.assertEqual(caught.exception.status_code, 404)
             with self.assertRaises(HTTPException):
                 await _ensure_record_visible(2, reader, db)
 

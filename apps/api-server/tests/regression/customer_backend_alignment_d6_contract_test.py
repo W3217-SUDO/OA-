@@ -202,7 +202,7 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
         response = await self.client.post(f"{API}/customers/{self.customer_id}/recycle", json={"comment": "不应删除"})
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.text)
         self.assertEqual(response.json()["IsSuccess"], False)
-        self.assertIn("客户存在1 个合同", response.json()["Message"])
+        self.assertIn("客户已有1 个合同", response.json()["Message"])  # 陶国南 2026-10-31：有任何关联数据都不能删除
 
         async with self.sessions() as db:
             customer = await db.get(BusinessRecord, self.customer_id)

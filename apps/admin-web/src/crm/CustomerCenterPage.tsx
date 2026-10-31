@@ -1143,6 +1143,18 @@ export default function CustomerCenterPage({
 
   // ========== Actions ==========
   const selected = rows.find((row) => selectedRowKeys.includes(row.id));
+  // 选中客户时向服务端确认能否删除：只有创建人、且没有任何关联数据（陶国南 2026-10-31）。
+  const [deleteCheck, setDeleteCheck] = useState<{ id: number; can_delete: boolean; reason: string } | null>(null);
+  const selectedId = selectedRowKeys.length === 1 ? selected?.id : undefined;
+  useEffect(() => {
+    if (!selectedId) return;
+    let alive = true;
+    api.get(`/customers/${selectedId}/delete-check`)
+      .then(({ data }) => { if (alive) setDeleteCheck({ id: selectedId, can_delete: Boolean(data?.can_delete), reason: String(data?.reason || "") }); })
+      .catch(() => { if (alive) setDeleteCheck(null); });
+    return () => { alive = false; };
+  }, [selectedId]);
+  const deleteDenied = deleteCheck && deleteCheck.id === selectedId && !deleteCheck.can_delete ? deleteCheck.reason || "该客户不能删除" : "";
 
   const requireSingleSelected = () => {
     if (selectedRowKeys.length !== 1 || !selected) {
@@ -1227,15 +1239,17 @@ export default function CustomerCenterPage({
                     ? [{ key: "edit", label: "客户编辑" }, { key: "claim", label: "拾回" }]
                     : [{ key: "claim", label: "拾回" }]
                   : []
-    ).filter((item) => !customerActionCodes[item.key] || customerActionAllowed(profile, customerActionCodes[item.key], initialView));
+    ).filter((item) => !customerActionCodes[item.key] || customerActionAllowed(profile, customerActionCodes[item.key], initialView))
+      // 选中的客户不能删除（非创建人或已有关联数据）时不显示“客户删除”。
+      .filter((item) => item.key !== "delete" || !deleteDenied);
   })();
 
   const runOriginalAction = (key: string) => {
     const target = requireSingleSelected();
     if (!target) return;
-    // 协作人在“我的客户”里只能查看客户和联系人，修改仍由客户管理人操作（陶威 2026-10-31）。
-    if ((target.data as any).my_customer_relation === "协作" && key !== "contact-management") {
-      message.warning("你是该客户的协作人，只能查看，不能修改");
+    // 只有创建人、且没有任何关联数据的客户才能删除（陶国南 2026-10-31）。
+    if (key === "delete" && deleteDenied) {
+      message.warning(deleteDenied);
       return;
     }
     if (key === "delete") recycleCustomer(target);
