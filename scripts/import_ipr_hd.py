@@ -55,6 +55,18 @@ _SQL_TYPES = {
 }
 
 
+def same_json(a, b) -> bool:
+    """按写进 jsonb 后的样子比较（键顺序、数字写法不影响）。"""
+    dump = lambda v: json.dumps(json.loads(json.dumps(v, default=str, ensure_ascii=False)), sort_keys=True, ensure_ascii=False)  # noqa: E731
+    return dump(a) == dump(b)
+
+
+def without_recomputed_deadline(data: dict) -> dict:
+    """HD 旧系统每晚重算 IPR_Case.Deadline（不改 ChangeTime）；只有这一项不同不算案件有改动。"""
+    legacy = {k: v for k, v in (data.get("legacy_record") or {}).items() if k != "Deadline"}
+    return {**{k: v for k, v in data.items() if k != "deadline"}, "legacy_record": legacy}
+
+
 def pg_type(sql_type: str) -> str:
     return _SQL_TYPES.get(re.sub(r"\(.*", "", sql_type.strip().lower()), "text")
 
@@ -86,7 +98,7 @@ class HdImport:
         self.report = Counter()
         self.lists: dict[str, list] = {
             "customer_name_or_code_matches": [], "case_serial_conflicts": [], "customer_serial_prefixed": [],
-            "unknown_case_types": [], "unresolved_people": [], "files_missing_in_oss": [],
+            "unknown_case_types": [], "unresolved_people": [], "files_missing_in_oss": [], "case_update_diffs": [],
         }
         self.schema = json.loads((source / "_schema.json").read_text(encoding="utf-8"))
         missing = [table for table in REQUIRED_TABLES if table not in self.schema]
@@ -183,9 +195,13 @@ class HdImport:
             status = "历史数据" if row.get("IsActived") is None or enabled(row.get("IsActived")) else "已回收"
             if key in by_key:
                 current = by_key[key]
-                merged = {**data, **{k: v for k, v in (current["data"] or {}).items() if k not in data}}
-                self.db.execute("UPDATE business_records SET title=%s, data=%s WHERE id=%s", (name or current["title"], Jsonb(merged), current["id"]))
+                # 更新时保留首次导入的批次号：回滚某一轮同步只删那一轮新建的，不能连带删掉首次导入的客户。
+                merged = {**data, **{k: v for k, v in (current["data"] or {}).items() if k not in data or k == "migration_source"}}
                 ids[customer_id] = current["id"]
+                if same_json(merged, current["data"] or {}) and (name or current["title"]) == current["title"]:
+                    self.report["customer_unchanged"] += 1
+                    continue
+                self.db.execute("UPDATE business_records SET title=%s, data=%s WHERE id=%s", (name or current["title"], Jsonb(merged), current["id"]))
                 self.report["customer_updated"] += 1
                 continue
             serial = text(row.get("CustomerNo")) or f"HD-C{customer_id}"
@@ -217,7 +233,7 @@ class HdImport:
         phase_params = {r["name"]: r["id"] for r in self.db.execute(
             "SELECT id, name FROM system_parameters WHERE category='ipr_case_phase' AND deleted_at IS NULL").fetchall()}
         existing = self.db.execute(
-            "SELECT id, serial_no, data FROM business_records WHERE module='ipr_case' AND deleted_at IS NULL").fetchall()
+            "SELECT id, serial_no, title, customer, status, description, data FROM business_records WHERE module='ipr_case' AND deleted_at IS NULL").fetchall()
         by_legacy = {text((r["data"] or {}).get("legacy_ipr_case_id")): r for r in existing if (r["data"] or {}).get("legacy_source") == LEGACY_SOURCE}
         taken = {r["serial_no"]: r for r in self.db.execute("SELECT id, serial_no, module FROM business_records WHERE deleted_at IS NULL").fetchall()}
         ids: dict[str, int] = {}
@@ -257,11 +273,24 @@ class HdImport:
             current = by_legacy.get(case_id)
             if current:
                 # 新系统里改过的字段（案件日志里有人工“修改案件信息”）以新系统为准，本脚本只补源字段。
-                kept = {k: v for k, v in (current["data"] or {}).items() if k not in data or k in {"annual_fee_monitoring", "first_annual_year", "cost_slow_rate", "writer"}}
-                self.db.execute("UPDATE business_records SET title=%s, customer=%s, status=%s, description=%s, data=%s WHERE id=%s",
-                                values + (Jsonb({**data, **kept}), current["id"]))
+                # 首次导入的批次号保留（同步轮次回滚不能删掉首次导入的案件）；旧系统没变的案件不重写。
+                kept = {k: v for k, v in (current["data"] or {}).items()
+                        if k not in data or k in {"annual_fee_monitoring", "first_annual_year", "cost_slow_rate", "writer", "migration_source"}}
+                merged = {**data, **kept}
                 ids[case_id] = current["id"]
-                self.report["ipr_case_updated"] += 1
+                if (same_json(without_recomputed_deadline(merged), without_recomputed_deadline(current["data"] or {}))
+                        and values == (current["title"], current["customer"], current["status"], current["description"])):
+                    self.report["ipr_case_unchanged"] += 1
+                else:
+                    if len(self.lists["case_update_diffs"]) < 20:
+                        before = current["data"] or {}
+                        self.lists["case_update_diffs"].append({
+                            "case_no": no, "keys": sorted(k for k in set(before) | set(merged) if not same_json(before.get(k), merged.get(k)))[:10],
+                            "columns": [n for n, a, b in zip(("title", "customer", "status", "description"), values,
+                                                              (current["title"], current["customer"], current["status"], current["description"])) if a != b]})
+                    self.db.execute("UPDATE business_records SET title=%s, customer=%s, status=%s, description=%s, data=%s WHERE id=%s",
+                                    values + (Jsonb(merged), current["id"]))
+                    self.report["ipr_case_updated"] += 1
             elif no in taken:
                 self.lists["case_serial_conflicts"].append({"case_no": no, "existing_record_id": taken[no]["id"], "existing_module": taken[no]["module"]})
                 self.report["ipr_case_conflict_skipped"] += 1
