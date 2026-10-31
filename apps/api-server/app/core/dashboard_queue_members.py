@@ -8,6 +8,7 @@ import json
 import logging
 from datetime import date
 
+from fastapi import HTTPException
 from redis.exceptions import RedisError
 
 from app.config import settings
@@ -42,7 +43,8 @@ async def remember(db, username: str, group: str, queues: dict[str, list[dict]])
     try:
         from app.core import dashboard_metrics_redis as shared
         await shared.client().set(_key(db, username, group), json.dumps(members, separators=(",", ":")), ex=TTL_SECONDS)
-    except RedisError as exc:
+    except (RedisError, HTTPException) as exc:
+        # 缓存连接未就绪或出错时不影响工作台，列表照常现算。
         logger.warning("工作台提醒成员缓存写入失败：%s", type(exc).__name__)
 
 
@@ -52,7 +54,7 @@ async def recall(db, username: str, group: str, queue: str) -> dict | None:
     try:
         from app.core import dashboard_metrics_redis as shared
         payload = await shared.client().get(_key(db, username, group))
-    except RedisError as exc:
+    except (RedisError, HTTPException) as exc:
         logger.warning("工作台提醒成员缓存读取失败：%s", type(exc).__name__)
         return None
     if payload is None:
