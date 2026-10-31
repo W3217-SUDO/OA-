@@ -1,5 +1,7 @@
 """批量读取部门原始操作者来源，不修改新旧审计数据。"""
 
+import logging
+
 from fastapi import HTTPException
 from sqlalchemy import column, func, inspect, select, table
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,9 +10,19 @@ from app.models import BusinessRecord, Department, User
 
 
 _CRM_HR_MIGRATION_SOURCE = "hz_crm_20260930"
+logger = logging.getLogger(__name__)
 
 
 async def _department_actor_sources(items: list[Department], db: AsyncSession) -> dict[int, dict[str, dict]]:
+    # BUG20261031002：旧审计来源只用于显示创建人/更新人；对不上时退回不显示来源，不能让部门列表整体 409。
+    try:
+        return await _strict_department_actor_sources(items, db)
+    except HTTPException as error:
+        logger.warning("部门旧审计来源无法确定，按无来源显示：%s", error.detail)
+        return {}
+
+
+async def _strict_department_actor_sources(items: list[Department], db: AsyncSession) -> dict[int, dict[str, dict]]:
     # 部门代码可编辑；正常更新后不再推测旧创建人，保留真实的系统迁移事件。
     migrated = [item for item in items if item.updated_by == "legacy-hr-migration"]
     if not migrated:
