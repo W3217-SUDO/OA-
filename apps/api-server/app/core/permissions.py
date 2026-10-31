@@ -18,6 +18,7 @@ from app.models_shared import (
     FinanceFeeInput,
 )
 from app.core.json_relation_query import scalar_in_values
+from sqlalchemy import false
 from app.core.generated_file_records import PRIVATE_MODULES, require_generated_record_access
 
 
@@ -742,6 +743,10 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     shared_to_text = BusinessRecord.data["shared_to"].as_string()
     shared_with_text = BusinessRecord.data["shared_with"].as_string()
     shared_customer = and_(BusinessRecord.module == "customer", shared_with_text.contains(exact_username_token))
+    # 协作人能打开“我的客户”里的客户详情，只限读取；写操作仍按原范围判断（陶威 2026-10-31）。
+    coordinated_customer = and_(
+        BusinessRecord.module == "customer", BusinessRecord.data["coordinators"].as_string().contains(exact_username_token),
+    ) if identity.get("_request_method") in {"GET", "HEAD"} else false()
     exact_shared_to = shared_to_text.contains(exact_username_token)
     # A case team member must be able to find the assigned case even if their
     # ordinary role has only "own data" scope.  This is deliberately limited to
@@ -793,14 +798,14 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
         return or_(condition, customer_menu_scope) if customer_menu_scope is not None else condition
 
     if scope == "本部门数据":
-        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.department == user.department, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
+        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.department == user.department, public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
     if scope == "授权审批数据":
         # Approval range is not a blanket view of every pending record.  A
         # contract becomes visible here only for its current pending approver;
         # other modules retain their own owner/share/participant projections
         # until they expose an equally concrete candidate relation.
-        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
-    return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, exact_shared_to, personal_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
+        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
+    return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
 
 
 async def _visible_legacy_ipr_case_ids(identity: dict, db: AsyncSession) -> set[int]:

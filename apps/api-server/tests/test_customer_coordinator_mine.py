@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.areas.crm.router import list_customers
-from app.core.permissions import _deny_customer_coordinator_write
+from app.core.permissions import _deny_customer_coordinator_write, _ensure_record_visible
 from app.database import Base
 from app.models import BusinessRecord, SystemParameter, User
 
@@ -59,6 +59,16 @@ class CustomerCoordinatorMineTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(caught.exception.status_code, 403)
             await _deny_customer_coordinator_write(customer, identity("codexmgr", "POST"), db)
             await _deny_customer_coordinator_write(customer, identity("codexco", "POST", role="admin"), db)
+
+    async def test_coordinator_opens_detail_only_for_reads(self):
+        reader = {**identity("codexco", "GET"), "_page_menu_capability": False}
+        async with self.sessions() as db:
+            self.assertEqual((await _ensure_record_visible(1, reader, db)).id, 1)
+            with self.assertRaises(HTTPException) as caught:
+                await _ensure_record_visible(1, {**reader, "_request_method": "POST"}, db)
+            self.assertEqual(caught.exception.status_code, 404)
+            with self.assertRaises(HTTPException):
+                await _ensure_record_visible(2, reader, db)
 
 
 if __name__ == "__main__":
