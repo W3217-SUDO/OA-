@@ -44,6 +44,12 @@ class CustomerManagersInput(BaseModel):
     comment: str = ""
 
 
+class CustomerSourcePersonInput(BaseModel):
+    """变更案源人：只能一位（陶国南 2026-10-31：案源人离职后可以指定新的案源人）。"""
+    source_person: str = Field(min_length=1, max_length=64)
+    comment: str = ""
+
+
 class _CustomerPatchBase(BaseModel):
     """客户编辑：只改传入的字段（与原 data 合并）。可直接用具名参数（invoice_title、taxpayer_id…），也可放在 data 里，二者等价。"""
     description: str | None = Field(default=None, max_length=2000, description="备注")

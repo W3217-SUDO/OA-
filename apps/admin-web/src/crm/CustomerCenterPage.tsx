@@ -116,6 +116,7 @@ export default function CustomerCenterPage({
   const [open, setOpen] = useState(initialView === "customer-new");
   const [editing, setEditing] = useState<Customer | null>(null);
   const [assigning, setAssigning] = useState<Customer | null>(null);
+  const [sourceChanging, setSourceChanging] = useState<Customer | null>(null);
   const [sharing, setSharing] = useState<Customer | null>(null);
   const [portalResult, setPortalResult] = useState<{ account: string; activation_code: string } | null>(null);
   const [portalCustomer, setPortalCustomer] = useState<Customer | null>(null);
@@ -156,6 +157,7 @@ export default function CustomerCenterPage({
 
   const [form] = Form.useForm();
   const [assignForm] = Form.useForm();
+  const [sourceForm] = Form.useForm();
   const [shareForm] = Form.useForm();
   const [contactForm] = Form.useForm();
   const [contactEditForm] = Form.useForm();
@@ -533,23 +535,24 @@ export default function CustomerCenterPage({
   // ========== Assign / Share / Portal ==========
   const startAssign = (customer: Customer) => {
     setAssigning(customer);
+    // 预填当前全部客户管理人（含旧系统迁移来的其他管理人），保存后就是完整名单。
     assignForm.setFieldsValue({
-      manager: customer.data.customer_managers?.[0] || customer.owner,
+      managers: [...new Set([...(customer.data.customer_managers || [customer.owner]), ...((customer.data as any).coordinators || [])])]
+        .filter((value) => value && value !== "公海"),
     });
   };
 
   const assignCustomer = async () => {
     if (!assigning) return;
     const values = await assignForm.validateFields();
-    const request = buildCustomerManagerRequest(assigning.id, normalizeCustomerManager(values.manager));
-    if (!request) {
+    const managers = [...new Set((values.managers || []).map(normalizeCustomerManager).filter(Boolean))];
+    const request = buildCustomerManagerRequest(assigning.id, managers[0]);
+    if (!request || !managers.length) {
       message.warning("请选择有效的客户管理人");
       return;
     }
     try {
-      const managerUrl = `/customers/${assigning.id}/managers`;
-      const legacyManagersPayload = { managers: [values.manager] };
-      const response = await api.put(request.url || managerUrl, request.data || legacyManagersPayload);
+      const response = await api.put(request.url, { managers });
       assertCustomerMutationSuccess(response?.data);
       message.success("客户分配成功");
       setAssigning(null);
@@ -558,6 +561,26 @@ export default function CustomerCenterPage({
     } catch (error: any) {
       const legacyError = error?.response?.data?.detail || "客户分配失败";
       message.error(getCustomerMutationErrorMessageI17(error, legacyError));
+    }
+  };
+
+  const startSourceChange = (customer: Customer) => {
+    setSourceChanging(customer);
+    sourceForm.setFieldsValue({ source_person: undefined });
+  };
+
+  const changeSource = async () => {
+    if (!sourceChanging) return;
+    const values = await sourceForm.validateFields();
+    try {
+      const response = await api.post(`/customers/${sourceChanging.id}/source-person`, { source_person: normalizeCustomerManager(values.source_person) });
+      assertCustomerMutationSuccess(response?.data);
+      message.success("案源人已变更");
+      setSourceChanging(null);
+      setSelectedRowKeys([]);
+      await load();
+    } catch (error: any) {
+      message.error(getCustomerMutationErrorMessageI17(error, error?.response?.data?.detail || "变更案源人失败"));
     }
   };
 
@@ -1203,7 +1226,7 @@ export default function CustomerCenterPage({
 
   const customerActionCodes: Record<string, string> = {
     edit: "crm.customer.update", delete: "crm.customer.recycle", restore: "crm.customer.restore",
-    assign: "crm.customer.assign", release: "crm.customer.release", claim: "crm.customer.claim",
+    assign: "crm.customer.assign", "source-change": "crm.customer.assign", release: "crm.customer.release", claim: "crm.customer.claim",
     share: "crm.customer.share", "portal-open": "crm.customer.portal", "portal-close": "crm.customer.portal",
     "contact-management": "crm.customer.contact.manage",
   };
@@ -1220,6 +1243,7 @@ export default function CustomerCenterPage({
       { key: "edit", label: "客户编辑" },
       { key: "delete", label: "客户删除" },
       { key: "assign", label: "分配客户" },
+      { key: "source-change", label: "变更案源人" },
       { key: "release", label: "释放到公海" },
       { key: "contract", label: "新增合同" },
       ...customerNavigationActions,
@@ -1255,6 +1279,7 @@ export default function CustomerCenterPage({
     if (key === "delete") recycleCustomer(target);
     if (key === "edit") startEdit(target);
     if (key === "assign") startAssign(target);
+    if (key === "source-change") startSourceChange(target);
     if (key === "communication") openCustomerCommunication(target);
     if (key === "contact-management") void openDetail(target, "contacts");
     if (key === "contract") openCustomerContractCreate(target);
@@ -1592,6 +1617,10 @@ export default function CustomerCenterPage({
         directory={directory}
         onCloseAssign={() => setAssigning(null)}
         onAssignCustomer={assignCustomer}
+        sourceChanging={sourceChanging}
+        sourceForm={sourceForm}
+        onCloseSourceChange={() => setSourceChanging(null)}
+        onChangeSource={changeSource}
         sharing={sharing}
         shareForm={shareForm}
         onCloseShare={() => setSharing(null)}

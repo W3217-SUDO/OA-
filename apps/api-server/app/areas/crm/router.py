@@ -21,7 +21,7 @@ from app.core.dependencies import (
 )
 from app.models_shared import (
     CustomerActionInput, CustomerContactInput, CustomerContactStatusInput, CustomerCreateInput, CustomerEventInput,
-    CustomerKeyChangeInput, CustomerKeyChangeReviewInput, CustomerLevelChangeInput, CustomerLevelReviewInput, CustomerManagersInput,
+    CustomerKeyChangeInput, CustomerKeyChangeReviewInput, CustomerLevelChangeInput, CustomerLevelReviewInput, CustomerManagersInput, CustomerSourcePersonInput,
     CustomerNoteInput, CustomerPatchInput, CustomerPortalActionInput, CustomerPortalActivationInput, CustomerPortalDemandInput,
     CustomerPortalLoginInput, CustomerShareInput, LawFirmContactInput, LawFirmInput, NotaryCertificateInput,
     NotaryReviewInput,
@@ -747,6 +747,7 @@ async def claim_customer(customer_id: int, body: CustomerActionInput, identity: 
         customer.data = {
             **(customer.data or {}),
             "customer_managers": [identity["username"]],
+            "coordinators": [],
             "shared_with": [],
             "is_shared": "否",
             "claimed_at": datetime.now().isoformat(timespec="seconds"),
@@ -775,14 +776,20 @@ async def release_customer(customer_id: int, body: CustomerActionInput, identity
         customer = await _locked_customer_or_404(customer_id, identity, db)
         if customer.status == "公海": raise HTTPException(status_code=409, detail="当前客户状态不能释放到公海")
         old = customer.status; customer.status = "公海"; customer.owner = "公海"
+        released_managers = list(dict.fromkeys([*((customer.data or {}).get("customer_managers") or []),
+                                                *((customer.data or {}).get("coordinators") or [])]))
+        # 进入公海时客户管理人全部清空，原名单记入变更记录（陶国南 2026-10-31）。
         customer.data = {
             **(customer.data or {}),
+            "customer_managers": [],
+            "coordinators": [],
+            "released_managers": released_managers,
             "shared_with": [],
             "is_shared": "否",
             "released_at": datetime.now().isoformat(timespec="seconds"),
             "released_by": identity["username"],
         }
-        db.add(_customer_event(customer, "释放公海", identity, body.comment or "客户释放到公海", old)); await db.commit(); await db.refresh(customer)
+        db.add(_customer_event(customer, "释放公海", identity, (body.comment or "客户释放到公海") + f"（原客户管理人：{'、'.join(released_managers) or '无'}）", old)); await db.commit(); await db.refresh(customer)
         return await _record_dict_for_identity(customer, identity, db)
     except HTTPException as exc:
         return _legacy_customer_business_failure_response(exc)
@@ -1079,11 +1086,15 @@ async def download_customer_contact_photo(customer_id: int, contact_id: str, ide
 
 @router.put(f"{settings.api_prefix}/customers/{{customer_id}}/managers")
 async def update_customer_managers(customer_id: int, body: CustomerManagersInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """分配/修改客户管理人：保存的名单就是完整的客户管理人名单（陶国南 2026-10-31）。
+
+    旧系统迁移来的其他客户管理人（coordinators）这时一并清掉，原名单记入客户变更记录便于撤回；
+    案源人用“变更案源人”单独修改。
+    """
     from app.core.permissions import _require_role_action
     await _require_role_action(identity, db, "crm.customer.assign")
     from app.core.crm import (
-        _cascade_customer_owner_change, _customer_event, _customer_or_404,
-        _prioritize_new_customer_managers, _resolve_active_customer_managers,
+        _customer_event, _customer_or_404, _prioritize_new_customer_managers, _resolve_active_customer_managers,
     )
     from app.core.legacy_sync import (
         _legacy_customer_business_failure_response,
@@ -1096,31 +1107,66 @@ async def update_customer_managers(customer_id: int, body: CustomerManagersInput
         if customer.status == "公海": raise HTTPException(status_code=409, detail="公海客户必须先领取后才能分配管理人")
         await _require_record_owner_or_manager(customer, identity, db)
         data = dict(customer.data or {})
-        existing_managers = list(data.get("customer_managers") or [customer.owner])
+        previous_managers = list(data.get("customer_managers") or [customer.owner])
+        previous_coordinators = list(data.get("coordinators") or []) if isinstance(data.get("coordinators"), list) else []
         requested_managers = await _resolve_active_customer_managers(body.managers, db)
-        managers = _prioritize_new_customer_managers(existing_managers, requested_managers)
-        original_owner = customer.owner
+        managers = _prioritize_new_customer_managers([*previous_managers, *previous_coordinators], requested_managers)
         history = list(data.get("assignment_history") or [])
         history.append({
-            "from_owner": original_owner,
-            "to_owner": managers[0],
-            "managers": managers,
-            "operator": identity["username"],
-            "comment": body.comment.strip(),
+            "from_owner": (previous_managers or [customer.owner])[0], "to_owner": managers[0],
+            "managers": managers, "previous_managers": previous_managers, "previous_coordinators": previous_coordinators,
+            "operator": identity["username"], "comment": body.comment.strip(),
             "created_at": datetime.now().isoformat(timespec="seconds"),
         })
-        customer.owner = managers[0]
-        customer.data = {**data, "customer_managers": managers, "assignment_history": history}
+        customer.data = {**data, "customer_managers": managers, "coordinators": [], "assignment_history": history}
+        previous = "、".join(dict.fromkeys([*previous_managers, *previous_coordinators]))
+        db.add(_customer_event(customer, "更新客户管理人", identity,
+                               (body.comment or f"客户管理人：{'、'.join(managers)}") + f"（原客户管理人：{previous or '无'}）"))
+        await db.commit(); await db.refresh(customer)
+        return await _record_dict_for_identity(customer, identity, db)
+    except HTTPException as exc:
+        return _legacy_customer_business_failure_response(exc)
+
+
+@router.post(f"{settings.api_prefix}/customers/{{customer_id}}/source-person")
+async def change_customer_source_person(customer_id: int, body: CustomerSourcePersonInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """变更案源人（一位）：同时更新客户负责人，并像旧系统 CustomerOwnerChange 一样级联案件、合同、调查。"""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "crm.customer.assign")
+    from app.core.crm import (
+        _cascade_customer_owner_change, _customer_event, _customer_or_404, _resolve_active_customer_managers,
+    )
+    from app.core.legacy_sync import (
+        _legacy_customer_business_failure_response,
+    )
+    from app.core.permissions import (
+        _record_dict_for_identity, _require_record_owner_or_manager,
+    )
+    try:
+        customer = await _customer_or_404(customer_id, identity, db)
+        if customer.status == "公海": raise HTTPException(status_code=409, detail="公海客户必须先领取后才能变更案源人")
+        await _require_record_owner_or_manager(customer, identity, db)
+        new_source = (await _resolve_active_customer_managers([body.source_person], db))[0]
+        data = dict(customer.data or {})
+        original_owner = customer.owner
+        previous_source = str(data.get("customer_source") or data.get("source_person") or original_owner or "")
+        history = list(data.get("source_person_history") or [])
+        history.append({"from": previous_source, "to": new_source, "from_owner": original_owner, "operator": identity["username"],
+                        "comment": body.comment.strip(), "created_at": datetime.now().isoformat(timespec="seconds")})
+        customer.owner = new_source
+        customer.data = {**data, "customer_source": new_source, "source_person": new_source, "business_owner": new_source,
+                         "holder": new_source, "customer_owner": new_source, "source_person_history": history}
         cascade_detail = ""
-        if original_owner != managers[0]:
-            cascade_result = await _cascade_customer_owner_change(customer, original_owner, managers[0], db)
+        if original_owner != new_source:
+            cascade_result = await _cascade_customer_owner_change(customer, original_owner, new_source, db)
             parts = []
             if cascade_result.get("case", 0) > 0: parts.append(f"案件{cascade_result['case']}条")
             if cascade_result.get("contract", 0) > 0: parts.append(f"合同{cascade_result['contract']}条")
             if cascade_result.get("investigation", 0) > 0: parts.append(f"调查{cascade_result['investigation']}条")
             if parts:
                 cascade_detail = f"；级联更新：{'、'.join(parts)}"
-        db.add(_customer_event(customer, "更新客户管理人", identity, (body.comment or f"客户管理人：{'、'.join(managers)}") + cascade_detail))
+        db.add(_customer_event(customer, "变更案源人", identity,
+                               (body.comment or f"案源人：{previous_source or '无'} → {new_source}") + cascade_detail))
         await db.commit(); await db.refresh(customer)
         return await _record_dict_for_identity(customer, identity, db)
     except HTTPException as exc:

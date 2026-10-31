@@ -122,6 +122,30 @@ class CustomerCoordinatorMineTest(unittest.IsolatedAsyncioTestCase):
             ))).all())
         self.assertIn(14, ids)
 
+    async def test_assign_replaces_managers_and_clears_migrated_ones(self):
+        from app.areas.crm.router import update_customer_managers
+        from app.models_shared import CustomerManagersInput
+        admin = {**identity("codexmgr", "PUT", role="admin"), "action_keys": ["*"]}
+        async with self.sessions() as db:
+            await update_customer_managers(1, CustomerManagersInput(managers=["codexother"]), admin, db)
+        async with self.sessions() as db:
+            customer = await db.get(BusinessRecord, 1)
+            self.assertEqual(customer.data["customer_managers"], ["codexother"])
+            self.assertEqual(customer.data["coordinators"], [])
+            self.assertEqual(customer.data["assignment_history"][-1]["previous_coordinators"], ["codexco"])
+            self.assertEqual(customer.owner, "codexmgr")  # 案源人/负责人不随分配变化
+
+    async def test_change_source_person_updates_owner(self):
+        from app.areas.crm.router import change_customer_source_person
+        from app.models_shared import CustomerSourcePersonInput
+        admin = {**identity("codexmgr", "POST", role="admin"), "action_keys": ["*"]}
+        async with self.sessions() as db:
+            await change_customer_source_person(2, CustomerSourcePersonInput(source_person="codexco"), admin, db)
+        async with self.sessions() as db:
+            customer = await db.get(BusinessRecord, 2)
+            self.assertEqual((customer.owner, customer.data["customer_source"]), ("codexco", "codexco"))
+            self.assertEqual(customer.data["customer_managers"], ["codexother"])
+
 
 if __name__ == "__main__":
     unittest.main()

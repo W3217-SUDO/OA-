@@ -320,6 +320,7 @@ from app.api_schemas.customers import (
     CustomerActionInput as CustomerActionInput,
     CustomerContactInput as CustomerContactInput,
     CustomerManagersInput as CustomerManagersInput,
+    CustomerSourcePersonInput as CustomerSourcePersonInput,
     CustomerPatchInput as CustomerPatchInput,
     CustomerEventInput as CustomerEventInput,
     CustomerContactStatusInput as CustomerContactStatusInput,

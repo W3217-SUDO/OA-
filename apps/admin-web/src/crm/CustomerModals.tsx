@@ -76,6 +76,10 @@ interface CustomerModalsProps {
   directory: DirectoryUser[];
   onCloseAssign: () => void;
   onAssignCustomer: () => void;
+  sourceChanging: Customer | null;
+  sourceForm: FormInstance;
+  onCloseSourceChange: () => void;
+  onChangeSource: () => void;
 
   // Share modal
   sharing: Customer | null;
@@ -84,7 +88,7 @@ interface CustomerModalsProps {
   onShare: () => void;
 }
 
-export function CustomerModals({ viewingContact, onCloseViewContact, contactPhotoPreview, onCloseContactPhotoPreview, customerDocumentPreview, onCloseCustomerDocumentPreview, newEditorOpen, newEditorType, contactForm, onCloseNewEditor, onAddContact, editingContact, contactEditForm, onCloseEditContact, onUpdateContact, noteForm, onAddNote, editingNote, noteEditForm, onCloseEditNote, onUpdateNote, documentForm, documentFileRef, onDocumentFileChange, onUploadDocument, portalResult, onClosePortalResult, portalCustomer, portalAccounts, onClosePortalCustomer, onOpenPortal, assigning, assignForm, directoryOptions, directory, onCloseAssign, onAssignCustomer, sharing, shareForm, onCloseShare, onShare }: CustomerModalsProps) {
+export function CustomerModals({ viewingContact, onCloseViewContact, contactPhotoPreview, onCloseContactPhotoPreview, customerDocumentPreview, onCloseCustomerDocumentPreview, newEditorOpen, newEditorType, contactForm, onCloseNewEditor, onAddContact, editingContact, contactEditForm, onCloseEditContact, onUpdateContact, noteForm, onAddNote, editingNote, noteEditForm, onCloseEditNote, onUpdateNote, documentForm, documentFileRef, onDocumentFileChange, onUploadDocument, portalResult, onClosePortalResult, portalCustomer, portalAccounts, onClosePortalCustomer, onOpenPortal, assigning, assignForm, directoryOptions, directory, onCloseAssign, onAssignCustomer, sourceChanging, sourceForm, onCloseSourceChange, onChangeSource, sharing, shareForm, onCloseShare, onShare }: CustomerModalsProps) {
   const userLabels = (values: unknown) => displayChinesePersonNames(values, directory);
 
   return (
@@ -311,16 +315,40 @@ export function CustomerModals({ viewingContact, onCloseViewContact, contactPhot
               value={userLabels((assigning?.data as any)?.customer_manager_display_names || assigning?.data.customer_managers || (assigning ? [assigning.owner] : []))}
             />
           </Form.Item>
+          {/* 保存的名单就是完整的客户管理人名单，可以多位（陶国南 2026-10-31）。 */}
           <Form.Item
             label="现客戶管理人"
-            name="manager"
+            name="managers"
             rules={[{ required: true, message: "请选择现客戶管理人" }]}
           >
             <KeywordPersonSelect
+              mode="multiple"
               showSearch
               optionFilterProp="label"
               options={directoryOptions}
             />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 变更案源人 Modal：案源人只有一位，离职后可指定新的案源人 */}
+      <Modal
+        open={Boolean(sourceChanging)}
+        title="变更案源人"
+        okText="确定"
+        cancelText="取消"
+        onOk={onChangeSource}
+        onCancel={onCloseSourceChange}
+      >
+        <Form form={sourceForm} layout="horizontal" className="customer-assign-form">
+          <Form.Item label="客户名称">
+            <Input readOnly value={sourceChanging?.title || ""} />
+          </Form.Item>
+          <Form.Item label="原案源人">
+            <Input readOnly value={sourceChanging ? userLabels([(sourceChanging.data as any).customer_source || (sourceChanging.data as any).source_person || sourceChanging.owner]) : ""} />
+          </Form.Item>
+          <Form.Item label="现案源人" name="source_person" rules={[{ required: true, message: "请选择现案源人" }]}>
+            <KeywordPersonSelect showSearch optionFilterProp="label" options={directoryOptions} />
           </Form.Item>
         </Form>
       </Modal>
