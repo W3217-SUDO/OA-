@@ -255,6 +255,21 @@ def run_import(out: Path, scripts: Path, batch: str, apply: bool) -> dict:
     return json.loads(report.read_text(encoding="utf-8"))
 
 
+STATUS_DIR = Path("/opt/sunhold-oa/sync-status")
+
+
+def write_status(report: dict, state: dict) -> None:
+    """两套同步共用的状态文件（与沪知同步约定同一格式），本机只读 watcher 读它发钉钉告警。不写任何凭证。"""
+    status = {"name": "hd", "last_run": report["started"], "last_ok": state.get("last_ok", ""), "ok": not report.get("error"),
+              "error": (report.get("error") or "")[:300], "lag_minutes": report.get("lag_minutes"), "mode": report.get("mode"),
+              "summary": report.get("result") or report.get("skipped") or ""}
+    STATUS_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = STATUS_DIR / ".hd.json.tmp"
+    tmp.write_text(json.dumps(status, ensure_ascii=False), encoding="utf-8")
+    tmp.chmod(0o644)
+    tmp.replace(STATUS_DIR / "hd.json")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--state", required=True)
@@ -310,6 +325,7 @@ def main():
     Path(args.report_dir).mkdir(parents=True, exist_ok=True)
     out_file = Path(args.report_dir) / f"hd-sync-{started:%Y%m%d-%H%M}.json"
     json.dump(report, open(out_file, "w"), ensure_ascii=False, indent=1, default=str)
+    write_status(report, state)
     print(json.dumps({k: report.get(k) for k in ("result", "skipped", "error", "changed", "new_files", "lag_minutes", "load_139")}, ensure_ascii=False))
     sys.exit(1 if report.get("error") else 0)
 
