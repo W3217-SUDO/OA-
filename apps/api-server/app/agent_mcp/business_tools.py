@@ -1038,7 +1038,7 @@ async def _claim_allocate(run: Run, args: dict) -> dict:
     candidates = None
     if not args.get("allocations") or not run.confirm:
         candidates = await run.read("oa_incoming_payment_allocation_candidates_get", {"path": {"payment_id": args["payment_id"]},
-                                                                                      "query": {"case_fees_only": True}}, "可分配的案件费用")
+                                                                                      "query": {**scope, "case_fees_only": True}}, "可分配的案件费用")
     if args.get("allocations"):
         await run.write("oa_allocate_incoming_payment_post", {"path": {"payment_id": args["payment_id"]}, "query": scope, "body": _drop_empty({
             "allocations": args["allocations"], "case_fees_only": True, "comment": args.get("comment")})}, "分配到案件费用")
