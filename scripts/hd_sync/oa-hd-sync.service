@@ -1,0 +1,11 @@
+[Unit]
+Description=OA HD 知识产权增量同步（139 只读，旧系统为准，每轮单独批次可回滚；陶威 10-31 18:43 同意开启写入）
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/sunhold-oa/hd-sync
+Nice=19
+IOSchedulingClass=idle
+TimeoutStartSec=3000
+# 用 API 当前的 Python（发版换依赖环境时跟着走）
+ExecStart=/bin/sh -c 'PY=$(systemctl show sunhold-oa-api -p ExecStart | grep -o "OA_NATIVE_PYTHON=[^ ]*" | head -1 | cut -d= -f2); exec "$PY" -B /opt/sunhold-oa/hd-sync/hd_live_sync.py --state /opt/sunhold-oa/hd-sync/state.json --report-dir /opt/sunhold-oa/hd-sync/reports --work-dir /opt/sunhold-oa/hd-sync/work --scripts-dir /opt/sunhold-oa/hd-sync/lib/scripts --apply'
