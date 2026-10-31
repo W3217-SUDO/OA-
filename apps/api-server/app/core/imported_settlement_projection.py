@@ -344,12 +344,13 @@ async def _read_normal_legacy_page_fast(identity, db, *, statuses, page, page_si
         return None if value is None else round(float(value), 2)
 
     start = (page - 1) * page_size
+    # 汇总已知没有行（或页码超出）时当前页必然为空，不再重复执行同一套历史关联查询。
     page_ids = [value for value in (await db.scalars(
         select(header_rows.c.header_id).order_by(
             func.substr(_text(header_rows.c.source_header, "CashedDate"), 1, 10).desc(),
             header_rows.c.header_id.desc(),
         ).offset(start).limit(page_size)
-    )).all()]
+    )).all()] if start < total else []
     if not page_ids:
         allowed = await _allowed_field_keys(identity, db)
         show_amount = "finance.amount" in allowed

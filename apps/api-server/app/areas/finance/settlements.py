@@ -597,7 +597,8 @@ async def list_general_settlement_applications(
         return (not start_date or current >= start_date) and (not end_date or current <= end_date)
 
     from app.core.finance import _settlement_customer_manager_resolver
-    resolve_manager = await _settlement_customer_manager_resolver(db)
+    # 客户管理人只给新系统结算申请用；没有申请时不必载入全部客户。
+    resolve_manager = await _settlement_customer_manager_resolver(db) if records else (lambda data, customer_name: "")
     current_managers = {record.id: resolve_manager(record.data or {}, record.customer) for record in records}
     filtered: list[BusinessRecord] = []
     for record in records:
