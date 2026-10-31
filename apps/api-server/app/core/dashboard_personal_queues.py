@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from app.core.cases import _matches_dashboard_case_queue, _urgent_case_ids
 from app.core.dashboard_finance import dashboard_unpaid_fee_rows
+from app.core.dashboard_queue_members import CASE_GROUP, FINANCE_GROUP, remember as remember_queue_members
 from app.core.finance_read_scope import finance_read_scope
 from app.core.request_metrics import measure_phase
 from app.core.dashboard_scope import (
@@ -44,7 +45,10 @@ async def personal_case_queues(identity, db, *, scope_data=None):
         for key, queue in CASE_QUEUES.items():
             if queue != "urgent" and _matches_dashboard_case_queue(case, queue):
                 add(key, case)
-    return {key: list(rows.values()) for key, rows in queues.items()}
+    result = {key: list(rows.values()) for key, rows in queues.items()}
+    # 记下每个提醒的案件，点进去的列表直接按这批案件取（数字和列表一致）。
+    await remember_queue_members(db, identity["username"], CASE_GROUP, result)
+    return result
 
 
 async def _personal_queues(identity, db, *, finance_only=False):
@@ -97,4 +101,7 @@ async def _personal_queues(identity, db, *, finance_only=False):
         case = by_id.get(row.get("case_record_id"))
         if case:
             add("official-fee-unreceived", case, row["remaining_amount"])
-    return {key: list(rows.values()) for key, rows in queues.items()}
+    result = {key: list(rows.values()) for key, rows in queues.items()}
+    await remember_queue_members(db, identity["username"], FINANCE_GROUP, {
+        key: result[key] for key in ("official-fee-unpaid", "refund-pending") if key in result})
+    return result

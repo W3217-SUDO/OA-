@@ -501,6 +501,9 @@ async def query_refund_case_fees(
             refund_amount_to=refund_amount_to, hearing_lawyer=hearing_lawyer,
             assistant=assistant, case_stages=case_stages, fee_types=fee_types,
             defer_person_display=True,
+            # 工作台点进来时费用就是“待退费”数字那一批，不再按列表自己的待退条件二次筛掉。
+            pending_only=not identity.get("_dashboard_queue_exact"),
+            include_not_required=bool(identity.get("_dashboard_queue_exact")),
         )
     else:
         # 与筛选无关的待退费候选每个数据修订只算一次；筛选在缓存的事实上按原条件逐项判定。
@@ -594,6 +597,8 @@ async def export_refund_case_fees(
         refund_status=refund_status, refund_amount_from=refund_amount_from,
         refund_amount_to=refund_amount_to, hearing_lawyer=hearing_lawyer,
         assistant=assistant, case_stages=case_stages, fee_types=fee_types, ids=selected_ids,
+        pending_only=not identity.get("_dashboard_queue_exact"),
+        include_not_required=bool(identity.get("_dashboard_queue_exact")),
     )
     if selected_ids is not None and len(rows) != len(selected_ids):
         raise HTTPException(status_code=422, detail="部分退费记录不存在或无权导出")
@@ -722,7 +727,8 @@ async def query_finance_fees(
     from app.core.dashboard_scope import dashboard_request_identity
     identity = await dashboard_request_identity(dashboard_queue, {"official-fee-unpaid"}, identity, db)
     if dashboard_queue:
-        unpaid_official = True
+        # 工作台点进来时费用就是“待缴官费”数字那一批，不再按列表自己的未缴条件二次筛选。
+        unpaid_official = not identity.get("_dashboard_queue_exact")
     from app.core.finance import (
         _fee_query_rows,
     )
@@ -799,7 +805,8 @@ async def export_finance_fee_query(
     from app.core.dashboard_scope import dashboard_request_identity
     identity = await dashboard_request_identity(dashboard_queue, {"official-fee-unpaid"}, identity, db)
     if dashboard_queue:
-        unpaid_official = True
+        # 工作台点进来时费用就是“待缴官费”数字那一批，不再按列表自己的未缴条件二次筛选。
+        unpaid_official = not identity.get("_dashboard_queue_exact")
     from app.core.finance import (
         _fee_query_rows,
     )

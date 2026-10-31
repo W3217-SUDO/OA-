@@ -246,15 +246,26 @@ async def dashboard_request_identity(queue, expected, identity, db):
         return identity
     if queue not in expected:
         raise HTTPException(422, "控制台业务入口无效")
-    scoped_identity = await dashboard_identity(identity, db)
-    if queue == "refund-pending":
-        return await personal_refund_identity(scoped_identity, db)
-    if queue == "urgent-cases":
-        cases = await dashboard_urgent_cases(identity, db, scoped_identity["_dashboard_case_ids"])
-        case_ids = {case.id for case in cases}
-        scoped_identity["_dashboard_case_ids"] = case_ids
-        scoped_identity["_dashboard_record_ids"] = case_ids
-    return scoped_identity
+    # 点进去的列表就是工作台数字算出来的那批记录：优先取算数字时记下的成员，没有再按同一算法现算。
+    from app.core.dashboard_queue_members import CASE_GROUP, FINANCE_GROUP, recall
+    group = CASE_GROUP if queue in CASE_QUEUES else FINANCE_GROUP
+    members = await recall(db, identity["username"], group, queue)
+    if members is None:
+        from app.core.dashboard_personal_queues import personal_case_queues, personal_finance_queues
+        queues = await (personal_case_queues(identity, db) if group == CASE_GROUP
+                        else personal_finance_queues(identity, db))
+        rows = queues.get(queue, [])
+        members = {"case_ids": [int(row["id"]) for row in rows],
+                   "fee_ids": [int(row["fee_id"]) for row in rows if row.get("fee_id") is not None]}
+    user = await db.scalar(select(User).where(User.username == identity["username"]))
+    if user is None or not user.is_active:
+        raise HTTPException(401, "当前用户不存在或已停用")
+    roles = _system_user_role_ids(user)
+    case_ids = set(members["case_ids"])
+    fee_ids = set(members["fee_ids"])
+    return {**identity, "role": roles[0], "role_ids": roles, "_page_menu_capability": False,
+            "_dashboard_case_ids": case_ids, "_dashboard_fee_ids": fee_ids,
+            "_dashboard_record_ids": case_ids | fee_ids, "_dashboard_queue_exact": True}
 
 
 def _possible_refund_fee(fee, case_ids, case_nos):

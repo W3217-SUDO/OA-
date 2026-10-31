@@ -120,6 +120,21 @@ class LegacyCustomerWorkbenchAlignTest(unittest.IsolatedAsyncioTestCase):
                 everyone = await list_legacy_seal_records(status="已拒绝", page=1, page_size=20, identity=identity, db=db)
             self.assertEqual([item["serial_no"] for item in everyone["items"]], ["YY2"])
 
+    async def test_dashboard_list_uses_remembered_queue_members(self):
+        # 工作台点进去的列表直接用算数字时记下的那批记录（陶威 2026-11-01：点进去太慢）。
+        from unittest.mock import patch
+        from app.core.dashboard_scope import dashboard_request_identity
+
+        async def recall(db, username, group, queue):
+            return {"case_ids": [31, 32], "fee_ids": [11]} if queue == "refund-pending" else None
+
+        async with self.sessions() as db:
+            with patch("app.core.dashboard_queue_members.recall", recall):
+                scoped = await dashboard_request_identity("refund-pending", {"refund-pending"}, {"username": "codexmgr", "role": "staff"}, db)
+        self.assertTrue(scoped["_dashboard_queue_exact"])
+        self.assertEqual((scoped["_dashboard_case_ids"], scoped["_dashboard_fee_ids"]), ({31, 32}, {11}))
+        self.assertEqual(scoped["_dashboard_record_ids"], {31, 32, 11})
+
 
 if __name__ == "__main__":
     unittest.main()

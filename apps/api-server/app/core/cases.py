@@ -1244,7 +1244,7 @@ async def _query_counsel_cases(
     # 顶栏全局检索不按普通列表规则排除法律顾问案件。
     elif not body.case_queue and not body.dashboard_queue and body.scope != "global":
         records = [record for record in records if str((record.data or {}).get("case_type") or "") != "法律顾问"]
-    if body.dashboard_queue:
+    if body.dashboard_queue and not identity.get("_dashboard_queue_exact"):
         from app.core.dashboard_scope import CASE_QUEUES
         queue_name = CASE_QUEUES[body.dashboard_queue]
         if queue_name == "urgent":
