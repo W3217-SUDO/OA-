@@ -634,7 +634,8 @@ def _case_personal_scope_condition(username: str):
 
 CASE_MINE_TEXT_FIELDS = (
     "source_person_username", "source_person", "business_owner", "assistant_username",
-    "investigator", "investigator_username", "court_lawyer_username", "case_team_usernames",
+    "investigator", "investigator_username", "court_lawyer_username", "court_lawyer", "hearing_lawyer_username",
+    "case_team_usernames",
     "handling_lawyer_usernames", "legacy_participants",
 )
 
@@ -674,6 +675,9 @@ async def _case_mine_scope_condition(identity: dict, db: AsyncSession, *, projec
         func.lower(func.coalesce(data["assistant_username"], "")) == username.lower(),
         func.lower(func.coalesce(data["investigator"], "")) == username.lower(),
         func.lower(func.coalesce(data["court_lawyer_username"], "")) == username.lower(),
+        # 出庭律师实际存在 court_lawyer / hearing_lawyer_username（旧系统 CourtLawyer 也算我的案件）。
+        func.lower(func.coalesce(data["court_lawyer"], "")) == username.lower(),
+        func.lower(func.coalesce(data["hearing_lawyer_username"], "")) == username.lower(),
     ]
     return or_(
         projected_record_condition(projection, or_(*conditions)),

@@ -135,6 +135,23 @@ class LegacyCustomerWorkbenchAlignTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((scoped["_dashboard_case_ids"], scoped["_dashboard_fee_ids"]), ({31, 32}, {11}))
         self.assertEqual(scoped["_dashboard_record_ids"], {31, 32, 11})
 
+    async def test_court_lawyer_case_counts_as_my_case(self):
+        # 旧系统“我的案件”含出庭律师（CourtLawyer）；新系统数据存在 court_lawyer / hearing_lawyer_username。
+        from sqlalchemy import select
+        from app.core.permissions import _case_mine_scope_condition
+        async with self.sessions() as db:
+            db.add_all([
+                BusinessRecord(id=41, module="case", serial_no="AJ41", title="出庭案件", status="一审待执行", owner="x",
+                               data={"court_lawyer": "codexmgr"}),
+                BusinessRecord(id=42, module="case", serial_no="AJ42", title="出庭案件2", status="一审待执行", owner="x",
+                               data={"hearing_lawyer_username": "codexmgr"}),
+            ])
+            await db.commit()
+            ids = set((await db.scalars(select(BusinessRecord.id).where(
+                BusinessRecord.module == "case", await _case_mine_scope_condition({"username": "codexmgr"}, db),
+            ))).all())
+        self.assertTrue({41, 42} <= ids)
+
 
 if __name__ == "__main__":
     unittest.main()
