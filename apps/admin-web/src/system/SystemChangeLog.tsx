@@ -4,6 +4,7 @@ import { Alert, Button, Checkbox, DatePicker, Input, Modal, Popconfirm, Select, 
 import type { Dayjs } from "dayjs";
 import { api } from "../api";
 import Table from "../components/ResizableTable";
+import { usePersonNames } from "../personNames";
 
 type Change = { field: string; before: unknown; after: unknown };
 type ChangeLog = {
@@ -30,6 +31,7 @@ type Operation = {
 
 /** 智能体与 MCP 的每一次调用：谁、什么时候、调了什么、参数和结果（查询、写入、失败、待确认都记）。 */
 function OperationLog() {
+  const showPerson = usePersonNames();
   const [items, setItems] = useState<Operation[]>([]);
   const [total, setTotal] = useState(0);
   const [filters, setFilters] = useState<{ username?: string; source?: string; tool?: string; write_only?: boolean; failed_only?: boolean; range?: [Dayjs, Dayjs] | null }>({});
@@ -71,7 +73,7 @@ function OperationLog() {
           onChange: (nextPage, nextSize) => { setPage(nextPage); setPageSize(nextSize); } }}
         columns={[
           { title: "时间", dataIndex: "created_at", width: 170, render: when },
-          { title: "操作人", dataIndex: "username", width: 110 },
+          { title: "操作人", dataIndex: "username", width: 110, render: (value: string) => showPerson(value) },
           { title: "来源", dataIndex: "source", width: 140, render: (_: string, row: Operation) => <Tag color={SOURCE_COLOR[row.source]}>{row.source_label}{row.token_name ? ` · ${row.token_name}` : ""}</Tag> },
           { title: "接口", dataIndex: "tool_name", width: 260, ellipsis: true, render: (value: string, row: Operation) => <>{row.is_write && <Tag color="volcano">写入</Tag>}{value}</> },
           { title: "结果", key: "result", width: 90, render: (_: unknown, row: Operation) => row.pending ? <Tag color="gold">待确认</Tag> : <Tag color={row.ok ? "success" : "error"}>{row.ok ? "成功" : "失败"}</Tag> },
@@ -91,6 +93,7 @@ export function SystemChangeLog() {
 
 /** 管理员变更记录：每次新增、修改、删除、恢复的前后内容、操作人和来源；可一键还原。 */
 function DataChangeLog() {
+  const showPerson = usePersonNames();
   const [data, setData] = useState<Listing | null>(null);
   const [filters, setFilters] = useState<{ table?: string; source?: string; action?: string; actor?: string; keyword?: string; range?: [Dayjs, Dayjs] | null }>({});
   const [page, setPage] = useState(1);
@@ -172,7 +175,7 @@ function DataChangeLog() {
           { title: "数据", key: "data", width: 240, ellipsis: true, render: (_: unknown, row: ChangeLog) => <span>{row.table_label} · {row.summary || `#${row.row_id}`}</span> },
           { title: "改动", dataIndex: "changes", width: 320, ellipsis: true, render: (changes: Change[]) => changes.length
             ? changes.slice(0, 3).map((item) => `${item.field}: ${show(item.before)} → ${show(item.after)}`).join("；") + (changes.length > 3 ? ` 等 ${changes.length} 项` : "") : "—" },
-          { title: "操作人", dataIndex: "actor", width: 110 },
+          { title: "操作人", dataIndex: "actor", width: 110, render: (value: string) => showPerson(value) },
           { title: "来源", dataIndex: "source", width: 80, render: (_: string, row: ChangeLog) => <Tag color={SOURCE_COLOR[row.source]}>{row.source_label}</Tag> },
           { title: "状态", key: "state", width: 100, render: (_: unknown, row: ChangeLog) => row.reverted_at ? <Tag>已还原</Tag> : row.revert_of ? <Tag color="gold">还原操作</Tag> : "—" },
           { title: "", key: "op", width: 130, render: (_: unknown, row: ChangeLog) => (
@@ -187,7 +190,7 @@ function DataChangeLog() {
         onCancel={() => setDetail(null)} footer={detail && canRevert(detail)
           ? <Popconfirm title={revertTitle(detail)} onConfirm={() => void revert(detail)}><Button type="primary">还原</Button></Popconfirm> : null}>
         {detail && <>
-          <p>{when(detail.created_at)} · {detail.actor} · 来源：{detail.source_label}{detail.reverted_at ? ` · 已由 ${detail.reverted_by} 于 ${when(detail.reverted_at)} 还原` : ""}</p>
+          <p>{when(detail.created_at)} · {showPerson(detail.actor)} · 来源：{detail.source_label}{detail.reverted_at ? ` · 已由 ${showPerson(detail.reverted_by)} 于 ${when(detail.reverted_at)} 还原` : ""}</p>
           <Table<Change> size="small" rowKey="field" pagination={false} dataSource={detail.changes} locale={{ emptyText: "（新增、删除、恢复不记录字段明细）" }}
             columns={[
               { title: "字段", dataIndex: "field", width: 200 },

@@ -5,6 +5,7 @@ import type { ColumnsType } from "antd/es/table";
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "./api";
+import { usePersonNames } from "./personNames";
 
 export type LegacyContractParent = {
   history_parent_key: string;
@@ -50,6 +51,7 @@ export function LegacyContractHistoryPanel({
   contractNo?: string;
   customerNo?: string;
 }) {
+  const showPerson = usePersonNames();
   const [keyword, setKeyword] = useState("");
   const [rows, setRows] = useState<LegacyContractParent[]>([]);
   const [selected, setSelected] = useState<string | undefined>(initialHistoryParentKey);
@@ -94,10 +96,10 @@ export function LegacyContractHistoryPanel({
         <Descriptions.Item label="旧 GUID">{detail.parent.legacy_contract_guids.join(", ") || "-"}</Descriptions.Item>
       </Descriptions>
       <Tabs items={[
-        { key: "approvals", label: `审批 (${detail.approvals.length})`, children: <Table rowKey="legacy_audit_id" size="small" pagination={false} dataSource={detail.approvals} columns={[{ title: "旧审批主键", dataIndex: "legacy_audit_id" }, { title: "审批人", dataIndex: "auditor" }, { title: "状态", dataIndex: "audit_status" }, { title: "时间", dataIndex: "audit_date", render: time }, { title: "意见", dataIndex: "audit_content", ellipsis: true }]} /> },
-        { key: "attachments", label: `附件元数据 (${detail.attachments.length})`, children: <Table rowKey="legacy_file_id" size="small" pagination={false} dataSource={detail.attachments} columns={[{ title: "文件", dataIndex: "file_name", ellipsis: true }, { title: "大小", dataIndex: "file_size", render: (value) => value ?? "-" }, { title: "上传人", dataIndex: "upload_user" }, { title: "上传时间", dataIndex: "upload_time", render: time }, { title: "下载", render: () => <Tag color="default">不可下载</Tag> }, { title: "原因", dataIndex: "download_reason", ellipsis: true }]} /> },
-        { key: "logs", label: `日志 (${detail.logs.length})`, children: <Table rowKey="legacy_event_id" size="small" pagination={false} dataSource={detail.logs} columns={[{ title: "旧日志主键", dataIndex: "legacy_event_id" }, { title: "时间", dataIndex: "operate_time", render: time }, { title: "操作人", dataIndex: "operator" }, { title: "内容", dataIndex: "content", ellipsis: true }]} /> },
-        { key: "cases", label: `关联案件 (${detail.cases.length})`, children: <Table rowKey={(row) => `${row.legacy_case_source}:${row.legacy_case_id}`} size="small" pagination={false} dataSource={detail.cases} columns={[{ title: "案件编号", dataIndex: "legacy_case_no", ellipsis: true }, { title: "案件名称", dataIndex: "case_name", ellipsis: true }, { title: "来源", dataIndex: "legacy_case_source" }, { title: "阶段", dataIndex: "case_phase_id", render: (value) => value ?? "-" }, { title: "负责人", dataIndex: "business_owner" }, { title: "案件记录", dataIndex: "case_record_id", render: (value) => value ?? "未迁入" }]} /> },
+        { key: "approvals", label: `审批 (${detail.approvals.length})`, children: <Table rowKey="legacy_audit_id" size="small" pagination={false} dataSource={detail.approvals} columns={[{ title: "旧审批主键", dataIndex: "legacy_audit_id" }, { title: "审批人", dataIndex: "auditor", render: (value) => showPerson(value) }, { title: "状态", dataIndex: "audit_status" }, { title: "时间", dataIndex: "audit_date", render: time }, { title: "意见", dataIndex: "audit_content", ellipsis: true }]} /> },
+        { key: "attachments", label: `附件元数据 (${detail.attachments.length})`, children: <Table rowKey="legacy_file_id" size="small" pagination={false} dataSource={detail.attachments} columns={[{ title: "文件", dataIndex: "file_name", ellipsis: true }, { title: "大小", dataIndex: "file_size", render: (value) => value ?? "-" }, { title: "上传人", dataIndex: "upload_user", render: (value) => showPerson(value) }, { title: "上传时间", dataIndex: "upload_time", render: time }, { title: "下载", render: () => <Tag color="default">不可下载</Tag> }, { title: "原因", dataIndex: "download_reason", ellipsis: true }]} /> },
+        { key: "logs", label: `日志 (${detail.logs.length})`, children: <Table rowKey="legacy_event_id" size="small" pagination={false} dataSource={detail.logs} columns={[{ title: "旧日志主键", dataIndex: "legacy_event_id" }, { title: "时间", dataIndex: "operate_time", render: time }, { title: "操作人", dataIndex: "operator", render: (value) => showPerson(value) }, { title: "内容", dataIndex: "content", ellipsis: true }]} /> },
+        { key: "cases", label: `关联案件 (${detail.cases.length})`, children: <Table rowKey={(row) => `${row.legacy_case_source}:${row.legacy_case_id}`} size="small" pagination={false} dataSource={detail.cases} columns={[{ title: "案件编号", dataIndex: "legacy_case_no", ellipsis: true }, { title: "案件名称", dataIndex: "case_name", ellipsis: true }, { title: "来源", dataIndex: "legacy_case_source" }, { title: "阶段", dataIndex: "case_phase_id", render: (value) => value ?? "-" }, { title: "负责人", dataIndex: "business_owner", render: (value) => showPerson(value) }, { title: "案件记录", dataIndex: "case_record_id", render: (value) => value ?? "未迁入" }]} /> },
       ]} />
     </> : !loading && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />}</Spin>
   </section>;

@@ -2,6 +2,7 @@ import { Button, Modal } from "antd";
 import Table from "../components/ResizableTable";
 import dayjs from "dayjs";
 import type { SealAuditRow } from "../sealWorkflowPolicy";
+import { usePersonNames } from "../personNames";
 
 interface SealAuditListModalProps {
   open: boolean;
@@ -14,6 +15,7 @@ export function SealAuditListModal({
   rows,
   onClose,
 }: SealAuditListModalProps) {
+  const showPerson = usePersonNames();
   return (
     <Modal
       open={open}
@@ -28,7 +30,7 @@ export function SealAuditListModal({
         locale={{ emptyText: "" }}
         dataSource={rows}
         columns={[
-          { title: "审批人", dataIndex: "auditor" },
+          { title: "审批人", dataIndex: "auditor", render: (value: string) => showPerson(value) },
           { title: "审核状态", dataIndex: "audit_status" },
           {
             title: "审核日期",

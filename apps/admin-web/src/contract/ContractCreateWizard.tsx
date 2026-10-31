@@ -59,6 +59,7 @@ export interface ContractWizardContentProps {
   submittingWizard: boolean;
   contractFile: File | null;
   personName: (value: unknown) => string;
+  ownerOptions?: Array<{ value: string; label: string }>;
   mode: "page" | "modal";
   onSave: () => void;
   onSubmitWizard: () => void;
@@ -72,7 +73,7 @@ export interface ContractWizardContentProps {
   onNavigate?: (key: string) => void;
 }
 
-export function ContractWizardContent({ onDownloadAttachment, onClearLinkedCustomerContext, wizardStep, editing, wizardDraft, form, submitForm, reviewForm, sealForm, attachments, historyItems, stepItems, customerOptions, approvalOptions, sealApprovalOptions, sealAssets, currentApproval, canActOnCurrentApproval, contractApproverLabel, contractFile, personName, mode, onApproveWizard, onContractFileChange, onUploadDraftAttachment }: ContractWizardContentProps) {
+export function ContractWizardContent({ onDownloadAttachment, onClearLinkedCustomerContext, wizardStep, editing, wizardDraft, form, submitForm, reviewForm, sealForm, attachments, historyItems, stepItems, customerOptions, approvalOptions, sealApprovalOptions, sealAssets, currentApproval, canActOnCurrentApproval, contractApproverLabel, contractFile, personName, ownerOptions = [], mode, onApproveWizard, onContractFileChange, onUploadDraftAttachment }: ContractWizardContentProps) {
   const conflict = useConflictReview(wizardDraft?.id, mode === "modal" && !editing && wizardStep > 0);
   const showSteps = !editing && wizardStep < CONTRACT_CREATE_STEP_TITLES.length;
   const stepClass = mode === "page" ? "contract-page-steps" : "contract-create-steps";
@@ -132,7 +133,7 @@ export function ContractWizardContent({ onDownloadAttachment, onClearLinkedCusto
               <DatePicker style={{ width: "100%" }} />
             </Form.Item>
             <Form.Item label="负责人" name="owner" hidden={!editing}>
-              <Input />
+              <KeywordPersonSelect listAll showSearch optionFilterProp="label" options={ownerOptions} placeholder="请选择负责人" />
             </Form.Item>
             <Form.Item label="所属部门" name="department" hidden={!editing}>
               <Input />

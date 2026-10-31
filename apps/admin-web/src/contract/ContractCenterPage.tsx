@@ -994,6 +994,12 @@ export default function ContractCenterPage({
 
 
   const approvalOptions = buildChinesePersonOptions(directory, (user: DirectoryUser) => Boolean(user.can_approve_contract));
+  // 负责人用选人框显示姓名、保存账号；当前负责人不在名单里也要保留可显示（BUG20261031001）。
+  const ownerOptionsFor = (current?: string) => {
+    const options = buildChinesePersonOptions(directory);
+    const owner = String(current || "").trim();
+    return owner && !options.some((option) => option.value === owner) ? [{ value: owner, label: personName(owner) }, ...options] : options;
+  };
   const sealApprovalOptions = buildChinesePersonOptions(directory, (user: DirectoryUser) => Boolean(user.can_approve_seal));
 
   const contractApproverLabel = (
@@ -1156,6 +1162,7 @@ export default function ContractCenterPage({
             submittingWizard={submittingWizard}
             contractFile={contractFile}
             personName={personName}
+            ownerOptions={ownerOptionsFor(editing?.owner)}
             mode="page"
             onSave={save}
             onSubmitWizard={submitWizard}
@@ -1590,6 +1597,7 @@ export default function ContractCenterPage({
           submittingWizard={submittingWizard}
           contractFile={contractFile}
           personName={personName}
+          ownerOptions={ownerOptionsFor(editing?.owner)}
           mode="modal"
           onSave={save}
           onSubmitWizard={submitWizard}
@@ -1660,6 +1668,7 @@ export default function ContractCenterPage({
         onOk={saveChange}
         onChangeFile={setChangeFile}
         approvalOptions={approvalOptions}
+        ownerOptions={ownerOptionsFor(changing?.owner)}
       />
 
       <ContractChangeHistoryModal

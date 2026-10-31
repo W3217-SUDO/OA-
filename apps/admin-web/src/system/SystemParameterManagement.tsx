@@ -36,6 +36,7 @@ import {
   cleanCompanyDigitsInputEvent,
 } from "./constants";
 import { useFilterToggle } from "../components/common/MobileFilterToggle";
+import { usePersonNames } from "../personNames";
 
 interface SystemParameterManagementProps {
   category: string;
@@ -93,6 +94,7 @@ export function SystemParameterManagement({
   onRelationEditorClose,
   onSelectedRelationTargetIdsChange,
 }: SystemParameterManagementProps) {
+  const showPerson = usePersonNames();
   const filterToggle = useFilterToggle("查询条件");
   const [parameterPage, setParameterPage] = useState(1);
   const [parameterPageSize, setParameterPageSize] = useState(15);
@@ -113,14 +115,14 @@ export function SystemParameterManagement({
     : visibleParameters;
 
   const auditColumns = [
-    { title: "创建人", dataIndex: "created_by", width: 90 },
+    { title: "创建人", dataIndex: "created_by", width: 90, render: (v: string) => showPerson(v) },
     {
       title: "创建时间",
       dataIndex: "created_at",
       width: 165,
       render: formatTime,
     },
-    { title: "修改人", dataIndex: "updated_by", width: 90 },
+    { title: "修改人", dataIndex: "updated_by", width: 90, render: (v: string) => showPerson(v) },
     {
       title: "修改时间",
       dataIndex: "updated_at",

@@ -71,7 +71,7 @@ export function ConfirmationHistory({ onReopen, busy = false }: { onReopen?: (de
                 <div><dt>请求时间</dt><dd>{displayTime(item.requested_at)}</dd></div>
                 <div><dt>决定时间</dt><dd>{displayTime(item.decided_at)}</dd></div>
                 {item.finished_at && <div><dt>结束时间</dt><dd>{displayTime(item.finished_at)}</dd></div>}
-                <div><dt>操作人</dt><dd>{item.operator || "未记录"}</dd></div>
+                <div><dt>操作人</dt><dd>{item.operator_display_name || item.operator || "未记录"}</dd></div>
                 {item.conversation_title && <div><dt>所属对话</dt><dd>{item.conversation_title}</dd></div>}
               </dl>
               {item.comment && <p className="confirmation-history-comment">决定备注：{item.comment}</p>}

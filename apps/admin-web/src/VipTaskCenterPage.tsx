@@ -23,6 +23,7 @@ import dayjs from "dayjs";
 import { api } from "./api";
 import "./task-center.css";
 import { useFilterToggle } from "./components/common/MobileFilterToggle";
+import { usePersonNames } from "./personNames";
 
 type VipNode = {
   id: number;
@@ -77,6 +78,7 @@ const dateValue = (value?: string) => value ? dayjs(value) : undefined;
 
 export default function VipTaskCenterPage() {
   const filterToggle = useFilterToggle("查询条件");
+  const showPerson = usePersonNames();
   const [items, setItems] = useState<VipTask[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -221,7 +223,7 @@ export default function VipTaskCenterPage() {
       { title: "任务编号", dataIndex: "serial_no", width: 145 },
       { title: "任务标题", dataIndex: "title", width: 210, render: (value, row) => <Button type="link" onClick={() => void openDetail(row)}>{value}</Button> },
       { title: "客户", dataIndex: "customer", width: 150, ellipsis: true },
-      { title: "负责人", dataIndex: "owner", width: 120 },
+      { title: "负责人", dataIndex: "owner", width: 120, render: (value) => showPerson(value) },
       { title: "状态", dataIndex: "status", width: 105, render: (value) => <StatusTag status={value} /> },
       { title: "优先级", dataIndex: "priority", width: 100, render: (value) => <Tag color={value === "紧急" ? "red" : value === "重要" ? "orange" : "default"}>{value || "普通"}</Tag> },
       { title: "截止日期", dataIndex: "deadline", width: 145, render: formatDate },
@@ -239,7 +241,7 @@ export default function VipTaskCenterPage() {
       </div><Form.Item label="任务说明" name="description"><Input.TextArea rows={4} /></Form.Item></Form>
     </Modal>
     <Modal open={Boolean(detail)} title={detail ? `VIP任务详情：${detail.title}` : "VIP任务详情"} onCancel={() => setDetail(null)} footer={<Button onClick={() => setDetail(null)}>关闭</Button>} width={POPUP_WIDTH.lg}>
-      {detail && <><Descriptions bordered size="small" column={3}><Descriptions.Item label="任务编号">{detail.serial_no}</Descriptions.Item><Descriptions.Item label="客户">{detail.customer || "—"}</Descriptions.Item><Descriptions.Item label="负责人">{detail.owner}</Descriptions.Item><Descriptions.Item label="状态"><StatusTag status={detail.status} /></Descriptions.Item><Descriptions.Item label="优先级">{detail.priority}</Descriptions.Item><Descriptions.Item label="截止日期">{formatDate(detail.deadline)}</Descriptions.Item><Descriptions.Item label="协作人" span={3}>{(detail.collaborators || []).join("、") || "—"}</Descriptions.Item><Descriptions.Item label="任务说明" span={3}>{detail.description || "—"}</Descriptions.Item></Descriptions>
+      {detail && <><Descriptions bordered size="small" column={3}><Descriptions.Item label="任务编号">{detail.serial_no}</Descriptions.Item><Descriptions.Item label="客户">{detail.customer || "—"}</Descriptions.Item><Descriptions.Item label="负责人">{showPerson(detail.owner)}</Descriptions.Item><Descriptions.Item label="状态"><StatusTag status={detail.status} /></Descriptions.Item><Descriptions.Item label="优先级">{detail.priority}</Descriptions.Item><Descriptions.Item label="截止日期">{formatDate(detail.deadline)}</Descriptions.Item><Descriptions.Item label="协作人" span={3}>{(detail.collaborators || []).join("、") || "—"}</Descriptions.Item><Descriptions.Item label="任务说明" span={3}>{detail.description || "—"}</Descriptions.Item></Descriptions>
       <Space wrap style={{ marginTop: 12 }} aria-label="VIP任务状态操作">
         {detail.status === "待处理" && <><Button onClick={() => void changeTaskStatus("处理中")}>开始处理</Button><Button danger onClick={() => void changeTaskStatus("已拒绝")}>拒绝任务</Button></>}
         {detail.status === "处理中" && <Button type="primary" onClick={() => void changeTaskStatus("已完成")}>完成任务</Button>}
@@ -250,9 +252,9 @@ export default function VipTaskCenterPage() {
         {detail.status === "已拒绝" && <Button onClick={() => void changeTaskStatus("待处理")}>重新打开</Button>}
       </Space>
       <Divider>VIP任务节点 <Button size="small" type="link" icon={<PlusOutlined />} onClick={() => openNodeModal()}>新增节点</Button></Divider>
-      <Table<VipNode> size="small" rowKey="id" pagination={false} dataSource={nodes} scroll={{ x: 900 }} columns={[{ title: "节点", dataIndex: "title" }, { title: "负责人", dataIndex: "owner", width: 110 }, { title: "状态", dataIndex: "status", width: 100, render: (value) => <StatusTag status={value} /> }, { title: "优先级", dataIndex: "priority", width: 90 }, { title: "截止日期", dataIndex: "deadline", width: 145, render: formatDate }, { title: "操作", width: 250, render: (_, node) => <Space size={0} wrap>{nodeStatusAction(node)}<Button type="link" onClick={() => openNodeModal(node)}>编辑</Button><Popconfirm title="确认删除该节点？" onConfirm={() => void removeNode(node)}><Button danger type="link">删除</Button></Popconfirm></Space> }]} />
+      <Table<VipNode> size="small" rowKey="id" pagination={false} dataSource={nodes} scroll={{ x: 900 }} columns={[{ title: "节点", dataIndex: "title" }, { title: "负责人", dataIndex: "owner", width: 110, render: (value) => showPerson(value) }, { title: "状态", dataIndex: "status", width: 100, render: (value) => <StatusTag status={value} /> }, { title: "优先级", dataIndex: "priority", width: 90 }, { title: "截止日期", dataIndex: "deadline", width: 145, render: formatDate }, { title: "操作", width: 250, render: (_, node) => <Space size={0} wrap>{nodeStatusAction(node)}<Button type="link" onClick={() => openNodeModal(node)}>编辑</Button><Popconfirm title="确认删除该节点？" onConfirm={() => void removeNode(node)}><Button danger type="link">删除</Button></Popconfirm></Space> }]} />
       <Divider>VIP任务消息/通知</Divider>
-      <List size="small" bordered dataSource={messages} locale={{ emptyText: "暂无消息" }} renderItem={(item) => <List.Item><List.Item.Meta title={<Space>{item.sender || "系统"}<span>{formatDate(item.created_at)}</span>{!item.is_read && <Tag color="red">未读</Tag>}</Space>} description={item.content} /><span>{item.node_id ? `节点 #${item.node_id}` : "任务消息"}</span></List.Item>} />
+      <List size="small" bordered dataSource={messages} locale={{ emptyText: "暂无消息" }} renderItem={(item) => <List.Item><List.Item.Meta title={<Space>{item.sender ? showPerson(item.sender) : "系统"}<span>{formatDate(item.created_at)}</span>{!item.is_read && <Tag color="red">未读</Tag>}</Space>} description={item.content} /><span>{item.node_id ? `节点 #${item.node_id}` : "任务消息"}</span></List.Item>} />
       <Form form={messageForm} layout="vertical" style={{ marginTop: 16 }}><Form.Item label="关联节点" name="node_id"><Select allowClear placeholder="可选，选择本条通知所属节点" options={nodes.map((node) => ({ value: node.id, label: node.title }))} /></Form.Item><Form.Item label="通知内容" name="content" rules={[{ required: true, message: "请填写通知内容" }]}><Input.TextArea rows={3} /></Form.Item><Form.Item label="接收人" name="recipients"><Input placeholder="可选，用顿号或逗号分隔；留空由后端按参与人通知" /></Form.Item><Button type="primary" onClick={() => void sendMessage()}>发送通知</Button></Form>
       <Modal open={nodeModalOpen} title={nodeEditing ? "编辑VIP任务节点" : "新增VIP任务节点"} onCancel={() => setNodeModalOpen(false)} onOk={() => void saveNode()} destroyOnClose>
         <Form form={nodeForm} layout="vertical"><Form.Item label="节点名称" name="title" rules={[{ required: true, message: "请填写节点名称" }]}><Input /></Form.Item><Form.Item label="负责人" name="owner" rules={[{ required: true, message: "请填写负责人" }]}><Input /></Form.Item><div className="task-form-grid">{nodeEditing && <Form.Item label="状态" name="status"><Select options={statusOptions} /></Form.Item>}<Form.Item label="优先级" name="priority"><Select options={priorityOptions} /></Form.Item><Form.Item label="开始时间" name="start_at"><DatePicker showTime style={{ width: "100%" }} /></Form.Item><Form.Item label="截止日期" name="deadline"><DatePicker style={{ width: "100%" }} /></Form.Item></div><Form.Item label="参与人" name="participants"><Input placeholder="用顿号或逗号分隔" /></Form.Item><Form.Item label="节点说明" name="description"><Input.TextArea rows={3} /></Form.Item></Form>

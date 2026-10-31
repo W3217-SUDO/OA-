@@ -5,6 +5,7 @@ import type { FormInstance } from "antd";
 import Table from "../components/ResizableTable";
 import type { RecordFileFormValues, VoucherFormValues } from "./formTypes";
 import type { Attachment, FinanceFlow, RecordFileTypeNode, Transaction } from "./types";
+import { usePersonNames } from "../personNames";
 
 export interface RecordFilesModalProps {
   target: FinanceFlow | null;
@@ -35,6 +36,7 @@ export function RecordFilesModal({
   onUploadFilesChange: setRecordUploadFiles,
   onFileChange: setRecordFile,
 }: RecordFilesModalProps) {
+  const showPerson = usePersonNames();
   return (
       <Modal
         width={POPUP_WIDTH.md}
@@ -63,7 +65,7 @@ export function RecordFilesModal({
               width: 90,
               render: (v: number) => `${(v / 1024).toFixed(1)} KB`,
             },
-            { title: "上传人", dataIndex: "uploader", width: 85 },
+            { title: "上传人", dataIndex: "uploader", width: 85, render: (v: string, r: Attachment) => showPerson(v, r.uploader_display_name) },
             {
               title: "操作",
               width: 130,
@@ -185,6 +187,7 @@ export function VoucherModal({
   onDownload: downloadVoucher,
   onDelete: deleteVoucher,
 }: VoucherModalProps) {
+  const showPerson = usePersonNames();
   return (
       <Modal
         width={POPUP_WIDTH.md}
@@ -219,7 +222,7 @@ export function VoucherModal({
               width: 90,
               render: (v: number) => `${(v / 1024).toFixed(1)} KB`,
             },
-            { title: "上传人", dataIndex: "uploader", width: 80 },
+            { title: "上传人", dataIndex: "uploader", width: 80, render: (v: string, r: Attachment) => showPerson(v, r.uploader_display_name) },
             {
               title: "操作",
               key: "action",

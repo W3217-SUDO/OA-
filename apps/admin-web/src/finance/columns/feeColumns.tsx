@@ -43,7 +43,7 @@ export function createFeeColumns(context: {
             width: 180,
             render: (_: unknown, r: Fee) => r.data.court || "—",
         },
-        { title: "经办人", ...moneyColumnStyle("经办人"), dataIndex: "owner", width: 90 },
+        { title: "经办人", ...moneyColumnStyle("经办人"), dataIndex: "owner", width: 90, render: (v: string, r: Fee) => r.owner_display_name || v || "—" },
         {
             title: "状态", ...moneyColumnStyle("状态"),
             dataIndex: "status",

@@ -417,6 +417,7 @@ interface ContractChangeModalProps {
   onChangeFile: (file: File | null) => void;
   mode?: "modal" | "page";
   approvalOptions?: { value: string; label: string }[];
+  ownerOptions?: { value: string; label: string }[];
 }
 
 export function ContractChangeModal({
@@ -430,6 +431,7 @@ export function ContractChangeModal({
   onChangeFile,
   mode = "modal",
   approvalOptions = [],
+  ownerOptions = [],
 }: ContractChangeModalProps) {
   // 审批通过的合同变更后重新进入合同审批，审批人和新建合同审批同一名单（BUG20261030012）。
   const reapprove = changing?.status === "审批通过";
@@ -489,7 +491,7 @@ export function ContractChangeModal({
             <DatePicker style={{ width: "100%" }} />
           </Form.Item>
           <Form.Item label="负责人" name="owner" rules={[{ required: true }]}>
-            <Input />
+            <KeywordPersonSelect listAll showSearch optionFilterProp="label" options={ownerOptions} placeholder="请选择负责人" />
           </Form.Item>
           <Form.Item label="所属部门" name="department" rules={[{ required: true }]}>
             <Input />

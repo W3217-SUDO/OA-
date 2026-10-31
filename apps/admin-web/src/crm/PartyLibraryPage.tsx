@@ -4,6 +4,7 @@ import { ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 import Table from "../components/ResizableTable";
 import { api } from "../api";
 import { useFilterToggle } from "../components/common/MobileFilterToggle";
+import { usePersonNames } from "../personNames";
 
 interface PartyLibraryRow {
   id: number;
@@ -37,6 +38,7 @@ const SCOPE_TITLES: Record<string, string> = { mine: "我的当事人", departme
 
 export default function PartyLibraryPage({ scope = "company", category = "", isAdmin = false, onOpenCase, onOpenCustomer }: { scope?: string; category?: string; isAdmin?: boolean; onOpenCase?: (row: PartyLibraryRow) => void; onOpenCustomer?: (target: { id: number; serial_no: string; title: string }) => void }) {
   const filterToggle = useFilterToggle("查询条件");
+  const showPerson = usePersonNames();
   const [rows, setRows] = useState<PartyLibraryRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -160,7 +162,7 @@ export default function PartyLibraryPage({ scope = "company", category = "", isA
             render: (value: string, row) => (row.party_id ? <a onClick={() => void openDetail(row.party_id)}>{value}</a> : value),
           },
           { title: "诉讼地位", dataIndex: "subject_position", width: 90, render: (value: string) => value || "—" },
-          { title: "管理人", dataIndex: "managers", width: 140, render: joinNames },
+          { title: "管理人", dataIndex: "managers", width: 140, render: (value: string[]) => joinNames((value || []).map((item) => showPerson(item))) },
         ]}
       />
       <Drawer title="当事人信息" open={detailOpen} onClose={() => setDetailOpen(false)} size="large" destroyOnClose>
@@ -173,10 +175,10 @@ export default function PartyLibraryPage({ scope = "company", category = "", isA
               <Descriptions.Item label="状态">{detail.status || "—"}</Descriptions.Item>
               <Descriptions.Item label="组织类型">{detail.organization_type || "—"}</Descriptions.Item>
               <Descriptions.Item label="证件号">{detail.identity_no || "—"}</Descriptions.Item>
-              <Descriptions.Item label="负责人">{detail.owner || "—"}</Descriptions.Item>
+              <Descriptions.Item label="负责人">{showPerson(detail.owner)}</Descriptions.Item>
               <Descriptions.Item label="部门">{detail.department || "—"}</Descriptions.Item>
-              <Descriptions.Item label="管理人" span={2}>{(detail.managers || []).join("、") || "—"}</Descriptions.Item>
-              <Descriptions.Item label="来源">{detail.source_customer_id ? "由客户挪入，沿用原客户编号" : `新建（${detail.created_by || "系统"}）`}</Descriptions.Item>
+              <Descriptions.Item label="管理人" span={2}>{(detail.managers || []).map((value) => showPerson(value)).join("、") || "—"}</Descriptions.Item>
+              <Descriptions.Item label="来源">{detail.source_customer_id ? "由客户挪入，沿用原客户编号" : `新建（${detail.created_by ? showPerson(detail.created_by) : "系统"}）`}</Descriptions.Item>
               <Descriptions.Item label="备注">{detail.description || "—"}</Descriptions.Item>
             </Descriptions>
             <h4 style={{ margin: "16px 0 8px" }}>所在案件（{detail.cases.length}）</h4>

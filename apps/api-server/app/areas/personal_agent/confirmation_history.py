@@ -192,6 +192,15 @@ def _history_item(record, decision_event):
     })
 
 
+async def _with_operator_names(items, db):
+    # 页面显示操作人姓名而不是登录账号（BUG20261031001）。
+    from app.core.formatters import _person_reference_display, _user_display_map
+    users = await _user_display_map({item.get("operator") for item in items if item.get("operator")}, db)
+    for item in items:
+        item["operator_display_name"] = _person_reference_display(item["operator"], users)[0] if item.get("operator") else None
+    return items
+
+
 async def _action_contexts(directory, identity, db):
     contexts = {}
     if directory is None:
@@ -281,6 +290,7 @@ async def read_confirmation_history(identity, db, *, status="", page=1, page_siz
     for record in records:
         item = _history_item(record, decisions.get(record.id))
         items.append(_context_item(item, contexts.get((item["source"], item["id"]))))
+    await _with_operator_names(items, db)
     legacy_offset = max(0, (page - 1) * page_size - total)
     if len(items) < page_size:
         items.extend(legacy[legacy_offset:legacy_offset + page_size - len(items)])
@@ -310,6 +320,7 @@ async def read_confirmation_detail(source, request_id, identity, db, *, director
             WorkflowEvent.action.in_(("MCP人工确认", "个人智能体人工确认")),
         ).order_by(WorkflowEvent.id.desc()).limit(1))
         item = _context_item(_history_item(record, event), context)
+    await _with_operator_names([item], db)
     action = None
     if context is not None:
         state, original = context

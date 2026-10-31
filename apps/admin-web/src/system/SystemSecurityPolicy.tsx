@@ -6,6 +6,7 @@ import {
 } from "antd";
 import type { SecurityPolicy } from "./types";
 import { formatTime } from "./constants";
+import { usePersonNames } from "../personNames";
 
 interface SystemSecurityPolicyProps {
   securityPolicy: SecurityPolicy | null;
@@ -20,6 +21,7 @@ export function SystemSecurityPolicy({
   securityForm,
   onSaveSecurity,
 }: SystemSecurityPolicyProps) {
+  const showPerson = usePersonNames();
   return (
     <Card
       className="panel system-focused"
@@ -72,7 +74,7 @@ export function SystemSecurityPolicy({
         </Form.Item>
         <Form.Item label="最近修改">
           {securityPolicy
-            ? `${securityPolicy.updated_by || "—"}｜${formatTime(securityPolicy.updated_at)}`
+            ? `${showPerson(securityPolicy.updated_by)}｜${formatTime(securityPolicy.updated_at)}`
             : "—"}
         </Form.Item>
         <Form.Item label=" ">

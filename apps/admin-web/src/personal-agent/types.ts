@@ -30,6 +30,7 @@ export type ConfirmationRecord = {
   decided_at: string | null;
   finished_at: string | null;
   operator: string | null;
+  operator_display_name?: string | null;
   comment: string;
   result: unknown;
   error: unknown;

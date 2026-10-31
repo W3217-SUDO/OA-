@@ -157,6 +157,7 @@ export type Attachment = {
   category: string;
   size: number;
   uploader: string;
+  uploader_display_name?: string;
   created_at: string;
 };
 
