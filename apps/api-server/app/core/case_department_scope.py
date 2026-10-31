@@ -3,7 +3,7 @@ from sqlalchemy import cast, false, or_, select, true
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import aliased
 from fastapi import HTTPException
-from app.models import BusinessRecord, Department, User
+from app.models import BusinessRecord, User
 
 _REGEX_SPECIAL = set(".^$*+?()[]{}|\\")
 
