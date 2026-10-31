@@ -200,6 +200,9 @@ async def list_internal_payment_packages(
         conditions.append(BusinessRecord.data["fee_type"].as_string() != "普通付款包")
     if effective_status:
         conditions.append(BusinessRecord.status == effective_status)
+    else:
+        # 旧系统付款包列表只列有效的包（IsActived='T'），导入时已删除的包不在列表里，按状态筛“已删除”仍能查到。
+        conditions.append(BusinessRecord.status != "已删除")
     if package_no.strip():
         conditions.append(BusinessRecord.serial_no.ilike(f"%{package_no.strip()}%"))
     # 内部付款包的收款人是员工账号，导入的还要按付款明细推出来，收款人筛选改在取出后按姓名/账号过滤。

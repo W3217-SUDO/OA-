@@ -107,8 +107,31 @@ class LegacyBankFlowAndPackagesTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([column["label"] for column in body["columns"]][:4], ["本方账号", "交易时间", "交易类型", "贷方发生额"])
         everything = await self.client.get("/api/v1/finance/bank-flows", params={"bank": "gdicbc", "include_deleted": True, "date_to": "2026-09-30"})
         self.assertEqual([item["status"] for item in everything.json()["items"]], ["已删除"])
-        missing = await self.client.get("/api/v1/finance/bank-flows", params={"bank": "cmb"})
+        missing = await self.client.get("/api/v1/finance/bank-flows", params={"bank": "icbc"})
         self.assertEqual(missing.status_code, 404)
+
+    async def test_bank_flow_table_outside_manifest_is_reflected(self):
+        # 招行流水表不在镜像表清单里（迁移时另建），按库里的表结构读。
+        async with self.engine.begin() as connection:
+            await connection.exec_driver_sql(
+                'CREATE TABLE "FAM_AR_Payment_CMB" ("PaymentId" INTEGER PRIMARY KEY, "TransactionType" TEXT, "TransactionDate" DATETIME, '
+                '"Payer_Account_No" TEXT, "Payer_Name" TEXT, "TradeAmount" NUMERIC, "TransactionNo" TEXT, "Reference" TEXT, "Purpose" TEXT, '
+                '"Remark" TEXT, "Remarks" TEXT, "IsActived" TEXT, "Status" INTEGER, "FileName" TEXT, "Operator" TEXT, "CreateTime" DATETIME, "GroupId" INTEGER)')
+            await connection.exec_driver_sql(
+                """INSERT INTO "FAM_AR_Payment_CMB" VALUES (1, 'IBPS对公提回贷记', '2026-09-02 10:29:29', '1111', '南通瑞圣拓纺织服饰有限公司', 15000, 'C06', '', '', '', '', 'T', 2, 'a.xlsx', 'cw', '2026-09-03 11:09:06', 10)""")
+        response = await self.client.get("/api/v1/finance/bank-flows", params={"bank": "cmb"})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["items"][0]["Payer_Name"], "南通瑞圣拓纺织服饰有限公司")
+
+    async def test_deleted_packages_hidden_unless_asked(self):
+        async with self.sessions() as db:
+            db.add(BusinessRecord(module="finance_package", serial_no="LAP-PKG-1", title="付款包", owner="shenhe", department="诉讼四部",
+                                  status="已删除", data={"legacy_kind": "ap_packing", "fee_type": "普通付款包", "fee_ids": []}))
+            await db.commit()
+        listed = await self.client.get("/api/v1/finance/payment-packages", params={"package_scope": "ordinary", "page_size": 20})
+        self.assertEqual([item["serial_no"] for item in listed.json()["items"]], ["P1"])
+        deleted = await self.client.get("/api/v1/finance/payment-packages", params={"package_scope": "ordinary", "status": "已删除", "page_size": 20})
+        self.assertEqual([item["serial_no"] for item in deleted.json()["items"]], ["LAP-PKG-1"])
 
 
 if __name__ == "__main__":

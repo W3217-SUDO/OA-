@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import func, inspect, select
+from sqlalchemy import MetaData, Table, func, inspect, select
 
 from app.core.dependencies import AsyncSession, Depends, current_identity, get_db, settings
 from app.legacy_schema import LEGACY_METADATA
@@ -71,8 +71,18 @@ def _text(value):
     return str(value).strip()
 
 
-async def _table_present(db: AsyncSession, name: str) -> bool:
-    return await db.run_sync(lambda sync: inspect(sync.connection()).has_table(name))
+_REFLECTED = MetaData()
+
+
+async def _flow_table(db: AsyncSession, name: str) -> Table | None:
+    """镜像表清单里有的直接用；招行表等清单里没有、迁移时另建的，从库里读表结构。"""
+    if not await db.run_sync(lambda sync: inspect(sync.connection()).has_table(name)):
+        return None
+    if name in LEGACY_METADATA.tables:
+        return LEGACY_METADATA.tables[name]
+    if name not in _REFLECTED.tables:
+        await db.run_sync(lambda sync: Table(name, _REFLECTED, autoload_with=sync.connection()))
+    return _REFLECTED.tables[name]
 
 
 @router.get(f"{settings.api_prefix}/finance/bank-flows")
@@ -90,9 +100,9 @@ async def list_bank_flows(
     db: AsyncSession = Depends(get_db),
 ):
     source = BANK_FLOW_SOURCES[bank]
-    if not await _table_present(db, source["table"]):
+    table = await _flow_table(db, source["table"])
+    if table is None:
         raise HTTPException(status_code=404, detail="银行流水镜像表不存在")
-    table = LEGACY_METADATA.tables[source["table"]]
     conditions = []
     if not include_deleted:
         conditions.append(table.c.IsActived == "T")

@@ -57,7 +57,7 @@ export function createRouteConfigs(context: {
         "finance-payment-package-manage": {
             fields: [
                 context.f("付款包号码"),
-                context.f("付款状态", { options: ["待核销", "已付款", "待核对关联"] }),
+                context.f("付款状态", { options: ["待核销", "已付款", "待核对关联", "已删除"] }),
                 context.f("收款单位"),
                 context.f("付款日期", { control: "date" }),
             ],
