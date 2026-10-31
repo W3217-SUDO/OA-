@@ -70,6 +70,20 @@ class BusinessToolRunTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["isError"])
         self.assertEqual(result["failed_step"]["error"], "合同当前不在审批中")
 
+    async def test_plan_skips_allocation_candidates_until_payment_is_claimed(self):
+        calls = []
+
+        async def fake_call(name, arguments):
+            calls.append(name)
+            return {"id": 1, "status": "待认领", "claimed_customer": ""}
+
+        with patch.object(business_tools, "get_auth_context", return_value=_context(readonly=False)):
+            result = await business_tools.run_business_tool(
+                "biz_incoming_payment_claim_allocate", {"payment_id": 1, "customer": "CODEX-甲公司"}, call=fake_call)
+        self.assertFalse(result.get("isError"), result)
+        self.assertNotIn("oa_incoming_payment_allocation_candidates_get", calls)
+        self.assertIn("认领后才能列出可分配费用", str(result))
+
     async def test_read_only_token_cannot_see_or_run_write_tools(self):
         with patch.object(business_tools, "get_auth_context", return_value=_context()):
             visible = {tool.name for tool in business_tools.visible_tools(get_catalog(app))}

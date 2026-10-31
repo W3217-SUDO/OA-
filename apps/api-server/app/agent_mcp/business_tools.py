@@ -1036,7 +1036,11 @@ async def _claim_allocate(run: Run, args: dict) -> dict:
         await run.write("oa_claim_incoming_payment_post", {"path": {"payment_id": args["payment_id"]}, "query": scope,
                                                            "body": _drop_empty({"customer": args["customer"], "comment": args.get("comment")})}, "认领到客户")
     candidates = None
-    if not args.get("allocations") or not run.confirm:
+    # 候选接口只认已认领、待分配/部分分配的到账；计划模式下认领还没执行，先跳过，不让整份计划停在这一步。
+    claimed = isinstance(payment, dict) and bool(payment.get("claimed_customer")) and payment.get("status") in ("待分配", "部分分配")
+    if not claimed and not (args.get("customer") and run.confirm):
+        run.notes.append("到账尚未认领到客户（或不在待分配/部分分配状态）：认领后才能列出可分配费用。")
+    elif not args.get("allocations") or not run.confirm:
         candidates = await run.read("oa_incoming_payment_allocation_candidates_get", {"path": {"payment_id": args["payment_id"]},
                                                                                       "query": {**scope, "case_fees_only": True}}, "可分配的案件费用")
     if args.get("allocations"):
