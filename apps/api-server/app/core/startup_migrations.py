@@ -151,6 +151,13 @@ def _apply_mcp_token_write(connection: Connection, _upgrade_schema: Callable[[Co
             connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0"))
 
 
+def _apply_department_owner(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    """BUG20261031002：部门挂靠人列；schema_alignment 只在首次建库时跑，已有库要靠这条修订补列。"""
+    from sqlalchemy import inspect
+    if "owner_username" not in {item["name"] for item in inspect(connection).get_columns("departments")}:
+        connection.execute(text("ALTER TABLE departments ADD COLUMN owner_username VARCHAR(64) NOT NULL DEFAULT ''"))
+
+
 def _apply_soft_delete(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
     upgrade_soft_delete(connection)
 
@@ -216,6 +223,7 @@ def _run_versioned_schema_migrations(
         (FEEDBACK_SERIAL_REVISION, _apply_feedback_date_serial),
         # 登录只改登录记录列时不推进控制台/财务查询修订，登录后首屏可直接命中缓存。
         (DASHBOARD_LOGIN_COLUMNS_REVISION, _apply_dashboard_revision_login_columns),
+        ("department_owner_username_v1", _apply_department_owner),
     )
     for revision, migration in revisions:
         if connection.execute(
