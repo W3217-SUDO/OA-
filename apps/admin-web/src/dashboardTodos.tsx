@@ -45,16 +45,16 @@ export const DASHBOARD_TODOS: Record<string, { route: string; icon: ReactNode }>
   待审核预损费用: { route: "case-archive-loss-internal", icon: <FallOutlined /> },
 };
 
-export type DashboardTodoItem = { label: string; count: string | number; pending: number; route?: string; icon?: ReactNode };
+export type DashboardTodoItem = { label: string; count: string | number; pending: number; rejected?: number; route?: string; icon?: ReactNode };
 
-// 后端每行返回两组“名称、数量”，按原顺序展开成一项一格。
+// 后端每行返回两组“名称、待我审批、被驳回”（旧系统蓝色、橙色两列），按原顺序展开成一项一格。
 export function dashboardTodoItems(todos: DashboardData["todos"] | undefined): DashboardTodoItem[] {
   return (todos || []).flatMap((row) => [
-    { label: String(row[0]), count: row[1] },
-    { label: String(row[3]), count: row[4] },
-  ]).map(({ label, count }) => {
+    { label: String(row[0]), count: row[1], rejected: row[2] },
+    { label: String(row[3]), count: row[4], rejected: row[5] },
+  ]).map(({ label, count, rejected }) => {
     const meta = DASHBOARD_TODOS[label];
-    return { label, count, pending: Number(count) || 0, route: meta?.route, icon: meta?.icon };
+    return { label, count, pending: Number(count) || 0, rejected: Number(rejected) || 0, route: meta?.route, icon: meta?.icon };
   });
 }
 
@@ -103,14 +103,14 @@ export function dashboardPortalItems(portal: DashboardPortal, data: Partial<Dash
   const catalog = new Map((data.portal_items || []).map((item) => [item.key, item]));
   const todos = new Map(dashboardTodoItems(data.todos).map((item) => [item.label, item]));
   const metrics = new Map((data.metrics || []).map((metric) => [metric.key, metric]));
-  return portal.items.flatMap((key) => {
+  return portal.items.flatMap<DashboardPortalTodoItem>((key) => {
     const item = catalog.get(key);
     if (!item) return [];
     const [kind, ref] = item.source.split(":");
     const base = { key, label: item.label, description: item.description, route: item.route, icon: PORTAL_ICONS[key] };
     if (kind === "todo") {
       const todo = todos.get(ref);
-      return [{ ...base, icon: todo?.icon || base.icon, count: todo?.count ?? 0, pending: todo?.pending ?? 0 }];
+      return [{ ...base, icon: todo?.icon || base.icon, count: todo?.count ?? 0, pending: todo?.pending ?? 0, rejected: todo?.rejected ?? 0 }];
     }
     if (kind === "metric") {
       const metric = metrics.get(ref);

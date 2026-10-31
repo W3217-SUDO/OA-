@@ -112,9 +112,15 @@ class JobRoleApprovalMenuContractTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_dashboard_personal_contract_counts_assigned_approval_and_owned_rejection(self):
         async with self.sessions() as db:
+            # 旧系统合同驳回按“我的客户”：客户协作人有我或客户负责人是我（2026-10-31 对齐）。
+            db.add(BusinessRecord(
+                module="customer", serial_no="CODEX-REJECTED-CUSTOMER", title="客户", status="T",
+                owner="codex_approval_assistant", department="诉讼部", data={},
+            ))
             db.add(BusinessRecord(
                 module="contract", serial_no="CODEX-REJECTED-APPROVAL", title="已驳回合同",
-                status="已驳回", owner="codex_approval_assistant", department="诉讼部", data={},
+                status="已驳回", owner="someone_else", department="诉讼部",
+                data={"customer_no": "CODEX-REJECTED-CUSTOMER"},
             ))
             await db.commit()
             payload = await dashboard(

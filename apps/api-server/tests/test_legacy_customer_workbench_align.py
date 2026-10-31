@@ -74,6 +74,52 @@ class LegacyCustomerWorkbenchAlignTest(unittest.IsolatedAsyncioTestCase):
             row = _dashboard_latest_case_row(case, customer, {"codexmgr": await db.get(User, 1)})
             self.assertEqual(row["manager"], "管理人")
 
+    async def test_rejected_counts_personal_and_company(self):
+        from app.core.dashboard_todos import legacy_rejected_counts
+        async with self.sessions() as db:
+            db.add_all([
+                BusinessRecord(module="contract", serial_no="HT2", title="驳回合同", status="已拒绝", owner="codexsrc",
+                               data={"customer_record_id": 1}),
+                BusinessRecord(module="contract", serial_no="HT3", title="别人的驳回合同", status="已拒绝", owner="x", data={}),
+                BusinessRecord(module="official_outgoing", serial_no="YY1", title="", status="已拒绝", owner="codexmgr",
+                               data={"business_owner": "codexmgr", "source_table": "AWS_OfficialDocument"}),
+                BusinessRecord(module="official_outgoing", serial_no="YY2", title="", status="已拒绝", owner="x",
+                               data={"business_owner": "x", "source_table": "AWS_OfficialDocument"}),
+                BusinessRecord(module="case", serial_no="AJ9", title="", status="归档拒绝", owner="x",
+                               data={"case_type": "民事争议", "customer_record_id": 1}),
+                BusinessRecord(module="case", serial_no="AJ8", title="", status="亏损拒绝", owner="x", data={"case_type": "民事争议"}),
+            ])
+            await db.commit()
+            identity = {"username": "codexmgr", "role": "staff"}
+            mine = await legacy_rejected_counts(identity, db)
+            self.assertEqual((mine["待审批合同"], mine["待审批用印"], mine["待审核归档"], mine["待审核预损费用"]), (1, 1, 1, 0))
+            company = await legacy_rejected_counts(identity, db, scope="company")
+            self.assertEqual((company["待审批合同"], company["待审批用印"], company["待审核归档"], company["待审核预损费用"]), (1, 2, 1, 1))
+
+    async def test_legacy_seal_records_are_read_only_and_scoped(self):
+        from unittest.mock import patch
+        from app.areas.aws.legacy_seals import list_legacy_seal_records
+        async with self.sessions() as db:
+            db.add_all([
+                BusinessRecord(module="official_outgoing", serial_no="YY1", title="合同", status="已用印", owner="codexmgr",
+                               customer="客户一", data={"business_owner": "codexmgr", "source_table": "AWS_OfficialDocument"}),
+                BusinessRecord(module="official_outgoing", serial_no="YY2", title="合同", status="已拒绝", owner="x",
+                               data={"business_owner": "x", "source_table": "AWS_OfficialDocument"}),
+                BusinessRecord(module="official_outgoing", serial_no="N1", title="新公文", status="草稿", owner="codexmgr", data={}),
+            ])
+            await db.commit()
+            async def menus(keys):
+                async def payload(*_args, **_kwargs):
+                    return {"menu_keys": keys}
+                return payload
+            identity = {"username": "codexmgr", "role": "staff"}
+            with patch("app.core.permissions._permission_payload_for_identity", await menus(["seal-my"])):
+                own = await list_legacy_seal_records(page=1, page_size=20, identity=identity, db=db)
+            self.assertEqual([item["serial_no"] for item in own["items"]], ["YY1"])
+            with patch("app.core.permissions._permission_payload_for_identity", await menus(["seal-audit"])):
+                everyone = await list_legacy_seal_records(status="已拒绝", page=1, page_size=20, identity=identity, db=db)
+            self.assertEqual([item["serial_no"] for item in everyone["items"]], ["YY2"])
+
 
 if __name__ == "__main__":
     unittest.main()

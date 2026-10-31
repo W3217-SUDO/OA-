@@ -159,7 +159,7 @@ export default function DashboardOverview({ showHead = true, greeting, name, bri
           {!todosLoading && !todosError && !waitingPortals && !items.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无待办事项" />}
           {/* 图标宫格（类似钉钉工作台）：统一用主题色，有待办的图标填满并在右上角挂角标写件数，没有待办的只是浅色描边。 */}
           <div ref={gridRef} className="wb-todo-grid" style={{ "--todo-cols": columns } as CSSProperties}>
-            {pageItems.map(({ label, count, pending, route, icon, metric, description: itemDescription }) => {
+            {pageItems.map(({ label, count, pending, rejected = 0, route, icon, metric, description: itemDescription }) => {
               const clickable = Boolean(route && canNavigate(route));
               const className = `wb-todo-entry${pending > 0 ? " has-pending" : " is-clear"}`;
               const content = <>
@@ -168,8 +168,10 @@ export default function DashboardOverview({ showHead = true, greeting, name, bri
                   {pending > 0 && <i className="wb-todo-badge">{count}</i>}
                 </span>
                 <span className="wb-todo-title">{label}</span>
+                {/* 旧系统橙色列：被驳回的数量。 */}
+                {rejected > 0 && <span className="wb-todo-rejected">驳回 {rejected}</span>}
               </>;
-              const description = pending > 0 ? `${label}，${count} 件待处理` : `${label}，暂无待办`;
+              const description = `${pending > 0 ? `${label}，${count} 件待处理` : `${label}，暂无待办`}${rejected > 0 ? `，${rejected} 件被驳回` : ""}`;
               return clickable
                 ? <button key={label} className={className} type="button" title={itemDescription} onClick={() => openTodo(label, route, metric)} aria-label={description}>{content}</button>
                 : <div key={label} className={className} title={itemDescription} aria-label={description}>{content}</div>;

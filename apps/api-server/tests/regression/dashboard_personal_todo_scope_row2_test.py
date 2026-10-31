@@ -80,7 +80,10 @@ class DashboardPersonalTodoScopeRow2Test(unittest.IsolatedAsyncioTestCase):
                 {"deadline": "2020-01-01"},
             )
             pending_contract = self.record("contract", "CODEX-827-R2-CONTRACT-PENDING", "审批中", "other")
-            rejected_contract = self.record("contract", "CODEX-827-R2-CONTRACT-REJECTED", "已驳回", "admin")
+            # 旧系统合同驳回：客户协作人有我或客户负责人是我（2026-10-31 对齐）。
+            managed_customer = self.record("customer", "CODEX-827-R2-CUSTOMER", "T", "admin", {"customer_managers": ["admin"]})
+            rejected_contract = self.record("contract", "CODEX-827-R2-CONTRACT-REJECTED", "已驳回", "other",
+                                            {"customer_no": "CODEX-827-R2-CUSTOMER"})
             other_rejected_contract = self.record("contract", "CODEX-827-R2-CONTRACT-OTHER", "已驳回", "other")
             pending_seal = self.record(
                 "seal", "CODEX-827-R2-SEAL-PENDING", "待审批", "other",
@@ -103,14 +106,15 @@ class DashboardPersonalTodoScopeRow2Test(unittest.IsolatedAsyncioTestCase):
                 "case", "CODEX-827-R2-ARCHIVE-OWN", "待归档审核", "admin",
                 {"archive_submitter": "admin"},
             )
+            # 旧系统归档驳回：本人案件里阶段为“归档拒绝”的民事案件（2026-10-31 对齐）。
             rejected_archive = self.record(
-                "case", "CODEX-827-R2-ARCHIVE-REJECTED", "执行", "admin",
-                {"archive_submitter": "admin", "archive_reject_reason": "材料不全"},
+                "case", "CODEX-827-R2-ARCHIVE-REJECTED", "归档拒绝", "admin",
+                {"archive_submitter": "admin", "archive_reject_reason": "材料不全", "case_type": "民事争议"},
             )
             db.add_all([
                 pending_task, processing_task, other_task, rejected_task, investigation_task, past_handoff_task, overdue_task,
                 pending_clue, rejected_clue, refused_clue, unrelated_clue,
-                pending_contract, rejected_contract, other_rejected_contract,
+                managed_customer, pending_contract, rejected_contract, other_rejected_contract,
                 pending_seal, other_seal, rejected_seal,
                 pending_archive, other_pending_archive, own_pending_archive, rejected_archive,
             ])

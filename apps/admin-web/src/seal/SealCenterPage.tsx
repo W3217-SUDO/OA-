@@ -79,6 +79,7 @@ import {
   sealStatusOptions,
   validateSealUploadFile,
 } from "./constants";
+import { LegacySealRecords } from "./LegacySealRecords";
 import { SealActionModal } from "./SealActionModal";
 import { SealAssetAuditModal } from "./SealAssetAuditModal";
 import { SealAssetModal } from "./SealAssetModal";
@@ -1704,6 +1705,8 @@ export default function SealCenterPage({
     { key: "audit", label: `用印审批（${summary.pending}）` },
     { key: "admin", label: `行政用印（${summary.waiting_stamp}）` },
     { key: "assets", label: "印章管理" },
+    // 旧系统用印申请迁在公文发文里，这里只读查看（2026-10-31）。
+    { key: "legacy", label: "旧系统用印记录" },
   ];
 
   // === Modal handlers ===
@@ -1933,10 +1936,10 @@ export default function SealCenterPage({
       </div>
       <Card
         className="panel seal-original-panel"
-        title={tab === "assets" ? "印章资产管理" : "用印申请列表"}
+        title={tab === "assets" ? "印章资产管理" : tab === "legacy" ? "旧系统用印记录" : "用印申请列表"}
       >
-        {tab !== "assets" && mobileFilter.toggle}
-        {tab !== "assets" && (
+        {tab !== "assets" && tab !== "legacy" && mobileFilter.toggle}
+        {tab !== "assets" && tab !== "legacy" && (
           <Form form={queryForm} className={`seal-query ${mobileFilter.className}`} onFinish={setQuery}>
             <Form.Item label={sealQueryLabel("申请编号")} name="serial_no">
               <Input />
@@ -1995,7 +1998,9 @@ export default function SealCenterPage({
           onChange={setTab}
           items={tabItems}
         />
-        {tab === "assets" ? (
+        {tab === "legacy" ? (
+          <LegacySealRecords />
+        ) : tab === "assets" ? (
           <>
             <div className="seal-asset-toolbar">
               <span>印章资产台账</span>
