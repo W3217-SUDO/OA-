@@ -207,6 +207,7 @@
 .customer-assign-form .ant-form-item { margin-bottom: 10px; }
 .customer-assign-form .ant-form-item-label { flex: 0 0 112px; }
 .customer-assign-form .ant-form-item-control { min-width: 0; }
+.customer-source-change-note { color: #8c8c8c; font-size: 12px; padding-left: 112px; }
 .customer-assign-form .ant-input,
 .customer-assign-form .ant-select-selector { }
 

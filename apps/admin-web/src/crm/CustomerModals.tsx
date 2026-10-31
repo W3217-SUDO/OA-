@@ -331,7 +331,7 @@ export function CustomerModals({ viewingContact, onCloseViewContact, contactPhot
         </Form>
       </Modal>
 
-      {/* 变更案源人 Modal：案源人只有一位，离职后可指定新的案源人 */}
+      {/* 变更案源人 Modal：案源人只有一位，离职后可指定新的案源人；只影响以后新建的合同和案件 */}
       <Modal
         open={Boolean(sourceChanging)}
         title="变更案源人"
@@ -350,6 +350,7 @@ export function CustomerModals({ viewingContact, onCloseViewContact, contactPhot
           <Form.Item label="现案源人" name="source_person" rules={[{ required: true, message: "请选择现案源人" }]}>
             <KeywordPersonSelect showSearch optionFilterProp="label" options={directoryOptions} />
           </Form.Item>
+          <div className="customer-source-change-note">只影响以后新建的合同和案件，原有案件、合同不变。</div>
         </Form>
       </Modal>
 

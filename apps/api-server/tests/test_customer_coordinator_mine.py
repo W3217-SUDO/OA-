@@ -145,6 +145,8 @@ class CustomerCoordinatorMineTest(unittest.IsolatedAsyncioTestCase):
             customer = await db.get(BusinessRecord, 2)
             self.assertEqual((customer.owner, customer.data["customer_source"]), ("codexco", "codexco"))
             self.assertEqual(customer.data["customer_managers"], ["codexother"])
+            # 陶国南 2026-10-31：只影响以后新建的，原有案件不转给新案源人。
+            self.assertEqual((await db.get(BusinessRecord, 14)).owner, "codexother")
 
 
 if __name__ == "__main__":

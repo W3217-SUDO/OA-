@@ -1130,11 +1130,11 @@ async def update_customer_managers(customer_id: int, body: CustomerManagersInput
 
 @router.post(f"{settings.api_prefix}/customers/{{customer_id}}/source-person")
 async def change_customer_source_person(customer_id: int, body: CustomerSourcePersonInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    """变更案源人（一位）：同时更新客户负责人，并像旧系统 CustomerOwnerChange 一样级联案件、合同、调查。"""
+    """变更案源人（一位）：同时更新客户负责人；只影响以后新建的合同、案件，原有案件、合同、调查不变（陶国南 2026-10-31）。"""
     from app.core.permissions import _require_role_action
     await _require_role_action(identity, db, "crm.customer.assign")
     from app.core.crm import (
-        _cascade_customer_owner_change, _customer_event, _customer_or_404, _resolve_active_customer_managers,
+        _customer_event, _customer_or_404, _resolve_active_customer_managers,
     )
     from app.core.legacy_sync import (
         _legacy_customer_business_failure_response,
@@ -1156,17 +1156,8 @@ async def change_customer_source_person(customer_id: int, body: CustomerSourcePe
         customer.owner = new_source
         customer.data = {**data, "customer_source": new_source, "source_person": new_source, "business_owner": new_source,
                          "holder": new_source, "customer_owner": new_source, "source_person_history": history}
-        cascade_detail = ""
-        if original_owner != new_source:
-            cascade_result = await _cascade_customer_owner_change(customer, original_owner, new_source, db)
-            parts = []
-            if cascade_result.get("case", 0) > 0: parts.append(f"案件{cascade_result['case']}条")
-            if cascade_result.get("contract", 0) > 0: parts.append(f"合同{cascade_result['contract']}条")
-            if cascade_result.get("investigation", 0) > 0: parts.append(f"调查{cascade_result['investigation']}条")
-            if parts:
-                cascade_detail = f"；级联更新：{'、'.join(parts)}"
         db.add(_customer_event(customer, "变更案源人", identity,
-                               (body.comment or f"案源人：{previous_source or '无'} → {new_source}") + cascade_detail))
+                               (body.comment or f"案源人：{previous_source or '无'} → {new_source}")))
         await db.commit(); await db.refresh(customer)
         return await _record_dict_for_identity(customer, identity, db)
     except HTTPException as exc:
