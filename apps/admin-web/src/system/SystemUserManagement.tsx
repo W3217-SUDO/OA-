@@ -14,7 +14,7 @@ import {
   Tooltip,
 } from "antd";
 import Table from "../components/ResizableTable";
-import { ReloadOutlined, PlusOutlined } from "@ant-design/icons";
+import { ReloadOutlined } from "@ant-design/icons";
 import type { SystemUser } from "./types";
 import { SystemUserDingTalkBindings } from "./SystemUserDingTalkBindings";
 import {
@@ -102,19 +102,11 @@ export function SystemUserManagement({
               onClick={() => onLoadUsers(keyword)}
             />
           </Tooltip>
-          <Button
-            type="primary"
-            className="oa-filter-keep"
-            icon={<PlusOutlined />}
-            onClick={() => onEditUser()}
-          >
-            新增账号
-          </Button>
         </div>
         <Alert
           type="info"
           showIcon
-          message="合同审批人由管理员逐人加入合同审批流程；岗位名称或系统角色不会自动授予审批资格。"
+          message="新建账号请到人事中心“新建员工”（部门、职务必填）；这里只修改已有账号。合同审批人由管理员逐人加入合同审批流程；岗位名称或系统角色不会自动授予审批资格。"
           style={{ marginBottom: 12 }}
         />
         <Table
@@ -131,13 +123,7 @@ export function SystemUserManagement({
           }}
           locale={{
             emptyText: (
-              <span>
-                没有查询到符合条件的记录，可以去
-                <Button type="link" size="small" onClick={() => onEditUser()}>
-                  新增用户
-                </Button>
-                。
-              </span>
+              <span>没有查询到符合条件的记录；新建账号请到人事中心“新建员工”。</span>
             ),
           }}
           columns={[
