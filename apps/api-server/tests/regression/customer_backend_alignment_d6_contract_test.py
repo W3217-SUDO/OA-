@@ -256,7 +256,8 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
         })
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         serial_no = response.json()["serial_no"]
-        self.assertEqual(serial_no, f"{serial_prefix}00008")
+        # 旧系统编号（50001 以下）归旧系统，新系统从 50001 起（陶威 10-31 定号段）。
+        self.assertEqual(serial_no, f"{serial_prefix}50001")
         self.assertRegex(serial_no, r"^HZKH\d{7}$")
         self.assertNotRegex(serial_no, r"\d{10,}")
 

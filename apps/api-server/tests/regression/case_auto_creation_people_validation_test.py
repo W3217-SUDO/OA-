@@ -110,7 +110,7 @@ class CaseAutoCreationPeopleValidationTest(unittest.IsolatedAsyncioTestCase):
         serial = await _next_case_serial("民事案件", db)
         self.assertRegex(serial, r"^HZMS\d{2}\d{5}$")
         self.assertTrue(serial.startswith(f"HZMS{datetime.now():%y}"))
-        self.assertTrue(serial.endswith("00004"))
+        self.assertTrue(serial.endswith("50001"))
 
     async def convert(self, clues, **overrides):
         db = CapturingSession(self.users, clues)

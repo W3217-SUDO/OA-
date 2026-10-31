@@ -448,7 +448,8 @@ async def _next_contract_serial_no(db: AsyncSession) -> str:
         BusinessRecord.module == "contract",
         BusinessRecord.serial_no.like(f"{prefix}%"),
     ).order_by(BusinessRecord.serial_no.desc()))).all()
-    sequence = max((int(match.group(1)) for value in existing if (match := re.fullmatch(rf"{re.escape(prefix)}(\d{{5}})", value))), default=0) + 1
+    from app.core.serial_ranges import next_in_range
+    sequence = next_in_range((int(match.group(1)) for value in existing if (match := re.fullmatch(rf"{re.escape(prefix)}(\d{{5}})", value))), "contract")
     if sequence > 99999:
         raise HTTPException(status_code=409, detail=f"{datetime.now():%Y} 合同编号已用尽")
     return f"{prefix}{sequence:05d}"

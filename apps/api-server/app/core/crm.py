@@ -628,15 +628,13 @@ async def _next_customer_serial_no(db: AsyncSession) -> str:
             BusinessRecord.serial_no.like(f"{serial_prefix}%"),
         )
     )).all()
-    serial_sequence = max(
-        (
-            int(item[len(serial_prefix):])
-            for item in serial_candidates
-            if item[len(serial_prefix):].isdigit()
-            and len(item[len(serial_prefix):]) == 5
-        ),
-        default=0,
-    ) + 1
+    from app.core.serial_ranges import next_in_range
+    serial_sequence = next_in_range((
+        int(item[len(serial_prefix):])
+        for item in serial_candidates
+        if item[len(serial_prefix):].isdigit()
+        and len(item[len(serial_prefix):]) == 5
+    ), "customer")
     if serial_sequence > 99999:
         raise HTTPException(status_code=409, detail=f"{datetime.now():%Y} 客户编号已用尽")
     return f"{serial_prefix}{serial_sequence:05d}"

@@ -107,10 +107,11 @@ async def _next_investigation_clue_serial(
             )
         )
     ).all()
-    sequence = max(
+    from app.core.serial_ranges import next_in_range
+    sequence = next_in_range(
         (int(match.group(1)) for value in serials if (match := pattern.fullmatch(str(value or "")))),
-        default=0,
-    ) + 1
+        "clue",
+    )
     if sequence > 9999:
         raise HTTPException(status_code=409, detail="本月调查线索编号已用尽")
     return f"{normalized_prefix}{period}{sequence:04d}"

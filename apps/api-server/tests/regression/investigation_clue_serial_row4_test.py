@@ -25,7 +25,8 @@ class InvestigationClueSerialRow4Test(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         await self.engine.dispose()
 
-    async def test_continues_the_shared_legacy_monthly_sequence(self):
+    async def test_new_system_numbers_start_above_the_legacy_sequence(self):
+        """旧系统仍在发 M/P 共用流水；新系统每月从 8001 起编，不再接着旧号走（陶威 10-31 定）。"""
         async with self.sessions() as db:
             db.add_all([
                 BusinessRecord(
@@ -45,8 +46,13 @@ class InvestigationClueSerialRow4Test(unittest.IsolatedAsyncioTestCase):
                 db, datetime(2026, 8, 16, 12, 0, 0)
             )
 
-        self.assertEqual(serial_no, "M26085955")
+        self.assertEqual(serial_no, "M26088001")
         self.assertEqual(len(serial_no), 9)
+        async with self.sessions() as db:
+            db.add(BusinessRecord(module="clue", serial_no="P26088001", title="P clue", customer="customer",
+                                  status="草稿", owner="admin", department="上海分所", data={}))
+            await db.commit()
+            self.assertEqual(await _next_investigation_clue_serial(db, datetime(2026, 8, 16, 12, 0, 0)), "M26088002")
 
 
 if __name__ == "__main__":

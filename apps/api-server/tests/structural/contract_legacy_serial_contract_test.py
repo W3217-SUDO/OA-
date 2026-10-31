@@ -30,7 +30,9 @@ class ContractLegacySerialContractTest(unittest.TestCase):
 
         serial = asyncio.run(_next_contract_serial_no(db))
 
-        self.assertEqual(serial, f"{prefix}00010")
+        # 旧系统编号（50001 以下）不影响新系统取号（陶威 10-31 定号段）。
+        self.assertEqual(serial, f"{prefix}50001")
+        self.assertEqual(asyncio.run(_next_contract_serial_no(_FakeSession([f"{prefix}00009", f"{prefix}50003"]))), f"{prefix}50004")
         self.assertRegex(serial, rf"^HZHT{datetime.now():%y}\d{{5}}$")
         self.assertLessEqual(len(serial), 11)
 
