@@ -37,6 +37,8 @@ class CustomerCoordinatorMineTest(unittest.IsolatedAsyncioTestCase):
                                   department="CODEX", customer="管理的客户", data={"customer_record_id": 1}))
             db.add(BusinessRecord(id=12, module="case", serial_no="AJ2", title="本人承办的案件", status="文书准备", owner="codexco",
                                   department="CODEX", customer="管理的客户", data={"customer_record_id": 1, "case_team_usernames": ["codexco"]}))
+            db.add(BusinessRecord(id=13, module="case", serial_no="AJ3", title="管理客户的他人案件", status="文书准备", owner="codexother",
+                                  department="CODEX", customer="管理的客户", data={"customer_record_id": 1, "case_team_usernames": ["codexother"]}))
             await db.commit()
 
     async def asyncTearDown(self):
@@ -88,6 +90,11 @@ class CustomerCoordinatorMineTest(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(HTTPException) as caught:
                 await _deny_customer_coordinator_write(await db.get(BusinessRecord, 11), identity("codexco", "POST"), db)
             self.assertEqual(caught.exception.status_code, 403)
+        async with self.sessions() as db:
+            managed = await mark_coordinated_cases([{"id": 11, "data": {}}, {"id": 13, "data": {}}], identity("codexmgr"), db)
+            self.assertNotIn("my_case_relation", managed[0]["data"])
+            self.assertEqual(managed[1]["data"].get("my_case_relation"), "客户管理")
+            self.assertTrue(await _case_coordinator_only(await db.get(BusinessRecord, 13), identity("codexmgr", "POST"), db))
         view_only = _case_view_only_capabilities({"can_write": True, "can_create_finance": True, "can_view_case_logs": True, "team_role": "x"})
         self.assertEqual((view_only["can_write"], view_only["can_create_finance"], view_only["can_view_case_logs"]), (False, False, True))
 

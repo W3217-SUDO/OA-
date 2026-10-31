@@ -681,23 +681,30 @@ async def _case_mine_scope_condition(identity: dict, db: AsyncSession, *, projec
     )
 
 
-def _coordinated_case_condition(username: str, dialect: str):
-    """案件的客户把该用户列为协作人（陶威 2026-10-31：协作人的客户案件进“我的案件”，只能查看）。"""
+def _coordinated_case_condition(username: str, dialect: str, relation: str = "any"):
+    """案件的客户把该用户列为客户管理人或协作人（陶威 2026-10-31：这些客户的案件进“我的案件”，与旧系统一致）。
+
+    relation 为 "manager" 只看客户管理人，"coordinator" 只看协作人，默认两者都算。
+    """
     from sqlalchemy import String, cast
     from sqlalchemy.orm import aliased
     customer = aliased(BusinessRecord)
-    coordinated = and_(customer.module == "customer",
-                       customer.data["coordinators"].as_string().contains(f'"{str(username).strip()}"'))
+    username = str(username).strip()
+    token = f'"{username}"'
+    managed = or_(customer.data["customer_managers"].as_string().contains(token), customer.owner == username)
+    coordinated = customer.data["coordinators"].as_string().contains(token)
+    related = {"manager": managed, "coordinator": coordinated}.get(relation, or_(managed, coordinated))
+    customers = and_(customer.module == "customer", related)
     reference = BusinessRecord.data["customer_record_id"]
     if dialect == "postgresql":
-        matched = reference.as_string().in_(select(cast(customer.id, String)).where(coordinated))
+        matched = reference.as_string().in_(select(cast(customer.id, String)).where(customers))
     else:
-        matched = reference.as_integer().in_(select(customer.id).where(coordinated))
+        matched = reference.as_integer().in_(select(customer.id).where(customers))
     return and_(BusinessRecord.module == "case", matched)
 
 
 async def _case_coordinator_only(record: BusinessRecord, identity: dict, db: AsyncSession) -> bool:
-    """只因客户协作人身份才看得到这个案件：本人不是案件参与人，原有权限也看不到。"""
+    """只因客户管理人/协作人身份才看得到这个案件：本人不是案件参与人，原有权限也看不到。"""
     if record.module != "case" or "admin" in identity.get("_actual_role_ids", []):
         return False
     username = str(identity.get("username") or "").strip()
@@ -718,16 +725,19 @@ async def _case_coordinator_only(record: BusinessRecord, identity: dict, db: Asy
 
 
 async def mark_coordinated_cases(items: list[dict], identity: dict, db: AsyncSession) -> list[dict]:
-    """“我的案件”里只因客户协作人才出现的案件，行上标“协作”。"""
+    """“我的案件”里只因客户关系出现的案件，行上标“客户管理”或“协作”。"""
     ids = [item["id"] for item in items if item.get("id")]
     if not ids:
         return items
     participant = set((await db.scalars(select(BusinessRecord.id).where(
         BusinessRecord.id.in_(ids), await _case_mine_scope_condition(identity, db),
     ))).all())
+    managed = set((await db.scalars(select(BusinessRecord.id).where(
+        BusinessRecord.id.in_(ids), _coordinated_case_condition(identity["username"], db.get_bind().dialect.name, "manager"),
+    ))).all())
     for item in items:
         if item.get("id") in ids and item["id"] not in participant:
-            item["data"] = {**(item.get("data") or {}), "my_case_relation": "协作"}
+            item["data"] = {**(item.get("data") or {}), "my_case_relation": "客户管理" if item["id"] in managed else "协作"}
     return items
 
 
@@ -997,7 +1007,7 @@ async def _deny_customer_coordinator_write(record: BusinessRecord, identity: dic
         return
     if record.module == "case":
         if await _case_coordinator_only(record, identity, db):
-            raise HTTPException(status_code=403, detail="你是该案件客户的协作人，只能查看，不能修改")
+            raise HTTPException(status_code=403, detail="你不是该案件的办案人员，只能查看，不能修改")
         return
     if "admin" in identity.get("_actual_role_ids", []):
         return
@@ -1812,7 +1822,7 @@ def _case_view_only_capabilities(capabilities: dict) -> dict:
     # 客户协作人只能查看案件，修改、阶段、费用等仍由原有角色操作。
     return {**{key: (value if key in CASE_VIEW_CAPABILITIES or not key.startswith("can_") else False)
                for key, value in capabilities.items()},
-            "reason": "你是该案件客户的协作人，只能查看，不能修改"}
+            "reason": "你不是该案件的办案人员，只能查看，不能修改"}
 
 
 async def _case_detail_action_capabilities(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> dict:
