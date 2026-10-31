@@ -17,7 +17,7 @@ from app.config import settings
 from app.areas.crm import router as crm_router
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, ContractApprovalStep, FileAttachment, JobRole, LegacyCustomer, LegacyCustomerContact, RolePermission, SystemParameter, User, WorkflowEvent
+from app.models import BusinessRecord, ContractApprovalStep, Department, FileAttachment, JobRole, LegacyCustomer, LegacyCustomerContact, RolePermission, SystemParameter, User, WorkflowEvent
 from app.security import current_identity
 from tests.personnel_role_fixture import bind_system_role_pages
 
@@ -34,7 +34,7 @@ class CustomerBackendAlignmentD6Contract(unittest.IsolatedAsyncioTestCase):
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
         tables = [
-            User.__table__, JobRole.__table__, RolePermission.__table__, BusinessRecord.__table__,
+            User.__table__, JobRole.__table__, RolePermission.__table__, BusinessRecord.__table__, Department.__table__,
             WorkflowEvent.__table__, FileAttachment.__table__, SystemParameter.__table__,
             ContractApprovalStep.__table__, LegacyCustomer.__table__, LegacyCustomerContact.__table__,
         ]

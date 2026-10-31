@@ -44,16 +44,11 @@ async def department_case_condition(identity, db):
         str(key) == 'case-dept' or str(key).startswith('case-dept-') for key in permission['menu_keys']
     ):
         raise HTTPException(403, '当前角色没有部门案件权限')
-    departments = list((await db.scalars(select(Department).where(Department.is_active.is_(True)))).all())
-    roots = {item.id for item in departments if item.name == user.department}
-    if not roots:
+    # BUG20261031002：本部门 + 挂在自己名下/自己负责的下级部门，同部门同事看不到别人名下的下级部门。
+    from app.core.department_visibility import visible_department_names
+    names = await visible_department_names(user.username, user.department, db)
+    if not names:
         return false()
-    while True:
-        expanded = roots | {item.id for item in departments if item.parent_department_id in roots}
-        if expanded == roots:
-            break
-        roots = expanded
-    names = {item.name for item in departments if item.id in roots}
     users = list((await db.scalars(select(User).where(User.department.in_(names), User.is_active.is_(True)))).all())
     usernames = {item.username for item in users}
     if not usernames:

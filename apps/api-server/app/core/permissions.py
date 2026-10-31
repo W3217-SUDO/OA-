@@ -783,7 +783,8 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     if menu_keys & {"customer-company", "customer-company-recycle"}:
         customer_menu_scope = BusinessRecord.module == "customer"
     elif menu_keys & {"customer-dept", "customer-dept-recycle"}:
-        customer_menu_scope = and_(BusinessRecord.module == "customer", BusinessRecord.department == user.department)
+        from app.core.department_visibility import visible_department_names
+        customer_menu_scope = and_(BusinessRecord.module == "customer", BusinessRecord.department.in_(await visible_department_names(user.username, user.department, db)))
 
     def include_customer_menu_scope(condition):
         internal_applicant = func.coalesce(*[
@@ -798,7 +799,9 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
         return or_(condition, customer_menu_scope) if customer_menu_scope is not None else condition
 
     if scope == "本部门数据":
-        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.department == user.department, public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
+        from app.core.department_visibility import visible_department_names
+        department_names = await visible_department_names(user.username, user.department, db)
+        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.department.in_(department_names), public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
     if scope == "授权审批数据":
         # Approval range is not a blanket view of every pending record.  A
         # contract becomes visible here only for its current pending approver;
@@ -2142,8 +2145,10 @@ async def _require_hr_employee_target_access(
     data_scope = str(permission.get("data_scope") or "")
     if data_scope == "全所数据":
         return
-    if data_scope == "本部门数据" and employee.department == actor.department:
-        return
+    if data_scope == "本部门数据":
+        from app.core.department_visibility import visible_department_names
+        if employee.department == actor.department or employee.department in await visible_department_names(actor.username, actor.department, db):
+            return
     if target_username == actor.username or employee.owner == actor.username:
         return
     raise HTTPException(status_code=403, detail="当前角色的数据范围不包含该员工档案")
