@@ -39,6 +39,9 @@ class CustomerCoordinatorMineTest(unittest.IsolatedAsyncioTestCase):
                                   department="CODEX", customer="管理的客户", data={"customer_record_id": 1, "case_team_usernames": ["codexco"]}))
             db.add(BusinessRecord(id=13, module="case", serial_no="AJ3", title="管理客户的他人案件", status="文书准备", owner="codexother",
                                   department="CODEX", customer="管理的客户", data={"customer_record_id": 1, "case_team_usernames": ["codexother"]}))
+            db.add(BusinessRecord(id=14, module="case", serial_no="AJ4", title="调查员案件", status="文书准备", owner="codexother",
+                                  department="CODEX", customer="无关客户", data={"customer_record_id": 2, "investigator": "调查员姓名",
+                                                                              "investigator_username": "codexco"}))
             await db.commit()
 
     async def asyncTearDown(self):
@@ -97,6 +100,15 @@ class CustomerCoordinatorMineTest(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(await _case_coordinator_only(await db.get(BusinessRecord, 13), identity("codexmgr", "POST"), db))
         view_only = _case_view_only_capabilities({"can_write": True, "can_create_finance": True, "can_view_case_logs": True, "team_role": "x"})
         self.assertEqual((view_only["can_write"], view_only["can_create_finance"], view_only["can_view_case_logs"]), (False, False, True))
+
+    async def test_migrated_investigator_username_counts_as_my_case(self):
+        from sqlalchemy import select
+        from app.core.permissions import _case_mine_scope_condition
+        async with self.sessions() as db:
+            ids = set((await db.scalars(select(BusinessRecord.id).where(
+                BusinessRecord.module == "case", await _case_mine_scope_condition({"username": "codexco"}, db),
+            ))).all())
+        self.assertIn(14, ids)
 
 
 if __name__ == "__main__":

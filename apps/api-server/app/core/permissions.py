@@ -634,7 +634,7 @@ def _case_personal_scope_condition(username: str):
 
 CASE_MINE_TEXT_FIELDS = (
     "source_person_username", "source_person", "business_owner", "assistant_username",
-    "investigator", "court_lawyer_username", "case_team_usernames",
+    "investigator", "investigator_username", "court_lawyer_username", "case_team_usernames",
     "handling_lawyer_usernames", "legacy_participants",
 )
 
@@ -657,6 +657,7 @@ async def _case_mine_scope_condition(identity: dict, db: AsyncSession, *, projec
             func.coalesce(data["business_owner"], "") == "",
             func.coalesce(data["assistant_username"], "") == "",
             func.coalesce(data["investigator"], "") == "",
+            func.coalesce(data["investigator_username"], "") == "",
             func.coalesce(data["court_lawyer_username"], "") == "",
             func.coalesce(data["case_team_usernames"], "").in_({"", "[]"}),
             func.coalesce(data["handling_lawyer_usernames"], "").in_({"", "[]"}),
@@ -665,6 +666,8 @@ async def _case_mine_scope_condition(identity: dict, db: AsyncSession, *, projec
         data["case_team_usernames"].contains(exact_username_token),
         data["handling_lawyer_usernames"].contains(exact_username_token),
         data["legacy_participants"].contains(f'"staff_name":"{username}"'),
+        # 迁移案件的调查员姓名存在 investigator，账号在 investigator_username（旧系统 Investigator 也算我的案件）。
+        func.lower(func.coalesce(data["investigator_username"], "")) == username.lower(),
         func.lower(func.coalesce(data["source_person_username"], "")) == username.lower(),
         func.lower(func.coalesce(data["source_person"], "")) == username.lower(),
         func.lower(func.coalesce(data["business_owner"], "")) == username.lower(),
