@@ -106,6 +106,8 @@ def align_core_legacy_schema(connection: Connection) -> None:
     if "parent_department_id" not in department_columns:
         connection.execute(text("ALTER TABLE departments ADD COLUMN parent_department_id INTEGER"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_departments_parent_department_id ON departments (parent_department_id)"))
+    if "owner_username" not in department_columns:
+        connection.execute(text("ALTER TABLE departments ADD COLUMN owner_username VARCHAR(64) NOT NULL DEFAULT ''"))
     law_firm_columns = {item["name"] for item in inspect(connection).get_columns("law_firms")}
     for column, definition in {
         "firm_type": "VARCHAR(64) NOT NULL DEFAULT ''",

@@ -537,6 +537,24 @@ async def delete_hr_employee(employee_id: int, identity: dict = Depends(current_
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+async def _department_person(value: str, label: str, db: AsyncSession) -> str:
+    """部门负责人、挂靠人只能选在职账号；留空表示未设置。"""
+    key = (value or "").strip()
+    if not key:
+        return ""
+    username = await db.scalar(select(User.username).where(func.lower(User.username) == key.lower(), User.is_active.is_(True)))
+    if not username:
+        raise HTTPException(status_code=422, detail=f"{label}不存在或已停用")
+    return username
+
+
+async def _ensure_department_can_deactivate(item: Department, db: AsyncSession) -> None:
+    users = await db.scalar(select(func.count()).select_from(User).where(User.department == item.name, User.is_active.is_(True)))
+    children = await db.scalar(select(func.count()).select_from(Department).where(Department.parent_department_id == item.id, Department.is_active.is_(True)))
+    if users: raise HTTPException(status_code=409, detail=f"部门仍有 {users} 个在职账号，请先把他们调到其他部门再停用")
+    if children: raise HTTPException(status_code=409, detail=f"部门仍有 {children} 个启用的下级部门，请先停用或调整下级部门")
+
+
 @router.get(f"{settings.api_prefix}/hr/departments")
 async def list_departments(
     keyword: str = "", active_only: bool = False,
@@ -552,14 +570,14 @@ async def list_departments(
     from app.core.department_audit import _department_actor_sources
     statement = select(Department)
     if keyword.strip():
-        term = f"%{keyword.strip()}%"; statement = statement.where(or_(Department.code.ilike(term), Department.name.ilike(term), Department.manager.ilike(term)))
+        term = f"%{keyword.strip()}%"; statement = statement.where(or_(Department.code.ilike(term), Department.name.ilike(term), Department.manager.ilike(term), Department.owner_username.ilike(term)))
     if active_only: statement = statement.where(Department.is_active.is_(True))
     items = (await db.scalars(statement.order_by(Department.sort_order, Department.id))).all()
     parent_ids = {item.parent_department_id for item in items if item.parent_department_id}
     parents = (await db.scalars(select(Department).where(Department.id.in_(parent_ids)))).all() if parent_ids else []
     names_by_id = {item.id: item.name for item in parents}
     page_items, effective_page, effective_page_size, total = _organization_page(items, page, page_size)
-    display_users = await _user_display_map({value for item in page_items for value in (item.manager, item.created_by, item.updated_by)}, db)
+    display_users = await _user_display_map({value for item in page_items for value in (item.manager, item.owner_username, item.created_by, item.updated_by)}, db)
     actor_sources = await _department_actor_sources(page_items, db)
     return {
         "items": [_department_dict(item, names_by_id.get(item.parent_department_id or 0, ""), display_users, actor_sources.get(item.id)) for item in page_items],
@@ -585,12 +603,14 @@ async def create_department(body: DepartmentInput, identity: dict = Depends(curr
     if body.parent_department_id:
         parent = await db.get(Department, body.parent_department_id)
         if not parent or not parent.is_active: raise HTTPException(status_code=422, detail="上级部门不存在或已停用")
-    item = Department(**body.model_dump(exclude={"code", "name", "manager"}), code=code, name=name, manager=body.manager.strip(), created_by=identity["username"], updated_by=identity["username"])
+    manager = await _department_person(body.manager, "部门负责人", db)
+    owner_username = await _department_person(body.owner_username, "挂靠人", db) if parent else ""
+    item = Department(**body.model_dump(exclude={"code", "name", "manager", "owner_username"}), code=code, name=name, manager=manager, owner_username=owner_username, created_by=identity["username"], updated_by=identity["username"])
     db.add(item); await db.flush()
     await _record_organization_audit(db, identity, "创建部门", f"部门:{item.code}", {"department_id": item.id, "code": item.code, "name": item.name})
     actor_sources = await _department_actor_sources([item], db)
     await db.commit(); await db.refresh(item)
-    display_users = await _user_display_map({item.manager, item.created_by, item.updated_by}, db)
+    display_users = await _user_display_map({item.manager, item.owner_username, item.created_by, item.updated_by}, db)
     return _department_dict(item, parent.name if parent else "", display_users, actor_sources.get(item.id))
 
 
@@ -622,7 +642,16 @@ async def update_department(department_id: int, body: DepartmentUpdate, identity
     changes = body.model_dump(exclude_unset=True, exclude_none=True)
     if "parent_department_id" in body.model_fields_set:
         changes["parent_department_id"] = body.parent_department_id
-    for key, value in changes.items(): setattr(item, key, value.strip().upper() if key == "code" else value.strip() if key in {"name", "manager"} else value)
+    # 只校验本次改动的人，旧数据里不规范的负责人不挡其他字段的保存。
+    if "manager" in changes and changes["manager"].strip() != (item.manager or "").strip():
+        changes["manager"] = await _department_person(changes["manager"], "部门负责人", db)
+    if "owner_username" in changes and changes["owner_username"].strip() != (item.owner_username or "").strip():
+        changes["owner_username"] = await _department_person(changes["owner_username"], "挂靠人", db)
+    if changes.get("is_active") is False and item.is_active:
+        await _ensure_department_can_deactivate(item, db)
+    for key, value in changes.items(): setattr(item, key, value.strip().upper() if key == "code" else value.strip() if key in {"name", "manager", "owner_username"} else value)
+    if not item.parent_department_id:
+        item.owner_username = ""
     item.updated_by = identity["username"]
     if item.name != old_name:
         await db.execute(update(User).where(User.department == old_name).values(department=item.name))
@@ -631,7 +660,7 @@ async def update_department(department_id: int, body: DepartmentUpdate, identity
     actor_sources = await _department_actor_sources([item], db)
     await db.commit(); await db.refresh(item)
     parent = await db.get(Department, item.parent_department_id) if item.parent_department_id else None
-    display_users = await _user_display_map({item.manager, item.created_by, item.updated_by}, db)
+    display_users = await _user_display_map({item.manager, item.owner_username, item.created_by, item.updated_by}, db)
     return _department_dict(item, parent.name if parent else "", display_users, actor_sources.get(item.id))
 
 
@@ -643,15 +672,15 @@ async def delete_department(department_id: int, identity: dict = Depends(current
     from app.core.system import (
         _record_organization_audit,
     )
+    # 删除部门只做停用（逻辑删除），历史数据仍按部门名关联。
     _require_admin(identity); item = await db.get(Department, department_id)
     if not item: raise HTTPException(status_code=404, detail="部门不存在")
-    users = await db.scalar(select(func.count()).select_from(User).where(User.department == item.name))
-    records = await db.scalar(select(func.count()).select_from(BusinessRecord).where(BusinessRecord.department == item.name))
-    child_count = await db.scalar(select(func.count()).select_from(Department).where(Department.parent_department_id == item.id))
-    if (users or 0) + (records or 0) > 0: raise HTTPException(status_code=409, detail=f"部门仍被 {users or 0} 个账号和 {records or 0} 条业务记录使用，请先停用或迁移")
-    if child_count: raise HTTPException(status_code=409, detail=f"部门仍有 {child_count} 个下级部门，请先调整其上级部门")
-    await _record_organization_audit(db, identity, "删除部门", f"部门:{item.code}", {"department_id": item.id, "code": item.code, "name": item.name})
-    await db.delete(item); await db.commit(); return Response(status_code=status.HTTP_204_NO_CONTENT)
+    if item.is_active:
+        await _ensure_department_can_deactivate(item, db)
+        item.is_active = False; item.updated_by = identity["username"]
+        await _record_organization_audit(db, identity, "停用部门", f"部门:{item.code}", {"department_id": item.id, "code": item.code, "name": item.name})
+        await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(f"{settings.api_prefix}/hr/job-roles")

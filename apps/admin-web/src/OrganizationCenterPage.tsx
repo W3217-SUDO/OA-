@@ -36,6 +36,9 @@ type Department = {
   manager: string;
   manager_display_name?: string;
   manager_display_name_missing?: boolean;
+  owner_username?: string;
+  owner_display_name?: string;
+  owner_display_name_missing?: boolean;
   overdue_deduction: boolean;
   sort_order: number;
   is_active: boolean;
@@ -48,6 +51,7 @@ type Department = {
   created_at?: string;
   updated_at?: string;
 };
+type PeopleOption = { value: string; label: string; username: string; search_text?: string };
 type JobRole = {
   id: number;
   code: string;
@@ -295,6 +299,7 @@ export default function OrganizationCenterPage({
   const [departments, setDepartments] = useState<Department[]>([]),
     [roles, setRoles] = useState<JobRole[]>([]),
     [loading, setLoading] = useState(false);
+  const [peopleOptions, setPeopleOptions] = useState<PeopleOption[]>([]);
   const [accessRole, setAccessRole] = useState<{ role: string; menu_keys: string[] }>({ role: "", menu_keys: [] });
   const [open, setOpen] = useState(false),
     [editingDepartment, setEditingDepartment] = useState<Department | null>(
@@ -329,6 +334,9 @@ export default function OrganizationCenterPage({
   };
   useEffect(() => {
     void load();
+    void api.get<{ items?: PeopleOption[] }>("/people/options")
+      .then(({ data }) => setPeopleOptions(data.items || []))
+      .catch(() => setPeopleOptions([]));
     void api.get("/auth/me").then(({ data }) => setAccessRole({
       role: String(data.role || ""),
       menu_keys: Array.isArray(data.menu_keys) ? data.menu_keys.map(String) : [],
@@ -403,7 +411,14 @@ export default function OrganizationCenterPage({
         else await api.post("/hr/job-roles", value);
         notifyPermissionsUpdated();
       } else {
-        const value = await departmentForm.validateFields();
+        const fields = await departmentForm.validateFields();
+        // 清空的选择框不会出现在表单值里，显式传空才能清掉负责人、上级部门和挂靠人。
+        const value = {
+          ...fields,
+          parent_department_id: fields.parent_department_id ?? null,
+          manager: fields.manager ?? "",
+          owner_username: fields.parent_department_id ? fields.owner_username ?? "" : "",
+        };
         if (editingDepartment)
           await api.patch(`/hr/departments/${editingDepartment.id}`, value);
         else await api.post("/hr/departments", value);
@@ -417,20 +432,21 @@ export default function OrganizationCenterPage({
   };
   const removeDepartment = async (row: Department) => {
     if (!canManageOrganization) {
-      message.error("仅系统管理员可以删除部门");
+      message.error("仅系统管理员可以停用部门");
       return;
     }
-    const childCount = departments.filter((candidate) => candidate.parent_department_id === row.id).length;
+    // BUG20261031002：删除部门改为停用，历史数据保留。
+    const childCount = departments.filter((candidate) => candidate.parent_department_id === row.id && candidate.is_active).length;
     if (childCount > 0) {
-      message.error(`存在 ${childCount} 个下级部门，不能删除`);
+      message.error(`存在 ${childCount} 个启用的下级部门，请先停用或调整下级部门`);
       return;
     }
     try {
       await api.delete(`/hr/departments/${row.id}`);
-      message.success("删除成功.");
+      message.success("已停用.");
       void load();
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "删除失败.");
+      message.error(error?.response?.data?.detail || "停用失败.");
     }
   };
   const removeRole = async (row: JobRole) => {
@@ -517,6 +533,12 @@ export default function OrganizationCenterPage({
       width: 130,
       render: (_value, row) => renderPersonReference(row.manager_display_name, row.manager_display_name_missing),
     },
+    {
+      title: "挂靠人",
+      dataIndex: "owner_username",
+      width: 120,
+      render: (_value, row) => row.owner_username ? renderPersonReference(row.owner_display_name, row.owner_display_name_missing) : "—",
+    },
     { title: "排序", dataIndex: "sort_order", width: 75 },
     { title: "创建人", dataIndex: "created_by", width: 120, render: (_value, row) => renderPersonReference(row.created_by_display_name, row.created_by_display_name_missing) },
     { title: "更新人", dataIndex: "updated_by", width: 120, render: (_value, row) => renderPersonReference(row.updated_by_display_name, row.updated_by_display_name_missing) },
@@ -540,12 +562,14 @@ export default function OrganizationCenterPage({
           >
             修改
           </Button>
-          <Popconfirm
-            title="确认删除该部门？"
-            onConfirm={() => removeDepartment(row)}
-          >
-            <Button type="link" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          {row.is_active ? (
+            <Popconfirm
+              title="确认停用该部门？停用后不能再选择，历史数据保留。"
+              onConfirm={() => removeDepartment(row)}
+            >
+              <Button type="link" danger>停用</Button>
+            </Popconfirm>
+          ) : null}
         </Space>
       ) : "—",
     },
@@ -742,8 +766,27 @@ export default function OrganizationCenterPage({
                   options={departments.filter((candidate) => candidate.is_active && candidate.id !== editingDepartment?.id).map((candidate) => ({ value: candidate.id, label: candidate.name }))}
                 />
               </Form.Item>
-              <Form.Item label="部门负责人" name="manager">
-                <Input />
+              <Form.Item label="部门负责人" name="manager" extra="一个人可以兼任多个部门的负责人">
+                <Select
+                  allowClear
+                  showSearch
+                  optionFilterProp="search"
+                  placeholder="请选择"
+                  options={peopleOptions.map((person) => ({ value: person.username, label: person.label, search: person.search_text || person.label }))}
+                />
+              </Form.Item>
+              <Form.Item noStyle dependencies={["parent_department_id"]}>
+                {({ getFieldValue }) => getFieldValue("parent_department_id") ? (
+                  <Form.Item label="挂靠人" name="owner_username" extra="这个下级部门归谁管；挂靠人和他的上级能看这个部门的数据，同部门其他人看不到">
+                    <Select
+                      allowClear
+                      showSearch
+                      optionFilterProp="search"
+                      placeholder="请选择"
+                      options={peopleOptions.map((person) => ({ value: person.username, label: person.label, search: person.search_text || person.label }))}
+                    />
+                  </Form.Item>
+                ) : null}
               </Form.Item>
               <Form.Item label="是否逾期扣款" name="overdue_deduction" valuePropName="checked">
                 <Switch checkedChildren="是" unCheckedChildren="否" />

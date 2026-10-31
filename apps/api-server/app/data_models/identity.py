@@ -14,6 +14,8 @@ class Department(Base):
     name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     parent_department_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     manager: Mapped[str] = mapped_column(String(64), default="")
+    # BUG20261031002：下级部门挂在某个人名下（挂靠人），部门数据范围按人往下看。
+    owner_username: Mapped[str] = mapped_column(String(64), default="")
     overdue_deduction: Mapped[bool] = mapped_column(Boolean, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)

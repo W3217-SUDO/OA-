@@ -35,6 +35,7 @@ class DepartmentInput(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     parent_department_id: int | None = Field(default=None, ge=1)
     manager: str = Field(default="", max_length=64)
+    owner_username: str = Field(default="", max_length=64)
     overdue_deduction: bool = False
     sort_order: int = Field(default=0, ge=0, le=99999)
     is_active: bool = True
@@ -45,6 +46,7 @@ class DepartmentUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=128)
     parent_department_id: int | None = Field(default=None, ge=1)
     manager: str | None = Field(default=None, max_length=64)
+    owner_username: str | None = Field(default=None, max_length=64)
     overdue_deduction: bool | None = None
     sort_order: int | None = Field(default=None, ge=0, le=99999)
     is_active: bool | None = None

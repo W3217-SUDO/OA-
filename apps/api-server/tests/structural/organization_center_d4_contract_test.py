@@ -28,8 +28,8 @@ def test_organization_routes_and_dtos_are_present() -> None:
     for dto in ("class DepartmentInput", "class DepartmentUpdate", "class JobRoleInput", "class JobRoleUpdate"):
         assert dto in MAIN
     for dto, fields in (
-        (DepartmentInput, {"code", "name", "parent_department_id", "manager", "sort_order"}),
-        (DepartmentUpdate, {"code", "name", "parent_department_id", "manager", "sort_order"}),
+        (DepartmentInput, {"code", "name", "parent_department_id", "manager", "owner_username", "sort_order"}),
+        (DepartmentUpdate, {"code", "name", "parent_department_id", "manager", "owner_username", "sort_order"}),
         (JobRoleInput, {"code", "name", "permissions", "data_scope"}),
         (JobRoleUpdate, {"code", "name", "permissions", "data_scope"}),
     ):
@@ -59,7 +59,9 @@ def test_organization_contract_has_admin_guard_and_error_paths() -> None:
     assert "_require_admin(identity); code, name = body.code.strip().upper(), body.name.strip()" in MAIN
     assert "Department.code == code, Department.name == name" in MAIN
     assert "JobRole.code == code, JobRole.name == name" in MAIN
-    assert "child_count" in MAIN
+    # BUG20261031002：删除部门改为停用，仍要先清空在职账号和启用的下级部门。
+    assert "_ensure_department_can_deactivate" in MAIN
+    assert '"停用部门"' in MAIN
     assert "BusinessRecord.module == \"hr\"" in MAIN
     assert 'item.code == "SYSTEM-ADMIN"' in MAIN
     assert "status_code=409" in MAIN
