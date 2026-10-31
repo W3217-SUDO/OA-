@@ -307,7 +307,7 @@ def payment_application_fee_condition():
 
 
 async def query_payments(filters, identity, db):
-    from sqlalchemy import String, and_, case, cast, func, or_
+    from sqlalchemy import BigInteger, String, and_, case, cast, func, or_
     from app.core.permissions import _record_scope_conditions, _require_record_module_menu
     from app.core.system import _allowed_field_keys
     from app.core.contracts import _contract_customer_record_dicts
@@ -336,15 +336,20 @@ async def query_payments(filters, identity, db):
         # 迁移数据按老系统 GroupId：请款单看所属合同的，费用看自己的；0 两边都不显示（陶威 2026-10-30）。
         from sqlalchemy.orm import aliased
         contract = aliased(BusinessRecord)
+        contract_ref = func.coalesce(data["contract_record_id"].as_string(), data["contract_id"].as_string())
+        # 按主键找所属合同；把合同 ID 转成文本再比较会逐条扫全部合同，待缴官费首屏要等 8 秒。
+        contract_match = (contract.id == case((contract_ref.op("~")("^[0-9]{1,18}$"), cast(contract_ref, BigInteger)))
+                          if db.get_bind().dialect.name == "postgresql" else cast(contract.id, String) == contract_ref)
         contract_group = select(contract.data["group_id"].as_string()).where(
-            contract.module == "contract",
-            cast(contract.id, String) == func.coalesce(data["contract_record_id"].as_string(), data["contract_id"].as_string()),
+            contract.module == "contract", contract_match,
         ).correlate(record).limit(1).scalar_subquery()
         group = case((record.module == "contract_payment", contract_group), else_=data["group_id"].as_string())
         computed_scope = func.coalesce(func.nullif(data["finance_scope"].as_string(), ""), case(
-            (group == "10", "firm"), (group == "20", "platform"), (group == "0", "none"),
-            (or_(data["accounting_center"].as_string() == "平台财务中心", data["contract_body"].as_string() == "平台"), "platform"),
-            else_="firm",
+            {"10": "firm", "20": "platform", "0": "none"}, value=group,
+            else_=case(
+                (or_(data["accounting_center"].as_string() == "平台财务中心", data["contract_body"].as_string() == "平台"), "platform"),
+                else_="firm",
+            ),
         ))
         conditions.append(computed_scope == finance_scope)
     if filters.get("keyword"):
@@ -419,12 +424,14 @@ async def query_payments(filters, identity, db):
     page, page_size = int(filters.get("page", 1)), int(filters.get("page_size", 20))
     if page < 1 or not 1 <= page_size <= 500:
         raise HTTPException(422, "分页参数超出有效范围")
-    total = int(await db.scalar(select(func.count(record.id)).where(*conditions)) or 0)
     allowed = await _allowed_field_keys(identity, db)
-    totals = {}
-    if allowed is None or "finance.amount" in allowed:
-        amount = await db.scalar(select(func.coalesce(func.sum(payment_query_amount(record, db.get_bind().dialect.name)), 0)).where(*conditions))
-        totals = {"amount": round(float(amount or 0), 2)}
+    # 条数和金额合计一次查完，同一组筛选条件不重复执行。
+    total, amount = (await db.execute(select(
+        func.count(record.id),
+        func.coalesce(func.sum(payment_query_amount(record, db.get_bind().dialect.name)), 0),
+    ).where(*conditions))).one()
+    total = int(total or 0)
+    totals = {"amount": round(float(amount or 0), 2)} if allowed is None or "finance.amount" in allowed else {}
     rows = list((await db.scalars(select(record).where(*conditions).order_by(
         record.created_at.desc(), record.id.desc(),
     ).offset((page - 1) * page_size).limit(page_size))).all())
