@@ -70,7 +70,8 @@ def _task_schedule_state(record: BusinessRecord) -> tuple[date | None, int | Non
     try:
         # 历史任务使用 TaskEndTime/task_end_time，新任务使用 deadline，保持同一展示日期。
         raw_deadline = data.get("deadline") or data.get("task_end_time") or data.get("TaskEndTime") or ""
-        deadline = date.fromisoformat(str(raw_deadline))
+        # 旧系统同步来的任务截止时间带时分秒（2026-10-30T18:27:31），只取日期部分。
+        deadline = date.fromisoformat(str(raw_deadline).strip()[:10])
         is_terminal = record.status in {"已拒绝", "已完成", "已验收", "待确认"}
         terminal_at = data.get("rejected_at") if record.status == "已拒绝" else data.get("completion_submitted_at")
         end_date = (date.fromisoformat(str(terminal_at)[:10]) if terminal_at else None) if is_terminal else date.today()
@@ -84,6 +85,9 @@ def _task_schedule_state(record: BusinessRecord) -> tuple[date | None, int | Non
     if days_remaining is not None and days_remaining < 0 and record.status in {"待接收", "待处理", "处理中", "进行中"}:
         effective_status = "已逾期"
     reminder_due = days_remaining in {1, 3} or (days_remaining is not None and days_remaining < 0 and abs(days_remaining) % 3 == 0)
+    if data.get("legacy_case_task"):
+        # 旧系统同步来的未完成任务大多早已逾期，只在列表里显示截止日期和逾期，不进到期提醒、不推钉钉（陶威 2026-11-01）。
+        reminder_due = False
     reminder_text = ""
     if days_remaining in {1, 3}:
         reminder_text = f"{days_remaining} 天后到期"
