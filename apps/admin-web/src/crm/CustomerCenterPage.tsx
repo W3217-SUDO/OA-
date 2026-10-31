@@ -1233,6 +1233,11 @@ export default function CustomerCenterPage({
   const runOriginalAction = (key: string) => {
     const target = requireSingleSelected();
     if (!target) return;
+    // 协作人在“我的客户”里只能查看客户和联系人，修改仍由客户管理人操作（陶威 2026-10-31）。
+    if ((target.data as any).my_customer_relation === "协作" && key !== "contact-management") {
+      message.warning("你是该客户的协作人，只能查看，不能修改");
+      return;
+    }
     if (key === "delete") recycleCustomer(target);
     if (key === "edit") startEdit(target);
     if (key === "assign") startAssign(target);

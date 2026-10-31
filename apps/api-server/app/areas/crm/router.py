@@ -1738,7 +1738,7 @@ async def list_customers(
         "total_un_invoiced_amount",
     ]
     candidate_data_fields = (
-        "customer_managers", "customer_source", "source_person", "shared_with",
+        "customer_managers", "customer_source", "source_person", "shared_with", "coordinators",
         "last_contact_at", "last_modified_by", *legacy_summary_fields,
     )
     sql_paged = scope in {"company", "company_recycle", "public"} and not normalized_manager
@@ -1794,13 +1794,24 @@ async def list_customers(
         source = str(data.get("customer_source") or data.get("source_person") or "").strip()
         return {str(item.owner or "").strip(), *exact_managers(item), source} - {""}
 
+    def customer_coordinators(item: BusinessRecord) -> set[str]:
+        raw = (item.data or {}).get("coordinators", [])
+        return {str(value).strip() for value in raw if str(value).strip()} if isinstance(raw, list) else set()
+
     # “我的客户” means that the current user is either a customer manager or
     # the source person; this applies to administrators too.
+    # 协作人也算“我的客户”，行上标“协作”，只能查看（陶威 2026-10-31）。
+    coordinated_ids: set[int] = set()
     if scope in {"mine", "recycle"}:
+        if scope == "mine":
+            coordinated_ids = {
+                item.id for item in candidate_rows
+                if not customer_participants(item) & manager_tokens and customer_coordinators(item) & manager_tokens
+            }
         candidate_rows = [
             item
             for item in candidate_rows
-            if bool(customer_participants(item) & manager_tokens)
+            if bool(customer_participants(item) & manager_tokens) or item.id in coordinated_ids
         ]
     # A department list is a projection of the personnel relationships shown
     # in the screenshot, not merely the department stamped on the record.
@@ -1954,6 +1965,7 @@ async def list_customers(
             **relationship_counts[item.id],
             "customer_manager_display_names": [person_display(value) for value in manager_values if str(value or "").strip()],
             "customer_source_display_name": person_display(source_value),
+            **({"my_customer_relation": "协作"} if item.id in coordinated_ids else {}),
         }
         response_items.append(row)
     return {

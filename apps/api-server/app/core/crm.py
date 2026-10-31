@@ -758,6 +758,8 @@ async def _locked_customer_or_404(customer_id: int, identity: dict, db: AsyncSes
     )
     if not customer:
         raise HTTPException(status_code=404, detail="客户不存在或无权访问")
+    from app.core.permissions import _deny_customer_coordinator_write
+    await _deny_customer_coordinator_write(customer, identity, db)
     return customer
 
 

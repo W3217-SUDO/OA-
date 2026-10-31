@@ -922,7 +922,39 @@ async def _ensure_record_visible(record_id: int, identity: dict, db: AsyncSessio
     record = await db.scalar(select(BusinessRecord).where(*conditions))
     if not record:
         raise HTTPException(status_code=404, detail="记录不存在或无权访问")
+    await _deny_customer_coordinator_write(record, identity, db)
     return record
+
+
+def _customer_people(values) -> set[str]:
+    values = values if isinstance(values, list) else [values]
+    return {str(value).strip() for value in values if str(value or "").strip()}
+
+
+async def _deny_customer_coordinator_write(record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
+    """协作人在“我的客户”里能看到客户，但只能查看；修改仍归客户管理人（陶威 2026-10-31）。"""
+    if record.module != "customer" or identity.get("_request_method", "GET") in {"GET", "HEAD", "OPTIONS"}:
+        return
+    if "admin" in identity.get("_actual_role_ids", []):
+        return
+    data = record.data or {}
+    tokens = _customer_people([identity.get("username"), identity.get("display_name")])
+    if not _customer_people(data.get("coordinators") or []) & tokens:
+        return
+    related = {*_customer_people(record.owner), *_customer_people(data.get("customer_managers") or []),
+               *_customer_people(data.get("customer_source")), *_customer_people(data.get("source_person")),
+               *_customer_people(data.get("shared_with") or [])}
+    if related & tokens:
+        return
+    # 本来就能管这个客户的人（全所/部门客户权限等）不受协作身份影响。
+    actual = {**identity, "role": identity.get("_actual_role") or identity.get("role"),
+              "role_ids": identity.get("_actual_role_ids") or identity.get("role_ids") or [],
+              "_page_menu_capability": False}
+    if await db.scalar(select(BusinessRecord.id).where(
+        BusinessRecord.id == record.id, *(await _record_scope_conditions(actual, db)),
+    )):
+        return
+    raise HTTPException(status_code=403, detail="你是该客户的协作人，只能查看，不能修改")
 
 
 async def _ensure_pending_clue_audit_record(record_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
