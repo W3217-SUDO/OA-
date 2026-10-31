@@ -37,25 +37,31 @@ async def _official_fee_audit_metric(response, identity, db):
     return response
 
 
-async def _customer_unreceived_metric(response, identity, db):
-    """旧系统“未到官费金额”= 我的客户（本人是客户负责人或协作人）的官费未到合计，与「我的客户」合计行同一算法。"""
+async def _with_customer_unreceived(queues_job, definitions, identity, db):
+    """旧系统“未到官费金额”= 我的客户（本人是客户负责人或协作人）的官费未到合计，与「我的客户」合计行同一算法。
+    客户合计和各提醒队列互不依赖，用独立只读会话并行计算。"""
     from app.core.customer_fee_balance import managed_customers_official_unreceived
+    from app.core.dashboard_list_counts import gather_counts
+    results = await gather_counts(db, {
+        "queues": queues_job,
+        "unreceived": lambda session: managed_customers_official_unreceived(session, identity["username"]),
+    })
+    response = await _official_fee_audit_metric(_metrics_response(results["queues"], definitions), identity, db)
     for metric in response["metrics"]:
         if metric["key"] == "official-fee-unreceived":
-            metric["value"] = f"{await managed_customers_official_unreceived(db, identity['username']):.2f}元"
+            metric["value"] = f"{results['unreceived']:.2f}元"
     return response
 
 
 async def dashboard_metrics(identity, db):
-    response = _metrics_response(await personal_queues(identity, db))
-    return await _customer_unreceived_metric(await _official_fee_audit_metric(response, identity, db), identity, db)
+    return await _with_customer_unreceived(lambda session: personal_queues(identity, session), METRIC_DEFINITIONS, identity, db)
 
 
 async def dashboard_finance_metrics(identity, db):
     """返回原八卡中的三张财务卡，其他指标由案件分区读取。"""
     definitions = [item for item in METRIC_DEFINITIONS if item[0] not in CASE_QUEUES]
-    response = _metrics_response(await personal_finance_queues(identity, db), definitions)
-    return await _customer_unreceived_metric(await _official_fee_audit_metric(response, identity, db), identity, db)
+    return await _with_customer_unreceived(
+        lambda session: personal_finance_queues(identity, session), definitions, identity, db)
 
 
 async def dashboard_case_metrics(identity, db):

@@ -21,9 +21,11 @@ async def dashboard_todos(identity, db, *, record_scope=None):
     ).group_by(BusinessRecord.status))).all())
     # 旧系统“待审批线索”= 线索审批列表（PageId 1401004001）里待审批的条数，按线索审批范围（客户管理人/协作人/线索审批岗）计。
     from app.core.clue_audit_scope import clue_audit_condition
-    pending_clue_reviews = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(
-        BusinessRecord.status == "待审批", await clue_audit_condition(identity, db),
-    )) or 0) if "clue" in modules else 0
+
+    async def pending_clue_reviews_total(session):
+        return int(await session.scalar(select(func.count()).select_from(BusinessRecord).where(
+            BusinessRecord.status == "待审批", await clue_audit_condition(identity, session),
+        )) or 0) if "clue" in modules else 0
     labels = [("待处理任务", "待审批官方费用"), ("待审批线索", "待审批内部费用"),
               ("待审批合同", "待审批结算费用"), ("待审批用印", "待归档费用"),
               ("待审核归档", "待审核预损费用")]
@@ -33,6 +35,9 @@ async def dashboard_todos(identity, db, *, record_scope=None):
     archive_action_allowed = await _case_action_granted(identity, db, "case.archive.review")
     # 各卡片计数互不依赖，独立只读会话并行计算（性能：原先串行约 5–8 秒）。
     list_totals = await list_counts.gather_counts(db, {
+        # 线索审批范围和被驳回统计最慢，先排进并行队列。
+        "_pending_clue_reviews": pending_clue_reviews_total,
+        "_rejected": lambda session: legacy_rejected_counts(identity, session),
         "待审批官方费用": lambda session: list_counts.payment_audit_official_total(identity, session),
         "待审批内部费用": lambda session: list_counts.internal_review_total(identity, session, "other"),
         "待审批结算费用": lambda session: list_counts.settlement_audit_total(identity, session),
@@ -44,7 +49,8 @@ async def dashboard_todos(identity, db, *, record_scope=None):
     })
     right_counts = {name: list_totals[name] for name in (
         "待审批官方费用", "待审批内部费用", "待审批结算费用", "待归档费用", "待审核预损费用")}
-    rejected = await legacy_rejected_counts(identity, db)
+    rejected = list_totals["_rejected"]
+    pending_clue_reviews = list_totals["_pending_clue_reviews"]
     todos = [[left, 0, rejected.get(left, 0), right, right_counts[right], rejected.get(right, 0)] for left, right in labels]
     # 旧系统每行两列：蓝色是待我审批，橙色是被驳回；橙色的范围见 REJECTED_COUNT_SCOPE。
     personal_tasks = [
