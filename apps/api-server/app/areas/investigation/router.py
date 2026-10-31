@@ -776,16 +776,26 @@ async def investigation_clue_conflicts(clue_id: int, identity: dict = Depends(cu
     return await clue_conflicts(clue, db)
 
 
+async def _lock_clue_for_review(clue_id: int, expected_status: str, db: AsyncSession) -> BusinessRecord:
+    """锁住线索行再判断状态：连点或两人同时审批时，后到的请求等前一个提交后看到新状态，不会重复审批。"""
+    locked = await db.scalar(select(BusinessRecord).where(BusinessRecord.id == clue_id).with_for_update().execution_options(populate_existing=True))
+    if locked.status != expected_status and locked.status in {"待客户审核", "待取证", "已驳回"}:
+        raise HTTPException(status_code=409, detail=f"该线索已审批（当前状态：{locked.status}），请勿重复提交")
+    return locked
+
+
 @router.post(f"{settings.api_prefix}/investigations/clues/{{clue_id}}/review")
 async def review_investigation_clue(clue_id: int, body: ClueReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.clue_conflicts import clue_conflicts
-    from app.core.permissions import (
-        _ensure_pending_clue_audit_record, _record_scope_conditions,
-    )
+    from app.core.clue_audit_scope import ensure_clue_audit_record
+    from app.core.permissions import _record_scope_conditions
     from app.core.system import (
         _record_dict,
     )
-    clue = await _ensure_pending_clue_audit_record(clue_id, identity, db)
+    await ensure_clue_audit_record(clue_id, identity, db)
+    clue = await _lock_clue_for_review(clue_id, "待审批", db)
+    if clue.status != "待审批":
+        raise HTTPException(status_code=409, detail="只有待审批线索可以进入内部审核")
     assigned_reviewer = str((clue.data or {}).get("reviewer") or "").strip()
     if assigned_reviewer and assigned_reviewer != identity["username"] and identity.get("_actual_role", identity.get("role")) != "admin":
         raise HTTPException(status_code=403, detail="该线索已分配给其他审核人")
@@ -813,7 +823,8 @@ async def customer_review_investigation_clue(clue_id: int, body: ClueReviewInput
     from app.core.system import (
         _record_dict,
     )
-    clue = await ensure_clue_audit_record(clue_id, identity, db, include_job_permission=False)
+    await ensure_clue_audit_record(clue_id, identity, db, include_job_permission=False)
+    clue = await _lock_clue_for_review(clue_id, "待客户审核", db)
     if clue.status != "待客户审核":
         raise HTTPException(status_code=409, detail="只有待客户审核线索可以确认客户审核结果")
     clue.status = "待取证" if body.approved else "已驳回"
