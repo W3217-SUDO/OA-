@@ -576,7 +576,8 @@ const menuItems: NavItem[] = [
       { key: "hr-new", label: "新建员工" },
       { key: "hr-all", label: "员工管理" },
       { key: "hr-performance", label: "绩效管理" },
-      { key: "hr-departments", label: "部门管理" },
+      { key: "hr-department-new", label: "部门新建" },
+      { key: "hr-departments", label: "部门设置" },
       { key: "hr-roles", label: "角色管理" },
       { key: "hr-seal-approval", label: "用印审批设置" },
     ],
@@ -1911,7 +1912,7 @@ export default function App() {
       <UserCenterPage />
     ) : route.startsWith("finance-") ? (
       <FinanceCenterPage initialView={active} onNavigate={navigate} />
-    ) : ["hr-departments", "hr-roles"].includes(route) ? (
+    ) : ["hr-department-new", "hr-departments", "hr-roles"].includes(route) ? (
       <OrganizationCenterPage initialView={route} />
     ) : route === "hr-performance" ? (
       <HrPerformancePage onNavigate={navigate} />

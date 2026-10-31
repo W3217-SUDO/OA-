@@ -130,7 +130,7 @@ DEFAULT_SYSTEM_MENUS = [
     ("finance", "", "财务中心", "file-text", 90),
     ("platform-finance", "", "平台财务中心", "bank", 100),
     ("user-center", "", "用户中心", "user", 110), ("user-messages", "user-center", "消息通知", "", 111), ("user-communications", "user-center", "沟通日志", "", 112), ("user-account", "user-center", "账户管理", "", 113),
-    ("hr", "", "人事中心", "team", 120), ("hr-new", "hr", "新建员工", "", 1), ("hr-all", "hr", "员工管理", "", 2), ("hr-departments", "hr", "部门管理", "", 3), ("hr-roles", "hr", "角色管理", "", 4), ("hr-performance", "hr", "绩效管理", "", 5), ("hr-seal-approval", "hr", "用印审批设置", "", 6),
+    ("hr", "", "人事中心", "team", 120), ("hr-new", "hr", "新建员工", "", 1), ("hr-all", "hr", "员工管理", "", 2), ("hr-department-new", "hr", "部门新建", "", 3), ("hr-departments", "hr", "部门设置", "", 3), ("hr-roles", "hr", "角色管理", "", 4), ("hr-performance", "hr", "绩效管理", "", 5), ("hr-seal-approval", "hr", "用印审批设置", "", 6),
     ("system", "", "系统中心", "user", 130), ("system-parameters", "system", "系统参数", "", 1), ("system-management", "system", "系统管理", "", 2),
     ("warehouse", "", "仓库管理", "file-text", 140), ("warehouse-list", "warehouse", "仓库一览表", "", 1), ("reports", "", "报表中心", "dashboard", 150),
 ]
@@ -811,7 +811,7 @@ JOB_ROLE_LABEL_MENU_GRANTS: dict[str, tuple[str, ...]] = {
     "退款办理": ("finance",), "内部结算": ("finance-internal",), "对账": ("finance",),
     "用印申请": ("seal-my",), "用印审批": ("seal-audit",), "印章管理": ("seal-admin",),
     "员工查看": ("hr-all",), "员工新建": ("hr-new",), "员工修改": ("hr-all",),
-    "部门管理": ("hr-departments",), "岗位角色管理": ("hr-roles",), "仓库查看": ("warehouse-list",),
+    "部门管理": ("hr-departments", "hr-department-new"), "岗位角色管理": ("hr-roles",), "仓库查看": ("warehouse-list",),
     "仓库出入库": ("warehouse",), "报表查看": ("reports",), "报表导出": ("reports",),
     "系统权限配置": ("system",), "系统参数配置": ("system-parameters",), "审计日志查看": ("system",),
 }

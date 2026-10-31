@@ -23,7 +23,7 @@ export function hrActionAccess(input) {
 
 export function organizationActionAccess(input) {
   const { role, menuKeys } = accessContext(input)
-  const hasOrganizationMenu = menuKeys.some((key) => key === 'hr' || key === 'hr-departments' || key === 'hr-roles')
+  const hasOrganizationMenu = menuKeys.some((key) => key === 'hr' || key === 'hr-departments' || key === 'hr-department-new' || key === 'hr-roles')
   return { canManageOrganization: role === 'admin' || hasOrganizationMenu }
 }
 

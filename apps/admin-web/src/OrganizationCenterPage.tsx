@@ -14,7 +14,6 @@ import {
   Select,
   Space,
   Switch,
-  Tabs,
   Tag,
   Tooltip,
   Tree,
@@ -319,8 +318,12 @@ export default function OrganizationCenterPage({
   const [departmentForm] = Form.useForm(),
     [roleForm] = Form.useForm(),
     [createDepartmentForm] = Form.useForm();
-  // 部门管理分“部门新建”和“部门设置”两个页签（思法汇成 10-31，BUG20261031002）。
-  const [departmentTab, setDepartmentTab] = useState<"create" | "settings">("settings");
+  // 人事中心“部门新建”“部门设置”是两个单独菜单（思法汇成 10-31 16:44，BUG20261031002）。
+  const createView = initialView === "hr-department-new";
+  useEffect(() => {
+    if (createView && !createDepartmentForm.isFieldTouched("sort_order"))
+      createDepartmentForm.setFieldsValue({ sort_order: departments.length + 1 });
+  }, [createView, departments.length]);
   const [creatingDepartment, setCreatingDepartment] = useState(false);
   const createDepartment = async () => {
     if (!canManageOrganization) {
@@ -331,7 +334,7 @@ export default function OrganizationCenterPage({
       const value = await createDepartmentForm.validateFields();
       setCreatingDepartment(true);
       await api.post("/hr/departments", { ...value, is_active: true, manager: "", owner_username: "", parent_department_id: null });
-      message.success("部门已新建，请到“部门设置”里设置上级部门和负责人。");
+      message.success("部门已新建，请到人事中心“部门设置”里设置上级部门和负责人。");
       createDepartmentForm.resetFields();
       void load();
     } catch (error: any) {
@@ -636,7 +639,7 @@ export default function OrganizationCenterPage({
       ) : "—",
     },
   ];
-  const title = rolesView ? "角色列表" : "部门列表",
+  const title = rolesView ? "角色列表" : "部门设置",
     button = rolesView ? "新增角色" : "新增部门";
   const [organizationPage, setOrganizationPage] = useState(1);
   const [organizationPageSize, setOrganizationPageSize] = useState(15);
@@ -644,15 +647,17 @@ export default function OrganizationCenterPage({
     <div className="organization-empty">
       <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />
       {canManageOrganization && (
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => (rolesView ? start() : setDepartmentTab("create"))}>
-          {button}
-        </Button>
+        rolesView ? (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => start()}>
+            {button}
+          </Button>
+        ) : <span>请在人事中心“部门新建”里新建部门</span>
       )}
     </div>
   );
   const createDepartmentPanel = (
     <Form form={createDepartmentForm} layout="vertical" className="organization-create-form" initialValues={{ sort_order: departments.length + 1 }}>
-      <Alert type="info" showIcon style={{ marginBottom: 16 }} title="这里只新建部门；上级部门、部门负责人、挂靠人和停用都在“部门设置”里操作。" />
+      <Alert type="info" showIcon style={{ marginBottom: 16 }} title="这里只新建部门；上级部门、部门负责人、挂靠人和停用都在人事中心“部门设置”里操作。" />
       <div className="organization-form-grid">
         <Form.Item label="部门名称" name="name" rules={[{ required: true, message: "请输入部门名称." }]}>
           <Input />
@@ -669,10 +674,9 @@ export default function OrganizationCenterPage({
       </Button>
     </Form>
   );
-  if (!rolesView && departmentTab === "create") {
+  if (createView) {
     return (
-      <Card className="panel organization-panel" title="部门管理">
-        <Tabs activeKey={departmentTab} onChange={(key) => setDepartmentTab(key as "create" | "settings")} items={[{ key: "create", label: "部门新建" }, { key: "settings", label: "部门设置" }]} />
+      <Card className="panel organization-panel" title="部门新建">
         {createDepartmentPanel}
       </Card>
     );
@@ -680,7 +684,6 @@ export default function OrganizationCenterPage({
   return (
     <>
       <Card className="panel organization-panel" title={title}>
-        {!rolesView && <Tabs activeKey={departmentTab} onChange={(key) => setDepartmentTab(key as "create" | "settings")} items={[{ key: "create", label: "部门新建" }, { key: "settings", label: "部门设置" }]} />}
         <div className="organization-action">
           {canManageOrganization && rolesView && <Button
             type="primary"
