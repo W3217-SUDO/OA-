@@ -127,9 +127,7 @@ export function CustomerList({ initialView, rows, total, page, pageSize, custome
       ellipsis: true,
       render: (_: unknown, r: Customer) => {
         const managers = userLabels((r.data as any).customer_manager_display_names || r.data.customer_managers || [r.owner]);
-        // 我是协作人的客户，在客户管理人旁标“协作”。
-        const coordinated = (r.data as any).my_customer_relation === "协作";
-        return <span title={coordinated ? `${managers}（我是协作人）` : managers}>{managers}{coordinated && <span className="customer-coordinator-tag">协作</span>}</span>;
+        return <span title={managers}>{managers}</span>;
       },
     },
     ...(initialView === "customer-shared" ? [{

@@ -1,4 +1,4 @@
-"""陶威 2026-10-31：协作人也算“我的客户”，行上标“协作”；协作人只能查看，不能修改。"""
+"""陶威/陶国南 2026-10-31：旧系统的多位客户管理人（迁移在 coordinators）也算“我的客户”，显示为客户管理人，权限相同。"""
 import unittest
 
 from fastapi import HTTPException
@@ -55,7 +55,8 @@ class CustomerCoordinatorMineTest(unittest.IsolatedAsyncioTestCase):
     async def test_coordinator_sees_customer_marked_as_coordination(self):
         result = await self.mine("codexco")
         self.assertEqual([item["id"] for item in result["items"]], [1])
-        self.assertEqual(result["items"][0]["data"]["my_customer_relation"], "协作")
+        self.assertNotIn("my_customer_relation", result["items"][0]["data"])
+        self.assertEqual(result["items"][0]["data"]["customer_manager_display_names"], ["codexmgr", "codexco"])
         manager = await self.mine("codexmgr")
         self.assertEqual([item["id"] for item in manager["items"]], [1])
         self.assertNotIn("my_customer_relation", manager["items"][0]["data"])
@@ -95,7 +96,7 @@ class CustomerCoordinatorMineTest(unittest.IsolatedAsyncioTestCase):
     async def test_coordinator_cases_are_marked_and_view_only(self):
         async with self.sessions() as db:
             items = await mark_coordinated_cases([{"id": 11, "data": {}}, {"id": 12, "data": {}}], identity("codexco"), db)
-            self.assertEqual(items[0]["data"].get("my_case_relation"), "协作")
+            self.assertEqual(items[0]["data"].get("my_case_relation"), "客户管理")
             self.assertNotIn("my_case_relation", items[1]["data"])
             reader = {**identity("codexco", "GET"), "_page_menu_capability": False}
             self.assertEqual((await _ensure_record_visible(11, reader, db)).id, 11)

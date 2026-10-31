@@ -1806,7 +1806,7 @@ async def list_customers(
 
     # “我的客户” means that the current user is either a customer manager or
     # the source person; this applies to administrators too.
-    # 协作人也算“我的客户”，行上标“协作”，只能查看（陶威 2026-10-31）。
+    # 旧系统的多位客户管理人（迁移在 coordinators）也算“我的客户”（陶国南 2026-10-31）。
     coordinated_ids: set[int] = set()
     if scope in {"mine", "recycle"}:
         if scope == "mine":
@@ -1907,7 +1907,7 @@ async def list_customers(
             item
             for item in candidate_rows
             if str(item.owner or "").strip() in manager_search_tokens
-            or bool(exact_managers(item) & manager_search_tokens)
+            or bool((exact_managers(item) | customer_coordinators(item)) & manager_search_tokens)
         ]
 
     if scope == "recent_contact":
@@ -1965,13 +1965,15 @@ async def list_customers(
         manager_values = row_data.get("customer_managers") or ([row.get("owner")] if row.get("owner") else [])
         if not isinstance(manager_values, list):
             manager_values = [manager_values]
+        # 旧系统的多位客户管理人迁移在 coordinators 里，一并显示为客户管理人（陶国南 2026-10-31）。
+        coordinator_values = row_data.get("coordinators") if isinstance(row_data.get("coordinators"), list) else []
+        manager_values = list(dict.fromkeys([*manager_values, *coordinator_values]))
         source_value = row_data.get("customer_source") or row_data.get("source_person") or row.get("owner")
         row["data"] = {
             **row_data,
             **relationship_counts[item.id],
             "customer_manager_display_names": [person_display(value) for value in manager_values if str(value or "").strip()],
             "customer_source_display_name": person_display(source_value),
-            **({"my_customer_relation": "协作"} if item.id in coordinated_ids else {}),
         }
         response_items.append(row)
     return {

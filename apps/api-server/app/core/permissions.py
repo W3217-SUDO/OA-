@@ -728,19 +728,16 @@ async def _case_coordinator_only(record: BusinessRecord, identity: dict, db: Asy
 
 
 async def mark_coordinated_cases(items: list[dict], identity: dict, db: AsyncSession) -> list[dict]:
-    """“我的案件”里只因客户关系出现的案件，行上标“客户管理”或“协作”。"""
+    """“我的案件”里只因客户管理人身份（含旧系统多位管理人）出现的案件，行上标“客户管理”。"""
     ids = [item["id"] for item in items if item.get("id")]
     if not ids:
         return items
     participant = set((await db.scalars(select(BusinessRecord.id).where(
         BusinessRecord.id.in_(ids), await _case_mine_scope_condition(identity, db),
     ))).all())
-    managed = set((await db.scalars(select(BusinessRecord.id).where(
-        BusinessRecord.id.in_(ids), _coordinated_case_condition(identity["username"], db.get_bind().dialect.name, "manager"),
-    ))).all())
     for item in items:
         if item.get("id") in ids and item["id"] not in participant:
-            item["data"] = {**(item.get("data") or {}), "my_case_relation": "客户管理" if item["id"] in managed else "协作"}
+            item["data"] = {**(item.get("data") or {}), "my_case_relation": "客户管理"}
     return items
 
 

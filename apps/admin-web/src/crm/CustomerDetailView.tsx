@@ -159,7 +159,7 @@ export function CustomerDetailView({ initialView, customer, directory, customerT
           <label><span>是否共享</span><Select disabled value={customer.data.is_shared || "否"} options={["是","否"].map(value=>({value,label:value}))} /></label>
           <label><span>客户等级</span><Select disabled value={customer.data.level || "立案客户"} options={["签约客户","立案客户","高级客户","中级客户","低级客户"].map(value=>({value,label:value}))} /></label>
           <label><span>上海市资助信息</span><Select disabled value={customer.data.is_assisted || "否"} options={["是","否"].map(value=>({value,label:value}))} /></label>
-          <label><span>客戶管理人</span><Input disabled value={userLabels((customer.data as any).customer_manager_display_names || customer.data.customer_managers || [customer.owner])} /></label>
+          <label><span>客戶管理人</span><Input disabled value={userLabels((customer.data as any).customer_manager_display_names || [...new Set([...(customer.data.customer_managers || [customer.owner]), ...((customer.data as any).coordinators || [])])])} /></label>
           <label><span>客户联系人账号</span><Input disabled value={contactAccountLabels(customer)} /></label>
         </div>
       </section>

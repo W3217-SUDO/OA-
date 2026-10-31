@@ -420,16 +420,3 @@
 .page-workbench > .customer-list-panel { display: flex; height: 100%; min-height: 0; flex-direction: column; }
 .page-workbench > .customer-list-panel > .ant-card-body { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; }
 .customer-list-panel .ant-table-wrapper { min-height: 0; }
-
-/* 我是协作人的客户：客户管理人旁的“协作”标记 */
-.customer-coordinator-tag {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 0 6px;
-  border: 1px solid #91caff;
-  border-radius: 4px;
-  background: #e6f4ff;
-  color: #0958d9;
-  font-size: 12px;
-  line-height: 18px;
-}
