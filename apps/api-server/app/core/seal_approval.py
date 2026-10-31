@@ -10,10 +10,11 @@
 from __future__ import annotations
 
 import hashlib
+import weakref
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import BusinessRecord, Department, FileAttachment, SystemConfig, User
@@ -42,7 +43,20 @@ def normalize_settings(value: dict | None) -> dict:
     }
 
 
+_CONFIG_TABLE_PRESENT: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()
+
+
+async def _config_table_present(db: AsyncSession) -> bool:
+    """用印权限判断每次都会读设置；只建了部分表的库（单元测试夹具）没有 system_configs 时按未设置处理。按引擎只查一次。"""
+    engine = db.bind.engine if hasattr(db.bind, "engine") else db.bind
+    if engine not in _CONFIG_TABLE_PRESENT:
+        _CONFIG_TABLE_PRESENT[engine] = await db.run_sync(lambda sync: inspect(sync.connection()).has_table(SystemConfig.__tablename__))
+    return _CONFIG_TABLE_PRESENT[engine]
+
+
 async def load_seal_approval_settings(db: AsyncSession) -> dict:
+    if not await _config_table_present(db):
+        return normalize_settings(None)
     row = await db.scalar(select(SystemConfig).where(SystemConfig.key == SEAL_APPROVAL_CONFIG_KEY))
     return normalize_settings(row.value if row else None)
 
