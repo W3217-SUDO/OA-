@@ -428,8 +428,8 @@ async def generate_response(identity: dict[str, Any], db: AsyncSession, text: st
         from app.harness_agent.affinity import claim
         await claim(identity["username"], state["conversation_id"])
         if submission is not None:
-            from .mcp_chat_connection import configure_chat_connection
-            result = await configure_chat_connection(submission, identity, db, state, on_delta, on_progress)
+            from .mcp_chat_connection import configure_chat_submission
+            result = await configure_chat_submission(submission, identity, db, state, on_delta, on_progress)
             return {**result, 'state': await project_personal_actions(result['state'], identity, db)}
         initial_last = state["messages"][-1] if state["messages"] else None
         partial: list[str] = []

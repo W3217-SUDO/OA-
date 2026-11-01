@@ -690,6 +690,46 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn(self.secret, json.dumps(record.value))
             self.assertEqual(decrypt(record), self.configuration)
 
+    async def test_chat_configures_each_pasted_server_and_one_failure_does_not_stop_others(self):
+        """陶国南、陶威 11-01：一次粘贴多个服务时逐个配置，每个单独回报，一个失败不影响其他。"""
+        from app.areas.personal_agent.mcp_chat_input import ChatConnectionBatch, extract_chat_connection
+        from app.areas.personal_agent.mcp_chat_connection import configure_chat_submission
+        other = 'CODEX-MCP-second-secret-never-echo'
+        pasted = {'mcpServers': {
+            'codex-law': {'type': 'streamableHttp', 'url': 'https://example.com/mcp', 'headers': {'Authorization': 'Bearer ' + self.secret}},
+            'codex-bad': {'url': 'https://example.net/mcp', 'headers': {'Authorization': 'Basic ' + other}},
+            'codex-case': {'url': 'https://example.org/mcp', 'headers': {'Authorization': 'Bearer ' + other}},
+        }}
+        batch = extract_chat_connection(json.dumps(pasted))
+        self.assertIsInstance(batch, ChatConnectionBatch)
+        self.assertNotIn(self.secret, repr(batch) + batch.message())
+        self.assertNotIn(other, repr(batch) + batch.message())
+        state = {'conversation_id': 'CODEX-CONNECT-BATCH', 'messages': [], 'pending_actions': []}
+        snapshots = []
+
+        async def capture(owner, value):
+            snapshots.append(deepcopy(value))
+
+        async with self.sessions() as db, AsyncExitStack() as stack:
+            identity, context = stack.enter_context(self.sdk_transport())
+            delta = AsyncMock()
+            with patch('app.areas.personal_agent.mcp_chat_connection.authenticated_identity', AsyncMock(return_value=identity)), \
+                 patch('app.areas.personal_agent.service._save_state', side_effect=capture):
+                result = await configure_chat_submission(batch, identity, db, state, delta, AsyncMock())
+            results = [message['connection_result'] for message in state['messages'] if message.get('connection_result')]
+            self.assertEqual([(item['name'], item['status']) for item in results], [('codex-law', 'verified'), ('codex-case', 'verified')])
+            summary = result['response']
+            self.assertIn('这次粘贴了 3 个 MCP 服务', summary)
+            self.assertIn('1. 「codex-law」已连接', summary)
+            self.assertIn('2. 「codex-bad」未配置：Authorization 仅支持 Bearer Token', summary)
+            self.assertIn('3. 「codex-case」已连接', summary)
+            delta.assert_awaited_once_with(summary)
+            self.assertNotIn(self.secret, json.dumps(snapshots) + summary)
+            self.assertNotIn(other, json.dumps(snapshots) + summary)
+            records = (await db.scalars(select(SystemConfig))).all()
+            self.assertEqual(len(records), 2)
+            self.assertFalse(any(other in json.dumps(record.value) or self.secret in json.dumps(record.value) for record in records))
+
     async def test_sdk_tools_call_only_after_confirmation_and_result_visible_in_current_dialog(self):
         from app.areas.personal_agent.mcp_tools import PersonalMcpToolSession
         from app.areas.personal_agent.confirmation_history import prepare_personal_action, project_personal_actions

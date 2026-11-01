@@ -584,7 +584,7 @@ class CaseAgentRuntime:
             state = await self._ensure_private_state(case_id, operator, agent_id, conversation_id)
             state.update(case_snapshot=case_snapshot, request_images=list(images or []), skill_override=skill_override_payload)
             if submission is not None:
-                from .areas.personal_agent.mcp_chat_connection import configure_chat_connection
+                from .areas.personal_agent.mcp_chat_connection import configure_chat_submission
                 from .database import SessionLocal
 
                 async def persist(_owner, value):
@@ -596,7 +596,7 @@ class CaseAgentRuntime:
                         callback(value)
 
                 async with SessionLocal() as db:
-                    await configure_chat_connection(submission, {'username': operator}, db, state, delta, None,
+                    await configure_chat_submission(submission, {'username': operator}, db, state, delta, None,
                                                     save_state=persist, case_id=case_id)
                 return self._public_state(case_id, operator, state, agent_id, conversation_id)
             state["messages"] = [*state.get("messages", []), user_message]

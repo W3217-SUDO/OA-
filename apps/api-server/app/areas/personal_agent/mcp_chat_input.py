@@ -27,6 +27,30 @@ class ChatConnection:
                 + ('凭据已提交并隐藏。' if self.credential.get_secret_value() else '无需凭据。'))
 
 
+MAX_BATCH_SERVERS = 10
+
+
+@dataclass(frozen=True)
+class ChatConnectionBatch:
+    """一次粘贴的多个服务（陶国南、陶威 11-01：自动拆开逐个配置）；解析不通过的单个服务带着原因，不影响其他服务。"""
+    items: tuple = field(repr=False)  # (名称, ChatConnection 或 None, 失败原因)
+
+    def message(self):
+        return f'请连接 {len(self.items)} 个 MCP 服务：' + '、'.join(f'「{name}」' for name, _, _ in self.items) + '。凭据已提交并隐藏。'
+
+
+def _batch(servers):
+    if len(servers) > MAX_BATCH_SERVERS:
+        raise HTTPException(422, f'一次最多配置 {MAX_BATCH_SERVERS} 个 MCP 服务，这次粘贴了 {len(servers)} 个，请分几条消息发送。')
+    items = []
+    for name, value in servers.items():
+        try:
+            items.append((str(name), _declaration({'mcpServers': {name: value}}), ''))
+        except HTTPException as exc:
+            items.append((str(name), None, str(exc.detail)))
+    return ChatConnectionBatch(tuple(items))
+
+
 def _declaration(value):
     if not isinstance(value, dict):
         raise HTTPException(422, '请提供一个完整的远程 MCP JSON 对象')
@@ -37,10 +61,8 @@ def _declaration(value):
         servers = value['mcpServers']
         if not isinstance(servers, dict) or not servers:
             raise HTTPException(422, '没有找到要配置的 MCP 服务，请粘贴完整配置')
-        if len(servers) != 1:
-            names = '、'.join(f'「{key}」' for key in list(servers)[:5]) + ('等' if len(servers) > 5 else '')
-            raise HTTPException(422, f'每条消息只能配置一个 MCP 服务，这次粘贴了 {len(servers)} 个（{names}）。'
-                                     '请分开发送：每条消息只保留 mcpServers 里的一个服务，连同它自己的地址和密钥。')
+        if len(servers) > 1:
+            return _batch(servers)
         name, value = next(iter(servers.items()))
     if not isinstance(value, dict) or set(value) - {
         'name', 'url', 'server_url', 'type', 'transport', 'headers',
