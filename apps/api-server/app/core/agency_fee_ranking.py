@@ -1,4 +1,4 @@
-"""报表大屏“员工业绩排行”里的代理费到账金额排行（BUG 500798，思法汇成 11-01 18:03）。
+"""报表大屏“员工业绩排行”：按案源人、开庭律师两个角度统计新建案件数和代理费到账（BUG 500798，思法汇成 11-01）。
 
 口径与客户ROI 的收入一致：到账单里分配到“代理费”的金额，按到账日期统计；
 公司之间（沪知/恒达/国定）的转款不算（只有客户钱以“其他费用”进来、平台记的“平台代理费”算），
@@ -31,6 +31,34 @@ def _positive_int(value) -> int:
 def _people(value, fallback: str) -> list[str]:
     names = [person_name(item) for item in _PEOPLE_SPLIT.split(str(value or "")) if item]
     return list(dict.fromkeys(names)) or [fallback]
+
+
+def source_people(record) -> list[str]:
+    """案源人：案件上的“案源人”，与案件详情页显示一致（案源人 → 来源人 → 负责人）。"""
+    data = record.data or {}
+    return _people(data.get("business_owner") or data.get("source_person") or record.owner, NO_SOURCE_PERSON)
+
+
+def hearing_people(record) -> list[str]:
+    hearing = (record.data or {}).get("hearing_lawyer") if record.module == "case" else ""
+    return _people(hearing, NO_HEARING_LAWYER)
+
+
+def _ranking(values: dict[str, float], digits: int | None = 2) -> list[dict]:
+    return [{"name": name, "value": round(value, digits) if digits is not None else value}
+            for name, value in sorted(values.items(), key=lambda item: (-item[1], item[0]))[:RANKING_LIMIT]]
+
+
+def case_count_rankings(cases) -> dict:
+    """新建案件数按案源人、开庭律师分别排行（18:14：不要按案件负责人），多人各算一次。"""
+    by_source: dict[str, int] = {}
+    by_hearing: dict[str, int] = {}
+    for case in cases:
+        for person in source_people(case):
+            by_source[person] = by_source.get(person, 0) + 1
+        for person in hearing_people(case):
+            by_hearing[person] = by_hearing.get(person, 0) + 1
+    return {"by_source_person": _ranking(by_source, None), "by_hearing_lawyer": _ranking(by_hearing, None)}
 
 
 def _is_test_customer(title: str) -> bool:
@@ -104,16 +132,10 @@ async def agency_fee_rankings(db, scope: list, date_from: date, date_to: date) -
         if _is_test_customer(str(receipt.claimed_customer or record.customer or "")):
             continue
         amount = abs(float(allocation.get("amount") or 0))
-        data = record.data or {}
         total += amount
-        for person in _people(data.get("business_owner") or data.get("source_person") or record.owner, NO_SOURCE_PERSON):
+        for person in source_people(record):
             by_source[person] = by_source.get(person, 0.0) + amount
-        hearing = data.get("hearing_lawyer") if record.module == "case" else ""
-        for person in _people(hearing, NO_HEARING_LAWYER):
+        for person in hearing_people(record):
             by_hearing[person] = by_hearing.get(person, 0.0) + amount
 
-    def ranking(values: dict[str, float]) -> list[dict]:
-        return [{"name": name, "value": round(value, 2)}
-                for name, value in sorted(values.items(), key=lambda item: (-item[1], item[0]))[:RANKING_LIMIT]]
-
-    return {"by_source_person": ranking(by_source), "by_hearing_lawyer": ranking(by_hearing), "total": round(total, 2)}
+    return {"by_source_person": _ranking(by_source), "by_hearing_lawyer": _ranking(by_hearing), "total": round(total, 2)}

@@ -584,6 +584,7 @@ type LargeScreenData = {
   // 代理费到账排行（BUG 500798）；没有财务金额权限时为 null。
   agency_fee_ranking?: { by_source_person: { name: string; value: number }[]; by_hearing_lawyer: { name: string; value: number }[]; total: number } | null;
   ranking_period?: { date_from: string; date_to: string };
+  case_count_ranking?: { by_source_person: { name: string; value: number }[]; by_hearing_lawyer: { name: string; value: number }[] };
   case_type_distribution: { name: string; value: number }[];
   monthly_trend: { month: string; cases: number; income: number | null; expense: number | null }[];
   definitions?: Record<string, string>;
@@ -676,7 +677,6 @@ export function ReportLargeScreenPage({ onExit }: { onExit?: () => void }) {
     void document.documentElement.requestFullscreen?.().catch(() => message.warning("当前浏览器不支持进入全屏模式"));
   };
 
-  const rankingData = data.employee_ranking.slice(0, 10);
   const queryRanking = (range: [Dayjs, Dayjs]) => { rankingRangeRef.current = range; setRankingRange(range); void load(range); };
   const typeData = data.case_type_distribution;
   const trendData = data.monthly_trend;
@@ -719,23 +719,28 @@ export function ReportLargeScreenPage({ onExit }: { onExit?: () => void }) {
                   <Button type="primary" onClick={() => queryRanking(rankingRange)}>查询</Button>
                   <Button onClick={() => queryRanking(defaultRankingRange())}>重置</Button>
                 </div>
+                {/* 按案源人、开庭律师两组，每组新建案件数和代理费到账各一张图（BUG 500798 18:14）。 */}
                 <div className="large-screen-ranking-row">
-                  <article className="large-screen-card ranking-card">
-                    <h2>新建案件数 <small>{data.definitions?.employee_ranking || "按案件负责人"}</small></h2>
-                    <div className="large-screen-chart">{rankingData.length ? <RankingBarChart data={rankingData} label="新建案件" format={(value) => formatNumber(value)} color="#00a65a" /> : <LargeScreenEmpty />}</div>
-                  </article>
-                  {([["by_source_person", "代理费到账（按案源人）", "#3e8ef7"], ["by_hearing_lawyer", "代理费到账（按开庭律师）", "#8a74e8"]] as const).map(([key, title, color]) => (
-                    <article key={key} className="large-screen-card ranking-card">
-                      <h2>{title} <small>{data.agency_fee_ranking ? `合计 ${formatWan(data.agency_fee_ranking.total)} 万元` : ""}</small></h2>
-                      <div className="large-screen-chart">{!data.finance.amount_visible || !data.agency_fee_ranking
-                        ? <LargeScreenEmpty description="无财务金额查看权限" />
-                        : data.agency_fee_ranking[key].length
-                          ? <RankingBarChart data={data.agency_fee_ranking[key]} label="代理费到账（万元）" format={(value) => formatWan(value)} color={color} unit="万" />
-                          : <LargeScreenEmpty />}</div>
-                    </article>
-                  ))}
+                  {([["by_source_person", "按案源人"], ["by_hearing_lawyer", "按开庭律师"]] as const).map(([key, group]) => {
+                    const cases = data.case_count_ranking?.[key] ?? [];
+                    const fees = data.agency_fee_ranking?.[key] ?? [];
+                    return [
+                      <article key={`${key}-cases`} className="large-screen-card ranking-card">
+                        <h2>{group}·新建案件数 <small>{data.ranking_period ? `${data.ranking_period.date_from} 至 ${data.ranking_period.date_to}` : ""}</small></h2>
+                        <div className="large-screen-chart">{cases.length ? <RankingBarChart data={cases} label="新建案件" format={(value) => formatNumber(value)} color="#00a65a" /> : <LargeScreenEmpty />}</div>
+                      </article>,
+                      <article key={`${key}-fees`} className="large-screen-card ranking-card">
+                        <h2>{group}·代理费到账 <small>{data.agency_fee_ranking ? `合计 ${formatWan(data.agency_fee_ranking.total)} 万元` : ""}</small></h2>
+                        <div className="large-screen-chart">{!data.finance.amount_visible || !data.agency_fee_ranking
+                          ? <LargeScreenEmpty description="无财务金额查看权限" />
+                          : fees.length
+                            ? <RankingBarChart data={fees} label="代理费到账（万元）" format={(value) => formatWan(value)} color={key === "by_source_person" ? "#3e8ef7" : "#8a74e8"} unit="万" />
+                            : <LargeScreenEmpty />}</div>
+                      </article>,
+                    ];
+                  })}
                 </div>
-                {data.agency_fee_ranking && <p className="large-screen-ranking-note">{data.definitions?.agency_fee_ranking}</p>}
+                <p className="large-screen-ranking-note">{[data.definitions?.case_count_ranking, data.agency_fee_ranking ? data.definitions?.agency_fee_ranking : ""].filter(Boolean).join("；")}</p>
               </section>
               <section className="large-screen-grid">
                 <article className="large-screen-card distribution-card">

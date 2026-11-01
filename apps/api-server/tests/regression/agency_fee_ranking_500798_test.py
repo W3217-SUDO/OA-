@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 import app.main  # noqa: F401  注册全部模型
-from app.core.agency_fee_ranking import NO_HEARING_LAWYER, agency_fee_rankings
+from app.core.agency_fee_ranking import NO_HEARING_LAWYER, agency_fee_rankings, case_count_rankings
 from app.core.person_names import refresh_person_names
 from app.database import Base
 from app.models import BusinessRecord, IncomingPayment, User
@@ -53,6 +53,10 @@ class AgencyFeeRankingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["total"], 1400)
         self.assertEqual(result["by_source_person"], [{"name": "案源甲", "value": 1000}, {"name": "owner-c", "value": 400}])
         self.assertEqual(result["by_hearing_lawyer"], [{"name": "开庭乙", "value": 1000}, {"name": NO_HEARING_LAWYER, "value": 400}])
+        # 18:14：案件数也按案源人、开庭律师分别统计，多人各算一次。
+        counts = case_count_rankings([case_a, case_t, BusinessRecord(module="case", serial_no="X", owner="owner-x", data={"source_person": "srca", "hearing_lawyer": "hla,hlb"})])
+        self.assertEqual(counts["by_source_person"], [{"name": "案源甲", "value": 3}])
+        self.assertEqual(counts["by_hearing_lawyer"], [{"name": "开庭乙", "value": 3}, {"name": "hlb", "value": 1}])
 
 
 if __name__ == "__main__":

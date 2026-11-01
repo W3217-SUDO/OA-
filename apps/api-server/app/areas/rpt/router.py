@@ -104,6 +104,7 @@ async def report_large_screen(identity: dict = Depends(current_identity), db: As
     month_keys = _large_screen_month_keys(today)
     monthly_cases = {key: 0 for key in month_keys}
     employee_counts: dict[str, int] = {}
+    ranking_cases = []
     for case in cases:
         created_at = _case_filing_date(case)
         if created_at:
@@ -111,6 +112,7 @@ async def report_large_screen(identity: dict = Depends(current_identity), db: As
             if month_key in monthly_cases:
                 monthly_cases[month_key] += 1
             if ranking_from <= created_at <= ranking_to:
+                ranking_cases.append(case)
                 owner = str(case.owner or "").strip() or "未分配"
                 employee_counts[owner] = employee_counts.get(owner, 0) + 1
     users_by_username = await _user_display_map(set(employee_counts), db)
@@ -123,6 +125,9 @@ async def report_large_screen(identity: dict = Depends(current_identity), db: As
         for username, value in sorted(employee_counts.items(), key=lambda item: (-item[1], item[0]))[:10]
     ]
 
+    from app.core.agency_fee_ranking import case_count_rankings
+    from app.core.person_names import refresh_person_names
+    await refresh_person_names(db)  # 排行显示姓名，没有金额权限时也要
     amount_visible = "finance.amount" in await _allowed_field_keys(identity, db)
     agency_ranking = None
     if amount_visible:
@@ -184,6 +189,8 @@ async def report_large_screen(identity: dict = Depends(current_identity), db: As
         "finance": finance,
         "customer_summary": {"total": len(customers)},
         "employee_ranking": employee_ranking,
+        # 新建案件数按案源人、开庭律师分别排行（BUG 500798 18:14）。
+        "case_count_ranking": case_count_rankings(ranking_cases),
         "ranking_period": {"date_from": ranking_from.isoformat(), "date_to": ranking_to.isoformat()},
         # 代理费到账排行（按案源人、按开庭律师）；没有财务金额权限时为 null。
         "agency_fee_ranking": agency_ranking,
@@ -207,6 +214,7 @@ async def report_large_screen(identity: dict = Depends(current_identity), db: As
             "income": "可见银行到账记录的实际到账金额，包含未认领到账，不按申请或分配次数重复计算",
             "expense": "可见付款流水的实际已支付金额，不包含费用申请或审批金额",
             "employee_ranking": f"{ranking_from:%Y-%m-%d} 至 {ranking_to:%Y-%m-%d} 有效新建案件数，按案件负责人排序",
+            "case_count_ranking": f"{ranking_from:%Y-%m-%d} 至 {ranking_to:%Y-%m-%d} 有效新建案件数；按案件的案源人、开庭律师分别统计，多人各计",
             "agency_fee_ranking": "到账单分配到代理费的金额（按到账日期），不含公司之间转款、代收代付、测试客户和退款；按案件的案源人、开庭律师分别统计，多人各计",
             "monthly_trend": "最近12个自然月的有效新建案件数；有财务金额权限时同时返回实际到账和实际已支付金额",
         },
