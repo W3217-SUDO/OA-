@@ -330,7 +330,10 @@ def _mark_customer_modified(customer: BusinessRecord, identity: dict) -> None:
     customer.data = data
 
 
-_ROI_DATA_KEYS = ("case_id", "contract_id", "contract_record_id", "case_no", "contract_no", "customer_id", "customer_record_id", "customer_no", "payee")
+_ROI_DATA_KEYS = ("case_id", "contract_id", "contract_record_id", "case_no", "contract_no", "customer_id", "customer_record_id", "customer_no", "payee", "internal_fee_type", "fee_type_name")
+
+
+OVERDUE_DEDUCTION = "任务逾期扣款"
 
 
 def _excluded_roi_payee(payee, customer_title: str) -> bool:
@@ -465,7 +468,7 @@ async def _customer_roi_analytics(
             "view": "customer-roi", "rows": [],
             "totals": {"income": 0.0, "cost": 0.0, "profit": 0.0, "roi": None},
             "filter_options": {"departments": [], "employees": []},
-            "formula": "ROI=(收入-成本)/成本×100%；收入=代理费到账（不含公司之间重复转款）+法院退费，成本=全部付款（不含公司之间付款、付给客户的权利人分成和赔偿款转付）；成本为0时不计算ROI",
+            "formula": "ROI=(收入-成本)/成本×100%；收入=代理费到账（不含公司之间重复转款）+法院退费，成本=全部付款（不含公司之间付款、付给客户的权利人分成和赔偿款转付、任务逾期扣款）；成本为0时不计算ROI",
             "date_basis": "到账日期、付款日期", "source": "realtime",
         }
 
@@ -581,6 +584,9 @@ async def _customer_roi_analytics(
         eligible_sources.add(source.id)
         # 思法汇成 11-01 13:42 定：成本去掉公司之间的付款（付给沪知、恒达、国定），也去掉付给客户本身的权利人分成、赔偿款转付。
         if source.module == "contract_payment" and _excluded_roi_payee(source.data.get("payee"), customer_record.title):
+            continue
+        # 思法汇成 11-01 14:59：“任务逾期扣款”是扣员工的绩效，不是成本。
+        if OVERDUE_DEDUCTION in (source.data.get("internal_fee_type"), source.data.get("fee_type_name")):
             continue
         if department.strip() and source.department != department.strip():
             continue
@@ -705,7 +711,7 @@ async def _customer_roi_analytics(
             "departments": sorted({source.department for source in visible_sources if source and source.department} | {name for name, _ in visible_people if name}),
             "employees": sorted({source.owner for source in visible_sources if source and source.owner} | {name for _, name in visible_people if name}),
         },
-        "formula": "ROI=(收入-成本)/成本×100%；收入=代理费到账（不含公司之间重复转款）+法院退费，成本=全部付款（不含公司之间付款、付给客户的权利人分成和赔偿款转付）；成本为0时不计算ROI",
+        "formula": "ROI=(收入-成本)/成本×100%；收入=代理费到账（不含公司之间重复转款）+法院退费，成本=全部付款（不含公司之间付款、付给客户的权利人分成和赔偿款转付、任务逾期扣款）；成本为0时不计算ROI",
         "date_basis": "到账日期、付款日期", "source": "realtime",
     }
 

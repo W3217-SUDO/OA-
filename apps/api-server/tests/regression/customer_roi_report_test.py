@@ -166,6 +166,22 @@ class CustomerRoiReportTest(unittest.IsolatedAsyncioTestCase):
         by_customer = {row["customer_id"]: row for row in result["rows"]}
         self.assertEqual(by_customer[customer_a.id]["cost"], 240)  # 原 150 + 付法院 90；付恒达、付客户本身不算
 
+    async def test_overdue_deduction_is_not_cost(self):
+        # 思法汇成 11-01 14:59：“任务逾期扣款”是扣员工的绩效，不是成本。
+        async with self.sessions() as db:
+            customer_a, _customer_b = await self._seed(db)
+            contract_a = await db.scalar(select(BusinessRecord).where(BusinessRecord.serial_no == "CODEX-ROI-CONTRACT-A"))
+            deduction = BusinessRecord(module="finance", serial_no="LIF-OVERDUE", title="任务逾期扣款", customer="同名客户", status="已记录", owner="x", department="华东部",
+                                       data={"contract_id": contract_a.id, "contract_no": contract_a.serial_no, "fee_type": "内部费用",
+                                             "internal_fee_type": "任务逾期扣款", "fee_type_name": "任务逾期扣款", "amount": -5})
+            db.add(deduction)
+            await db.flush()
+            db.add(FinanceTransaction(finance_record_id=deduction.id, transaction_type="付款", amount=-5, transaction_date=date(2026, 9, 2), operator="admin"))
+            await db.commit()
+            result = await _customer_roi_analytics(ADMIN, db, date_from=date(2026, 9, 1), date_to=date(2026, 9, 2))
+        by_customer = {row["customer_id"]: row for row in result["rows"]}
+        self.assertEqual(by_customer[customer_a.id]["cost"], 150)
+
     async def test_employee_column_shows_person_names(self):
         # BUG 500787：员工列显示姓名，不显示登录账号；筛选项仍是账号。
         from app.core.person_names import refresh_person_names

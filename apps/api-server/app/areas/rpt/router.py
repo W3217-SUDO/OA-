@@ -144,7 +144,11 @@ async def report_large_screen(identity: dict = Depends(current_identity), db: As
                 or item.claimed_customer in visible_customer_titles
             ]
         visible_record_ids = set((await db.scalars(select(BusinessRecord.id).where(*scope))).all())
-        transaction_conditions = [FinanceTransaction.transaction_type == "付款"]
+        # “任务逾期扣款”是扣员工绩效（金额为负），不是支出（思法汇成 11-01 14:59）。
+        overdue_deductions = select(BusinessRecord.id).where(
+            BusinessRecord.module == "finance", BusinessRecord.data["internal_fee_type"].as_string() == "任务逾期扣款")
+        transaction_conditions = [FinanceTransaction.transaction_type == "付款", or_(
+            FinanceTransaction.finance_record_id.is_(None), FinanceTransaction.finance_record_id.not_in(overdue_deductions))]
         if identity.get("role") != "admin":
             transaction_conditions.append(or_(
                 and_(FinanceTransaction.finance_record_id.is_not(None), FinanceTransaction.finance_record_id.in_(visible_record_ids)),
