@@ -24,9 +24,111 @@ def _day(value):
         return None
 
 
+# 品牌资金运营情况统计（BUG20261101001，tgn 11-01 确认）。
+BRAND_ARCHIVED_STATUSES = {"已归档", "亏损归档"}
+BRAND_LOSS_STATUSES = {"亏损内审", "亏损审核", "亏损拒绝", "亏损归档"}
+# 一审、二审、再审诉讼费，保全费，公证费（含旧系统早期编号）。
+BRAND_ADVANCE_FEE_CODES = {"11010020", "11010030", "11010040", "1101010", "1101020", "11010090", "11010050", "1101040"}
+BRAND_ADVANCE_FEE_NAMES = {"一审诉讼费", "二审诉讼费", "再审诉讼费", "保全费", "公证费"}
+AGENCY_FEE_CODES = {"11020010", "11020020", "11020030", "11020040"}
+AGENCY_FEE_NAMES = {"律师代理费", "代理费", "律师咨询费", "律师培训费", "律师见证费"}
+
+
+def _fee_code(data: dict) -> str:
+    legacy = data.get("legacy") if isinstance(data.get("legacy"), dict) else {}
+    return str(data.get("case_fee_type_id") or data.get("fee_type_code") or legacy.get("CaseFeeTypeId") or "")
+
+
+def _fee_case_id(fee, case_by_id, case_by_no):
+    data = fee.data or {}
+    try:
+        case_id = int(data.get("case_id") or data.get("case_record_id") or 0)
+    except (TypeError, ValueError):
+        case_id = 0
+    case = case_by_id.get(case_id) or case_by_no.get(str(data.get("case_no") or ""))
+    return case.id if case else None
+
+
+async def brand_charts(cases, fees, db):
+    """按品牌（案件客户）算四项：
+    1. 平均回款时间 = 已归档、亏损归档案件从垫付款日期到归档日期的平均天数；垫付款日期取官费最早的请款单付款日期，没有请款单取费用通知日期。
+    2. 亏损金额 = 亏损阶段案件里诉讼费、保全费、公证费已垫付未到账部分（逐笔，最少 0）的合计。
+    3. 回款率（年化）= 回款案件（代理费有到账）的到账代理费 × 15% ÷ 这些案件已垫付官费 ÷ 平均回款时间 × 365。
+    4. 亏损率 = 亏损金额 ÷ 全部已付官费。
+    """
+    from app.core.customer_fee_balance import _cashed_by_fee, _paid_and_first_dates
+
+    case_by_id = {case.id: case for case in cases}
+    case_by_no = {case.serial_no: case for case in cases}
+    fee_case = {}
+    for fee in fees:
+        if fee.status in {"已撤销", "已删除", "已作废", "已拒绝"}:
+            continue
+        if (case_id := _fee_case_id(fee, case_by_id, case_by_no)) is not None:
+            fee_case[fee.id] = case_id
+    fees = [fee for fee in fees if fee.id in fee_case]
+    fee_ids = set(fee_case)
+    paid, paid_dates = await _paid_and_first_dates(fee_ids, db)
+    cashed = await _cashed_by_fee(fee_ids, db) if fee_ids else {}
+    rows = {case.id: {"official_paid": Decimal(0), "advance_unreceived": Decimal(0), "agency_received": Decimal(0), "first_paid": None}
+            for case in cases}
+    for fee in fees:
+        data = fee.data or {}
+        row = rows[fee_case[fee.id]]
+        code = _fee_code(data)
+        name = str(data.get("fee_type_name") or data.get("expense_subtype") or "")
+        fee_paid = paid.get(fee.id, Decimal(0))
+        fee_cashed = cashed.get(fee.id, Decimal(0))
+        if data.get("fee_type") in {"官方费用", "官费"}:
+            row["official_paid"] += fee_paid
+            if fee_paid > 0:
+                day = _day(paid_dates.get(fee.id)) or _day(data.get("inform_date") or (data.get("legacy") or {}).get("InformDate"))
+                if day:
+                    row["first_paid"] = min(row["first_paid"] or day, day)
+        if code in BRAND_ADVANCE_FEE_CODES or (not code and name in BRAND_ADVANCE_FEE_NAMES):
+            row["advance_unreceived"] += max(Decimal(0), fee_paid - fee_cashed)
+        if code in AGENCY_FEE_CODES or (not code and (name in AGENCY_FEE_NAMES or data.get("fee_type") == "代理费")):
+            row["agency_received"] += fee_cashed
+
+    groups: dict[str, list] = {}
+    for case in cases:
+        groups.setdefault(case.customer or "未关联客户", []).append(case)
+    charts = [{"title": title, "unit": unit, "items": []} for title, unit in (
+        ("资金回款周期统计", "天/案"), ("资金亏损金额统计", "元"),
+        ("资金回报率统计", "百分比"), ("资金亏损率统计", "百分比"),
+    )]
+    warnings = []
+    for name, members in sorted(groups.items())[:30]:
+        spans = []
+        for case in members:
+            archived = _day((case.data or {}).get("archived_at"))
+            first_paid = rows[case.id]["first_paid"]
+            if case.status in BRAND_ARCHIVED_STATUSES and archived and first_paid:
+                spans.append((archived - first_paid).days)
+        avg_days = round(sum(spans) / len(spans), 1) if spans else None
+        loss = sum((rows[c.id]["advance_unreceived"] for c in members if c.status in BRAND_LOSS_STATUSES), Decimal(0))
+        total_paid = sum((rows[c.id]["official_paid"] for c in members), Decimal(0))
+        collected = [c for c in members if rows[c.id]["agency_received"] > 0]
+        agency = sum((rows[c.id]["agency_received"] for c in collected), Decimal(0))
+        collected_paid = sum((rows[c.id]["official_paid"] for c in collected), Decimal(0))
+        rate = None
+        if collected_paid and avg_days:
+            rate = round(float(agency * Decimal("0.15") / collected_paid / Decimal(str(avg_days)) * 365 * 100), 2)
+        elif collected:
+            warnings.append(f"{name}：{'没有已垫付官费的回款案件' if not collected_paid else '没有可算回款时间的归档案件'}，资金回报率无法计算")
+        charts[0]["items"].append({"name": name, "value": avg_days})
+        charts[1]["items"].append({"name": name, "value": float(loss)})
+        charts[2]["items"].append({"name": name, "value": rate})
+        charts[3]["items"].append({"name": name, "value": round(float(loss / total_paid * 100), 2) if total_paid else 0})
+    return charts, warnings
+
+
 async def operating_charts(cases, fees, view, group_mode, db):
     from app.core.finance import _case_fee_link_maps, _resolve_case_fee_link_id
     from app.core.formatters import _user_display_map
+
+    if view == "brand":
+        return await brand_charts(cases, fees, db)
 
     case_by_id = {case.id: case for case in cases}
     case_by_no = {case.serial_no: case for case in cases}

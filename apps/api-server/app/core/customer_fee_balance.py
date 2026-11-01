@@ -68,6 +68,47 @@ async def _paid_by_fee(fee_ids: set[int], db) -> dict[int, Decimal]:
     return paid
 
 
+async def _paid_and_first_dates(fee_ids: set[int], db) -> tuple[dict[int, Decimal], dict[int, str]]:
+    """一次读请款单：每笔费用的已付金额（同 _paid_by_fee）和最早付款日期（YYYY-MM-DD，报表“垫付款日期”用）。"""
+    if not fee_ids:
+        return {}, {}
+    if db.get_bind().dialect.name != "postgresql":
+        first: dict[int, str] = {}
+        for (data,) in (await db.execute(select(BusinessRecord.data).where(
+            BusinessRecord.module == "contract_payment", BusinessRecord.status.in_(PAID_PAYMENT_STATUSES),
+        ))).all():
+            day = str((data or {}).get("payment_date") or "")[:10]
+            for line in (data or {}).get("lines") or []:
+                if len(day) == 10 and isinstance(line, dict) and (fee_id := _fee_id(line)) in fee_ids:
+                    first[fee_id] = min(first.get(fee_id, day), day)
+        return await _paid_by_fee(fee_ids, db), first
+    paid: dict[int, Decimal] = defaultdict(Decimal)
+    first = {}
+    rows = await db.execute(text("""
+        SELECT fid::bigint, sum(CASE WHEN amt ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN amt::numeric ELSE 0 END),
+               min(CASE WHEN pd ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN left(pd, 10) END) FROM (
+          SELECT coalesce(nullif(l->>'fee_record_id', ''), nullif(l->>'case_fee_id', '')) AS fid,
+                 l->>'amount' AS amt, p.data->>'payment_date' AS pd
+          FROM business_records p
+          CROSS JOIN LATERAL json_array_elements(
+            CASE WHEN json_typeof(p.data->'lines') = 'array' THEN p.data->'lines' ELSE '[]'::json END) l
+          WHERE p.module = 'contract_payment' AND p.status = ANY(:statuses) AND p.deleted_at IS NULL
+        ) x
+        WHERE fid ~ '^[0-9]{1,18}$' AND fid::bigint = ANY(:ids)
+        GROUP BY 1
+    """), {"statuses": list(PAID_PAYMENT_STATUSES), "ids": list(fee_ids)})
+    for fee_id, total, day in rows.all():
+        paid[int(fee_id)] += _amount(total)
+        if day:
+            first[int(fee_id)] = day
+    for fee_id, total in (await db.execute(select(
+        FinanceTransaction.finance_record_id, FinanceTransaction.amount,
+    ).where(scalar_in_values(FinanceTransaction.finance_record_id, fee_ids),
+            FinanceTransaction.transaction_type == "付款"))).all():
+        paid[int(fee_id)] += _amount(total)
+    return paid, first
+
+
 async def _cashed_by_fee(fee_ids: set[int], db) -> dict[int, Decimal]:
     cashed: dict[int, Decimal] = defaultdict(Decimal)
     if db.get_bind().dialect.name == "postgresql":

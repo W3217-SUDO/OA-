@@ -880,8 +880,10 @@ async def _report_analytics(view: str, identity: dict, db: AsyncSession, custome
     if hearing_from and hearing_to and hearing_from > hearing_to: raise HTTPException(status_code=422, detail="开庭开始日期不能晚于结束日期")
     if group_mode and group_mode not in {"按律师分组统计", "按文书分组统计"}: raise HTTPException(status_code=422, detail="不支持的分组模式")
     scope = await _record_scope_conditions(identity, db)
-    cases = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case", *scope))).all()
     customers_selected = {value.strip() for value in customer.split(",") if value.strip()}
+    # 选了客户时先在数据库里按同样的“包含”条件筛，不再把全部案件读出来再筛（BUG20261101001 性能）。
+    customer_filter = [or_(*(BusinessRecord.customer.contains(value, autoescape=True) for value in customers_selected))] if customers_selected else []
+    cases = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case", *scope, *customer_filter))).all()
     court_lawyers_selected = {value.strip() for value in court_lawyer.split(",") if value.strip()}
     def matches(item: BusinessRecord) -> bool:
         data = item.data or {}; handlers = data.get("handling_lawyers", [])
@@ -907,7 +909,15 @@ async def _report_analytics(view: str, identity: dict, db: AsyncSession, custome
             charts = [{"title": f"{status}案件数量", "unit": "个/案", "items": [{"name": "案件数", "value": sum(status in item.status for item in cases)}]} for status in execution_statuses]
         return {"view": view, "charts": charts, "filter_options": {"customers": customers, "lawyers": lawyers}, "source": "realtime"}
     can_view_amount = "finance.amount" in await _allowed_field_keys(identity, db)
-    finances = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "finance", *scope))).all() if can_view_amount else []
+    # 只读和筛出的案件关联的费用（统计本来就只用这些），客户筛选时少读很多。
+    from app.core.json_relation_query import scalar_in_values
+    case_ids = {item.id for item in cases}; case_nos = {item.serial_no for item in cases}
+    fee_links = [or_(scalar_in_values(BusinessRecord.data["case_id"].as_integer(), case_ids),
+                     scalar_in_values(BusinessRecord.data["case_record_id"].as_integer(), case_ids),
+                     scalar_in_values(BusinessRecord.data["case_no"].as_string(), case_nos))] if customers_selected else []
+    finances = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "finance", *scope, *fee_links,
+    ))).all() if can_view_amount and cases else []
     from app.core.roi import operating_charts
     charts, warnings = await operating_charts(cases, finances, view, group_mode, db) if can_view_amount else ([], [])
     return {"view": view, "charts": charts, "warnings": warnings, "filter_options": {"customers": customers, "lawyers": lawyers}, "source": "realtime"}
