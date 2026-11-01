@@ -68,5 +68,24 @@ class BrandReportTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(warnings, [])
 
 
+    async def test_only_customers_with_data_sorted_by_advances(self):
+        """tgn 11-01：只显示有数据的客户，不限个数，按已垫付官费从多到少排。"""
+        async with self.sessions() as db:
+            db.add(BusinessRecord(id=4, module="case", serial_no="AJ4", title="无费用案件", status="已归档", owner="codex",
+                                  customer="A无数据品牌", data={"archived_at": "2026-05-01"}))
+            db.add(BusinessRecord(id=5, module="case", serial_no="AJ5", title="品牌乙案件", status="亏损归档", owner="codex",
+                                  customer="品牌乙", data={"archived_at": "2026-05-01"}))
+            db.add(BusinessRecord(id=51, module="finance", serial_no="FY51", title="官方费用", status="已通知", owner="codex",
+                                  data={"case_id": 5, "fee_type": "官方费用", "case_fee_type_id": "11010020", "amount": 5000,
+                                        "inform_date": "2026-04-01"}))
+            db.add(BusinessRecord(id=43, module="contract_payment", serial_no="QK3", title="请款", status="已付款", owner="codex",
+                                  data={"payment_date": "2026-04-01", "lines": [{"fee_record_id": 51, "amount": 5000}]}))
+            await db.commit()
+            cases = [await db.get(BusinessRecord, case_id) for case_id in (1, 2, 3, 4, 5)]
+            fees = [await db.get(BusinessRecord, fee_id) for fee_id in (11, 12, 21, 31, 51)]
+            charts, _ = await brand_charts(cases, fees, db)
+        self.assertEqual([item["name"] for item in charts[0]["items"]], ["品牌乙", "品牌甲"])
+
+
 if __name__ == "__main__":
     unittest.main()

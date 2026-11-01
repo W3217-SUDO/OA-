@@ -238,8 +238,10 @@ function MetricChart({ spec, items }: { spec: ChartSpec; items: { name: string; 
         <span>{spec.title}</span>
         <span className="report-chart-unit">单位： {spec.unit}</span>
       </div>
-      <div className="report-chart-body">
-        {chartItems.length ? <ResponsiveContainer width="100%" height="100%">
+      <div className="report-chart-body report-chart-scroll">
+        {/* 客户多时每个柱子固定宽度，超出部分左右拖动查看（tgn 11-01，BUG20261101001）。 */}
+        {chartItems.length ? <div className="report-chart-track" style={{ minWidth: chartItems.length > 8 ? chartItems.length * 88 : undefined }}>
+        <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartItems} margin={{ top: 20, right: 24, bottom: 16, left: 4 }}>
             <CartesianGrid stroke="#ececec" vertical={false} />
             <XAxis dataKey="name" axisLine={{ stroke: "#d8d8d8" }} tickLine={false} tick={{ fill: "#777", fontSize: 11 }} />
@@ -253,7 +255,8 @@ function MetricChart({ spec, items }: { spec: ChartSpec; items: { name: string; 
             <Tooltip formatter={(item) => [item == null ? '不可计算' : `${Number(item).toLocaleString()} ${spec.unit}`, spec.title]} />
             <Bar dataKey="value" fill="#36b978" maxBarSize={72} />
           </BarChart>
-        </ResponsiveContainer> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前条件下暂无真实业务数据" />}
+        </ResponsiveContainer>
+        </div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前条件下暂无真实业务数据" />}
       </div>
     </section>
   );

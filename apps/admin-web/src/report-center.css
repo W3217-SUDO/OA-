@@ -292,6 +292,8 @@
   font-weight: 400;
 }
 
+.report-chart-scroll { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+.report-chart-track { height: 100%; }
 .report-chart-body {
   height: 290px;
   padding: 4px 6px 2px;

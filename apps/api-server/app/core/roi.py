@@ -104,7 +104,9 @@ async def brand_charts(cases, fees, db):
         ("资金回报率统计", "百分比"), ("资金亏损率统计", "百分比"),
     )]
     warnings = []
-    for name, members in sorted(groups.items())[:30]:
+    # 只显示有数据的客户，按已垫付官费从多到少排，不限个数，页面上左右拖动查看（tgn 11-01，BUG20261101001）。
+    computed = []
+    for name, members in groups.items():
         spans = []
         for case in members:
             archived = _day((case.data or {}).get("archived_at"))
@@ -118,14 +120,19 @@ async def brand_charts(cases, fees, db):
         agency = sum((rows[c.id]["agency_received"] for c in collected), Decimal(0))
         collected_paid = sum((rows[c.id]["official_paid"] for c in collected), Decimal(0))
         rate = None
+        warning = ""
         if collected_paid and avg_days:
             rate = round(float(agency * Decimal("0.15") / collected_paid / Decimal(str(avg_days)) * 365 * 100), 2)
         elif collected:
-            warnings.append(f"{name}：{'没有已垫付官费的回款案件' if not collected_paid else '没有可算回款时间的归档案件'}，资金回报率无法计算")
-        charts[0]["items"].append({"name": name, "value": avg_days})
-        charts[1]["items"].append({"name": name, "value": float(loss)})
-        charts[2]["items"].append({"name": name, "value": rate})
-        charts[3]["items"].append({"name": name, "value": round(float(loss / total_paid * 100), 2) if total_paid else 0})
+            warning = f"{name}：{'没有已垫付官费的回款案件' if not collected_paid else '没有可算回款时间的归档案件'}，资金回报率无法计算"
+        values = (avg_days, float(loss), rate, round(float(loss / total_paid * 100), 2) if total_paid else 0)
+        if any(value not in (None, 0, 0.0) for value in values):
+            computed.append((total_paid, name, values, warning))
+    for _total, name, values, warning in sorted(computed, key=lambda row: (-row[0], row[1])):
+        for chart, value in zip(charts, values):
+            chart["items"].append({"name": name, "value": value})
+        if warning:
+            warnings.append(warning)
     return charts, warnings
 
 
