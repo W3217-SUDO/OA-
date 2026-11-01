@@ -194,12 +194,38 @@ async def report_large_screen(identity: dict = Depends(current_identity), db: As
     }
 
 
-@router.get(f"{settings.api_prefix}/reports/analytics")
-async def report_analytics(view: str, customer: str = "", court_lawyer: str = "", handling_lawyer: str = "", assistant: str = "", investigator: str = "", court: str = "", source_from: date | None = None, source_to: date | None = None, hearing_from: date | None = None, hearing_to: date | None = None, group_mode: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+ANALYTICS_TEXT_PARAMS = ("customer", "court_lawyer", "handling_lawyer", "assistant", "investigator", "court", "group_mode")
+ANALYTICS_DATE_PARAMS = ("source_from", "source_to", "hearing_from", "hearing_to")
+
+
+async def _cached_report_analytics(identity: dict, db: AsyncSession, view: str, params: dict):
     from app.core.system import (
         _report_analytics,
     )
-    return await _report_analytics(view, identity, db, customer, court_lawyer, handling_lawyer, assistant, investigator, court, source_from, source_to, hearing_from, hearing_to, group_mode)
+    from app.core.finance_query_revision import finance_revision_snapshot
+    from app.core.query_cache import cached_query
+    # 与财务列表、客户ROI同一套缓存：案件、费用、到账、开庭等任一表有写入，修订号变化后自动重算（BUG20261101001 性能）。
+    return await cached_query(
+        db, identity, "reports.analytics", {"view": view, **params},
+        lambda: _report_analytics(view, identity, db, *(params[key] for key in (
+            "customer", "court_lawyer", "handling_lawyer", "assistant", "investigator", "court",
+            "source_from", "source_to", "hearing_from", "hearing_to", "group_mode"))),
+        snapshot_reader=finance_revision_snapshot,
+    )
+
+
+@router.get(f"{settings.api_prefix}/reports/analytics")
+async def report_analytics(view: str, customer: str = "", court_lawyer: str = "", handling_lawyer: str = "", assistant: str = "", investigator: str = "", court: str = "", source_from: date | None = None, source_to: date | None = None, hearing_from: date | None = None, hearing_to: date | None = None, group_mode: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core import query_prewarm
+    params = {"customer": customer, "court_lawyer": court_lawyer, "handling_lawyer": handling_lawyer, "assistant": assistant,
+              "investigator": investigator, "court": court, "source_from": source_from, "source_to": source_to,
+              "hearing_from": hearing_from, "hearing_to": hearing_to, "group_mode": group_mode}
+    # 登记后台预热：数据变化后提前重算，打开报表直接命中缓存（BUG20261101001，2 秒内）。
+    await query_prewarm.remember(db, "reports", "analytics", identity, {
+        "view": view, **{key: params[key] for key in ANALYTICS_TEXT_PARAMS},
+        **{key: params[key].isoformat() if params[key] else None for key in ANALYTICS_DATE_PARAMS},
+    })
+    return await _cached_report_analytics(identity, db, view, params)
 
 
 async def _cached_customer_roi(identity: dict, db: AsyncSession, date_from: date | None, date_to: date | None, department: str, employee: str):
@@ -229,9 +255,15 @@ async def customer_roi_report(date_from: date | None = None, date_to: date | Non
 
 
 async def _replay_customer_roi(name, identity, parameters, db):
+    parse = lambda value: date.fromisoformat(value) if value else None
+    if name == "analytics":
+        await _cached_report_analytics(identity, db, str(parameters.get("view") or ""), {
+            **{key: str(parameters.get(key) or "") for key in ANALYTICS_TEXT_PARAMS},
+            **{key: parse(parameters.get(key)) for key in ANALYTICS_DATE_PARAMS},
+        })
+        return
     if name != "customer_roi":
         raise ValueError("未知的报表预热登记")
-    parse = lambda value: date.fromisoformat(value) if value else None
     await _cached_customer_roi(identity, db, parse(parameters.get("date_from")), parse(parameters.get("date_to")),
                                str(parameters.get("department") or ""), str(parameters.get("employee") or ""))
 

@@ -871,6 +871,17 @@ def _large_screen_month_keys(today: date) -> list[str]:
     return keys
 
 
+REPORT_CASE_FIELDS = (
+    "handling_lawyers", "hearing_lawyer", "hearing_lawyers", "assistant", "investigator", "archived_at",
+    "case_phase_id", "case_stage", "business_stage", "phase", "legacy",
+)
+REPORT_FEE_FIELDS = (
+    "case_id", "case_record_id", "case_no", "fee_type", "case_fee_type_id", "fee_type_code", "fee_type_name",
+    "expense_subtype", "fee_type_group", "inform_date", "paid_amount", "cashed_amount", "received_amount", "allocated_at", "legacy",
+    "legacy_case_fee_id", "legacy_fee_id",
+)
+
+
 async def _report_analytics(view: str, identity: dict, db: AsyncSession, customer: str = "", court_lawyer: str = "", handling_lawyer: str = "", assistant: str = "", investigator: str = "", court: str = "", source_from: date | None = None, source_to: date | None = None, hearing_from: date | None = None, hearing_to: date | None = None, group_mode: str = "") -> dict:
     from app.core.permissions import (
         _record_scope_conditions,
@@ -883,7 +894,9 @@ async def _report_analytics(view: str, identity: dict, db: AsyncSession, custome
     customers_selected = {value.strip() for value in customer.split(",") if value.strip()}
     # 选了客户时先在数据库里按同样的“包含”条件筛，不再把全部案件读出来再筛（BUG20261101001 性能）。
     customer_filter = [or_(*(BusinessRecord.customer.contains(value, autoescape=True) for value in customers_selected))] if customers_selected else []
-    cases = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case", *scope, *customer_filter))).all()
+    from app.core.record_projection_query import read_record_projections
+    # 只取统计和筛选用到的字段，不读整条案件和费用（报表性能）。
+    cases = await read_record_projections(db, [BusinessRecord.module == "case", *scope, *customer_filter], REPORT_CASE_FIELDS)
     court_lawyers_selected = {value.strip() for value in court_lawyer.split(",") if value.strip()}
     def matches(item: BusinessRecord) -> bool:
         data = item.data or {}; handlers = data.get("handling_lawyers", [])
@@ -915,9 +928,11 @@ async def _report_analytics(view: str, identity: dict, db: AsyncSession, custome
     fee_links = [or_(scalar_in_values(BusinessRecord.data["case_id"].as_integer(), case_ids),
                      scalar_in_values(BusinessRecord.data["case_record_id"].as_integer(), case_ids),
                      scalar_in_values(BusinessRecord.data["case_no"].as_string(), case_nos))] if customers_selected else []
-    finances = (await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "finance", *scope, *fee_links,
-    ))).all() if can_view_amount and cases else []
+    finances = await read_record_projections(
+        # 内部费用（约八成费用）既不是官费也不是代理到账，统计里用不到，不读。
+        db, [BusinessRecord.module == "finance", *scope, *fee_links,
+             func.coalesce(BusinessRecord.data["fee_type"].as_string(), "") != "内部费用"], REPORT_FEE_FIELDS,
+    ) if can_view_amount and cases else []
     from app.core.roi import operating_charts
     charts, warnings = await operating_charts(cases, finances, view, group_mode, db) if can_view_amount else ([], [])
     return {"view": view, "charts": charts, "warnings": warnings, "filter_options": {"customers": customers, "lawyers": lawyers}, "source": "realtime"}
