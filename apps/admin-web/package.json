@@ -1,7 +1,7 @@
 {
   "name": "sunhold-admin-web",
   "private": true,
-  "version": "1.2.106",
+  "version": "1.2.107",
   "type": "module",
   "engines": {
     "node": ">=22 <23",
