@@ -445,3 +445,8 @@
 .progress-matrix-page.is-big-screen .progress-matrix-table .progress-matrix-count,
 .progress-matrix-page.is-big-screen .progress-matrix-table .progress-matrix-count[disabled] { font-size: 24px; color: var(--oa-primary, #1f6feb); cursor: default; }
 .progress-matrix-page.is-big-screen .report-page-heading { font-size: 28px; }
+
+/* 报表页“大屏展示”：本页内容铺满屏幕放大显示（BUG 500789）；不支持全屏的内核也按此铺满窗口。 */
+.report-page.report-page-big-screen { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 1200; margin: 0; padding: 24px 32px; overflow: auto; background: var(--oa-bg, #f4f6fa); }
+.report-page.report-page-big-screen .report-page-heading { font-size: 28px; }
+.report-page.report-page-big-screen .report-chart-grid { gap: 20px; }

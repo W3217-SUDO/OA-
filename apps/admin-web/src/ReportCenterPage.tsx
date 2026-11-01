@@ -22,6 +22,7 @@ import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./cus
 import { useMobileFilterToggle } from "./components/common/MobileFilterToggle";
 import { usePeopleNames } from "./personNames";
 import ProgressMatrixReport from "./ProgressMatrixReport";
+import { useReportBigScreen } from "./reportBigScreen";
 import "./report-center.css";
 
 type ChartResult = { title: string; unit: ChartSpec["unit"]; items: { name: string; value: number | null }[] };
@@ -566,6 +567,7 @@ function StandardReportCenterPage({ initialView = "reports-brand", onNavigate, b
   const [loading, setLoading] = useState(false);
   const [analytics, setAnalytics] = useState<Analytics>({ charts: [], filter_options: { customers: [], lawyers: [] }, source: "realtime" });
   const [query, setQuery] = useState<ReportFilterValues>({});
+  const pageBigScreen = useReportBigScreen();
   const view = initialView.replace("reports-", "");
 
   const paramsFor = (values: ReportFilterValues) => ({
@@ -606,10 +608,12 @@ function StandardReportCenterPage({ initialView = "reports-brand", onNavigate, b
   // 三张执行进度表合并成一张（BUG 500788）；旧的（二）（三）入口也打开这张。
   if (initialView.startsWith("reports-execution-")) return <ProgressMatrixReport title="执行进度案件统计" endpoint="/reports/execution-progress" bigScreen={bigScreen} onNavigate={onNavigate} />;
   return (
-    <div className={`report-page ${page.filter === "none" ? "report-page-no-filter" : ""}`}>
+    <div ref={pageBigScreen.ref} className={`report-page ${page.filter === "none" ? "report-page-no-filter" : ""}${pageBigScreen.active ? " report-page-big-screen" : ""}`}>
       <div className="report-page-heading">
         <span>{page.title}</span>
-        {onNavigate && <Button size="small" type="primary" onClick={() => onNavigate("reports-large-screen")}>大屏展示</Button>}
+        {!bigScreen && (pageBigScreen.active
+          ? <Button size="small" onClick={pageBigScreen.exit}>退出大屏</Button>
+          : <Button size="small" type="primary" onClick={pageBigScreen.enter}>大屏展示</Button>)}
       </div>
       {page.filter !== "none" && <Filters key={initialView} kind={page.filter as "brand" | "lawyer"} options={analytics.filter_options} onQuery={queryReport} />}      {page.tab && (
         <div className="report-tabs">

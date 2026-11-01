@@ -5,6 +5,7 @@ import type { ColumnsType } from "antd/es/table";
 import { api } from "./api";
 import { rememberCaseDetailTarget } from "./caseDetailNavigation";
 import { POPUP_WIDTH } from "./components/common/popupSize";
+import { useReportBigScreen } from "./reportBigScreen";
 
 // 按人统计的进度表：每人一行、横向是进度，格子是案件数，点数字看案件清单（BUG 500789）。
 export type ProgressMatrixRow = { person: string; counts: Record<string, number>; total: number };
@@ -28,12 +29,15 @@ const emptyData: ProgressMatrixData = { person_label: "", stages: [], rows: [], 
 
 export const progressMatrixPages = (rows: number, pageSize = BIG_SCREEN_PAGE_SIZE) => Math.max(1, Math.ceil(rows / pageSize));
 
-export default function ProgressMatrixReport({ title, endpoint, bigScreen = false, onNavigate }: {
+export default function ProgressMatrixReport({ title, endpoint, bigScreen: rotatingBigScreen = false, onNavigate }: {
   title: string;
   endpoint: string;
   bigScreen?: boolean;
   onNavigate?: (route: string) => void;
 }) {
+  const pageBigScreen = useReportBigScreen();
+  // 大屏轮播里或本页点了“大屏展示”时都按大屏样式显示本页这张表。
+  const bigScreen = rotatingBigScreen || pageBigScreen.active;
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<ProgressMatrixData>(emptyData);
   const [error, setError] = useState("");
@@ -106,10 +110,12 @@ export default function ProgressMatrixReport({ title, endpoint, bigScreen = fals
   ];
   const drillTitle = drill ? `${drill.person || "全部"} · ${drill.stage || "全部进度"}` : "";
   return (
-    <div className={`report-page progress-matrix-page${bigScreen ? " is-big-screen" : ""}`}>
+    <div ref={pageBigScreen.ref} className={`report-page progress-matrix-page${bigScreen ? " is-big-screen" : ""}${pageBigScreen.active ? " report-page-big-screen" : ""}`}>
       <div className="report-page-heading">
         <span>{title}</span>
-        {!bigScreen && onNavigate && <Button size="small" type="primary" onClick={() => onNavigate("reports-large-screen")}>大屏展示</Button>}
+        {!rotatingBigScreen && (pageBigScreen.active
+          ? <Button size="small" onClick={pageBigScreen.exit}>退出大屏</Button>
+          : <Button size="small" type="primary" onClick={pageBigScreen.enter}>大屏展示</Button>)}
       </div>
       {data.definition && <div className="report-roi-description">{data.definition}</div>}
       {error && <Alert type="error" showIcon message={error} action={<Button size="small" onClick={() => void load()}>重试</Button>} />}

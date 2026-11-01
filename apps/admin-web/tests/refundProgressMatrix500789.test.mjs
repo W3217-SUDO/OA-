@@ -31,3 +31,14 @@ test('执行进度三张表合并成一张按律师助理的表（BUG 500788）'
   assert.ok(!app.includes('"reports-execution-2"') && !app.includes('"reports-execution-3"'));
   assert.match(read('ProgressMatrixReport.tsx'), /setDrillColumns\(result\.columns \|\| \[\]\)/);
 });
+
+test('“大屏展示”全屏显示本页，不再跳经营数据大屏（BUG 500789 15:39）', () => {
+  for (const file of ['ReportCenterPage.tsx', 'ProgressMatrixReport.tsx']) {
+    const source = read(file);
+    assert.ok(!source.includes('onClick={() => onNavigate("reports-large-screen")}>大屏展示'), file);
+    assert.match(source, /onClick=\{pageBigScreen\.enter\}>大屏展示<\/Button>/, file);
+    assert.match(source, /onClick=\{pageBigScreen\.exit\}>退出大屏<\/Button>/, file);
+  }
+  assert.match(read('reportBigScreen.ts'), /requestFullscreen\(\)/);
+  assert.match(read('report-center.css'), /\.report-page\.report-page-big-screen \{ position: fixed;/);
+});
