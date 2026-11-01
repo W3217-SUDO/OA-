@@ -207,7 +207,15 @@ async def customer_roi_report(date_from: date | None = None, date_to: date | Non
     from app.core.crm import (
         _customer_roi_analytics,
     )
-    return await _customer_roi_analytics(identity, db, date_from=date_from, date_to=date_to, department=department, employee=employee)
+    from app.core.finance_query_revision import finance_revision_snapshot
+    from app.core.query_cache import cached_query
+    # 与财务列表同一套缓存：任一业务表（到账单、付款、案件、客户……）有写入，修订号变化后自动重算。
+    return await cached_query(
+        db, identity, "reports.customer_roi",
+        {"date_from": date_from, "date_to": date_to, "department": department, "employee": employee},
+        lambda: _customer_roi_analytics(identity, db, date_from=date_from, date_to=date_to, department=department, employee=employee),
+        snapshot_reader=finance_revision_snapshot,
+    )
 
 
 @router.get(f"{settings.api_prefix}/reports/customer-roi/export")

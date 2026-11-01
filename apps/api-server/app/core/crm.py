@@ -329,6 +329,57 @@ def _mark_customer_modified(customer: BusinessRecord, identity: dict) -> None:
     customer.data = data
 
 
+_ROI_DATA_KEYS = ("case_id", "contract_id", "contract_record_id", "case_no", "contract_no", "customer_id", "customer_record_id", "customer_no")
+
+
+async def _roi_records(db: AsyncSession, *conditions) -> list:
+    """客户ROI只用记录的几列和 data 里的关联键；整行（含大 JSON）加载会让报表慢到数秒（BUG 500784）。"""
+    from types import SimpleNamespace
+    from sqlalchemy import Text, column, true
+    columns = [BusinessRecord.id, BusinessRecord.module, BusinessRecord.serial_no, BusinessRecord.title,
+               BusinessRecord.customer, BusinessRecord.department, BusinessRecord.owner]
+    if db.get_bind().dialect.name == "postgresql":
+        # json_to_record 一次解析整段 JSON 取全部键；逐个 ->> 每个键都要重新解析，慢约 3 倍。
+        keys = func.json_to_record(BusinessRecord.data).table_valued(
+            *(column(key, Text) for key in _ROI_DATA_KEYS), name="roi_keys",
+        ).render_derived(with_types=True).lateral()
+        statement = select(*columns, *(keys.c[key] for key in _ROI_DATA_KEYS)).select_from(BusinessRecord).join(keys, true())
+    else:
+        statement = select(*columns, *(BusinessRecord.data[key].as_string() for key in _ROI_DATA_KEYS))
+    rows = (await db.execute(statement.where(*conditions))).all()
+    result = []
+    for row in rows:
+        data = {key: value for key, value in zip(_ROI_DATA_KEYS, row[len(columns):]) if value not in (None, "")}
+        result.append(SimpleNamespace(id=row[0], module=row[1], serial_no=row[2] or "", title=row[3] or "",
+                                      customer=row[4] or "", department=row[5] or "", owner=row[6] or "", data=data))
+    return result
+
+
+async def _roi_receipts(db: AsyncSession, *conditions) -> list:
+    """到账单只取金额、关联和分配里的案件/合同/退款标记；分配 JSON 里带旧系统原始行，整段读取很大。"""
+    from types import SimpleNamespace
+    from sqlalchemy import Text, column, literal_column, true
+    head = [IncomingPayment.id, IncomingPayment.amount, IncomingPayment.contract_record_id, IncomingPayment.contract_no,
+            IncomingPayment.case_no, IncomingPayment.claimed_customer]
+    receipts: dict[int, SimpleNamespace] = {}
+    if db.get_bind().dialect.name == "postgresql":
+        parts = func.json_to_recordset(func.coalesce(IncomingPayment.allocations, literal_column("'[]'::json"))).table_valued(
+            *(column(key, Text) for key in ("amount", "case_id", "case_no", "contract_no", "is_refund")), name="roi_alloc",
+        ).render_derived(with_types=True).lateral()
+        rows = (await db.execute(select(*head, *parts.c).select_from(IncomingPayment).outerjoin(parts, true()).where(*conditions))).all()
+        for row in rows:
+            receipt = receipts.setdefault(row[0], SimpleNamespace(
+                amount=row[1], contract_record_id=row[2], contract_no=row[3], case_no=row[4], claimed_customer=row[5], allocations=[]))
+            amount, case_id, case_no, contract_no, is_refund = row[6:11]
+            if amount is not None or case_id is not None or case_no is not None:
+                receipt.allocations.append({"amount": amount, "case_id": case_id, "case_no": case_no,
+                                            "contract_no": contract_no, "is_refund": str(is_refund).lower() == "true"})
+        return list(receipts.values())
+    rows = (await db.execute(select(*head, IncomingPayment.allocations).where(*conditions))).all()
+    return [SimpleNamespace(amount=row[1], contract_record_id=row[2], contract_no=row[3], case_no=row[4],
+                            claimed_customer=row[5], allocations=row[6] or []) for row in rows]
+
+
 async def _customer_roi_analytics(
     identity: dict,
     db: AsyncSession,
@@ -362,15 +413,26 @@ async def _customer_roi_analytics(
         raise HTTPException(status_code=403, detail="当前账号没有查看财务金额的权限")
 
     scope = await _record_scope_conditions(identity, db)
-    source_records = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module.in_({"finance", "contract", "contract_payment"}), *scope,
-    ))).all())
+    # 先取收付款流水，只加载有流水的费用/合同/请款记录（结果与加载全部相同，只是少读无关行）。
+    transaction_conditions = [FinanceTransaction.transaction_type.in_({"回款", "付款", "合同付款"})]
+    if date_from:
+        transaction_conditions.append(FinanceTransaction.transaction_date >= date_from)
+    if date_to:
+        transaction_conditions.append(FinanceTransaction.transaction_date <= date_to)
+    transactions = (await db.execute(select(
+        FinanceTransaction.finance_record_id, FinanceTransaction.transaction_type, FinanceTransaction.amount,
+    ).where(*transaction_conditions))).all()
+    transaction_source_ids = {int(row.finance_record_id or 0) for row in transactions} - {0}
+    source_records = await _roi_records(
+        db, BusinessRecord.module.in_({"finance", "contract", "contract_payment"}),
+        scalar_in_values(BusinessRecord.id, transaction_source_ids), *scope,
+    ) if transaction_source_ids else []
     receipt_conditions = [IncomingPayment.amount > 0]
     if date_from:
         receipt_conditions.append(IncomingPayment.received_date >= date_from)
     if date_to:
         receipt_conditions.append(IncomingPayment.received_date <= date_to)
-    receipts = list((await db.scalars(select(IncomingPayment).where(*receipt_conditions))).all())
+    receipts = await _roi_receipts(db, *receipt_conditions)
     if not source_records and not receipts:
         return {
             "view": "customer-roi", "rows": [],
@@ -405,9 +467,7 @@ async def _customer_roi_analytics(
         related_links.append(scalar_in_values(BusinessRecord.id, related_ids))
     if related_serials:
         related_links.append(scalar_in_values(BusinessRecord.serial_no, related_serials))
-    related_records = list((await db.scalars(select(BusinessRecord).where(
-        *related_conditions, or_(*related_links),
-    ))).all()) if related_links else []
+    related_records = await _roi_records(db, *related_conditions, or_(*related_links)) if related_links else []
     related_by_id = {record.id: record for record in related_records}
     related_by_serial = {record.serial_no: record for record in related_records}
 
@@ -427,9 +487,7 @@ async def _customer_roi_analytics(
         customer_links.append(scalar_in_values(BusinessRecord.id, customer_ids))
     if customer_nos:
         customer_links.append(scalar_in_values(BusinessRecord.serial_no, customer_nos))
-    customers = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "customer", *scope, or_(*customer_links),
-    ))).all()) if customer_links else []
+    customers = await _roi_records(db, BusinessRecord.module == "customer", *scope, or_(*customer_links)) if customer_links else []
     customers_by_id = {record.id: record for record in customers}
     customers_by_no: dict[str, list[BusinessRecord]] = {}
     customers_by_title: dict[str, list[BusinessRecord]] = {}
@@ -476,15 +534,6 @@ async def _customer_roi_analytics(
             return customer_record
         return None
 
-    transaction_conditions = [
-        scalar_in_values(FinanceTransaction.finance_record_id, source_by_id),
-        FinanceTransaction.transaction_type.in_({"回款", "付款", "合同付款"}),
-    ]
-    if date_from:
-        transaction_conditions.append(FinanceTransaction.transaction_date >= date_from)
-    if date_to:
-        transaction_conditions.append(FinanceTransaction.transaction_date <= date_to)
-    transactions = list((await db.scalars(select(FinanceTransaction).where(*transaction_conditions))).all()) if source_by_id else []
 
     grouped: dict[int, dict] = {}
     eligible_sources: set[int] = set()
@@ -530,7 +579,7 @@ async def _customer_roi_analytics(
         bucket["employees"].add(owner_name)
         bucket["income"] += amount
 
-    def claimed_customer(receipt: IncomingPayment) -> BusinessRecord | None:
+    def claimed_customer(receipt) -> BusinessRecord | None:
         candidates = customers_by_title.get(_normalized_customer_name(receipt.claimed_customer or ""), [])
         return candidates[0] if len(candidates) == 1 else None
 
