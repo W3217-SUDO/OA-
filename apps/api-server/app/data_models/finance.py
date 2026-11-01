@@ -134,6 +134,39 @@ class IncomingPayment(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class BankStatementLine(Base):
+    """银行原始流水（陶国南 11-01 定：和旧系统一样两步）：上传银行文件只写流水，财务勾选后再生成到账单。
+
+    各银行共用一张表（陶威同意）；旧系统迁来的 FAM_AR_Payment_* 镜像表只读，只看历史。
+    finance_scope 暂按上传人所在财务中心（律所 firm / 平台 platform）记，归属规则定了再改判断方式。
+    删除只做逻辑删除（deleted_at）；已导入的不能删。
+    """
+
+    __tablename__ = "bank_statement_lines"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    bank: Mapped[str] = mapped_column(String(16), index=True)
+    finance_scope: Mapped[str] = mapped_column(String(16), index=True)
+    file_name: Mapped[str] = mapped_column(String(255), default="")
+    sheet_name: Mapped[str] = mapped_column(String(128), default="")
+    row_no: Mapped[int] = mapped_column(Integer, default=0)
+    received_date: Mapped[date] = mapped_column(Date, index=True)
+    amount: Mapped[float] = mapped_column(Float)
+    payer_name: Mapped[str] = mapped_column(String(255), index=True)
+    payer_account: Mapped[str] = mapped_column(String(128), default="")
+    bank_reference: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    import_identity: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    remark: Mapped[str] = mapped_column(Text, default="")
+    raw: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(16), index=True, default="未导入")
+    incoming_payment_id: Mapped[int | None] = mapped_column(ForeignKey("incoming_payments.id", ondelete="SET NULL"), nullable=True, index=True)
+    receipt_no: Mapped[str] = mapped_column(String(64), default="")
+    uploaded_by: Mapped[str] = mapped_column(String(64))
+    imported_by: Mapped[str] = mapped_column(String(64), default="")
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class LegacyFinanceRecord(Base):
     """Read-only normalized ledger for legacy FAM financial headers.
 

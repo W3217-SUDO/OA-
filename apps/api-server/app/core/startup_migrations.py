@@ -158,6 +158,11 @@ def _apply_department_owner(connection: Connection, _upgrade_schema: Callable[[C
         connection.execute(text("ALTER TABLE departments ADD COLUMN owner_username VARCHAR(64) NOT NULL DEFAULT ''"))
 
 
+def _apply_bank_statement_lines(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    from app.data_models.finance import BankStatementLine
+    BankStatementLine.__table__.create(connection, checkfirst=True)
+
+
 def _apply_soft_delete(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
     upgrade_soft_delete(connection)
 
@@ -224,6 +229,9 @@ def _run_versioned_schema_migrations(
         # 登录只改登录记录列时不推进控制台/财务查询修订，登录后首屏可直接命中缓存。
         (DASHBOARD_LOGIN_COLUMNS_REVISION, _apply_dashboard_revision_login_columns),
         ("department_owner_username_v1", _apply_department_owner),
+        # 银行原始流水表（两步：上传→流水→勾选生成到账单），建表后重装财务查询修订触发器，否则财务缓存整体失效。
+        ("bank_statement_lines_v1", _apply_bank_statement_lines),
+        ("finance_query_revision_bank_lines_v1", _apply_finance_query_revision),
     )
     for revision, migration in revisions:
         if connection.execute(

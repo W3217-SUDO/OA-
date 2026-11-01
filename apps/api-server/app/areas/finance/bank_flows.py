@@ -2,16 +2,21 @@
 
 旧系统上传银行文件后写入这四张流水表，“导入”把选中的流水生成到账单并把状态改成 2（已导入），
 “删除”把 IsActived 改成 F，列表只显示 IsActived='T' 的流水。这里同样默认只列未删除的流水，可勾选包含已删除的。
-上传银行文件、从流水生成到账单两项暂不做，本接口不写任何数据。
+
+新上传的流水（陶国南 11-01 定两步）写在共用的 bank_statement_lines 表：/finance/bank-flows/lines 列表，
+勾选后 /generate 生成到账单、/delete 逻辑删除。镜像表只读。
 """
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import MetaData, Table, func, inspect, select
 
 from app.core.dependencies import AsyncSession, Depends, current_identity, get_db, settings
+from app.core.finance_centers import finance_center_identity
 from app.legacy_schema import LEGACY_METADATA
+from app.models import BankStatementLine, IncomingPayment
 
 router = APIRouter()
 
@@ -145,3 +150,138 @@ async def list_bank_flows(
         "page_size": page_size,
     }
 
+
+
+# —— 新上传流水（两步：上传→流水→勾选生成到账单）——
+LINE_BANK_NAMES = {"icbc": "工行", "citic": "中信", "boc": "中行", "cmb": "招商"}
+LINE_SCOPE_NAMES = {"firm": "律所", "platform": "平台"}
+FLOW_MENU = {"firm": "finance-receipts-bank-flow", "platform": "platform-finance-overview-bank-flow"}
+
+
+class BankFlowSelection(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=500)
+
+
+async def _require_flow_menu(identity: dict, db: AsyncSession) -> None:
+    """生成到账单、删除流水要有本中心“银行原始流水”页面（给了页面 = 功能全有）。"""
+    if identity.get("role") == "admin":
+        return
+    from app.core.permissions import _permission_payload_for_identity
+    menus = set((await _permission_payload_for_identity(identity, db)).get("menu_keys") or [])
+    if FLOW_MENU.get(identity["_finance_scope"]) not in menus:
+        raise HTTPException(status_code=403, detail="当前账号没有“银行原始流水”页面权限")
+
+
+def _line_dict(line: BankStatementLine) -> dict:
+    return {
+        "id": line.id, "bank": line.bank, "bank_label": LINE_BANK_NAMES.get(line.bank, line.bank),
+        "finance_scope": line.finance_scope, "group": LINE_SCOPE_NAMES.get(line.finance_scope, ""),
+        "received_date": str(line.received_date), "amount": float(line.amount or 0),
+        "payer_name": line.payer_name, "payer_account": line.payer_account or "",
+        "bank_reference": line.bank_reference or "", "remark": line.remark or "",
+        "status": "已删除" if line.deleted_at else line.status, "receipt_no": line.receipt_no or "",
+        "incoming_payment_id": line.incoming_payment_id, "file_name": line.file_name or "", "row_no": line.row_no,
+        "operator": line.uploaded_by, "created_at": _text(line.created_at.replace(tzinfo=None)) if line.created_at else "",
+        "imported_by": line.imported_by or "", "imported_at": _text(line.imported_at.replace(tzinfo=None)) if line.imported_at else "",
+    }
+
+
+@router.get(f"{settings.api_prefix}/finance/bank-flows/lines")
+async def list_bank_flow_lines(
+    bank: str = Query("", pattern="^(|icbc|citic|boc|cmb)$"),
+    payer_name: str = Query(""),
+    payer_account: str = Query(""),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    status_filter: str = Query("未导入", alias="status", pattern="^(|未导入|已导入|已删除)$"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=200),
+    identity: dict = Depends(finance_center_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    conditions = [BankStatementLine.finance_scope == identity["_finance_scope"]]
+    if bank:
+        conditions.append(BankStatementLine.bank == bank)
+    if payer_name.strip():
+        conditions.append(BankStatementLine.payer_name.ilike(f"%{payer_name.strip()}%"))
+    if payer_account.strip():
+        conditions.append(BankStatementLine.payer_account.ilike(f"%{payer_account.strip()}%"))
+    if date_from:
+        conditions.append(BankStatementLine.received_date >= date_from)
+    if date_to:
+        conditions.append(BankStatementLine.received_date <= date_to)
+    include_deleted = status_filter == "已删除"
+    if include_deleted:
+        conditions.append(BankStatementLine.deleted_at.is_not(None))
+    elif status_filter:
+        conditions.append(BankStatementLine.status == status_filter)
+    options = {"include_deleted": True} if include_deleted else {}
+    total = await db.scalar(select(func.count()).select_from(BankStatementLine).where(*conditions).execution_options(**options)) or 0
+    amount = await db.scalar(select(func.coalesce(func.sum(BankStatementLine.amount), 0)).where(*conditions).execution_options(**options)) or 0
+    lines = (await db.scalars(
+        select(BankStatementLine).where(*conditions)
+        .order_by(BankStatementLine.received_date.desc(), BankStatementLine.id.desc())
+        .offset((page - 1) * page_size).limit(page_size).execution_options(**options)
+    )).all()
+    return {"items": [_line_dict(line) for line in lines], "total": int(total), "amount": float(amount), "page": page, "page_size": page_size,
+            "banks": [{"key": key, "label": label} for key, label in LINE_BANK_NAMES.items()]}
+
+
+async def _selected_lines(body: BankFlowSelection, identity: dict, db: AsyncSession) -> list[BankStatementLine]:
+    ids = sorted(set(body.ids))
+    lines = list((await db.scalars(
+        select(BankStatementLine).where(BankStatementLine.id.in_(ids)).with_for_update()
+    )).all())
+    found = {line.id for line in lines}
+    if found != set(ids) or any(line.finance_scope != identity["_finance_scope"] for line in lines):
+        raise HTTPException(status_code=409, detail="部分流水不存在、已删除或不属于当前财务中心，请刷新后重试")
+    imported = [line for line in lines if line.status != "未导入"]
+    if imported:
+        raise HTTPException(status_code=409, detail=f"有 {len(imported)} 条流水已经导入，请只勾选“未导入”的流水")
+    return lines
+
+
+@router.post(f"{settings.api_prefix}/finance/bank-flows/generate")
+async def generate_incoming_from_bank_flows(body: BankFlowSelection, identity: dict = Depends(finance_center_identity), db: AsyncSession = Depends(get_db)):
+    """勾选的未导入流水逐条生成到账单（待认领），整批一起成功或一起失败；流水改为已导入并记到账单号。"""
+    await _require_flow_menu(identity, db)
+    lines = await _selected_lines(body, identity, db)
+    references = {line.bank_reference for line in lines if line.bank_reference}
+    if references:
+        taken = set((await db.scalars(select(IncomingPayment.bank_reference).where(IncomingPayment.bank_reference.in_(references)))).all())
+        if taken:
+            raise HTTPException(status_code=409, detail=f"银行流水号已经有到账单：{'、'.join(sorted(taken)[:5])}")
+    identities = {line.import_identity for line in lines if line.import_identity}
+    if identities:
+        taken = set((await db.scalars(select(IncomingPayment.receipt_no).where(IncomingPayment.receipt_no.in_(identities)))).all())
+        if taken:
+            raise HTTPException(status_code=409, detail="部分工行流水已经生成过到账单，请刷新后重试")
+    now = datetime.now()
+    created = []
+    for index, line in enumerate(lines):
+        payment = IncomingPayment(
+            source_kind="bank_import", finance_scope=line.finance_scope,
+            receipt_no=line.import_identity or f"HK{now:%Y%m%d%H%M%S%f}{index:03d}",
+            received_date=line.received_date, amount=line.amount, payer_name=line.payer_name,
+            bank_reference=line.bank_reference or None, status="待认领",
+            bank_source=LINE_BANK_NAMES.get(line.bank, ""), operator=identity["username"],
+            remark="；".join(part for part in [line.remark or "", f"由银行原始流水生成（{line.file_name or '上传文件'} 第{line.row_no}行）"] if part),
+        )
+        db.add(payment)
+        await db.flush()
+        line.status, line.incoming_payment_id, line.receipt_no = "已导入", payment.id, payment.receipt_no
+        line.imported_by, line.imported_at = identity["username"], now
+        created.append(payment.receipt_no)
+    await db.commit()
+    return {"created": len(created), "receipt_nos": created}
+
+
+@router.post(f"{settings.api_prefix}/finance/bank-flows/delete")
+async def delete_bank_flows(body: BankFlowSelection, identity: dict = Depends(finance_center_identity), db: AsyncSession = Depends(get_db)):
+    """只删未导入的流水，逻辑删除（可在“已删除”里查到）。"""
+    await _require_flow_menu(identity, db)
+    lines = await _selected_lines(body, identity, db)
+    for line in lines:
+        await db.delete(line)
+    await db.commit()
+    return {"deleted": len(lines)}

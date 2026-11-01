@@ -109,7 +109,7 @@ FINANCE_CONDITIONAL_QUERIES = {
 FINANCE_REALTIME_QUERIES = {
     "/finance/fees/{fee_id}/court-refund/request": "get_finance_fee_court_refund_request",
     # 银行原始流水读迁移镜像表，镜像表没有财务缓存触发器，不进缓存。
-    "/finance/bank-flows": "list_bank_flows",
+    "/finance/bank-flows": "list_bank_flows", "/finance/bank-flows/lines": "list_bank_flow_lines",
 }
 
 FINANCIAL_RECORD_MODULES = frozenset({

@@ -111,7 +111,7 @@ _PAGE_MENU_PREFIXES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("/tasks", ("@root:task",)),
     ("/vip-tasks", ("@root:task",)),
     ("/affairs-records", ("@root:task",)),
-    ("/finance/bank-flows", ("finance-receipts-bank-flow", "finance-receipts-gdicbc", "platform-finance-overview-gdicbc")),
+    ("/finance/bank-flows", ("finance-receipts-bank-flow", "finance-receipts-gdicbc", "platform-finance-overview-gdicbc", "platform-finance-overview-bank-flow")),
     ("/finance", ("@root:finance", "@root:platform-finance")),
     ("/platform-finance", ("@root:platform-finance",)),
     ("/warehouse", ("@root:warehouse",)),

@@ -318,8 +318,13 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
         raise HTTPException(422, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(422, "文件无法识别，请确认格式真实、文件未加密且未损坏") from exc
+    # 陶国南 11-01 定两步：确认上传只写“银行原始流水”，财务勾选后再生成到账单；已在流水或到账单里的不重复写。
+    from app.models import BankStatementLine
     existing = set((await db.scalars(select(IncomingPayment.bank_reference))).all())
+    existing |= set((await db.scalars(select(BankStatementLine.bank_reference).where(BankStatementLine.bank_reference.is_not(None)))).all())
     existing_receipts = set((await db.scalars(select(IncomingPayment.receipt_no))).all()) if bank_source == 'icbc' else set()
+    if bank_source == 'icbc':
+        existing_receipts |= set((await db.scalars(select(BankStatementLine.import_identity).where(BankStatementLine.import_identity.is_not(None)))).all())
     created = 0
     skipped = 0
     errors: list[dict] = []
@@ -345,7 +350,7 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
             if len(payer) > 255 or len(bank_reference) > 128:
                 raise ValueError("对方户名或银行流水号过长，请检查表头与数据列")
             if bank_reference and bank_reference in existing:
-                raise ValueError("银行流水号已经登记")
+                raise ValueError("银行流水号已经上传过（在银行原始流水或到账单里）")
             if import_identity and import_identity in existing_receipts:
                 raise ValueError('这笔工行流水已经导入，请勿重复上传')
             received_date = parse_received_date(received_text)
@@ -369,7 +374,14 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
                 preview_items.append({'source': sheet_name, 'row': row_no, 'payer_name': payer, 'bank_reference': bank_reference,
                     'received_date': str(received_date), 'amount': amount, 'remark': item_values['remark']})
             else:
-                db.add(IncomingPayment(**item_values))
+                db.add(BankStatementLine(
+                    bank=bank_source, finance_scope=identity["_finance_scope"],
+                    file_name=((file.filename if file is not None else "") or "")[:255], sheet_name=str(sheet_name or "")[:128],
+                    row_no=int(row_no or 0), received_date=received_date, amount=amount, payer_name=payer,
+                    payer_account=cell_text(row.get("payer_account"))[:128], bank_reference=bank_reference or None,
+                    import_identity=import_identity or None, remark=item_values["remark"],
+                    raw={key: cell_text(value) for key, value in row.items()}, status="未导入", uploaded_by=identity["username"],
+                ))
             existing.add(bank_reference)
             if import_identity:
                 existing_receipts.add(import_identity)
@@ -385,7 +397,7 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
             'created': 0, 'valid_count': created, 'errors': errors, 'skipped': skipped}
     if created:
         await db.commit()
-    return {"created": created, "errors": errors, "skipped": skipped}
+    return {"created": created, "errors": errors, "skipped": skipped, "target": "bank_flows"}
 
 
 @router.get(f"{settings.api_prefix}/finance/incoming-payments/export")

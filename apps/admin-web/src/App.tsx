@@ -1900,6 +1900,8 @@ export default function App() {
       <DocumentCenterPage initialView={route} onNavigate={navigate} />
     ) : active === "platform-finance-overview-gdicbc" ? (
       <BankFlowPage fixedBank="gdicbc" />
+    ) : active === "platform-finance-overview-bank-flow" ? (
+      <BankFlowPage financeScope="platform" />
     ) : route.startsWith("platform-finance-") ? (
       <FinanceCenterPage
         initialView={financeRouteFromPlatform(active)}
@@ -1913,7 +1915,7 @@ export default function App() {
     ) : ["user-center", "user-account"].includes(route) ? (
       <UserCenterPage />
     ) : active === "finance-receipts-bank-flow" ? (
-      <BankFlowPage />
+      <BankFlowPage financeScope="firm" />
     ) : active === "finance-receipts-gdicbc" ? (
       <BankFlowPage fixedBank="gdicbc" />
     ) : route.startsWith("finance-") ? (
