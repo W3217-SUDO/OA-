@@ -168,7 +168,6 @@ async def brand_charts(cases, fees, db, *, group_by="brand"):
         ("资金回款周期统计", "天/案"), ("资金亏损金额统计", "元"),
         ("资金回报率统计", "百分比"), ("资金亏损率统计", "百分比"),
     )]
-    warnings = []
     # 只显示有数据的客户，按已垫付官费从多到少排，不限个数，页面上左右拖动查看（tgn 11-01，BUG20261101001）。
     computed = []
     for name, members in groups.items():
@@ -185,30 +184,26 @@ async def brand_charts(cases, fees, db, *, group_by="brand"):
         collected = [c for c in members if rows[c.id]["agency_received"] > 0]
         agency = sum((rows[c.id]["agency_received"] for c in collected), Decimal(0))
         collected_paid = sum((rows[c.id]["official_paid"] for c in collected), Decimal(0))
+        # 算不出来的项留空，不再单独提醒（tgn 11-01，BUG20261101006）。
         rate = None
-        warning = ""
         if collected_paid and avg_days:
             rate = round(float(agency * Decimal("0.15") / collected_paid / Decimal(str(avg_days)) * 365 * 100), 2)
-        elif collected:
-            warning = f"{name}：{'没有已垫付官费的回款案件' if not collected_paid else '没有可算回款时间的归档案件'}，资金回报率无法计算"
         values = (avg_days, float(loss), rate, round(float(loss / total_paid * 100), 2) if total_paid else 0)
         if any(value not in (None, 0, 0.0) for value in values):
-            computed.append((total_paid, name, values, warning))
+            computed.append((total_paid, name, values))
     ordered = sorted(computed, key=lambda row: (-row[0], row[1]))
     display = {}
     labels = await _brand_short_names([row[1] for row in ordered], db) if group_by == "brand" else {}
     if group_by != "brand":
         from app.core.formatters import _user_display_map
         users = await _user_display_map({row[1] for row in ordered}, db)
-        display = {name: getattr(users.get(name.lower()) or users.get(name), "display_name", None) or name for _t, name, _v, _w in ordered}
-    for _total, name, values, warning in ordered:
+        display = {name: getattr(users.get(name.lower()) or users.get(name), "display_name", None) or name for _t, name, _v in ordered}
+    for _total, name, values in ordered:
         label = display.get(name, name)
         item_label = labels.get(name) or label
         for chart, value in zip(charts, values):
             chart["items"].append({"name": label, "label": item_label, "value": value})
-        if warning:
-            warnings.append(warning.replace(name, label, 1))
-    return charts, warnings
+    return charts, []
 
 
 def _group_keys(case, group_by: str) -> list[str]:

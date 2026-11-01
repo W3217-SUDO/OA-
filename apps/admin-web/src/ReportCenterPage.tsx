@@ -233,7 +233,7 @@ function MetricChart({ spec, items }: { spec: ChartSpec; items: { name: string; 
             />
             <Tooltip
               labelFormatter={(_label, payload) => payload?.[0]?.payload?.name ?? _label}
-              formatter={(item) => [item == null ? '不可计算' : `${Number(item).toLocaleString()} ${spec.unit}`, spec.title]}
+              formatter={(item) => [item == null ? "不可计算" : `${Number(item).toLocaleString()} ${spec.unit}`, spec.title]}
             />
             <Bar dataKey="value" fill="#36b978" maxBarSize={spec.narrowBars ? 28 : 72} />
           </BarChart>
@@ -768,7 +768,7 @@ function StandardReportCenterPage({ initialView = "reports-brand", onNavigate, b
         </div>
       )}
       <Spin spinning={loading}>
-        {Boolean(analytics.warnings?.length) && <Alert type="warning" showIcon message="部分统计缺少计算条件" description={analytics.warnings?.join('；')} />}
+        {/* 算不出来的项留空，不再单独提醒（tgn 11-01，BUG20261101006）。 */}
         <div className={`report-chart-grid ${page.charts.length === 2 ? "report-chart-grid-two" : ""}`}>
           {page.charts.map((chart, index) => (
             <MetricChart key={`${chart.title}-${index}`} spec={chart} items={chartItems(chart.title)} />
