@@ -1,27 +1,26 @@
-// BUG 500798：报表大屏员工业绩排行加代理费到账（按案源人、按开庭律师），默认今年，可按日期重新筛选。
+// BUG 500798/500800/500801：报表大屏。员工业绩排行已移到员工业绩统计中心（500799）；大屏放经营总数据 4 块；
+// 只在确实没有金额权限时提示；发布新版本后大屏自动重新加载。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
 const read = file => readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8');
 
-test('大屏排行三图并排，日期默认今年，查询后按新区间取数', () => {
+test('大屏放经营总数据 4 块，员工业绩排行已撤掉（BUG 500801）', () => {
   const page = read('ReportCenterPage.tsx');
-  assert.match(page, /const defaultRankingRange = \(\): \[Dayjs, Dayjs\] => \[dayjs\(\)\.startOf\("year"\), dayjs\(\)\];/);
-  assert.match(page, /params: \{ ranking_from: range\[0\]\.format\("YYYY-MM-DD"\), ranking_to: range\[1\]\.format\("YYYY-MM-DD"\) \}/);
-  assert.match(page, /\[\["by_source_person", "按案源人"\], \["by_hearing_lawyer", "按开庭律师"\]\]/);
-  assert.match(page, /<Bar yAxisId="cases" dataKey="cases" name="新建案件数"/);
-  assert.match(page, /<Bar yAxisId="fee" dataKey="fee" name="代理费到账"/);
-  assert.ok(!page.includes('按案件负责人'), '18:14：不要按案件负责人');
-  assert.match(page, /无财务金额查看权限/);
-  const css = read('report-center.css').split('BUG 500798')[1];
-  assert.match(css, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
-  assert.ok(!/color-mix|:has\(|@container|dvh/.test(css), '要兼容钉钉 Chrome 100 内核');
+  for (const title of ['年新增案件数', '年开庭数量', '新增调查线索·{group}', '年任务数量']) assert.ok(page.includes(title), title);
+  assert.match(page, /\[\["by_investigator", "按调查员"\], \["by_brand", "按品牌"\]\]/);
+  assert.match(page, /\{ key: "submitted", name: "提交线索数"/);
+  assert.match(page, /\{ key: "approved", name: "审核通过数"/);
+  assert.match(page, /\{ key: "issued", name: "发出任务数"/);
+  assert.match(page, /\{ key: "done", name: "完成任务数"/);
+  assert.ok(!page.includes('员工业绩排行</strong>'), '员工业绩排行已移到员工业绩统计中心');
+  assert.ok(!page.includes('案件类型分布'), '案件类型分布去掉');
 });
 
 test('大屏只在确实没有金额权限时提示；发布新版本后自动重新加载（BUG 500800）', () => {
   const page = read('ReportCenterPage.tsx');
-  assert.match(page, /\{!data\.finance\.amount_visible \? "新建案件数（无财务金额查看权限）"/);
   assert.match(page, /fetch\(`\/build-info\.json\?_=\$\{Date\.now\(\)\}`, \{ cache: "no-store" \}\)/);
   assert.match(page, /else if \(version !== loadedVersion\) window\.location\.reload\(\);/);
+  assert.match(page, /data\.finance\.amount_visible \? \(data\.definitions\?\.income/);
 });

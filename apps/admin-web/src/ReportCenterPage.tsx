@@ -1,6 +1,5 @@
 import { KeywordPersonSelect } from "./components/KeywordPersonSelect";
-import { useEffect, useRef, useState } from "react";
-import dayjs, { type Dayjs } from "dayjs";
+import { useEffect, useState } from "react";
 import { DownloadOutlined } from "@ant-design/icons";
 import { Alert, Button, DatePicker, Empty, Form, Input, Segmented, Select, Space, Spin, message } from "antd";
 import Table from "./components/ResizableTable";import {
@@ -12,8 +11,6 @@ import Table from "./components/ResizableTable";import {
   Legend,
   Line,
   LineChart,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -660,19 +657,24 @@ function StaffRoiReport() {
 }
 
 const largeScreenViews = ["reports-refund", "reports-execution-1"];
-const LARGE_SCREEN_COLORS = ["#18c7bb", "#4e8cff", "#ffb95c", "#8a74e8", "#ef6d85", "#2cc47c"];
 
-type PerformanceRow = { name: string; cases: number; fee: number | null };
+// 报表大屏经营总数据（BUG 500801）。
+type MonthValue = { month: number; value: number };
+type ClueRow = { name: string; submitted: number; approved: number };
+type LargeScreenOverview = {
+  year: number;
+  case_trend: MonthValue[];
+  hearing_trend: MonthValue[];
+  clues: { by_investigator: ClueRow[]; by_brand: ClueRow[]; submitted: number; approved: number };
+  task_trend: { month: number; issued: number; done: number }[];
+};
 
 type LargeScreenData = {
   case_summary: { total: number; in_progress: number; closed: number };
   finance: { amount_visible: boolean; income: number | null; expense: number | null; income_label?: string; expense_label?: string };
   customer_summary: { total: number };
   employee_ranking: { username?: string; name: string; value: number }[];
-  ranking_period?: { date_from: string; date_to: string };
-  // 员工业绩排行：按案源人、开庭律师两组，每人新建案件数和代理费到账（BUG 500798，18:17 选 B）。
-  performance_ranking?: { by_source_person: PerformanceRow[]; by_hearing_lawyer: PerformanceRow[] };
-  agency_fee_total?: number | null;
+  overview?: LargeScreenOverview;
   case_type_distribution: { name: string; value: number }[];
   monthly_trend: { month: string; cases: number; income: number | null; expense: number | null }[];
   definitions?: Record<string, string>;
@@ -691,28 +693,54 @@ const emptyLargeScreenData: LargeScreenData = {
 const formatNumber = (value: number) => Number(value || 0).toLocaleString("zh-CN");
 const formatCurrency = (value: number | null) => value == null ? "—" : `¥${Number(value).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-const defaultRankingRange = (): [Dayjs, Dayjs] => [dayjs().startOf("year"), dayjs()];
-const formatWan = (value: number) => (Number(value || 0) / 10000).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const monthLabel = (month: number) => `${month}月`;
+const shortName = (name: string) => name.length > 8 ? `${name.slice(0, 8)}…` : name;
+// 当年还没到的月份不画点，免得折线在月底“掉到 0”（开庭按排期另算，保留后面的月份）。
+const pastMonths = <T extends { month: number }>(rows: T[], year: number | undefined, keys: (keyof T)[]) => {
+  const now = new Date();
+  if (year !== now.getFullYear()) return rows;
+  return rows.map(row => row.month > now.getMonth() + 1 ? { ...row, ...Object.fromEntries(keys.map(key => [key, null])) } : row);
+};
 
-// 每人两根柱子：新建案件数（左轴）、代理费到账万元（右轴），按代理费从高到低（BUG 500798，18:17 选 B）。
-function PerformanceChart({ rows, showFee }: { rows: PerformanceRow[]; showFee: boolean }) {
-  const chartRows = rows.map(row => ({ name: row.name, cases: row.cases, fee: row.fee == null ? null : Number((row.fee / 10000).toFixed(2)) }));
+// 经营总数据的图：按月柱状/折线、按人或品牌的两条线（BUG 500801）。
+function MonthBarChart({ rows, name, color }: { rows: MonthValue[]; name: string; color: string }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={chartRows} margin={{ top: 22, right: 8, bottom: 4, left: 0 }}>
+      <BarChart data={rows} margin={{ top: 20, right: 12, bottom: 0, left: 0 }}>
         <CartesianGrid stroke="#e8f0f2" vertical={false} />
-        <XAxis dataKey="name" interval={0} tick={{ fontSize: 12 }} angle={rows.length > 6 ? -30 : 0} textAnchor={rows.length > 6 ? "end" : "middle"} height={rows.length > 6 ? 56 : 30} />
-        <YAxis yAxisId="cases" allowDecimals={false} tick={{ fontSize: 11 }} />
-        {showFee && <YAxis yAxisId="fee" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(value) => `${value}万`} />}
-        <Tooltip formatter={(value, name) => name === "代理费到账" ? [`${Number(value).toLocaleString("zh-CN", { minimumFractionDigits: 2 })} 万元`, name] : [formatNumber(Number(value)), name]} />
-        <Legend />
-        <Bar yAxisId="cases" dataKey="cases" name="新建案件数" fill="#00a65a" maxBarSize={22}>
-          <LabelList dataKey="cases" position="top" fontSize={10} />
+        <XAxis dataKey="month" tickFormatter={monthLabel} tick={{ fontSize: 12 }} />
+        <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+        <Tooltip labelFormatter={(month) => monthLabel(Number(month))} formatter={(value) => [formatNumber(Number(value)), name]} />
+        <Bar dataKey="value" name={name} fill={color} maxBarSize={28}>
+          <LabelList dataKey="value" position="top" fontSize={11} />
         </Bar>
-        {showFee && <Bar yAxisId="fee" dataKey="fee" name="代理费到账" fill="#3e8ef7" maxBarSize={22}>
-          <LabelList dataKey="fee" position="top" fontSize={10} />
-        </Bar>}
       </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+function TwoLineChart({ rows, xKey, lines, xFormatter, tilted }: {
+  rows: Record<string, string | number | null>[];
+  xKey: string;
+  lines: { key: string; name: string; color: string }[];
+  xFormatter?: (value: number) => string;
+  tilted?: boolean;
+}) {
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <LineChart data={rows} margin={{ top: 20, right: 16, bottom: 0, left: 0 }}>
+        <CartesianGrid stroke="#e8f0f2" vertical={false} />
+        <XAxis dataKey={xKey} interval={0} tick={{ fontSize: 12 }} tickFormatter={xFormatter ? (value) => xFormatter(Number(value)) : (value) => shortName(String(value))}
+          {...(tilted ? { angle: -30, textAnchor: "end", height: 72 } : {})} />
+        <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+        <Tooltip labelFormatter={xFormatter ? (value) => xFormatter(Number(value)) : undefined} formatter={(value, lineName) => [formatNumber(Number(value)), lineName]} />
+        <Legend />
+        {lines.map(line => (
+          <Line key={line.key} type="monotone" dataKey={line.key} name={line.name} stroke={line.color} strokeWidth={2.5} dot={{ r: 3 }}>
+            <LabelList dataKey={line.key} position="top" fontSize={10} />
+          </Line>
+        ))}
+      </LineChart>
     </ResponsiveContainer>
   );
 }
@@ -728,16 +756,11 @@ export function ReportLargeScreenPage({ onExit }: { onExit?: () => void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [data, setData] = useState<LargeScreenData>(emptyLargeScreenData);
-  // 员工业绩排行的日期区间：默认今年，重新筛选后按新条件显示（BUG 500798）。
-  const [rankingRange, setRankingRange] = useState<[Dayjs, Dayjs]>(defaultRankingRange);
-  // 定时刷新沿用最近一次点“查询”时的区间，改了日期没点查询不影响。
-  const rankingRangeRef = useRef(rankingRange);
-
-  const load = async (range: [Dayjs, Dayjs] = rankingRangeRef.current) => {
+  const load = async () => {
     setLoading(true);
     setError("");
     try {
-      const response = await api.get<LargeScreenData>("/reports/large-screen", { params: { ranking_from: range[0].format("YYYY-MM-DD"), ranking_to: range[1].format("YYYY-MM-DD") } });
+      const response = await api.get<LargeScreenData>("/reports/large-screen");
       setData({ ...emptyLargeScreenData, ...response.data, case_summary: { ...emptyLargeScreenData.case_summary, ...response.data.case_summary }, finance: { ...emptyLargeScreenData.finance, ...response.data.finance }, customer_summary: { ...emptyLargeScreenData.customer_summary, ...response.data.customer_summary } });
     } catch (requestError: any) {
       setError(requestError?.response?.data?.detail || "大屏实时数据加载失败，请稍后重试。");
@@ -786,9 +809,8 @@ export function ReportLargeScreenPage({ onExit }: { onExit?: () => void }) {
     void document.documentElement.requestFullscreen?.().catch(() => message.warning("当前浏览器不支持进入全屏模式"));
   };
 
-  const queryRanking = (range: [Dayjs, Dayjs]) => { rankingRangeRef.current = range; setRankingRange(range); void load(range); };
-  const typeData = data.case_type_distribution;
-  const trendData = data.monthly_trend;
+  const overview = data.overview;
+  const clueLines = [{ key: "submitted", name: "提交线索数", color: "#3e8ef7" }, { key: "approved", name: "审核通过数", color: "#00a65a" }];
   return (
     <div className="report-large-screen">
       <header className="large-screen-header">
@@ -821,36 +843,28 @@ export function ReportLargeScreenPage({ onExit }: { onExit?: () => void }) {
                 <article><span>财务支出</span><strong>{formatCurrency(data.finance.expense)}</strong><em>{data.finance.amount_visible ? (data.definitions?.expense || data.finance.expense_label || "当前数据范围") : "无财务数据查看权限"}</em></article>
                 <article><span>客户总数</span><strong>{formatNumber(data.customer_summary.total)}</strong><em>全部可见客户</em></article>
               </section>
-              <section className="large-screen-ranking" aria-label="员工业绩排行">
-                <div className="large-screen-ranking-filter">
-                  <strong>员工业绩排行</strong>
-                  <DatePicker.RangePicker allowClear={false} value={rankingRange} onChange={(value) => value?.[0] && value?.[1] && setRankingRange([value[0], value[1]])} />
-                  <Button type="primary" onClick={() => queryRanking(rankingRange)}>查询</Button>
-                  <Button onClick={() => queryRanking(defaultRankingRange())}>重置</Button>
-                </div>
-                <div className="large-screen-ranking-row">
-                  {([["by_source_person", "按案源人"], ["by_hearing_lawyer", "按开庭律师"]] as const).map(([key, group]) => {
-                    const rows = data.performance_ranking?.[key] ?? [];
-                    return (
-                      <article key={key} className="large-screen-card ranking-card">
-                        <h2>{group} <small>{!data.finance.amount_visible ? "新建案件数（无财务金额查看权限）" : data.agency_fee_total != null ? `新建案件数 + 代理费到账（合计 ${formatWan(data.agency_fee_total)} 万元）` : "新建案件数"}</small></h2>
-                        <div className="large-screen-chart">{rows.length ? <PerformanceChart rows={rows} showFee={data.finance.amount_visible && data.agency_fee_total != null} /> : <LargeScreenEmpty />}</div>
-                      </article>
-                    );
-                  })}
-                </div>
-                <p className="large-screen-ranking-note">{data.definitions?.performance_ranking}</p>
-              </section>
-              <section className="large-screen-grid">
-                <article className="large-screen-card distribution-card">
-                  <h2>案件类型分布 <small>按案件数量</small></h2>
-                  <div className="large-screen-chart">{typeData.length ? <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={typeData} dataKey="value" nameKey="name" innerRadius="48%" outerRadius="72%" paddingAngle={3}>{typeData.map((entry, index) => <Cell key={`${entry.name}-${index}`} fill={LARGE_SCREEN_COLORS[index % LARGE_SCREEN_COLORS.length]} />)}</Pie><Tooltip formatter={(value) => [formatNumber(Number(value)), "案件"]} /><Legend /></PieChart></ResponsiveContainer> : <LargeScreenEmpty />}</div>
+              {/* 经营总数据 4 块（BUG 500801）；员工业绩排行已移到员工业绩统计中心（500799）。 */}
+              <section className="large-screen-grid large-screen-overview" aria-label="经营总数据">
+                <article className="large-screen-card">
+                  <h2>{overview?.year ?? ""}年新增案件数 <small>{data.definitions?.case_trend || "按月"}</small></h2>
+                  <div className="large-screen-chart">{overview ? <TwoLineChart rows={pastMonths(overview.case_trend, overview.year, ["value"])} xKey="month" xFormatter={monthLabel} lines={[{ key: "value", name: "新增案件数", color: "#00a65a" }]} /> : <LargeScreenEmpty />}</div>
                 </article>
+                <article className="large-screen-card">
+                  <h2>{overview?.year ?? ""}年开庭数量 <small>{data.definitions?.hearing_trend || "按月"}</small></h2>
+                  <div className="large-screen-chart">{overview ? <MonthBarChart rows={overview.hearing_trend} name="开庭数量" color="#8a74e8" /> : <LargeScreenEmpty />}</div>
+                </article>
+                {([["by_investigator", "按调查员"], ["by_brand", "按品牌"]] as const).map(([key, group]) => (
+                  <article key={key} className="large-screen-card">
+                    <h2>新增调查线索·{group} <small>{overview ? `提交 ${formatNumber(overview.clues.submitted)} 条，审核通过 ${formatNumber(overview.clues.approved)} 条` : ""}</small></h2>
+                    <div className="large-screen-chart">{overview?.clues[key].length ? <TwoLineChart rows={overview.clues[key]} xKey="name" lines={clueLines} tilted /> : <LargeScreenEmpty />}</div>
+                  </article>
+                ))}
                 <article className="large-screen-card trend-card">
-                  <h2>月度业务趋势 <small>{data.definitions?.monthly_trend || "最近12个月案件量与收支概览"}</small></h2>
-                  <div className="large-screen-chart">{trendData.length ? <ResponsiveContainer width="100%" height="100%"><LineChart data={trendData} margin={{ top: 12, right: 28, bottom: 0, left: 0 }}><CartesianGrid stroke="#e8f0f2" vertical={false} /><XAxis dataKey="month" tick={{ fontSize: 12 }} /><YAxis yAxisId="count" allowDecimals={false} />{data.finance.amount_visible && <YAxis yAxisId="amount" orientation="right" tickFormatter={(value) => `${Math.round(Number(value) / 10000)}万`} />}<Tooltip formatter={(value, name) => [name === "案件量" ? formatNumber(Number(value)) : formatCurrency(value == null ? null : Number(value)), name]} /><Legend /><Line yAxisId="count" type="monotone" dataKey="cases" name="案件量" stroke="#00a65a" strokeWidth={3} dot={false} />{data.finance.amount_visible && <><Line yAxisId="amount" type="monotone" dataKey="income" name="收入" stroke="#3e8ef7" strokeWidth={2} dot={false} /><Line yAxisId="amount" type="monotone" dataKey="expense" name="支出" stroke="#ef7e56" strokeWidth={2} dot={false} /></>}</LineChart></ResponsiveContainer> : <LargeScreenEmpty />}</div>
+                  <h2>{overview?.year ?? ""}年任务数量 <small>{data.definitions?.task_trend || "按月发出和完成的任务数"}</small></h2>
+                  <div className="large-screen-chart">{overview ? <TwoLineChart rows={pastMonths(overview.task_trend, overview.year, ["issued", "done"])} xKey="month" xFormatter={monthLabel} lines={[{ key: "issued", name: "发出任务数", color: "#3e8ef7" }, { key: "done", name: "完成任务数", color: "#00a65a" }]} /> : <LargeScreenEmpty />}</div>
                 </article>
               </section>
+              {data.definitions?.clues && <p className="large-screen-ranking-note">线索：{data.definitions.clues}</p>}
               {data.generated_at && <p className="large-screen-updated">数据更新时间：{data.generated_at}</p>}
             </main>
           )}

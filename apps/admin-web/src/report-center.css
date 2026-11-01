@@ -477,16 +477,9 @@
   .report-roi-chart .report-chart-body { height: 320px; }
 }
 
-/* 报表大屏员工业绩排行：日期筛选 + 按案源人、按开庭律师两行，每行案件数和代理费两图（BUG 500798）。 */
-.large-screen-ranking { margin-top: 14px; }
-.large-screen-ranking-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
-.large-screen-ranking-filter strong { margin-right: 8px; font-size: 15px; }
-.large-screen-ranking-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.large-screen-ranking-row .large-screen-chart { height: 340px; }
+/* 报表大屏经营总数据：新增案件、开庭、线索（按调查员/品牌）、任务（BUG 500801）。 */
+.large-screen-overview .large-screen-chart { height: 300px; }
 .large-screen-ranking-note { margin: 8px 2px 0; color: #7c9094; font-size: 11px; }
-@media (max-width: 1100px) {
-  .large-screen-ranking-row { grid-template-columns: minmax(0, 1fr); }
-}
 
 /* 员工业绩统计中心（BUG 500799）：筛选一排、四个数字卡片，图沿用客户ROI 的两图样式。 */
 .report-staff-performance-page .report-page-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
