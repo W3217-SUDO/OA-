@@ -42,3 +42,13 @@ test('“大屏展示”全屏显示本页，不再跳经营数据大屏（BUG 5
   assert.match(read('reportBigScreen.ts'), /requestFullscreen\(\)/);
   assert.match(read('report-center.css'), /\.report-page\.report-page-big-screen \{ position: fixed;/);
 });
+
+test('每个进度一个柱状图，横轴律师助理、纵轴案件数，大屏收起说明（BUG 500792）', async () => {
+  const matrix = read('ProgressMatrixReport.tsx');
+  assert.match(matrix, /data\.stages\.map\(stage => \(\s*<StageChart/);
+  assert.match(matrix, /<span>\{stage\}案件数量<\/span>/);
+  assert.match(matrix, /▸ 展开说明/);
+  const css = read('report-center.css').split('BUG 500792')[1];
+  assert.match(css, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.ok(!/color-mix|:has\(|@container|dvh/.test(css), '要兼容钉钉 Chrome 100 内核');
+});

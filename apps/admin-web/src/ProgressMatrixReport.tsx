@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Alert, Button, Empty, Modal, Spin, message } from "antd";
 import Table from "./components/ResizableTable";
 import type { ColumnsType } from "antd/es/table";
@@ -27,6 +28,46 @@ const BIG_SCREEN_REFRESH_MS = 5 * 60_000;
 const BIG_SCREEN_PAGE_MS = 10_000;
 const emptyData: ProgressMatrixData = { person_label: "", stages: [], rows: [], totals: {}, total: 0 };
 
+// 每个进度一个柱状图：横轴律师助理、纵轴案件数，从多到少，最多前 20 人（按原系统，BUG 500792）。
+export const STAGE_CHART_LIMIT = 20;
+export const stageChartItems = (rows: ProgressMatrixRow[], stage: string, limit = STAGE_CHART_LIMIT) => rows
+  .map(row => ({ name: row.person, value: row.counts[stage] || 0 }))
+  .filter(item => item.value > 0)
+  .sort((left, right) => right.value - left.value || left.name.localeCompare(right.name, "zh-CN"))
+  .slice(0, limit);
+
+function StageChart({ stage, rows, bigScreen, onOpen }: { stage: string; rows: ProgressMatrixRow[]; bigScreen: boolean; onOpen: (person: string) => void }) {
+  const items = stageChartItems(rows, stage);
+  const fontSize = bigScreen ? 14 : 11;
+  const tilted = bigScreen && items.length > 6;
+  return (
+    <section className="report-chart-panel progress-stage-chart">
+      <div className="report-chart-title">
+        <span>{stage}案件数量</span>
+        <span className="report-chart-unit">单位： 个/案</span>
+      </div>
+      <div className="report-chart-body report-chart-scroll">
+        {items.length ? <div className="report-chart-track" style={{ minWidth: !bigScreen && items.length > 8 ? items.length * 72 : undefined }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={items} margin={{ top: 22, right: 16, bottom: 8, left: 0 }}>
+              <CartesianGrid stroke="#ececec" vertical={false} />
+              {/* 大屏一行三个图、人多时姓名斜着排，避免挤在一起。 */}
+              <XAxis dataKey="name" interval={0} axisLine={{ stroke: "#d8d8d8" }} tickLine={false} tick={{ fill: "#666", fontSize }}
+                {...(tilted ? { angle: -40, textAnchor: "end", height: 64 } : {})} />
+              <YAxis allowDecimals={false} domain={[0, "auto"]} axisLine={false} tickLine={false} tick={{ fill: "#777", fontSize }} />
+              <Tooltip formatter={(value) => [`${Number(value).toLocaleString()} 个/案`, `${stage}案件数量`]} />
+              <Bar dataKey="value" fill="#36b978" maxBarSize={56} isAnimationActive={!bigScreen} cursor={bigScreen ? undefined : "pointer"}
+                onClick={(item: { name?: string }) => item?.name && onOpen(item.name)}>
+                <LabelList dataKey="value" position="top" fill="#333" fontSize={fontSize} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前没有处在这个进度的案件" />}
+      </div>
+    </section>
+  );
+}
+
 export const progressMatrixPages = (rows: number, pageSize = BIG_SCREEN_PAGE_SIZE) => Math.max(1, Math.ceil(rows / pageSize));
 
 export default function ProgressMatrixReport({ title, endpoint, bigScreen: rotatingBigScreen = false, onNavigate }: {
@@ -46,6 +87,8 @@ export default function ProgressMatrixReport({ title, endpoint, bigScreen: rotat
   const [drillLoading, setDrillLoading] = useState(false);
   const [drillItems, setDrillItems] = useState<ProgressCase[]>([]);
   const [drillColumns, setDrillColumns] = useState<DetailColumn[]>([]);
+  // 大屏时上方说明默认收起（BUG 500792）。
+  const [notesOpen, setNotesOpen] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -117,10 +160,17 @@ export default function ProgressMatrixReport({ title, endpoint, bigScreen: rotat
           ? <Button size="small" onClick={pageBigScreen.exit}>退出大屏</Button>
           : <Button size="small" type="primary" onClick={pageBigScreen.enter}>大屏展示</Button>)}
       </div>
-      {data.definition && <div className="report-roi-description">{data.definition}</div>}
+      {data.definition && (!bigScreen || notesOpen
+        ? <div className="report-roi-description">{data.definition}{bigScreen && <Button type="link" size="small" onClick={() => setNotesOpen(false)}>收起</Button>}</div>
+        : <Button type="link" size="small" className="progress-matrix-notes-toggle" onClick={() => setNotesOpen(true)}>▸ 展开说明</Button>)}
       {error && <Alert type="error" showIcon message={error} action={<Button size="small" onClick={() => void load()}>重试</Button>} />}
       <Spin spinning={loading}>
-        <Table<ProgressMatrixRow>
+        <div className="report-chart-grid progress-stage-charts">
+          {data.stages.map(stage => (
+            <StageChart key={stage} stage={stage} rows={data.rows} bigScreen={bigScreen} onOpen={person => void openDrill(person, stage)} />
+          ))}
+        </div>
+        {!bigScreen && <Table<ProgressMatrixRow>
           className="progress-matrix-table"
           rowKey="person"
           size={bigScreen ? "large" : "middle"}
@@ -142,7 +192,7 @@ export default function ProgressMatrixReport({ title, endpoint, bigScreen: rotat
               </Table.Summary.Row>
             </Table.Summary>
           ) : null}
-        />
+        />}
       </Spin>
       <Modal open={Boolean(drill)} title={drillTitle} width={POPUP_WIDTH.lg} footer={<Button onClick={() => setDrill(null)}>关闭</Button>} onCancel={() => setDrill(null)} destroyOnHidden>
         <Table<ProgressCase>

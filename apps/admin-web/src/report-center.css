@@ -450,3 +450,14 @@
 .report-page.report-page-big-screen { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 1200; margin: 0; padding: 24px 32px; overflow: auto; background: var(--oa-bg, #f4f6fa); }
 .report-page.report-page-big-screen .report-page-heading { font-size: 28px; }
 .report-page.report-page-big-screen .report-chart-grid { gap: 20px; }
+
+/* 进度统计每个进度一个柱状图（BUG 500792）：页面 2 列，大屏 3 列×2 行一屏放下。 */
+.progress-matrix-page .progress-stage-charts { margin: 10px 0 16px; }
+.progress-matrix-notes-toggle { padding-left: 0; }
+.progress-matrix-page.is-big-screen .progress-stage-charts { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.progress-matrix-page.is-big-screen .progress-stage-chart .report-chart-title { height: 44px; font-size: 18px; line-height: 24px; }
+.progress-matrix-page.is-big-screen .progress-stage-chart .report-chart-unit { font-size: 14px; }
+.progress-matrix-page.is-big-screen .progress-stage-chart .report-chart-body { height: 36vh; min-height: 260px; }
+@media (max-width: 767px) {
+  .progress-matrix-page .progress-stage-charts { grid-template-columns: minmax(0, 1fr); }
+}
