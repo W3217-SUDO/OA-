@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from starlette.datastructures import UploadFile
 
 from app.areas.finance.incoming_payments import import_incoming_payments
-from app.data_models.finance import IncomingPayment
+from app.data_models.finance import BankStatementLine, IncomingPayment
 from app.database import Base
 from app.models import User
 
@@ -34,9 +34,9 @@ class BankImportConfirmTest(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         await self.engine.dispose()
 
-    async def count(self):
+    async def count(self, model=BankStatementLine):
         async with self.sessions() as db:
-            return await db.scalar(select(func.count()).select_from(IncomingPayment))
+            return await db.scalar(select(func.count()).select_from(model))
 
     async def call(self, **kwargs):
         async with self.sessions() as db:
@@ -52,7 +52,9 @@ class BankImportConfirmTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.count(), 0, "预览时不写入回款")
         result = await self.call(file=upload(CSV), confirmation_token=preview["confirmation_token"])
         self.assertEqual(result["created"], 2)
+        # 陶国南 11-01 定两步：确认后写进银行原始流水，勾选后才生成到账单。
         self.assertEqual(await self.count(), 2)
+        self.assertEqual(await self.count(IncomingPayment), 0)
 
     async def test_changed_file_is_rejected_on_confirm(self):
         preview = await self.call(file=upload(CSV))
