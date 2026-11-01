@@ -95,7 +95,10 @@ PKG="$(mktemp -d)/$N"
 # 只传差异（用户 2026-10-21 决定，所有发布都这样）：以生产上一版（current 指向的包）为参照做增量上传，
 # 未变文件直接复用，通常只传 1MB 左右、1 分钟内完成；整包 scp 在这条线路上要 15 分钟以上，不再使用。
 PREV=$("${OA_SSH[@]}" 'readlink -f /opt/sunhold-oa/runtime/enterprise/current')
-"${OA_SSH[@]}" "mkdir -p /opt/sunhold-oa/staging/$N-dir"
+# 上传前确认：N 已在队列里以 assigned 预留给本次 OWNER/TARGET，且 staging/$N-dir 不存在（不是别人的待发包）。
+# 任一不满足就停下查清，绝不上传——推送 dev 或领号失败后继续传包，会覆盖别人同号的待发包（2026-11-01 1.2.128 撞车）。
+"${OA_SSH[@]}" "awk -F'\t' -v n=$N -v t=$TARGET -v o=$OWNER '\$1==n{last=\$2\" \"\$3\" \"\$4} END{exit !(last==\"assigned \"t\" \"o)}' /opt/sunhold-oa/releases/queue.tsv && test ! -e /opt/sunhold-oa/staging/$N-dir" || { echo "版本 $N 未预留给 $OWNER 或 staging 已存在，停止上传"; exit 1; }
+"${OA_SSH[@]}" "mkdir /opt/sunhold-oa/staging/$N-dir"
 rsync -a -c -z -e "ssh -i ~/.ssh/id_ed25519_oa -o IdentitiesOnly=yes -o BatchMode=yes" --link-dest="$PREV/" "$PKG/" root@47.93.166.123:/opt/sunhold-oa/staging/$N-dir/
 # 逐文件核对：本地与服务器文件清单的 SHA256 汇总必须一致，文件数也一致，否则不得继续
 (cd "$PKG" && find . -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256)
