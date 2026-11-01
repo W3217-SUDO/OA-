@@ -136,6 +136,7 @@ async def load_dashboard_scope(identity, db, *, personal_cases=False, include_su
     if personal_cases:
         conditions.append(await _case_mine_scope_condition(identity, db))
     elif not all_cases:
+        # 本人名下合同的案件也算进本人工作台（陶国南 11-01 定，旧系统不算）。
         owned_contracts = (await db.execute(select(BusinessRecord.id, BusinessRecord.serial_no).where(
             BusinessRecord.module == "contract", BusinessRecord.owner == user.username,
             BusinessRecord.status.notin_(["已回收", "已删除"]),
