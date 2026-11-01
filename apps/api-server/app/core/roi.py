@@ -68,8 +68,14 @@ async def brand_charts(cases, fees, db):
             fee_case[fee.id] = case_id
     fees = [fee for fee in fees if fee.id in fee_case]
     fee_ids = set(fee_case)
-    paid, paid_dates = await _paid_and_first_dates(fee_ids, db)
-    cashed = await _cashed_by_fee(fee_ids, db) if fee_ids else {}
+    from app.core.dashboard_list_counts import gather_counts
+    # 已付和到账两次查询互不依赖，用独立只读会话并行（报表性能）。
+    results = await gather_counts(db, {
+        "paid": lambda session: _paid_and_first_dates(fee_ids, session),
+        "cashed": lambda session: _cashed_by_fee(fee_ids, session),
+    }) if fee_ids else {"paid": ({}, {}), "cashed": {}}
+    paid, paid_dates = results["paid"]
+    cashed = results["cashed"]
     rows = {case.id: {"official_paid": Decimal(0), "advance_unreceived": Decimal(0), "agency_received": Decimal(0), "first_paid": None}
             for case in cases}
     for fee in fees:

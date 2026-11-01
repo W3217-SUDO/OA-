@@ -896,7 +896,21 @@ async def _report_analytics(view: str, identity: dict, db: AsyncSession, custome
     customer_filter = [or_(*(BusinessRecord.customer.contains(value, autoescape=True) for value in customers_selected))] if customers_selected else []
     from app.core.record_projection_query import read_record_projections
     # 只取统计和筛选用到的字段，不读整条案件和费用（报表性能）。
-    cases = await read_record_projections(db, [BusinessRecord.module == "case", *scope, *customer_filter], REPORT_CASE_FIELDS)
+    can_view_amount = "finance.amount" in await _allowed_field_keys(identity, db)
+    fee_conditions = [BusinessRecord.module == "finance", *scope,
+                      # 内部费用（约八成费用）既不是官费也不是代理到账，统计里用不到，不读。
+                      func.coalesce(BusinessRecord.data["fee_type"].as_string(), "") != "内部费用"]
+    preloaded_fees = None
+    if can_view_amount and not customers_selected and view in {"brand", "lawyer"}:
+        # 不选客户时案件和费用互不依赖，用独立只读会话并行读取。
+        from app.core.dashboard_list_counts import gather_counts
+        loaded = await gather_counts(db, {
+            "cases": lambda session: read_record_projections(session, [BusinessRecord.module == "case", *scope], REPORT_CASE_FIELDS),
+            "fees": lambda session: read_record_projections(session, fee_conditions, REPORT_FEE_FIELDS),
+        })
+        cases, preloaded_fees = loaded["cases"], loaded["fees"]
+    else:
+        cases = await read_record_projections(db, [BusinessRecord.module == "case", *scope, *customer_filter], REPORT_CASE_FIELDS)
     court_lawyers_selected = {value.strip() for value in court_lawyer.split(",") if value.strip()}
     def matches(item: BusinessRecord) -> bool:
         data = item.data or {}; handlers = data.get("handling_lawyers", [])
@@ -921,18 +935,16 @@ async def _report_analytics(view: str, identity: dict, db: AsyncSession, custome
             execution_statuses = list(CASE_EXECUTION_STATUSES)
             charts = [{"title": f"{status}案件数量", "unit": "个/案", "items": [{"name": "案件数", "value": sum(status in item.status for item in cases)}]} for status in execution_statuses]
         return {"view": view, "charts": charts, "filter_options": {"customers": customers, "lawyers": lawyers}, "source": "realtime"}
-    can_view_amount = "finance.amount" in await _allowed_field_keys(identity, db)
     # 只读和筛出的案件关联的费用（统计本来就只用这些），客户筛选时少读很多。
     from app.core.json_relation_query import scalar_in_values
     case_ids = {item.id for item in cases}; case_nos = {item.serial_no for item in cases}
     fee_links = [or_(scalar_in_values(BusinessRecord.data["case_id"].as_integer(), case_ids),
                      scalar_in_values(BusinessRecord.data["case_record_id"].as_integer(), case_ids),
                      scalar_in_values(BusinessRecord.data["case_no"].as_string(), case_nos))] if customers_selected else []
-    finances = await read_record_projections(
-        # 内部费用（约八成费用）既不是官费也不是代理到账，统计里用不到，不读。
-        db, [BusinessRecord.module == "finance", *scope, *fee_links,
-             func.coalesce(BusinessRecord.data["fee_type"].as_string(), "") != "内部费用"], REPORT_FEE_FIELDS,
-    ) if can_view_amount and cases else []
+    if preloaded_fees is not None:
+        finances = preloaded_fees if cases else []
+    else:
+        finances = await read_record_projections(db, [*fee_conditions, *fee_links], REPORT_FEE_FIELDS) if can_view_amount and cases else []
     from app.core.roi import operating_charts
     charts, warnings = await operating_charts(cases, finances, view, group_mode, db) if can_view_amount else ([], [])
     return {"view": view, "charts": charts, "warnings": warnings, "filter_options": {"customers": customers, "lawyers": lawyers}, "source": "realtime"}
