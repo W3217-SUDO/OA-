@@ -43,6 +43,50 @@ def _fee_case_id(fee, case_by_id, case_by_no):
     return case.id if case else None
 
 
+# 品牌图上显示客户简称（tgn 11-01，BUG20261101002）；没登记简称的按规则自动截短（tgn 16:18 选 B）。
+_REGION_PREFIXES = (
+    "北京市", "上海市", "天津市", "重庆市", "北京", "上海", "天津", "重庆", "黑龙江", "内蒙古",
+    "河北", "山西", "辽宁", "吉林", "江苏", "浙江", "安徽", "福建", "江西", "山东", "河南", "湖北", "湖南",
+    "广东", "广西", "海南", "四川", "贵州", "云南", "陕西", "甘肃", "青海", "宁夏", "新疆", "西藏",
+    "杭州", "广州", "深圳", "青岛", "苏州", "南京", "宁波", "厦门", "武汉", "成都", "西安", "无锡", "佛山", "东莞",
+)
+_COMPANY_SUFFIXES = ("股份有限公司", "有限责任公司", "有限公司", "集团", "公司")
+
+
+def auto_short_name(name: str, limit: int = 8) -> str:
+    """去掉省市名、括号里的内容和公司字样，最多 limit 个字。"""
+    import re
+    text = re.sub(r"[（(][^）)]*[）)]", "", str(name or "")).strip()
+    for prefix in _REGION_PREFIXES:
+        if text.startswith(prefix) and len(text) > len(prefix) + 1:
+            text = text[len(prefix):].lstrip("省市")
+            break
+    changed = True
+    while changed:
+        changed = False
+        for suffix in _COMPANY_SUFFIXES:
+            if text.endswith(suffix) and len(text) > len(suffix) + 1:
+                text, changed = text[: -len(suffix)], True
+    return (text or str(name or ""))[:limit]
+
+
+async def _brand_short_names(names, db) -> dict:
+    """客户资料里登记的“客户简称”优先；没有的自动截短。"""
+    from sqlalchemy import select as sa_select
+    from app.models import BusinessRecord
+
+    found: dict[str, str] = {}
+    if names:
+        rows = (await db.execute(sa_select(BusinessRecord.title, BusinessRecord.data).where(
+            BusinessRecord.module == "customer", BusinessRecord.title.in_(set(names)), BusinessRecord.deleted_at.is_(None),
+        ))).all()
+        for title, data in rows:
+            short = str((data or {}).get("short_name") or (data or {}).get("customer_short_name") or "").strip()
+            if short and not found.get(title):
+                found[title] = short
+    return {name: found.get(name) or auto_short_name(name) for name in names}
+
+
 BRAND_CONTRACT_TYPE = "框架合作合同"
 
 
@@ -152,14 +196,16 @@ async def brand_charts(cases, fees, db, *, group_by="brand"):
             computed.append((total_paid, name, values, warning))
     ordered = sorted(computed, key=lambda row: (-row[0], row[1]))
     display = {}
+    labels = await _brand_short_names([row[1] for row in ordered], db) if group_by == "brand" else {}
     if group_by != "brand":
         from app.core.formatters import _user_display_map
         users = await _user_display_map({row[1] for row in ordered}, db)
         display = {name: getattr(users.get(name.lower()) or users.get(name), "display_name", None) or name for _t, name, _v, _w in ordered}
     for _total, name, values, warning in ordered:
         label = display.get(name, name)
+        item_label = labels.get(name) or label
         for chart, value in zip(charts, values):
-            chart["items"].append({"name": label, "value": value})
+            chart["items"].append({"name": label, "label": item_label, "value": value})
         if warning:
             warnings.append(warning.replace(name, label, 1))
     return charts, warnings

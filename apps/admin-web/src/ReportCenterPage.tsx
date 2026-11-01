@@ -25,7 +25,7 @@ import ProgressMatrixReport from "./ProgressMatrixReport";
 import { useReportBigScreen } from "./reportBigScreen";
 import "./report-center.css";
 
-type ChartResult = { title: string; unit: ChartSpec["unit"]; items: { name: string; value: number | null }[] };
+type ChartResult = { title: string; unit: ChartSpec["unit"]; items: { name: string; label?: string; value: number | null }[] };
 type Analytics = { charts: ChartResult[]; warnings?: string[]; filter_options: { customers: string[]; lawyers: string[] }; source: "realtime" };
 type ReportFilterValues = {
   customer?: string[];
@@ -44,7 +44,7 @@ type ChartSpec = {
   unit: "天/案" | "元" | "百分比" | "个/案";
   metricKeys?: string[];
   limit?: number;
-  /** 柱子变窄（每项约 64 像素、柱宽不超过 28 像素），律师资金统计用（tgn 11-01）。 */
+  /** 柱子变窄（每项约 64 像素、柱宽不超过 28 像素），品牌、律师资金统计用（tgn 11-01）。 */
   narrowBars?: boolean;
 };
 
@@ -108,10 +108,10 @@ const PAGE_SPECS: Record<string, PageSpec> = {
     tab: "按品牌统计",
     filter: "brand",
     charts: [
-      { title: "资金回款周期统计", unit: "天/案", metricKeys: ["资金回款周期", "资金回款周期统计"] },
-      { title: "资金亏损金额统计", unit: "元", metricKeys: ["资金亏损金额", "资金亏损金额统计"] },
-      { title: "资金回报率统计", unit: "百分比", metricKeys: ["资金回报率", "资金回报率统计"] },
-      { title: "资金亏损率统计", unit: "百分比", metricKeys: ["资金亏损率", "资金亏损率统计"] },
+      { title: "资金回款周期统计", unit: "天/案", metricKeys: ["资金回款周期", "资金回款周期统计"], narrowBars: true },
+      { title: "资金亏损金额统计", unit: "元", metricKeys: ["资金亏损金额", "资金亏损金额统计"], narrowBars: true },
+      { title: "资金回报率统计", unit: "百分比", metricKeys: ["资金回报率", "资金回报率统计"], narrowBars: true },
+      { title: "资金亏损率统计", unit: "百分比", metricKeys: ["资金亏损率", "资金亏损率统计"], narrowBars: true },
     ],
   },
   "reports-lawyer": {
@@ -206,8 +206,9 @@ function Filters({ kind, options, onQuery }: { kind: "brand" | "lawyer"; options
   );
 }
 
-function MetricChart({ spec, items }: { spec: ChartSpec; items: { name: string; value: number | null }[] }) {
-  const chartItems = spec.limit ? items.slice(0, spec.limit) : items;
+function MetricChart({ spec, items }: { spec: ChartSpec; items: { name: string; label?: string; value: number | null }[] }) {
+  // 横轴显示简称（有的话），鼠标停留显示全称（tgn 11-01，BUG20261101002）。
+  const chartItems = (spec.limit ? items.slice(0, spec.limit) : items).map((item) => ({ ...item, axis: item.label || item.name }));
   const slot = spec.narrowBars ? 64 : 88;
   return (
     <section className="report-chart-panel">
@@ -221,7 +222,7 @@ function MetricChart({ spec, items }: { spec: ChartSpec; items: { name: string; 
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartItems} margin={{ top: 20, right: 24, bottom: 16, left: 4 }}>
             <CartesianGrid stroke="#ececec" vertical={false} />
-            <XAxis dataKey="name" axisLine={{ stroke: "#d8d8d8" }} tickLine={false} tick={{ fill: "#777", fontSize: 11 }} />
+            <XAxis dataKey="axis" interval={0} axisLine={{ stroke: "#d8d8d8" }} tickLine={false} tick={{ fill: "#777", fontSize: 11 }} />
             <YAxis
               allowDecimals={spec.unit !== "个/案"}
               domain={[0, "auto"]}
@@ -229,7 +230,10 @@ function MetricChart({ spec, items }: { spec: ChartSpec; items: { name: string; 
               tickLine={false}
               tick={{ fill: "#777", fontSize: 11 }}
             />
-            <Tooltip formatter={(item) => [item == null ? '不可计算' : `${Number(item).toLocaleString()} ${spec.unit}`, spec.title]} />
+            <Tooltip
+              labelFormatter={(_label, payload) => payload?.[0]?.payload?.name ?? _label}
+              formatter={(item) => [item == null ? '不可计算' : `${Number(item).toLocaleString()} ${spec.unit}`, spec.title]}
+            />
             <Bar dataKey="value" fill="#36b978" maxBarSize={spec.narrowBars ? 28 : 72} />
           </BarChart>
         </ResponsiveContainer>

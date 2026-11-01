@@ -133,5 +133,26 @@ class BrandReportTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(charts[0]["items"][0]["value"], 29.0)
 
 
+    async def test_brand_label_uses_short_name_or_rule(self):
+        """BUG20261101002：图上显示客户简称，没有简称的按规则自动截短（tgn 选 B）。"""
+        from app.core import roi
+        async with self.sessions() as db:
+            db.add(BusinessRecord(id=70, module="customer", serial_no="KH70", title="品牌甲", status="T", owner="codex",
+                                  data={"short_name": "甲"}))
+            await db.commit()
+            cases = [await db.get(BusinessRecord, case_id) for case_id in (1, 2, 3)]
+            fees = [await db.get(BusinessRecord, fee_id) for fee_id in (11, 12, 21, 31)]
+            charts, _ = await brand_charts(cases, fees, db)
+            self.assertEqual((charts[0]["items"][0]["name"], charts[0]["items"][0]["label"]), ("品牌甲", "甲"))
+            self.assertEqual(await roi._brand_short_names(["上海飞科电器股份有限公司"], db), {"上海飞科电器股份有限公司": "飞科电器"})
+
+    def test_auto_short_name_rule(self):
+        from app.core.roi import auto_short_name
+        self.assertEqual(auto_short_name("杭州莫可科技有限公司"), "莫可科技")
+        self.assertEqual(auto_short_name("重庆市江津酒厂（集团）有限公司"), "江津酒厂")
+        self.assertEqual(auto_short_name("上海飞科电器股份有限公司"), "飞科电器")
+        self.assertEqual(auto_short_name("三六一度（福建）体育用品有限公司"), "三六一度体育用品")
+
+
 if __name__ == "__main__":
     unittest.main()
