@@ -5,12 +5,13 @@ import {readFileSync} from 'node:fs';
 
 const read = file => readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8');
 
-test('客户ROI：收入成本对比柱叠 ROI 折线（前 15 名）和 ROI 排行横条（正绿负红）', () => {
+test('客户ROI：收入成本对比柱（前 15 名，不叠 ROI 折线）和 ROI 排行横条（正绿负红）', () => {
   const page = read('ReportCenterPage.tsx');
   assert.match(page, /const ROI_TOP_INCOME = 15;/);
-  assert.match(page, /<Bar yAxisId="amount" dataKey="income" name="收入"/);
-  assert.match(page, /<Bar yAxisId="amount" dataKey="cost" name="成本"/);
-  assert.match(page, /<Line yAxisId="roi" dataKey="roi" name="ROI"/);
+  const charts = page.slice(page.indexOf('function CustomerRoiCharts'), page.indexOf('function CustomerRoiReport'));
+  assert.match(charts, /<Bar dataKey="income" name="收入"/);
+  assert.match(charts, /<Bar dataKey="cost" name="成本"/);
+  assert.ok(!charts.includes('<Line'), 'ROI 折线按另一根刻度画会被看成金额（tgn 17:36），左图不叠折线');
   assert.match(page, /layout="vertical"/);
   assert.match(page, /Number\(row\.roi\) < 0 \? "#ef6d85" : "#2cc47c"/);
   assert.match(page, /Number\(row\.cost \|\| 0\) !== 0/, '成本为 0 的不进 ROI 排行');

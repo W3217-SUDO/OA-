@@ -183,6 +183,22 @@ class CustomerRoiReportTest(unittest.IsolatedAsyncioTestCase):
         by_customer = {row["customer_id"]: row for row in result["rows"]}
         self.assertEqual(by_customer[customer_a.id]["cost"], 150)
 
+    async def test_test_customers_are_excluded(self):
+        # 思法汇成 11-01 17:36：测试数据“测试11.13”不用算进来。
+        async with self.sessions() as db:
+            await self._seed(db)
+            tester = BusinessRecord(module="customer", serial_no="CODEX-ROI-CUSTOMER-T", title="测试11.13", customer="测试11.13", status="T", owner="owner-t", department="华东部", data={})
+            db.add(tester)
+            await db.flush()
+            contract_t = BusinessRecord(module="contract", serial_no="CODEX-ROI-CONTRACT-T", title="测试合同", customer="测试11.13", status="审批通过", owner="income-owner", department="华东部",
+                                        data={"contract_type": "框架合作合同", "customer_id": tester.id, "customer_no": tester.serial_no})
+            db.add(contract_t)
+            await db.flush()
+            db.add(self._receipt("R-T1", 19400, "2026-09-01", "测试11.13", [{"amount": 19400, "fee_type": "代理费", "contract_no": contract_t.serial_no}]))
+            await db.commit()
+            result = await _customer_roi_analytics(ADMIN, db, date_from=date(2026, 9, 1), date_to=date(2026, 9, 2))
+        self.assertNotIn(tester.id, {row["customer_id"] for row in result["rows"]})
+
     async def test_only_customers_with_framework_contract_count(self):
         # 思法汇成 11-01 15:42 定（方案 A）：签过框架合作合同的客户全部收支都算（含其他类型合同下的），没签过的客户不列出。
         async with self.sessions() as db:

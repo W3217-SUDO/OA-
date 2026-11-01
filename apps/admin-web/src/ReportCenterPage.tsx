@@ -7,7 +7,6 @@ import Table from "./components/ResizableTable";import {
   BarChart,
   Cell,
   CartesianGrid,
-  ComposedChart,
   Legend,
   Line,
   LineChart,
@@ -248,7 +247,8 @@ const currency = (value: number) => Number(value || 0).toLocaleString("zh-CN", {
 const percentage = (value: number) => `${Number(value || 0).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 const roiDisplay = (roi: number | null, cost: number) => Number(cost || 0) === 0 || roi === null ? "—" : percentage(roi);
 
-// 客户ROI 图（BUG 500793，思法汇成 11-01 17:19）：收入和成本对比柱叠 ROI 折线（收入前 15 名），ROI 排行横条（正绿负红）。
+// 客户ROI 图（BUG 500793，思法汇成 11-01 17:19）：收入和成本对比柱（收入前 15 名），ROI 排行横条（正绿负红）。
+// 17:36 起左图不再叠 ROI 折线：折线按右侧 ROI 刻度画，容易被看成金额（如万盛联 109 万的点画到 700% 的高度）。
 const ROI_TOP_INCOME = 15;
 const ROI_BIG_SCREEN_EDGE = 10;
 const ROI_REGION_PREFIXES = [
@@ -325,23 +325,21 @@ function CustomerRoiCharts({ rows, bigScreen }: { rows: CustomerRoiRow[]; bigScr
     <div className="report-chart-grid report-roi-charts">
       <section className="report-chart-panel report-roi-chart">
         <div className="report-chart-title">
-          <span>收入、成本与 ROI（收入前 {ROI_TOP_INCOME} 名）</span>
-          <span className="report-chart-unit">柱：元　线：ROI %</span>
+          <span>收入、成本对比（收入前 {ROI_TOP_INCOME} 名）</span>
+          <span className="report-chart-unit">单位：元</span>
         </div>
         <div className="report-chart-body report-chart-scroll report-roi-chart-body">
           {incomeTop.length ? <div className="report-chart-track" style={{ minWidth: !bigScreen && incomeTop.length > 8 ? incomeTop.length * 76 : undefined }}>
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={incomeTop} margin={{ top: 22, right: 8, bottom: 8, left: 8 }}>
+              <BarChart data={incomeTop} margin={{ top: 22, right: 8, bottom: 8, left: 8 }}>
                 <CartesianGrid stroke="#ececec" vertical={false} />
                 <XAxis dataKey="label" interval={0} axisLine={{ stroke: "#d8d8d8" }} tickLine={false} tick={{ fill: "#666", fontSize }} angle={-30} textAnchor="end" height={bigScreen ? 70 : 58} />
-                <YAxis yAxisId="amount" axisLine={false} tickLine={false} tick={{ fill: "#777", fontSize }} tickFormatter={wan} width={bigScreen ? 70 : 56} />
-                <YAxis yAxisId="roi" orientation="right" axisLine={false} tickLine={false} tick={{ fill: "#777", fontSize }} tickFormatter={value => `${value}%`} width={bigScreen ? 64 : 52} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: "#777", fontSize }} tickFormatter={wan} width={bigScreen ? 70 : 56} />
                 <Tooltip content={<RoiTooltip />} />
                 <Legend wrapperStyle={{ fontSize }} />
-                <Bar yAxisId="amount" dataKey="income" name="收入" fill="#4e8cff" maxBarSize={28} isAnimationActive={false} />
-                <Bar yAxisId="amount" dataKey="cost" name="成本" fill="#ffb95c" maxBarSize={28} isAnimationActive={false} />
-                <Line yAxisId="roi" dataKey="roi" name="ROI" stroke="#2cc47c" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} isAnimationActive={false} />
-              </ComposedChart>
+                <Bar dataKey="income" name="收入" fill="#4e8cff" maxBarSize={28} isAnimationActive={false} />
+                <Bar dataKey="cost" name="成本" fill="#ffb95c" maxBarSize={28} isAnimationActive={false} />
+              </BarChart>
             </ResponsiveContainer>
           </div> : empty}
         </div>

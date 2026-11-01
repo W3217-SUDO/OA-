@@ -469,7 +469,7 @@ async def _customer_roi_analytics(
             "view": "customer-roi", "rows": [],
             "totals": {"income": 0.0, "cost": 0.0, "profit": 0.0, "roi": None},
             "filter_options": {"departments": [], "employees": []},
-            "formula": "ROI=(收入-成本)/成本×100%；只算签过框架合作合同的客户；收入=代理费到账（不含公司之间重复转款）+法院退费，成本=全部付款（不含公司之间付款、付给客户的权利人分成和赔偿款转付、任务逾期扣款）；成本为0时不计算ROI",
+            "formula": "ROI=(收入-成本)/成本×100%；只算签过框架合作合同的客户（不含测试客户）；收入=代理费到账（不含公司之间重复转款）+法院退费，成本=全部付款（不含公司之间付款、付给客户的权利人分成和赔偿款转付、任务逾期扣款）；成本为0时不计算ROI",
             "date_basis": "到账日期、付款日期", "source": "realtime",
         }
 
@@ -563,6 +563,10 @@ async def _customer_roi_analytics(
     }
 
     def framework_customer(customer_record: BusinessRecord) -> bool:
+        # 思法汇成 11-01 17:36：测试客户（名称含“测试”或 test，如“测试11.13”）不算进来。
+        title = str(customer_record.title or "")
+        if "测试" in title or "test" in title.lower():
+            return False
         return customer_record.id in framework_customer_ids
 
     def customer_of_records(records: list[BusinessRecord]) -> BusinessRecord | None:
@@ -728,7 +732,7 @@ async def _customer_roi_analytics(
             "departments": sorted({source.department for source in visible_sources if source and source.department} | {name for name, _ in visible_people if name}),
             "employees": sorted({source.owner for source in visible_sources if source and source.owner} | {name for _, name in visible_people if name}),
         },
-        "formula": "ROI=(收入-成本)/成本×100%；只算签过框架合作合同的客户；收入=代理费到账（不含公司之间重复转款）+法院退费，成本=全部付款（不含公司之间付款、付给客户的权利人分成和赔偿款转付、任务逾期扣款）；成本为0时不计算ROI",
+        "formula": "ROI=(收入-成本)/成本×100%；只算签过框架合作合同的客户（不含测试客户）；收入=代理费到账（不含公司之间重复转款）+法院退费，成本=全部付款（不含公司之间付款、付给客户的权利人分成和赔偿款转付、任务逾期扣款）；成本为0时不计算ROI",
         "date_basis": "到账日期、付款日期", "source": "realtime",
     }
 
