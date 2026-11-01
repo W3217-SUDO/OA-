@@ -12,6 +12,8 @@ test('大屏放经营总数据 4 块，员工业绩排行已撤掉（BUG 500801�
   assert.match(page, /\[\["by_investigator", "按调查员"\], \["by_brand", "按品牌"\]\]/);
   assert.match(page, /\{ key: "submitted", name: "提交线索数"/);
   assert.match(page, /\{ key: "approved", name: "审核通过数"/);
+  // 19:12：线索两张图用分组柱状图，不用折线。
+  assert.match(page, /<GroupedBarChart rows=\{overview\.clues\[key\]\} bars=\{clueLines\} \/>/);
   assert.match(page, /\{ key: "issued", name: "发出任务数"/);
   assert.match(page, /\{ key: "done", name: "完成任务数"/);
   assert.ok(!page.includes('员工业绩排行</strong>'), '员工业绩排行已移到员工业绩统计中心');

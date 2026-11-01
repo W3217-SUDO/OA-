@@ -719,6 +719,26 @@ function MonthBarChart({ rows, name, color }: { rows: MonthValue[]; name: string
   );
 }
 
+// 线索按调查员/品牌：每个人或品牌两根柱子——提交数和审核通过数（思法汇成 11-01 19:12，不要折线）。
+function GroupedBarChart({ rows, bars }: { rows: Record<string, string | number>[]; bars: { key: string; name: string; color: string }[] }) {
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={rows} margin={{ top: 20, right: 12, bottom: 0, left: 0 }}>
+        <CartesianGrid stroke="#e8f0f2" vertical={false} />
+        <XAxis dataKey="name" interval={0} tick={{ fontSize: 12 }} tickFormatter={(value) => shortName(String(value))} angle={-30} textAnchor="end" height={72} />
+        <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+        <Tooltip formatter={(value, barName) => [formatNumber(Number(value)), barName]} />
+        <Legend />
+        {bars.map(bar => (
+          <Bar key={bar.key} dataKey={bar.key} name={bar.name} fill={bar.color} maxBarSize={24}>
+            <LabelList dataKey={bar.key} position="top" fontSize={10} />
+          </Bar>
+        ))}
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
 function TwoLineChart({ rows, xKey, lines, xFormatter, tilted }: {
   rows: Record<string, string | number | null>[];
   xKey: string;
@@ -856,7 +876,7 @@ export function ReportLargeScreenPage({ onExit }: { onExit?: () => void }) {
                 {([["by_investigator", "按调查员"], ["by_brand", "按品牌"]] as const).map(([key, group]) => (
                   <article key={key} className="large-screen-card">
                     <h2>新增调查线索·{group} <small>{overview ? `提交 ${formatNumber(overview.clues.submitted)} 条，审核通过 ${formatNumber(overview.clues.approved)} 条` : ""}</small></h2>
-                    <div className="large-screen-chart">{overview?.clues[key].length ? <TwoLineChart rows={overview.clues[key]} xKey="name" lines={clueLines} tilted /> : <LargeScreenEmpty />}</div>
+                    <div className="large-screen-chart">{overview?.clues[key].length ? <GroupedBarChart rows={overview.clues[key]} bars={clueLines} /> : <LargeScreenEmpty />}</div>
                   </article>
                 ))}
                 <article className="large-screen-card trend-card">
