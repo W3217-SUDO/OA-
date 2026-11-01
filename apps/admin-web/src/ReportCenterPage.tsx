@@ -88,6 +88,7 @@ type CustomerRoiFilterValues = {
 type StaffPerformanceRow = {
   person: string;
   agency_fee: number | null;
+  new_cases: number;
   active_cases: number;
   hearings: number;
   archived_cases: number;
@@ -504,7 +505,7 @@ const STAFF_ROLE_OPTIONS = [
 export function staffChartRows(rows: StaffPerformanceRow[]) {
   const byFee = rows.filter(row => Number(row.agency_fee || 0) > 0)
     .sort((left, right) => Number(right.agency_fee) - Number(left.agency_fee)).slice(0, STAFF_CHART_LIMIT);
-  const byCases = rows.filter(row => row.active_cases || row.hearings || row.archived_cases)
+  const byCases = rows.filter(row => row.new_cases || row.active_cases || row.hearings || row.archived_cases)
     .sort((left, right) => right.active_cases + right.hearings + right.archived_cases - (left.active_cases + left.hearings + left.archived_cases))
     .slice(0, STAFF_CHART_LIMIT);
   return { byFee, byCases };
@@ -538,7 +539,7 @@ function StaffPerformanceCharts({ data, bigScreen }: { data: StaffPerformanceDat
       </section>}
       <section className="report-chart-panel report-roi-chart">
         <div className="report-chart-title">
-          <span>在办、开庭、结案归档（按{data.role_label}，前 {STAFF_CHART_LIMIT} 名）</span>
+          <span>新建、在办、开庭、结案归档（按{data.role_label}，前 {STAFF_CHART_LIMIT} 名）</span>
           <span className="report-chart-unit">单位：件 / 次</span>
         </div>
         <div className="report-chart-body report-chart-scroll">
@@ -550,6 +551,7 @@ function StaffPerformanceCharts({ data, bigScreen }: { data: StaffPerformanceDat
                 <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "#777", fontSize }} />
                 <Tooltip />
                 <Legend wrapperStyle={{ fontSize }} />
+                <Bar dataKey="new_cases" name="新建案件" fill="#4e8cff" maxBarSize={22} isAnimationActive={false} />
                 <Bar dataKey="active_cases" name="在办案件" fill="#18c7bb" maxBarSize={22} isAnimationActive={false} />
                 <Bar dataKey="hearings" name="开庭" fill="#ffb95c" maxBarSize={22} isAnimationActive={false} />
                 <Bar dataKey="archived_cases" name="结案归档" fill="#8a74e8" maxBarSize={22} isAnimationActive={false} />
@@ -573,7 +575,7 @@ function StaffRoiReport() {
   const bigScreen = pageBigScreen.active;
   const [data, setData] = useState<StaffPerformanceData>({
     year: thisYear, role: "source", role_label: "案源人", amount_visible: false,
-    totals: { agency_fee: null, active_cases: 0, hearings: 0, archived_cases: 0, loss_archived_cases: 0 },
+    totals: { agency_fee: null, new_cases: 0, active_cases: 0, hearings: 0, archived_cases: 0, loss_archived_cases: 0 },
     rows: [], roles: STAFF_ROLE_OPTIONS,
   });
 
@@ -595,6 +597,7 @@ function StaffRoiReport() {
   const totals = data.totals;
   const cards = [
     ...(data.amount_visible ? [{ label: "代理费到账（元）", value: currency(Number(totals.agency_fee || 0)) }] : []),
+    { label: `${data.year} 年新建案件（件）`, value: totals.new_cases.toLocaleString("zh-CN") },
     { label: "当前在办案件（件）", value: totals.active_cases.toLocaleString("zh-CN") },
     { label: `${data.year} 年开庭（次）`, value: totals.hearings.toLocaleString("zh-CN") },
     { label: `${data.year} 年结案归档（件）`, value: totals.archived_cases.toLocaleString("zh-CN"), note: `其中亏损归档 ${totals.loss_archived_cases.toLocaleString("zh-CN")} 件` },
@@ -643,6 +646,7 @@ function StaffRoiReport() {
               ...(data.amount_visible ? [{ title: "代理费到账（元）", dataIndex: "agency_fee", width: 150, align: "right" as const,
                 sorter: (left: StaffPerformanceRow, right: StaffPerformanceRow) => Number(left.agency_fee || 0) - Number(right.agency_fee || 0),
                 render: (value: number | null) => currency(Number(value || 0)) }] : []),
+              { title: "新建案件", dataIndex: "new_cases", width: 110, align: "right", sorter: (left, right) => left.new_cases - right.new_cases },
               { title: "在办案件", dataIndex: "active_cases", width: 110, align: "right", sorter: (left, right) => left.active_cases - right.active_cases },
               { title: "开庭", dataIndex: "hearings", width: 100, align: "right", sorter: (left, right) => left.hearings - right.hearings },
               { title: "结案归档", dataIndex: "archived_cases", width: 110, align: "right", sorter: (left, right) => left.archived_cases - right.archived_cases },

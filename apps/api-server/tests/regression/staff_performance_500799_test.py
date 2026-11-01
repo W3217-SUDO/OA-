@@ -1,6 +1,6 @@
 """BUG 500799：员工业绩统计中心——当年代理费到账、在办、开庭、结案归档，按角色按人统计。"""
 import unittest
-from datetime import date
+from datetime import date, datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
@@ -25,7 +25,8 @@ class StaffPerformanceTest(unittest.IsolatedAsyncioTestCase):
     async def test_four_figures_by_role(self):
         def case(no, status, customer="客户甲", **data):
             base = {"business_owner": "srca", "investigator": "inv", "hearing_lawyer": "hla", "assistant": "asa"}
-            return BusinessRecord(module="case", serial_no=no, title=no, customer=customer, status=status, owner="owner", department="诉讼部", data={**base, **data})
+            return BusinessRecord(module="case", serial_no=no, title=no, customer=customer, status=status, owner="owner", department="诉讼部",
+                                  created_at=datetime(2025 if no == "C-OLD" else 2026, 3, 1, tzinfo=timezone.utc), data={**base, **data})
         async with self.sessions() as db:
             db.add_all([User(username="srca", display_name="案源甲", password_hash="x", role="staff"),
                         User(username="hla", display_name="开庭乙", password_hash="x", role="staff")])
@@ -50,6 +51,8 @@ class StaffPerformanceTest(unittest.IsolatedAsyncioTestCase):
             hearing = await staff_performance(db, [], cases, year=2026, today=today, role="hearing", amount_visible=True)
             investigator = await staff_performance(db, [], cases, year=2026, today=today, role="investigator", amount_visible=True)
             hidden = await staff_performance(db, [], cases, year=2026, today=today, role="source", name="案源", amount_visible=False)
+        self.assertEqual(hearing["totals"]["new_cases"], 6)  # 去年建的 C-OLD 和测试客户不算
+        hearing["totals"].pop("new_cases"); [row.pop("new_cases") for row in hearing["rows"]]
         self.assertEqual(hearing["totals"], {"active_cases": 2, "hearings": 3, "archived_cases": 2, "loss_archived_cases": 1, "agency_fee": 1000})
         rows = {row["person"]: row for row in hearing["rows"]}
         self.assertEqual(rows["开庭乙"], {"person": "开庭乙", "active_cases": 2, "hearings": 3, "archived_cases": 2, "loss_archived_cases": 1, "agency_fee": 1000})

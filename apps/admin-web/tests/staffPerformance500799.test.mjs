@@ -16,7 +16,7 @@ test('菜单和页面改名为员工业绩统计中心，不再算 ROI', () => {
 test('四类数、四种角色、姓名查个人；默认图，可切表格，大屏只放图', () => {
   const page = read('ReportCenterPage.tsx');
   for (const label of ['案源人', '调查员', '开庭律师', '律师助理']) assert.match(page, new RegExp(`label: "${label}"`));
-  for (const key of ['agency_fee', 'active_cases', 'hearings', 'archived_cases', 'loss_archived_cases']) assert.ok(page.includes(`dataIndex: "${key}"`), key);
+  for (const key of ['agency_fee', 'new_cases', 'active_cases', 'hearings', 'archived_cases', 'loss_archived_cases']) assert.ok(page.includes(`dataIndex: "${key}"`), key);
   const staff = page.slice(page.indexOf('function StaffRoiReport'), page.indexOf('const largeScreenViews'));
   assert.match(staff, /useState<"chart" \| "table">\("chart"\)/);
   assert.match(staff, /onClick=\{pageBigScreen\.enter\}>大屏展示<\/Button>/);
