@@ -132,36 +132,8 @@ const PAGE_SPECS: Record<string, PageSpec> = {
       { title: "等待客户回款进度案件数量", unit: "个/案" },
     ],
   },
-  "reports-execution-1": {
-    title: "执行进度案件统计",
-    filter: "none",
-    charts: [
-      { title: "一审待执行案件数量", unit: "个/案", limit: 20 },
-      { title: "二审待执行案件数量", unit: "个/案", limit: 20 },
-      { title: "准备材料案件数量", unit: "个/案", limit: 20 },
-      { title: "提交法院案件数量", unit: "个/案", limit: 20 },
-    ],
-  },
 };
 
-PAGE_SPECS["reports-execution-2"] = {
-  title: "执行进度案件统计",
-  filter: "none",
-  charts: [
-    { title: "执行受理案件数量", unit: "个/案", limit: 20 },
-    { title: "执行中止案件数量", unit: "个/案", limit: 20 },
-    { title: "执行结案案件数量", unit: "个/案", limit: 20 },
-    { title: "执行终本案件数量", unit: "个/案", limit: 20 },
-  ],
-};
-PAGE_SPECS["reports-execution-3"] = {
-  title: "执行进度案件统计",
-  filter: "none",
-  charts: [
-    { title: "执行终结案件数量", unit: "个/案", limit: 20 },
-    { title: "执行中止案件数量", unit: "个/案", limit: 20 },
-  ],
-};
 PAGE_SPECS["reports-staff-roi"] = {
   title: "员工业绩ROI统计",
   filter: "none",
@@ -453,7 +425,7 @@ function StaffRoiReport() {
   );
 }
 
-const largeScreenViews = ["reports-refund", "reports-execution-1", "reports-execution-2", "reports-execution-3"];
+const largeScreenViews = ["reports-refund", "reports-execution-1"];
 const LARGE_SCREEN_COLORS = ["#18c7bb", "#4e8cff", "#ffb95c", "#8a74e8", "#ef6d85", "#2cc47c"];
 
 type LargeScreenData = {
@@ -588,7 +560,7 @@ export function ReportLargeScreenPage({ onExit }: { onExit?: () => void }) {
 }
 
 // 这些报表自己取数，不走 /reports/analytics。
-const PAGE_OWN_LOADERS = new Set(["reports-customer-roi", "reports-staff-roi", "reports-refund"]);
+const PAGE_OWN_LOADERS = new Set(["reports-customer-roi", "reports-staff-roi", "reports-refund", "reports-execution-1", "reports-execution-2", "reports-execution-3"]);
 
 function StandardReportCenterPage({ initialView = "reports-brand", onNavigate, bigScreen = false }: { initialView?: string; onNavigate?: (route: string) => void; bigScreen?: boolean }) {  const page = PAGE_SPECS[initialView] ?? PAGE_SPECS["reports-brand"];
   const [loading, setLoading] = useState(false);
@@ -631,6 +603,8 @@ function StandardReportCenterPage({ initialView = "reports-brand", onNavigate, b
   if (initialView === "reports-customer-roi") return <CustomerRoiReport onNavigate={onNavigate} />;
   if (initialView === "reports-staff-roi") return <StaffRoiReport />;
   if (initialView === "reports-refund") return <ProgressMatrixReport title="退费进度案件统计" endpoint="/reports/refund-progress" bigScreen={bigScreen} onNavigate={onNavigate} />;
+  // 三张执行进度表合并成一张（BUG 500788）；旧的（二）（三）入口也打开这张。
+  if (initialView.startsWith("reports-execution-")) return <ProgressMatrixReport title="执行进度案件统计" endpoint="/reports/execution-progress" bigScreen={bigScreen} onNavigate={onNavigate} />;
   return (
     <div className={`report-page ${page.filter === "none" ? "report-page-no-filter" : ""}`}>
       <div className="report-page-heading">

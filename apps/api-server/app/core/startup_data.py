@@ -172,6 +172,9 @@ async def initialize_startup_data(
             ) or (
                 # BUG20261030004：知识产权中心按老系统重新排序、“案件自定义文件导入”挪到“案件文件”下；管理员手工改过的不动。
                 key.startswith("ipr-") and existing_menus[key].updated_by == "system"
+            ) or (
+                # BUG 500788：三张执行进度表合并，菜单名改为“执行进度案件统计”。
+                key == "reports-execution-1" and existing_menus[key].updated_by == "system"
             ):
                 existing_menus[key].parent_key = parent_key
                 existing_menus[key].label = label

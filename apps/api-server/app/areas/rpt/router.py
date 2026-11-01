@@ -364,3 +364,16 @@ async def refund_progress_report(identity: dict = Depends(current_identity), db:
 async def refund_progress_report_cases(person: str = "", stage: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.progress_reports import refund_progress_cases
     return await refund_progress_cases(identity, db, person=person.strip(), stage=stage.strip())
+
+
+@router.get(f"{settings.api_prefix}/reports/execution-progress")
+async def execution_progress_report(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    # 执行进度按律师助理统计，合并原来的三张执行进度表（BUG 500788）。
+    from app.core.progress_reports import execution_progress_report as build
+    return await build(identity, db)
+
+
+@router.get(f"{settings.api_prefix}/reports/execution-progress/cases")
+async def execution_progress_report_cases(person: str = "", stage: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.progress_reports import execution_progress_cases
+    return await execution_progress_cases(identity, db, person=person.strip(), stage=stage.strip())

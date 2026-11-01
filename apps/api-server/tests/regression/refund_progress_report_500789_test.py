@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 import app.main  # noqa: F401  注册全部模型
-from app.core.progress_reports import UNASSIGNED_PERSON, refund_progress_cases, refund_progress_report
+from app.core.progress_reports import UNASSIGNED_PERSON, execution_progress_cases, execution_progress_report, refund_progress_cases, refund_progress_report
 from app.database import Base
 from app.models import BusinessRecord
 
@@ -65,6 +65,30 @@ class RefundProgressReportTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({item["case_no"] for item in listing["items"]}, {a.serial_no})
         self.assertEqual(len(listing["items"]), 2)
         self.assertEqual(listing["items"][0]["stage_started"], "2026-10-01")
+
+
+    async def test_execution_progress_groups_case_phases_by_assistant(self):
+        # BUG 500788：执行进度按律师助理、6 列分组；三张旧表合并成一张。
+        async with self.sessions() as db:
+            db.add_all([
+                BusinessRecord(module="case", serial_no=no, title=no, customer="客户", status=status, owner="admin", department="诉讼部",
+                               data={"assistant": assistant, "execution_court_name": "上海市徐汇区人民法院", "execution_court_case_no": f"（2026）沪执{no}"})
+                for no, status, assistant in (("E-1", "一审待执行", "梁晨宇"), ("E-2", "二审待执行", "梁晨宇,周子怡"), ("E-3", "执行立案", "周子怡"),
+                                              ("E-4", "执行终结", "梁晨宇"), ("E-5", "已归档", "梁晨宇"), ("E-6", "文书准备", "梁晨宇"))
+            ])
+            await db.commit()
+            report = await execution_progress_report(ADMIN, db)
+            listing = await execution_progress_cases(ADMIN, db, person="梁晨宇", stage="待执行")
+        self.assertEqual(report["stages"], ["待执行", "执行立案", "执行受理", "执行中止", "执行终本", "执行结案/终结"])
+        rows = {row["person"]: row for row in report["rows"]}
+        self.assertEqual(rows["梁晨宇"]["counts"]["待执行"], 2)
+        self.assertEqual(rows["梁晨宇"]["counts"]["执行结案/终结"], 1)
+        self.assertEqual(rows["梁晨宇"]["total"], 3)
+        self.assertEqual(rows["周子怡"]["total"], 2)
+        self.assertEqual(report["totals"]["待执行"], 2)
+        self.assertEqual(report["total"], 4)
+        self.assertEqual([item["case_no"] for item in listing["items"]], ["E-1", "E-2"])
+        self.assertEqual(listing["items"][0]["execution_case_no"], "（2026）沪执E-1")
 
 
 if __name__ == "__main__":

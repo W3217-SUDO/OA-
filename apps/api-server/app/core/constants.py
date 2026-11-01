@@ -170,7 +170,7 @@ DEFAULT_SYSTEM_MENUS += [
     ("finance-fee-query", "finance", "费用查询", "", 7),
     ("platform-finance-overview", "platform-finance", "回款管理", "", 1), ("platform-finance-overview-icbc", "platform-finance-overview", "回款(工行)", "", 1), ("platform-finance-overview-citic", "platform-finance-overview", "回款(中信)", "", 2), ("platform-finance-overview-boc", "platform-finance-overview", "回款(中行)", "", 3), ("platform-finance-overview-cmb", "platform-finance-overview", "回款(招商)", "", 10), ("platform-finance-overview-gdicbc", "platform-finance-overview", "回款(国定工行)", "", 11), ("platform-finance-overview-new", "platform-finance-overview", "新增回款", "", 4), ("platform-finance-overview-manage", "platform-finance-overview", "回款管理", "", 5), ("platform-finance-overview-claim", "platform-finance-overview", "回款领取", "", 6), ("platform-finance-overview-pending", "platform-finance-overview", "待分配回款", "", 7), ("platform-finance-overview-allocated", "platform-finance-overview", "已分配回款", "", 8), ("platform-finance-overview-query", "platform-finance-overview", "到账查询", "", 9), ("platform-finance-overview-bank-flow", "platform-finance-overview", "银行原始流水", "", 12),
     ("platform-finance-invoice", "platform-finance", "开票管理", "", 3), ("platform-finance-invoice-mine", "platform-finance-invoice", "我的开票", "", 1), ("platform-finance-invoice-pending", "platform-finance-invoice", "待处理开票", "", 2), ("platform-finance-invoice-company", "platform-finance-invoice", "公司开票", "", 3),
-        ("reports-brand", "reports", "品牌资金运营情况统计", "", 1), ("reports-lawyer", "reports", "律师资金运营情况统计", "", 2), ("reports-refund", "reports", "退费进度案件统计", "", 3), ("reports-execution-1", "reports", "执行进度案件统计1", "", 4), ("reports-execution-2", "reports", "执行进度案件统计2", "", 5), ("reports-execution-3", "reports", "执行进度案件统计3", "", 6), ("reports-customer-roi", "reports", "客户ROI统计", "", 7), ("reports-large-screen", "reports", "报表大屏", "", 8), ("reports-staff-roi", "reports", "员工业绩ROI统计", "", 9),
+        ("reports-brand", "reports", "品牌资金运营情况统计", "", 1), ("reports-lawyer", "reports", "律师资金运营情况统计", "", 2), ("reports-refund", "reports", "退费进度案件统计", "", 3), ("reports-execution-1", "reports", "执行进度案件统计", "", 4), ("reports-execution-2", "reports", "执行进度案件统计2", "", 5), ("reports-execution-3", "reports", "执行进度案件统计3", "", 6), ("reports-customer-roi", "reports", "客户ROI统计", "", 7), ("reports-large-screen", "reports", "报表大屏", "", 8), ("reports-staff-roi", "reports", "员工业绩ROI统计", "", 9),
 ]
 
 
@@ -1115,6 +1115,8 @@ ROLE_TREE_HIDDEN_ACTION_CODES = frozenset({
 ROLE_TREE_HIDDEN_MENU_KEYS = frozenset({
     "task-reminders", "vip-tasks", "finance-jar", "finance-internal-void", "system-users",
     "documents-outgoing", "documents-register", "documents-files", "documents-template", "documents-agent", "documents-archive",
+    # 三张执行进度表合并成一张（BUG 500788，思法汇成 11-01 选 3A），（二）（三）不再单独授权显示。
+    "reports-execution-2", "reports-execution-3",
 })
 # 同一个功能控制多个页面的按钮时，角色权限里在这些页面下都显示（同一开关，勾一处各处同步）。
 ROLE_TREE_ACTION_ALSO_MENUS = {

@@ -15,8 +15,19 @@ test('退费进度页改用按人统计的进度表，并进入大屏轮播', ()
 test('表格：合计行、点数字看清单、大屏自动刷新和翻页', () => {
   const matrix = read('ProgressMatrixReport.tsx');
   assert.match(matrix, /Table\.Summary\.Row className="progress-matrix-total-row"/);
-  assert.match(matrix, /api\.get<\{ items: ProgressCase\[\] \}>\(`\$\{endpoint\}\/cases`, \{ params: \{ person, stage \} \}\)/);
+  assert.match(matrix, /`\$\{endpoint\}\/cases`, \{ params: \{ person, stage \} \}/);
   assert.match(matrix, /BIG_SCREEN_REFRESH_MS = 5 \* 60_000/);
   assert.match(matrix, /setPage\(current => current % pages \+ 1\)/);
   assert.ok(!read('report-center.css').split('BUG 500789')[1].includes('color-mix'), '大屏样式要兼容钉钉旧内核');
+});
+
+test('执行进度三张表合并成一张按律师助理的表（BUG 500788）', () => {
+  const page = read('ReportCenterPage.tsx');
+  assert.match(page, /initialView\.startsWith\("reports-execution-"\)\) return <ProgressMatrixReport title="执行进度案件统计" endpoint="\/reports\/execution-progress"/);
+  assert.match(page, /const largeScreenViews = \["reports-refund", "reports-execution-1"\];/);
+  assert.ok(!page.includes('一审待执行案件数量'));
+  const app = read('App.tsx');
+  assert.match(app, /\{ key: "reports-execution-1", label: "执行进度案件统计" \}/);
+  assert.ok(!app.includes('"reports-execution-2"') && !app.includes('"reports-execution-3"'));
+  assert.match(read('ProgressMatrixReport.tsx'), /setDrillColumns\(result\.columns \|\| \[\]\)/);
 });

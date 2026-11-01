@@ -16,18 +16,9 @@ export type ProgressMatrixData = {
   total: number;
   definition?: string;
 };
-type ProgressCase = {
-  case_id: number;
-  case_no: string;
-  customer: string;
-  case_status: string;
-  people: string[];
-  fee_id: number;
-  fee_name: string;
-  refund_amount: number;
-  stage: string;
-  stage_started: string;
-};
+// 清单列由接口给出：退费表多费用、金额，执行表多执行法院、执行案号（BUG 500788）。
+type ProgressCase = { case_id: number; case_no: string; customer: string; people: string[]; fee_id?: number } & Record<string, unknown>;
+type DetailColumn = { key: string; title: string; type?: "amount" };
 type Drill = { person: string; stage: string };
 
 const BIG_SCREEN_PAGE_SIZE = 12;
@@ -50,6 +41,7 @@ export default function ProgressMatrixReport({ title, endpoint, bigScreen = fals
   const [drill, setDrill] = useState<Drill | null>(null);
   const [drillLoading, setDrillLoading] = useState(false);
   const [drillItems, setDrillItems] = useState<ProgressCase[]>([]);
+  const [drillColumns, setDrillColumns] = useState<DetailColumn[]>([]);
 
   const load = async () => {
     setLoading(true);
@@ -86,8 +78,9 @@ export default function ProgressMatrixReport({ title, endpoint, bigScreen = fals
     setDrillItems([]);
     setDrillLoading(true);
     try {
-      const { data: result } = await api.get<{ items: ProgressCase[] }>(`${endpoint}/cases`, { params: { person, stage } });
+      const { data: result } = await api.get<{ items: ProgressCase[]; columns?: DetailColumn[] }>(`${endpoint}/cases`, { params: { person, stage } });
       setDrillItems(result.items || []);
+      setDrillColumns(result.columns || []);
     } catch (requestError: any) {
       message.error(requestError?.response?.data?.detail || "案件清单加载失败");
     } finally {
@@ -147,20 +140,25 @@ export default function ProgressMatrixReport({ title, endpoint, bigScreen = fals
       </Spin>
       <Modal open={Boolean(drill)} title={drillTitle} width={POPUP_WIDTH.lg} footer={<Button onClick={() => setDrill(null)}>关闭</Button>} onCancel={() => setDrill(null)} destroyOnHidden>
         <Table<ProgressCase>
-          rowKey={item => `${item.case_id}-${item.fee_id}`}
+          rowKey={item => `${item.case_id}-${item.fee_id ?? ""}`}
           size="small"
           loading={drillLoading}
           dataSource={drillItems}
           scroll={{ x: 980 }}
-          pagination={{ pageSize: 20, showTotal: total => `共 ${new Set(drillItems.map(item => item.case_id)).size} 件案件、${total} 笔费用` }}
+          pagination={{ pageSize: 20, showTotal: total => {
+            const cases = new Set(drillItems.map(item => item.case_id)).size;
+            return cases === total ? `共 ${cases} 件案件` : `共 ${cases} 件案件、${total} 笔费用`;
+          } }}
           columns={[
             { title: "案号", dataIndex: "case_no", width: 140, render: (value, item) => onNavigate ? <Button type="link" size="small" onClick={() => openCase(item)}>{value}</Button> : value },
             { title: "客户", dataIndex: "customer", width: 200, ellipsis: true },
-            { title: "案件阶段", dataIndex: "case_status", width: 120 },
-            { title: "费用", dataIndex: "fee_name", width: 130, ellipsis: true },
-            { title: "退费金额（元）", dataIndex: "refund_amount", width: 120, align: "right", render: (value: number) => Number(value || 0).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
-            { title: "退费进度", dataIndex: "stage", width: 120 },
-            { title: "进度开始日期", dataIndex: "stage_started", width: 120, render: value => value || "—" },
+            ...drillColumns.map(column => ({
+              title: column.title, dataIndex: column.key, width: column.type === "amount" ? 120 : 140, ellipsis: true,
+              align: column.type === "amount" ? "right" as const : undefined,
+              render: (value: unknown) => column.type === "amount"
+                ? Number(value || 0).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                : String(value ?? "") || "—",
+            })),
             { title: data.person_label || "人员", dataIndex: "people", width: 150, render: (value: string[]) => (value || []).join("、") },
           ]}
         />
