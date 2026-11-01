@@ -14,7 +14,7 @@ type Props = { feedbackId: number; onBack: () => void; onNavigate: (route: strin
 
 // 必须先在输入框写内容的操作，以及没写时的提示。
 const requiresComment: Record<string, string> = {
-  "未解决，重新打开": "请在上面写明哪里还没解决",
+  "未解决，重新打开": "请在上面写明哪里还没解决或新的需求",
   "请确认修改方案": "请在上面写明打算怎么改",
 };
 // 状态流转说明的长度上限，与服务端 FeedbackTransition.comment 一致。
@@ -159,7 +159,8 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
   const withdrawn = feedback.status === "已撤回";
   const hint = actions.includes("确认修改")
     ? "没问题点“确认修改”，确认后才开始改；有意见直接回复。"
-    : actions.includes("验证通过") ? "解决了点“验证通过”，没解决写明情况后点“未解决，重新打开”。"
+    : actions.includes("验证通过") ? "解决了点“验证通过”；没解决或还有新需求，写明后点“还有问题”。如需修改请点『还有问题』，只回复不会改状态。"
+    : feedback.reporter_new_reply && actions.includes("未解决，重新打开") ? "提交人在待验证时有新回复：如果是新需求或没解决，写明依据后点“还有问题”转回待处理。"
     : actions.includes("请确认修改方案") ? "改之前先写好打算怎么改，点“请确认修改方案”交提交人确认。" : "";
 
   return <section aria-label="反馈详情">
@@ -168,6 +169,7 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
       <Button onClick={onBack}>返回列表</Button>
       <Button onClick={() => void load()} loading={loading}>刷新</Button>
       <Tag color={statusColors[feedback.status] || "default"}>{feedback.status}</Tag>
+      {feedback.reporter_new_reply && <Tag color="orange">提交人有新回复</Tag>}
       {feedback.can_withdraw && <Popconfirm title="撤回后这个问题将不再处理，确定撤回？" okText="撤回" cancelText="取消"
         okButtonProps={{ danger: true }} onConfirm={() => withdraw()}
         description={<Input.TextArea value={withdrawNote} maxLength={2000} autoSize={{ minRows: 2, maxRows: 4 }}
@@ -228,7 +230,7 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
           </Tooltip>
           {actions.map((action) => <button key={action} type="button" disabled={busy}
             className={`feedback-chat-action${primaryActions.has(action) ? " is-primary" : ""}${action === "未解决，重新打开" ? " is-danger" : ""}`}
-            onClick={() => transition(action)}>{action}</button>)}
+            onClick={() => transition(action)}>{action === "未解决，重新打开" ? "还有问题" : action}</button>)}
         </div>
       </div>}
       <div ref={listEnd} className="feedback-chat-end" />

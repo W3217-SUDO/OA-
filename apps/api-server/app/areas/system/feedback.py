@@ -48,6 +48,10 @@ REPORTER_ACTIONS = {
 }
 # 被指派的处理人也能替提交人确认（如非诉问题由指定的人确认）。
 ASSIGNEE_CONFIRM_ACTIONS = {"确认修改"}
+# 待验证时提交人又提了新需求或说没解决，转回待处理重新走流程（陶威 11-01 定）。页面上叫“还有问题”。
+# 提交人没点按钮、只在回复里写了的，问题处理助手和管理者（admin 账号）可以代为转回，备注写明依据；其他处理人不行。
+REOPEN_ACTION = "未解决，重新打开"
+REOPEN_PROXY_USERNAMES = frozenset({"feedback-bot", "admin"})
 COMMENT_REQUIRED_ACTIONS = {"未解决，重新打开", "请确认修改方案"}
 
 
@@ -151,7 +155,9 @@ def _reporter_actions(record: BusinessRecord, identity: dict) -> set[str]:
     # 提交人或确认人在回复里写了“确认”但没点按钮时，问题处理助手代记“确认修改”（备注写明依据），
     # 不再借用管理者身份，页面上分得清是谁（用户要求，2026-10-29）。
     if identity["username"] == FEEDBACK_BOT_USERNAME:
-        return set(ASSIGNEE_CONFIRM_ACTIONS)
+        return {*ASSIGNEE_CONFIRM_ACTIONS, REOPEN_ACTION}
+    if identity["username"] in REOPEN_PROXY_USERNAMES:
+        return {REOPEN_ACTION}
     return set()
 
 
@@ -224,6 +230,19 @@ async def _next_feedback_serial(db: AsyncSession, *, now: datetime | None = None
     return f"{prefix}{sequence:03d}"
 
 
+def _mark_reply(record: BusinessRecord, identity: dict) -> None:
+    """待验证时提交人只回复、没点按钮：不改状态，给处理人标“提交人有新回复”；别人回复或改状态后清掉（陶威 11-01）。"""
+    if _status(record.status) == "待验证" and identity["username"] == record.owner:
+        record.data = {**(record.data or {}), "reporter_new_reply": True}
+    else:
+        _clear_reporter_new_reply(record)
+
+
+def _clear_reporter_new_reply(record: BusinessRecord) -> None:
+    if (record.data or {}).get("reporter_new_reply"):
+        record.data = {key: value for key, value in (record.data or {}).items() if key != "reporter_new_reply"}
+
+
 def _serialize_feedback(record: BusinessRecord, owner_name: str = "", assignee_name: str = "", has_screenshot: bool = False) -> dict:
     return {
         "id": record.id, "serial_no": record.serial_no, "description": record.description,
@@ -233,6 +252,7 @@ def _serialize_feedback(record: BusinessRecord, owner_name: str = "", assignee_n
         "controls": (record.data or {}).get("controls", []),
         "legacy_serial_no": (record.data or {}).get("legacy_serial_no", ""),
         "has_screenshot": has_screenshot,
+        "reporter_new_reply": bool((record.data or {}).get("reporter_new_reply")) and _status(record.status) == "待验证",
         "created_at": record.created_at, "updated_at": record.updated_at,
     }
 
@@ -518,6 +538,7 @@ async def add_feedback_message(
     try:
         current = _status(record.status)
         record.updated_at = func.now()
+        _mark_reply(record, identity)
         event = WorkflowEvent(
             record_id=record.id, action="回复",
             from_status=current, to_status=current, operator=identity["username"], comment=content,
@@ -563,6 +584,7 @@ async def transition_feedback(
         raise HTTPException(422, "请写明谁在哪条回复里确认的")
     record.status = next_status
     record.updated_at = func.now()
+    _clear_reporter_new_reply(record)
     event = WorkflowEvent(
         record_id=record.id, action=action, from_status=previous_status, to_status=next_status,
         operator=identity["username"], comment=comment,
@@ -690,6 +712,7 @@ async def reply_feedback(
     _require_open(record)
     current = _status(record.status)
     record.updated_at = func.now()
+    _mark_reply(record, identity)
     event = WorkflowEvent(
         record_id=record.id, action="回复", from_status=current, to_status=current,
         operator=identity["username"], comment=content,

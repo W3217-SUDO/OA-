@@ -15,6 +15,8 @@ export type FeedbackRecord = {
   created_at: string;
   updated_at: string;
   has_screenshot: boolean;
+  /** 待验证时提交人只回复、没点按钮（陶威 11-01）：处理人这边显示“提交人有新回复”。 */
+  reporter_new_reply?: boolean;
 };
 
 export type FeedbackEvent = {

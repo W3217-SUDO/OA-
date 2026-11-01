@@ -31,7 +31,7 @@ const NOTE_IN_STATUS_ACTIONS = new Set(["指派处理人"]);
 export function feedbackStatusText(event: Pick<FeedbackEvent, "action" | "from_status" | "to_status" | "operator" | "operator_display_name" | "operator_role" | "comment">): string {
   const name = feedbackSpeakerName(event);
   if (NOTE_IN_STATUS_ACTIONS.has(event.action) && event.comment?.trim()) return `${name} ${event.action}：${event.comment.trim()}`;
-  const action = event.action === "提交反馈" ? "提交了反馈" : event.action;
+  const action = event.action === "提交反馈" ? "提交了反馈" : feedbackActionLabel(event.action);
   return event.from_status !== event.to_status && event.to_status ? `${name} ${action} → ${event.to_status}` : `${name} ${action}`;
 }
 
@@ -40,4 +40,9 @@ export function feedbackEventHasMessage(event: Pick<FeedbackEvent, "action" | "c
   if (!isFeedbackStatusEvent(event)) return true;
   const note = NOTE_IN_STATUS_ACTIONS.has(event.action) ? "" : event.comment?.trim();
   return Boolean(note || event.attachments?.length || event.has_screenshot);
+}
+
+/** 状态动作在页面上的叫法：“未解决，重新打开”现在也用于提新需求，显示为“还有问题”（陶威 11-01）。 */
+export function feedbackActionLabel(action: string): string {
+  return action === "未解决，重新打开" ? "还有问题，重新处理" : action;
 }

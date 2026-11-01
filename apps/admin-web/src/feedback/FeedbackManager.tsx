@@ -144,8 +144,11 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
     { title: "编号", dataIndex: "serial_no", width: 215, ellipsis: true,
       render: (value, row) => <Button type="link" size="small" onClick={() => setViewingId(row.id)}>{value}</Button> },
     { title: "问题描述", dataIndex: "description", width: 280, ellipsis: true },
-    { title: "状态", dataIndex: "status", width: 100,
-      render: (value: string) => <Tag color={statusColors[value] || "default"}>{value}</Tag> },
+    { title: "状态", dataIndex: "status", width: 180,
+      render: (value: string, row: FeedbackRecord) => <>
+        <Tag color={statusColors[value] || "default"}>{value}</Tag>
+        {row.reporter_new_reply && <Tag color="orange">提交人有新回复</Tag>}
+      </> },
     { title: "提交人", width: 105, ellipsis: true, render: (_, row) => row.owner_display_name || row.owner },
     { title: "最近更新", width: 160, render: (_, row) => beijingTime(row.updated_at || row.created_at, "YYYY-MM-DD HH:mm") },
     { title: "提交页面", dataIndex: "page", width: 180, ellipsis: true },
