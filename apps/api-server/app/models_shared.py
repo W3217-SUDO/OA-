@@ -190,6 +190,7 @@ from app.api_schemas.case_documents import (
     CaseAttachmentRenameInput as CaseAttachmentRenameInput,
     CaseAttachmentMoveInput as CaseAttachmentMoveInput,
     CaseAiDraftCreateInput as CaseAiDraftCreateInput,
+    CaseAiDraftFromPersonalInput as CaseAiDraftFromPersonalInput,
     CaseAiDraftUpdateInput as CaseAiDraftUpdateInput,
     CaseAiDraftPromoteInput as CaseAiDraftPromoteInput,
     WordEditorTextBlockInput as WordEditorTextBlockInput,

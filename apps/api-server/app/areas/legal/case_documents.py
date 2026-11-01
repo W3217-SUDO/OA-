@@ -38,6 +38,7 @@ from app.core.dependencies import (
 from app.models_shared import (
     AttachmentBatchInput,
     CaseAiDraftCreateInput,
+    CaseAiDraftFromPersonalInput,
     CaseAiDraftPromoteInput,
     CaseAiDraftUpdateInput,
     CaseAttachmentMoveInput,
@@ -213,6 +214,41 @@ async def create_case_ai_draft(
     )
     item = result["attachment"]
     return {**_attachment_dict(item, record), "content_editable": True}
+
+
+@router.post(f"{settings.api_prefix}/cases/{{case_id}}/ai-space/files/from-personal", status_code=status.HTTP_201_CREATED)
+async def copy_personal_file_to_case_ai_space(
+    case_id: int, body: CaseAiDraftFromPersonalInput,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """个人空间文件另存到案件 AI 空间（陶国南 11-01）：只能另存本人的文件，按本人的案件附件上传权限写入，留操作记录。"""
+    from app.areas.personal_agent.ai_space_service import space_file_bytes
+    from app.core.cases import _case_ai_draft_name
+    from app.core.generated_file_storage import save_generated_file
+    from app.core.permissions import _ensure_record_module, _require_case_attachment_upload_access
+    from app.core.storage import _attachment_dict
+    from app.models import User
+
+    record = await _ensure_record_module(case_id, "case", identity, db)
+    await _require_case_attachment_upload_access(record, identity, db)
+    item, content = await space_file_bytes(body.personal_file_id, identity, db)
+    owner_id = await db.scalar(select(User.id).where(User.username == identity["username"]))
+    if owner_id is None or item["owner_user_id"] != owner_id:
+        raise HTTPException(status_code=403, detail="只能另存本人个人空间里的文件")
+    name = _case_ai_draft_name(item["name"])
+
+    async def on_available(session, attachment):
+        attachment.remark = "从个人空间另存，尚未转入正式案件文档"
+        session.add(WorkflowEvent(
+            record_id=record.id, action="个人空间另存到案件 AI 空间", from_status=record.status,
+            to_status=record.status, operator=identity["username"], comment=name,
+        ))
+
+    result = await save_generated_file(
+        db, identity, name=name, content=content, content_type=item["content_type"],
+        source_kind="case_draft", case_record=record, on_available=on_available,
+    )
+    return {**_attachment_dict(result["attachment"], record), "content_editable": True}
 
 
 @router.get(f"{settings.api_prefix}/cases/{{case_id}}/ai-space/files/{{attachment_id}}/content")

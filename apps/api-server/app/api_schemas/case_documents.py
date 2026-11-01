@@ -22,6 +22,10 @@ class CaseAiDraftCreateInput(BaseModel):
     content: str = Field(default="", max_length=2_000_000)
 
 
+class CaseAiDraftFromPersonalInput(BaseModel):
+    personal_file_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+
+
 class CaseAiDraftUpdateInput(BaseModel):
     content: str = Field(max_length=2_000_000)
 

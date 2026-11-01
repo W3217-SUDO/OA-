@@ -12,7 +12,7 @@ import { usePersonalMcpConnection } from "./usePersonalMcpConnection";
 import { hasConnectionCredential, isMcpConnectionInput, mcpChatMessage } from "./personalMcpConfig";
 import { EMPTY_PERSONAL_DRAFT as EMPTY_DRAFT, usePersonalDrafts } from "./usePersonalDrafts";
 import { conversationDraftKey, conversationWorkspaceKey, PERSONAL_CONVERSATION_WORKSPACE, requireConversationWorkspace } from "./conversationWorkspace";
-import { errorText, workspaceDocumentSaveTarget, type ConfirmationDetail, type ConversationWorkspace, type DecisionFailure, type Material, type PendingAction, type ResponseMode, type WorkspaceCase, type WorkspaceMessage, type WorkspaceSkill, type WorkspaceState, type WorkspaceStatus } from "./types";
+import { errorText, mentionedCaseSerial, workspaceDocumentSaveTarget, type ConfirmationDetail, type ConversationWorkspace, type DecisionFailure, type Material, type PendingAction, type ResponseMode, type WorkspaceCase, type WorkspaceMessage, type WorkspaceSkill, type WorkspaceState, type WorkspaceStatus } from "./types";
 
 const SUPPORTED_FILE = /\.(pdf|docx|xlsx|txt|png|jpe?g)$/i;
 export const MATERIAL_ACCEPT = ".pdf,.docx,.xlsx,.txt,.png,.jpg,.jpeg";
@@ -27,6 +27,7 @@ export function usePersonalWorkspace() {
   const [decisionId, setDecisionId] = useState("");
   const [dismissalId, setDismissalId] = useState("");
   const [documentRevision, setDocumentRevision] = useState(0);
+  const [savedToCase, setSavedToCase] = useState<Record<string, string>>({});
   const [dismissedByConversation, setDismissedByConversation] = useState<Record<string, string[]>>({});
   const drafts = usePersonalDrafts();
   const draftsRef = drafts.ref;
@@ -149,6 +150,22 @@ export function usePersonalWorkspace() {
     } catch (error) { message.error(errorText(error, "个人文档保存未完成")); }
     finally { documentConfirmations.current.delete(key); }
   };
+  const saveWordToCase = async (item: WorkspaceMessage, index: number, serialNo: string, target = id) => {
+    const current = runtime.get(target);
+    const source = current.messages[index];
+    if (!target || !source || source.role !== "assistant" || source.content !== item.content || !source.content.trim() || source.failed || source.stopped || (runtime.running(target) && index === current.messages.length - 1)) { message.error("原回答尚未完整生成或已变化，请核对当前会话后保存"); return; }
+    let match: WorkspaceCase | undefined;
+    try {
+      const { data } = await api.get<{ items: WorkspaceCase[] }>("/records", { params: { module: "case", keyword: serialNo, page: 1, page_size: 20, exclude_archived: false } });
+      match = data.items.find((entry) => entry.serial_no.toUpperCase() === serialNo);
+    } catch (error) { message.error(errorText(error, "案件查询失败")); return; }
+    if (!match) { message.error(`没有找到你有权限的案件 ${serialNo}`); return; }
+    const name = aiWordDocumentName("", source.content);
+    confirmCaseAgentDocument({ caseId: match.id, serialNo: match.serial_no, name, content: source.content, onSaved: async () => {
+      setSavedToCase((saved) => ({ ...saved, [`${target}:${index}`]: match!.serial_no }));
+    } });
+  };
+  const savedCaseFor = (index: number, target = id) => savedToCase[`${target}:${index}`] || "";
   const saveSpreadsheet = async (item: WorkspaceMessage, index: number, target = id) => {
     const current = runtime.get(target);
     const source = current.messages[index];
@@ -211,7 +228,8 @@ export function usePersonalWorkspace() {
       starting = false;
       const completedState = await generation;
       const finalMessage = completedState?.messages.at(-1);
-      if (finalMessage?.can_save_document && isAiWordGenerationRequest(content) && isUsableAiDocumentContent(finalMessage.content) && !completedState?.pending_actions.some((action) => action.preview?.path?.endsWith("/ai-space/files"))) saveWord(finalMessage, completedState!.messages.length - 1, written);
+      // 说了要存到哪个案件就不再默认存个人空间，由回答下方的“保存到案件”按钮确认保存。
+      if (finalMessage?.can_save_document && isAiWordGenerationRequest(content) && !mentionedCaseSerial(content) && isUsableAiDocumentContent(finalMessage.content) && !completedState?.pending_actions.some((action) => action.preview?.path?.endsWith("/ai-space/files"))) saveWord(finalMessage, completedState!.messages.length - 1, written);
       if (finalMessage?.can_save_spreadsheet && isAiSpreadsheetGenerationRequest(content) && isUsableAiDocumentContent(finalMessage.content) && !completedState?.pending_actions.some((action) => action.preview?.path?.endsWith("/ai-space/files"))) saveSpreadsheet(finalMessage, completedState!.messages.length - 1, written);
     } catch (error) {
       if (beforeSend && consumedDraft) {
@@ -313,7 +331,7 @@ export function usePersonalWorkspace() {
     try { await conversations.openWorkspace(enabled ? PERSONAL_CONVERSATION_WORKSPACE : undefined); }
     catch (error) { message.error(errorText(error, "空间切换失败")); }
   };
-  return { mcpConnection, status, state, skills, skillId, setSkillId, input, setInput, loading, loadError, load, sending, stopping, responseMode, setResponseMode, progress: runtime.activities[id]?.progress || "", upload, uploading, materials, setMaterials, selectedCase, chooseCase, chooseCaseMaterials, caseMaterials, setCaseMaterials, send, decide, decisionId, decisionResult, decisionFailures, hideDecisionFailure, stop, refreshSkills, saveWord, saveSpreadsheet, savedDocuments, savedSpreadsheets, documentRevision, dismissAction, dismissActions, dismissalId, visibleActions, reopenConfirmation, draftKey,
+  return { mcpConnection, status, state, skills, skillId, setSkillId, input, setInput, loading, loadError, load, sending, stopping, responseMode, setResponseMode, progress: runtime.activities[id]?.progress || "", upload, uploading, materials, setMaterials, selectedCase, chooseCase, chooseCaseMaterials, caseMaterials, setCaseMaterials, send, decide, decisionId, decisionResult, decisionFailures, hideDecisionFailure, stop, refreshSkills, saveWord, saveWordToCase, savedCaseFor, saveSpreadsheet, savedDocuments, savedSpreadsheets, documentRevision, dismissAction, dismissActions, dismissalId, visibleActions, reopenConfirmation, draftKey,
     currentWorkspace: conversations.workspace, workspaceProjects: conversations.projects, caseAgentConversations: conversations.caseAgentConversations, selectWorkspace, setProjectMode,
     conversations: conversations.items, conversationBusy: conversations.busy, runningIds: Object.keys(runtime.activities),
     createConversation: () => changeConversation(() => conversations.create()),

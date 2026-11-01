@@ -1,5 +1,5 @@
 import { Button, Empty, Tag, Tooltip } from "antd";
-import { DeleteOutlined, DownloadOutlined, EditOutlined, EyeOutlined, MessageOutlined } from "@ant-design/icons";
+import { DeleteOutlined, DownloadOutlined, EditOutlined, EyeOutlined, MessageOutlined, FolderAddOutlined } from "@ant-design/icons";
 import { personalAiFilePreviewKind, type PersonalAiFile } from "./personalAiSpaceApi";
 import { PersonalAiFileShare } from "./PersonalAiFileShare";
 
@@ -16,7 +16,7 @@ const SOURCE_LABELS: Record<string, string> = {
   personal_edit: "在线编辑新版本",
 };
 
-export function PersonalAiSpaceFiles({ items, downloadingId, deletingId, latestSavedId, busy, onDownload, onPreview, onEdit, onDelete, onConversation }: {
+export function PersonalAiSpaceFiles({ items, downloadingId, deletingId, latestSavedId, busy, onDownload, onPreview, onEdit, onDelete, onConversation, onSaveToCase }: {
   items: PersonalAiFile[];
   downloadingId: string;
   deletingId?: string;
@@ -27,6 +27,7 @@ export function PersonalAiSpaceFiles({ items, downloadingId, deletingId, latestS
   onEdit: (item: PersonalAiFile) => void;
   onDelete: (item: PersonalAiFile) => void;
   onConversation: (id: string) => void;
+  onSaveToCase?: (item: PersonalAiFile) => void;
 }) {
   if (!items.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="个人 AI 空间暂无文件" />;
   return <ol className="personal-ai-space-files">
@@ -48,6 +49,8 @@ export function PersonalAiSpaceFiles({ items, downloadingId, deletingId, latestS
           {/\.(docx|xlsx|xls|md|txt)$/i.test(item.name) && <Button icon={<EditOutlined />} disabled={busy || !!downloadingId} onClick={() => onEdit(item)}>在线编辑</Button>}
           <Button icon={<DownloadOutlined />} loading={downloadingId === item.id} disabled={busy || (!!downloadingId && downloadingId !== item.id)} onClick={() => onDownload(item)}>下载 {item.name.includes(".") ? item.name.slice(item.name.lastIndexOf(".") + 1).toUpperCase() : "文件"}</Button>
           <PersonalAiFileShare file={item} disabled={busy || !!downloadingId} />
+          {/* 陶国南 11-01：个人空间的文件可以另存到案件空间。 */}
+          {onSaveToCase && item.can_delete && /\.(docx|md|txt)$/i.test(item.name) && <Tooltip title="复制一份到所选案件的 AI 空间，原文件保留"><Button icon={<FolderAddOutlined />} disabled={busy || !!downloadingId} onClick={() => onSaveToCase(item)}>另存到案件</Button></Tooltip>}
         </>}
         {item.can_delete && <Tooltip title="删除生成文件"><Button danger icon={<DeleteOutlined />} aria-label={`删除生成文件：${item.name}`} loading={deletingId === item.id} disabled={busy || !!downloadingId} onClick={() => onDelete(item)}>删除文件</Button></Tooltip>}
       </div>

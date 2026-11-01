@@ -17,6 +17,12 @@ export function workspaceDocumentSaveTarget(item: WorkspaceMessage): "case" | "p
   }
   return item.case_id && item.can_save_document ? "case" : null;
 }
+/** 用户说“存到/保存到某某案件”并写了案号时，回答下方给“保存到案件”按钮（陶国南 11-01）。 */
+export function mentionedCaseSerial(text: string | undefined): string | null {
+  if (!text || !/(?:存|保存|放到|放入)/.test(text)) return null;
+  const serial = text.match(/(?:^|[^A-Za-z0-9])([A-Za-z]{2,8}\d{5,})(?![A-Za-z0-9])/)?.[1];
+  return serial ? serial.toUpperCase() : null;
+}
 export type PendingAction = { id: string; type: string; summary: string; payload?: Record<string, unknown>; preview?: AgentActionPreview; status: "pending" | "approved" | "rejected" | "executing" | "succeeded" | "failed"; error?: unknown };
 export type DecisionFailure = { actionId: string; message: string; state: "syncing" | "verified" | "unknown"; hidden?: boolean };
 export type ConfirmationStatus = "pending" | "executing" | "succeeded" | "failed" | "rejected";

@@ -5,9 +5,9 @@ import { FolderOpenOutlined, SearchOutlined } from "@ant-design/icons";
 import { useVisibleWorkspaceCases } from "./useVisibleWorkspaceCases";
 import { errorText, type WorkspaceCase } from "./types";
 
-type Props = { open: boolean; onClose: () => void; onSelect: (item: WorkspaceCase) => Promise<void>; blocked?: boolean };
+type Props = { open: boolean; onClose: () => void; onSelect: (item: WorkspaceCase) => Promise<void>; blocked?: boolean; title?: string };
 
-export function CaseWorkspaceSelector({ open, onClose, onSelect, blocked = false }: Props) {
+export function CaseWorkspaceSelector({ open, onClose, onSelect, blocked = false, title = "选择案件空间" }: Props) {
   const [keyword, setKeyword] = useState("");
   const [selecting, setSelecting] = useState(false);
   const [error, setError] = useState("");
@@ -19,7 +19,7 @@ export function CaseWorkspaceSelector({ open, onClose, onSelect, blocked = false
     catch (failure) { setError(errorText(failure, "案件空间未打开")); }
     finally { setSelecting(false); }
   };
-  return <Modal rootClassName="assistant-case-workspace-picker" open={open} title="选择案件空间" width={POPUP_WIDTH.md} footer={null} onCancel={onClose} closable={!selecting} maskClosable={!selecting} keyboard={!selecting}>
+  return <Modal rootClassName="assistant-case-workspace-picker" open={open} title={title} width={POPUP_WIDTH.md} footer={null} onCancel={onClose} closable={!selecting} maskClosable={!selecting} keyboard={!selecting}>
     <Input prefix={<SearchOutlined />} value={keyword} allowClear disabled={selecting || blocked} aria-label="搜索案件空间" placeholder="搜索案号、案件名称或客户" onChange={(event) => setKeyword(event.target.value)} />
     {(cases.error || error) && <Alert type="error" showIcon title={cases.error || error} action={cases.error ? <Button onClick={cases.retry}>重试</Button> : undefined} />}
     <Spin spinning={cases.loading || selecting}>

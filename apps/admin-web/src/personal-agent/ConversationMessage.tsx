@@ -16,9 +16,12 @@ type Props = {
   onPreview: (material: Material) => void;
   onSave: () => void;
   onViewFiles: () => void;
+  mentionedCase?: string | null;
+  savedCase?: string;
+  onSaveToCase?: () => void;
 };
 
-export function ConversationMessage({ item, generating, readingMaterials, progress, saved, busy, onCopy, onPreview, onSave, onViewFiles }: Props) {
+export function ConversationMessage({ item, generating, readingMaterials, progress, saved, busy, onCopy, onPreview, onSave, onViewFiles, mentionedCase, savedCase, onSaveToCase }: Props) {
   const assistant = item.role === "assistant";
   const documentTarget = workspaceDocumentSaveTarget(item);
   return <article className={`personal-message ${item.role}${item.failed ? " failed" : ""}`}>
@@ -53,6 +56,9 @@ export function ConversationMessage({ item, generating, readingMaterials, progre
               <Button type="text" size="small" icon={<FileWordOutlined />} disabled={busy} onClick={onSave}>保存 Word</Button>
             </Tooltip>
           </>)}
+          {documentTarget !== "case" && !item.stopped && mentionedCase && onSaveToCase && (savedCase
+            ? <span className="personal-ai-document-saved"><FileWordOutlined />已存入 {savedCase} 案件 AI 空间</span>
+            : <Tooltip title={`将回答保存为 Word 到 ${mentionedCase} 的案件 AI 空间，确认后才保存`}><Button type="text" size="small" icon={<FileWordOutlined />} disabled={busy} onClick={onSaveToCase}>保存到案件 {mentionedCase}</Button></Tooltip>)}
         </div>}
       </div>
     </div>

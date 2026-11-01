@@ -8,6 +8,7 @@ import { PersonalAiSpaceFiles } from "./PersonalAiSpaceFiles";
 import { PersonalAiOfficeEditor } from "./PersonalAiOfficeEditor";
 import { PersonalAiDocumentEditor } from "./PersonalAiDocumentEditor";
 import { PersonalAiFilePreview } from "./PersonalAiFilePreview";
+import { CaseWorkspaceSelector } from "./CaseWorkspaceSelector";
 import { downloadPersonalAiFile, type PersonalAiDocument, type PersonalAiFile, type PersonalAiFileDeleteResult, type PersonalAiFilePage, type PersonalAiSpaceInfo } from "./personalAiSpaceApi";
 import "./personal-ai-space.css";
 
@@ -37,6 +38,7 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
   const [editorBusy, setEditorBusy] = useState(false);
   const [latestSavedId, setLatestSavedId] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<PersonalAiFile | null>(null);
+  const [caseCopyFile, setCaseCopyFile] = useState<PersonalAiFile | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const deleteLock = useRef(false);
@@ -124,7 +126,11 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
       <div className="personal-ai-space-toolbar"><Tooltip title={`刷新${label}`}><Button icon={<ReloadOutlined />} aria-label={`刷新${label}`} loading={loading} onClick={() => setRefresh((value) => value + 1)} /></Tooltip>{files && <span>共 {files.total} 个文件</span>}</div>
       {space && !space.configured && <Alert type="warning" showIcon title="OSS 尚未配置，不能保存新文件" />}
       {error && <Alert type="error" showIcon title="个人空间操作未完成" description={error} />}
-      {loading ? <Spin /> : files && <PersonalAiSpaceFiles items={files.items} downloadingId={downloadingId} deletingId={deleting ? deleteTarget?.id : undefined} latestSavedId={latestSavedId} busy={busy || editorBusy || officeBusy || deleting || !!preview} onDownload={(file) => void download(file)} onPreview={previewFile} onEdit={(file) => void openEditor(file)} onDelete={(file) => { if (!officeOperation.current && !editorBusy && !deleteLock.current) { setDeleteError(""); setDeleteTarget(file); } }} onConversation={(id) => void openConversation(id)} />}
+      {loading ? <Spin /> : files && <PersonalAiSpaceFiles items={files.items} downloadingId={downloadingId} deletingId={deleting ? deleteTarget?.id : undefined} latestSavedId={latestSavedId} busy={busy || editorBusy || officeBusy || deleting || !!preview} onDownload={(file) => void download(file)} onPreview={previewFile} onEdit={(file) => void openEditor(file)} onDelete={(file) => { if (!officeOperation.current && !editorBusy && !deleteLock.current) { setDeleteError(""); setDeleteTarget(file); } }} onConversation={(id) => void openConversation(id)} onSaveToCase={setCaseCopyFile} />}
+      {caseCopyFile && <CaseWorkspaceSelector open title={`另存「${caseCopyFile.name}」到案件`} onClose={() => setCaseCopyFile(null)} onSelect={async (item) => {
+        await api.post(`/cases/${item.id}/ai-space/files/from-personal`, { personal_file_id: caseCopyFile.id });
+        message.success(`已另存到 ${item.serial_no} 的案件 AI 空间：${caseCopyFile.name}`);
+      }} />}
       {files && files.total > 0 && <Pagination simple current={files.page} pageSize={files.page_size} total={files.total} disabled={loading} showSizeChanger={false} onChange={setPage} />}
     </div>
     {preview && <PersonalAiFilePreview key={preview.file.id} file={preview.file} blob={preview.blob} downloading={downloadingId === preview.file.id} downloadError={error}

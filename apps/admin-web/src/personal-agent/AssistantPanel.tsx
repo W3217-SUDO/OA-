@@ -17,7 +17,7 @@ import { PersonalMcpConnectionCard } from "./PersonalMcpConnectionCard";
 import { LocalAgentAccess } from "./LocalAgentAccess";
 import { McpConnectionTurn } from "./McpConnectionTurn";
 import { agentOperationMessage, responseErrorMessage, userFacingAgentText } from "../AgentOperationPreview";
-import { errorText, workspaceDocumentSaveTarget, type CaseAgentConversationSummary, type ConfirmationDetail, type PendingAction, type WorkspaceMessage, type WorkspaceState } from "./types";
+import { errorText, mentionedCaseSerial, workspaceDocumentSaveTarget, type CaseAgentConversationSummary, type ConfirmationDetail, type PendingAction, type WorkspaceMessage, type WorkspaceState } from "./types";
 import type { usePersonalWorkspace } from "./usePersonalWorkspace";
 import { COURT_INTAKE_SKILL } from "../agentSkillRouting";
 import "./assistant-panel.css";
@@ -328,6 +328,15 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
                         <Button type="link" icon={<FolderOpenOutlined />} href={`?page=case-detail-${item.case_id}-${encodeURIComponent(item.case_no || "")}`} title="在案件文档的 AI 空间目录中查看">查看案件文件</Button>
                       </> : <Tooltip title="保存 Word 到案件 AI 空间"><Button type="text" icon={<FileWordOutlined />} disabled={loading || workspace.conversationBusy} onClick={() => void workspace.saveWord(item, index)}>保存到案件 AI 空间</Button></Tooltip>}
                     </div>}
+                    {item.role === "assistant" && !caseSession && documentTarget !== "case" && !!item.content && !item.failed && !item.stopped && !thinking && !(sending && index === displayedState.messages.length - 1) && (() => {
+                      const serial = mentionedCaseSerial(displayedState.messages[index - 1]?.content);
+                      if (!serial) return null;
+                      const savedCase = workspace.savedCaseFor(index);
+                      return <div className="personal-ai-document-actions">
+                        {savedCase ? <span className="personal-ai-document-saved"><FileWordOutlined />已存入 {savedCase} 案件 AI 空间</span>
+                          : <Tooltip title={`将回答保存为 Word 到 ${serial} 的案件 AI 空间，确认后才保存`}><Button type="text" icon={<FileWordOutlined />} disabled={loading || workspace.conversationBusy} onClick={() => void workspace.saveWordToCase(item, index, serial)}>保存到案件 {serial}</Button></Tooltip>}
+                      </div>;
+                    })()}
                   </div>
                 </div>
               );

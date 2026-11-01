@@ -192,6 +192,41 @@ class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
             self.assertEqual(record.data["sha256"], empty_sha)
             self.assertEqual(self.objects[record.data["path"]], b"")
 
+    async def test_personal_file_copied_to_case_ai_space_only_by_its_owner(self):
+        """陶国南 11-01：个人空间文件可以另存到案件空间；原文件保留、留操作记录，只能另存本人的文件。"""
+        from app.api_schemas.case_documents import CaseAiDraftFromPersonalInput
+        from app.areas.legal.case_documents import copy_personal_file_to_case_ai_space
+        from app.areas.personal_agent import ai_space_service
+        from app.core.constants import AI_SPACE_CATEGORY
+        from app.models import WorkflowEvent
+
+        reading = patch.object(ai_space_service, "read_generated_bytes", new=AsyncMock(side_effect=self.read))
+        reading.start()
+        self.addCleanup(reading.stop)
+        others = await self.save(name="别人的文件.md", content=b"# other", content_type="text/markdown", source_kind="personal_document")
+        self.actor = self.users[2]
+        saved = await self.save(name="数据安全法.md", content="# 数据安全法\n第一条".encode(), content_type="text/markdown",
+                                source_kind="personal_document")
+        file_id, other_id = saved["file"]["id"], others["file"]["id"]
+        case = BusinessRecord(module="case", serial_no="CODEX-COPY-1", title="另存测试案件", owner=self.actor.username,
+                              status="草稿", data={})
+        self.db.add(case)
+        await self.db.commit()
+        copied = await copy_personal_file_to_case_ai_space(case.id, CaseAiDraftFromPersonalInput(personal_file_id=file_id),
+                                                           identity=await self.identity(), db=self.db)
+        attachment = await self.db.get(FileAttachment, copied["id"])
+        self.assertEqual((attachment.record_id, attachment.category, attachment.original_name), (case.id, AI_SPACE_CATEGORY, "数据安全法.md"))
+        self.assertEqual(self.objects[attachment.path], "# 数据安全法\n第一条".encode())
+        events = (await self.db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == case.id))).all()
+        self.assertEqual([event.action for event in events], ["个人空间另存到案件 AI 空间"])
+        # 原个人文件保留。
+        self.assertEqual((await space_file_bytes(file_id, await self.identity(), self.db))[1], "# 数据安全法\n第一条".encode())
+        # 管理员能看别人的个人空间，但不能把别人的文件另存到案件。
+        with self.assertRaises(HTTPException) as caught:
+            await copy_personal_file_to_case_ai_space(case.id, CaseAiDraftFromPersonalInput(personal_file_id=other_id),
+                                                      identity=await self.identity(), db=self.db)
+        self.assertEqual(caught.exception.status_code, 403)
+
     async def test_bound_employee_is_authoritative_and_conflicting_binding_rejected(self):
         employee = BusinessRecord(module="hr", serial_no="CODEX-AI-HR", title="真实档案姓名", owner=self.actor.username,
                                   data={"username": self.actor.username, "system_user_id": self.actor.id})
