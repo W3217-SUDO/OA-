@@ -104,7 +104,8 @@ async def _source_query(identity, db, mode, statuses, filters):
         case_alias, and_(linked_case.id == line.case_record_id, linked_case.module == "case"))
     if case_json is not None:
         line_from = line_from.outerjoin(case_json, literal(True))
-    line_from, type_id, fee_name = attach_source_fee_type(line_from, original_fee, head)
+    line_from, type_id, fee_name = attach_source_fee_type(line_from, original_fee, head,
+                                                          postgresql=db.get_bind().dialect.name == "postgresql")
     relation = and_(line.source_table == "FAM_AR_Payment_Object", line.is_active.is_(True),
         source_allocation_relation(line, head))
     bad = await db.scalar(select(line.id).join(head, head.id == line.legacy_finance_record_id).join(

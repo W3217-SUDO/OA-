@@ -30,11 +30,17 @@ def source_text(payload, key):
     return cast(payload[key].as_string(), String)
 
 
-def attach_source_fee_type(statement, fee, head):
+def attach_source_fee_type(statement, fee, head, *, postgresql=False):
     dictionary = aliased(LegacyFinanceRecord)
     parameter = aliased(SystemParameter)
     database = source_text(head.source_payload, "_source_database")
     fee_type_id = source_text(fee.source_payload, "CaseFeeTypeId")
+    if postgresql:
+        # 每条费用只解析一次 CaseFeeTypeId（OFFSET 0 阻止内联）：下面的字典关联是嵌套循环，
+        # 原先每对（待归档约 6 万对）都重新解析整段费用 JSON，列表多花约 0.6 秒。取值与原表达式相同。
+        fee_type_value = select(fee_type_id.label("value")).correlate(fee).offset(0).lateral("source_fee_type_id")
+        statement = statement.outerjoin(fee_type_value, literal(True))
+        fee_type_id = fee_type_value.c.value
     dictionary_id = case((database.is_not(None), database + literal(":") + fee_type_id), else_=fee_type_id)
     parameter_source = and_(SystemParameter.extra["source_table"].as_string() == "BAS_Case_FeeType",
                            SystemParameter.extra["migration_source"].as_string() == "hz_crm_20260930")
