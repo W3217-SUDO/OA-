@@ -158,6 +158,18 @@ def _apply_department_owner(connection: Connection, _upgrade_schema: Callable[[C
         connection.execute(text("ALTER TABLE departments ADD COLUMN owner_username VARCHAR(64) NOT NULL DEFAULT ''"))
 
 
+def _apply_refund_candidate_indexes(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    """只有少数费用登记退费进度或是律师代理费(退费)；部分索引只收这些行，表达式与 dashboard_scope 查询一致。"""
+    if connection.dialect.name != "postgresql":
+        return
+    for name, expression in (
+        ("ix_business_records_data_refund_status", "(data ->> 'refund_status')"),
+        ("ix_business_records_data_legacy_refund_status", "((data -> 'legacy_record') ->> 'RefundStatus')"),
+        ("ix_business_records_data_case_fee_type_id", "(data ->> 'case_fee_type_id')"),
+    ):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS {name} ON business_records ({expression}) WHERE {expression} IS NOT NULL"))
+
+
 def _apply_bank_statement_lines(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
     from app.data_models.finance import BankStatementLine
     BankStatementLine.__table__.create(connection, checkfirst=True)
@@ -232,6 +244,8 @@ def _run_versioned_schema_migrations(
         # 银行原始流水表（两步：上传→流水→勾选生成到账单），建表后重装财务查询修订触发器，否则财务缓存整体失效。
         ("bank_statement_lines_v1", _apply_bank_statement_lines),
         ("finance_query_revision_bank_lines_v1", _apply_finance_query_revision),
+        # 工作台待退费候选费用的部分索引（陶威 11-01：待缴官费页面慢）。
+        ("business_record_refund_candidate_indexes_v1", _apply_refund_candidate_indexes),
     )
     for revision, migration in revisions:
         if connection.execute(

@@ -6,7 +6,7 @@ from typing import NamedTuple
 import re
 
 from fastapi import HTTPException
-from sqlalchemy import false, or_, select
+from sqlalchemy import and_, false, literal_column, or_, select
 from app.models import BusinessRecord, ContractObject, Department, User
 from app.core.record_projection_query import read_record_projections
 from app.core.finance_summary_query import FEE_SUMMARY_FIELDS
@@ -312,6 +312,29 @@ async def _sees_company_refunds(identity, db) -> bool:
     return "case-company-civil" in menus
 
 
+def _refund_candidate_condition(db):
+    """待退费候选费用：登记了退费进度，或是律师代理费(退费)（11020061）。
+    PostgreSQL 上写成与部分索引一致的字面表达式并带 IS NOT NULL，走索引只读约两千条，不再逐条解析八万条费用 JSON（陶威 11-01：待缴官费慢）。"""
+    data = BusinessRecord.data
+    if db.get_bind().dialect.name != "postgresql":
+        return or_(data["refund_status"].as_string().notin_(["", "0"]),
+                   data["legacy_record"]["RefundStatus"].as_string().notin_(["", "0"]),
+                   data["case_fee_type_id"].as_string() == "11020061")
+    refund_status = literal_column("(business_records.data ->> 'refund_status')")
+    legacy_status = literal_column("((business_records.data -> 'legacy_record') ->> 'RefundStatus')")
+    fee_type_id = literal_column("(business_records.data ->> 'case_fee_type_id')")
+
+    def not_blank_or_zero(value):
+        # 与 NOT IN ('', '0') 等价（非空值）：大于 '0'，或介于 '' 与 '0' 之间；写成范围才能走 btree 索引。
+        return and_(value.is_not(None), or_(value > "0", and_(value > "", value < "0")))
+
+    return or_(
+        not_blank_or_zero(refund_status),
+        not_blank_or_zero(legacy_status),
+        and_(fee_type_id.is_not(None), fee_type_id == "11020061"),
+    )
+
+
 async def personal_refund_identity(scoped_identity, db, *, scope_data=None):
     """待退费范围：有公司民事案件菜单的看全公司，其他人看“我的案件”（含本人作为客户管理人/协作人的客户的案件）。
     返回的身份只含计入待退费的费用，控制台数字和点进去的列表一致。"""
@@ -333,12 +356,8 @@ async def personal_refund_identity(scoped_identity, db, *, scope_data=None):
     case_ids = {case.id for case in cases}
     case_nos = {case.serial_no for case in cases}
     if company:
-        data = BusinessRecord.data
         candidate_ids = set((await db.scalars(select(BusinessRecord.id).where(
-            BusinessRecord.module == "finance", BusinessRecord.status != "已删除",
-            or_(data["refund_status"].as_string().notin_(["", "0"]),
-                data["legacy_record"]["RefundStatus"].as_string().notin_(["", "0"]),
-                data["case_fee_type_id"].as_string() == "11020061"),
+            BusinessRecord.module == "finance", BusinessRecord.status != "已删除", _refund_candidate_condition(db),
         ))).all())
     else:
         candidate_ids = scoped_identity["_dashboard_fee_ids"]
