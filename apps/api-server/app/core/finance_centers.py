@@ -56,9 +56,11 @@ _LEGACY_LINKED_SOURCE = select(
     LegacyFinanceRecord.source_table == "FAM_AR_Payment",
     LegacyFinanceRecord.is_active.is_(True),
 )
+# 物化成 CTE：每条查询只算一次旧来源（约 6,500 行）。原先是子查询，到账单估计行数偏少时规划器选嵌套循环，
+# 对每张到账单都重算一遍分组聚合（9 张到账单就算 9 遍），工作台“待分配回款”计数负载高时要 7 秒（陶威 11-01）。
 LEGACY_INCOMING_SOURCE = union_all(
     _LEGACY_UNQUALIFIED_SOURCE, _LEGACY_LINKED_SOURCE,
-).subquery("incoming_legacy_source")
+).cte("incoming_legacy_source").prefix_with("MATERIALIZED", dialect="postgresql")
 
 INCOMING_CENTER = func.coalesce(IncomingPayment.finance_scope, case(
     (LEGACY_INCOMING_SOURCE.c.group_id == "10", "firm"),
