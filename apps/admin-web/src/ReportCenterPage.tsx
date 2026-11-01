@@ -85,23 +85,24 @@ type CustomerRoiFilterValues = {
   employee?: string;
 };
 
-type StaffRoiFilterValues = {
-  dateRange?: any;
-  departmentId?: string | number;
+type StaffPerformanceRow = {
+  person: string;
+  agency_fee: number | null;
+  active_cases: number;
+  hearings: number;
+  archived_cases: number;
+  loss_archived_cases: number;
 };
 
-type StaffRoiRow = {
-  employee: string;
-  employee_username?: string;
-  department: string;
-  performance: number;
-  cost: number;
-  roi: number | null;
-};
-
-type StaffRoiResponse = {
-  items: StaffRoiRow[];
-  filter_options?: { departments?: { id: string | number; name: string }[] };
+type StaffPerformanceData = {
+  year: number;
+  role: string;
+  role_label: string;
+  amount_visible: boolean;
+  totals: Omit<StaffPerformanceRow, "person">;
+  rows: StaffPerformanceRow[];
+  roles: { value: string; label: string }[];
+  definition?: string;
 };
 
 const PAGE_SPECS: Record<string, PageSpec> = {
@@ -140,7 +141,7 @@ const PAGE_SPECS: Record<string, PageSpec> = {
 };
 
 PAGE_SPECS["reports-staff-roi"] = {
-  title: "员工业绩ROI统计",
+  title: "员工业绩统计中心",
   filter: "none",
   charts: [],
 };
@@ -490,84 +491,165 @@ function CustomerRoiReport({ onNavigate }: { onNavigate?: (route: string) => voi
 }
 
 
-function StaffRoiReport() {
-  const [form] = Form.useForm<StaffRoiFilterValues>();
-  const [loading, setLoading] = useState(false);
-  const [rows, setRows] = useState<StaffRoiRow[]>([]);
-  const [departments, setDepartments] = useState<{ id: string | number; name: string }[]>([]);
+// 员工业绩统计中心（BUG 500799，思法汇成 11-01 18:35）：当年代理费到账、在办、开庭、结案归档四类数，
+// 按案源人 / 调查员 / 开庭律师 / 律师助理按人划分；默认显示图，右上角“图 / 表格”切换，“大屏展示”只放图。
+const STAFF_CHART_LIMIT = 15;
+const STAFF_ROLE_OPTIONS = [
+  { value: "source", label: "案源人" },
+  { value: "investigator", label: "调查员" },
+  { value: "hearing", label: "开庭律师" },
+  { value: "assistant", label: "律师助理" },
+];
 
-  const paramsFor = (values: StaffRoiFilterValues) => ({
-    start_date: values.dateRange?.[0]?.format("YYYY-MM-DD"),
-    end_date: values.dateRange?.[1]?.format("YYYY-MM-DD"),
-    department_id: values.departmentId || undefined,
+export function staffChartRows(rows: StaffPerformanceRow[]) {
+  const byFee = rows.filter(row => Number(row.agency_fee || 0) > 0)
+    .sort((left, right) => Number(right.agency_fee) - Number(left.agency_fee)).slice(0, STAFF_CHART_LIMIT);
+  const byCases = rows.filter(row => row.active_cases || row.hearings || row.archived_cases)
+    .sort((left, right) => right.active_cases + right.hearings + right.archived_cases - (left.active_cases + left.hearings + left.archived_cases))
+    .slice(0, STAFF_CHART_LIMIT);
+  return { byFee, byCases };
+}
+
+function StaffPerformanceCharts({ data, bigScreen }: { data: StaffPerformanceData; bigScreen: boolean }) {
+  const { byFee, byCases } = staffChartRows(data.rows);
+  const fontSize = bigScreen ? 14 : 11;
+  const empty = <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前条件下暂无真实业务数据" />;
+  const axis = { dataKey: "person", interval: 0, axisLine: { stroke: "#d8d8d8" }, tickLine: false, tick: { fill: "#666", fontSize }, angle: -30, textAnchor: "end", height: bigScreen ? 70 : 58 } as const;
+  return (
+    <div className="report-chart-grid report-roi-charts">
+      {data.amount_visible && <section className="report-chart-panel report-roi-chart">
+        <div className="report-chart-title">
+          <span>代理费到账（按{data.role_label}，前 {STAFF_CHART_LIMIT} 名）</span>
+          <span className="report-chart-unit">单位：元</span>
+        </div>
+        <div className="report-chart-body report-chart-scroll">
+          {byFee.length ? <div className="report-chart-track" style={{ minWidth: !bigScreen && byFee.length > 8 ? byFee.length * 64 : undefined }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={byFee} margin={{ top: 22, right: 8, bottom: 8, left: 8 }}>
+                <CartesianGrid stroke="#ececec" vertical={false} />
+                <XAxis {...axis} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: "#777", fontSize }} tickFormatter={wan} width={bigScreen ? 70 : 56} />
+                <Tooltip formatter={(value) => [`${currency(Number(value))} 元`, "代理费到账"]} />
+                <Bar dataKey="agency_fee" name="代理费到账" fill="#4e8cff" maxBarSize={32} isAnimationActive={false} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div> : empty}
+        </div>
+      </section>}
+      <section className="report-chart-panel report-roi-chart">
+        <div className="report-chart-title">
+          <span>在办、开庭、结案归档（按{data.role_label}，前 {STAFF_CHART_LIMIT} 名）</span>
+          <span className="report-chart-unit">单位：件 / 次</span>
+        </div>
+        <div className="report-chart-body report-chart-scroll">
+          {byCases.length ? <div className="report-chart-track" style={{ minWidth: !bigScreen && byCases.length > 6 ? byCases.length * 90 : undefined }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={byCases} margin={{ top: 22, right: 8, bottom: 8, left: 0 }}>
+                <CartesianGrid stroke="#ececec" vertical={false} />
+                <XAxis {...axis} />
+                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "#777", fontSize }} />
+                <Tooltip />
+                <Legend wrapperStyle={{ fontSize }} />
+                <Bar dataKey="active_cases" name="在办案件" fill="#18c7bb" maxBarSize={22} isAnimationActive={false} />
+                <Bar dataKey="hearings" name="开庭" fill="#ffb95c" maxBarSize={22} isAnimationActive={false} />
+                <Bar dataKey="archived_cases" name="结案归档" fill="#8a74e8" maxBarSize={22} isAnimationActive={false} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div> : empty}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function StaffRoiReport() {
+  const thisYear = new Date().getFullYear();
+  const [year, setYear] = useState(thisYear);
+  const [role, setRole] = useState("source");
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [display, setDisplay] = useState<"chart" | "table">("chart");
+  const pageBigScreen = useReportBigScreen();
+  const bigScreen = pageBigScreen.active;
+  const [data, setData] = useState<StaffPerformanceData>({
+    year: thisYear, role: "source", role_label: "案源人", amount_visible: false,
+    totals: { agency_fee: null, active_cases: 0, hearings: 0, archived_cases: 0, loss_archived_cases: 0 },
+    rows: [], roles: STAFF_ROLE_OPTIONS,
   });
-  const load = async (values: StaffRoiFilterValues = form.getFieldsValue()) => {
+
+  const load = async (next: { year?: number; role?: string; name?: string } = {}) => {
     setLoading(true);
     try {
-      const { data } = await api.get<StaffRoiResponse>("/reports/staff-roi", { params: paramsFor(values) });
-      setRows(data.items || []);
-      setDepartments(data.filter_options?.departments || []);
+      const { data: result } = await api.get<StaffPerformanceData>("/reports/staff-performance", {
+        params: { year: next.year ?? year, role: next.role ?? role, name: (next.name ?? name).trim() || undefined },
+      });
+      setData(result);
     } catch (error: any) {
-      message.error(error?.response?.data?.detail || "员工业绩ROI统计加载失败");
+      message.error(error?.response?.data?.detail || "员工业绩统计中心加载失败");
     } finally {
       setLoading(false);
     }
   };
-  useEffect(() => { void load({}); }, []);
+  useEffect(() => { void load(); }, []);
 
-  const reset = () => {
-    form.resetFields();
-    void load({});
-  };
-  const exportCsv = async () => {
-    try {
-      const response = await api.get("/reports/staff-roi/export", {
-        params: paramsFor(form.getFieldsValue()),
-        responseType: "blob",
-      });
-      const url = URL.createObjectURL(response.data);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = "员工业绩ROI统计.csv";
-      anchor.click();
-      URL.revokeObjectURL(url);
-    } catch (error: any) {
-      message.error(error?.response?.data?.detail || "员工业绩ROI统计导出失败");
-    }
-  };
-
+  const totals = data.totals;
+  const cards = [
+    ...(data.amount_visible ? [{ label: "代理费到账（元）", value: currency(Number(totals.agency_fee || 0)) }] : []),
+    { label: "当前在办案件（件）", value: totals.active_cases.toLocaleString("zh-CN") },
+    { label: `${data.year} 年开庭（次）`, value: totals.hearings.toLocaleString("zh-CN") },
+    { label: `${data.year} 年结案归档（件）`, value: totals.archived_cases.toLocaleString("zh-CN"), note: `其中亏损归档 ${totals.loss_archived_cases.toLocaleString("zh-CN")} 件` },
+  ];
   return (
-    <div className="report-page">
-      <div className="report-page-heading">员工业绩ROI统计</div>
-      <div style={{ marginBottom: 16, color: "var(--oa-text-2)" }}>业绩按到账回款依员工提成比例分摊；成本为提成实际付款；ROI=业绩÷成本×100%，成本为0时不计算。</div>
-      <Form form={form} className="report-filter" onFinish={load}>
-        <Form.Item label="统计时间" name="dateRange">
-          <DatePicker.RangePicker />
-        </Form.Item>
-        <Form.Item label="部门" name="departmentId">
-          <Select allowClear showSearch optionFilterProp="label" placeholder="全部部门" options={(departments || []).map((item) => ({ value: item.id, label: item.name }))} />
-        </Form.Item>
-        <div className="report-filter-action">
-          <Button type="primary" htmlType="submit">查询</Button>
-          <Button onClick={reset}>重置</Button>
-          <Button onClick={exportCsv}>导出CSV</Button>
-        </div>
-      </Form>
+    <div ref={pageBigScreen.ref} className={`report-page report-staff-performance-page${bigScreen ? " report-page-big-screen" : ""}`}>
+      <div className="report-page-heading">
+        <span>员工业绩统计中心{bigScreen ? `（${data.year} 年 · 按${data.role_label}）` : ""}</span>
+        {bigScreen
+          ? <Button size="small" onClick={pageBigScreen.exit}>退出大屏</Button>
+          : <Space size={8}>
+            <Segmented size="small" value={display} onChange={value => setDisplay(value as "chart" | "table")} options={[{ label: "图", value: "chart" }, { label: "表格", value: "table" }]} />
+            <Button size="small" type="primary" onClick={pageBigScreen.enter}>大屏展示</Button>
+          </Space>}
+      </div>
+      {!bigScreen && <div className="report-filter report-staff-filter">
+        <Select value={year} style={{ width: 110 }} onChange={value => { setYear(value); void load({ year: value }); }}
+          options={Array.from({ length: 5 }, (_, index) => ({ value: thisYear - index, label: `${thisYear - index} 年` }))} />
+        <Segmented value={role} onChange={value => { setRole(String(value)); void load({ role: String(value) }); }} options={STAFF_ROLE_OPTIONS} />
+        <Input allowClear placeholder={`输入${STAFF_ROLE_OPTIONS.find(item => item.value === role)?.label || ""}姓名查个人`} style={{ width: 220 }}
+          value={name} onChange={event => setName(event.target.value)} onPressEnter={() => void load()} />
+        <Button type="primary" onClick={() => void load()}>查询</Button>
+        <Button onClick={() => { setName(""); setYear(thisYear); setRole("source"); void load({ year: thisYear, role: "source", name: "" }); }}>重置</Button>
+      </div>}
+      {!bigScreen && data.definition && <div className="report-roi-description">{data.definition}</div>}
       <Spin spinning={loading}>
-        <Table
-          rowKey={(row) => `${row.department}-${row.employee_username || row.employee}`}
-          dataSource={rows}
-          pagination={{ showSizeChanger: true, showTotal: (total) => `共 ${total} 名员工` }}
-          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前条件下暂无真实业务数据" /> }}
-          scroll={{ x: 760 }}
-          columns={[
-            { title: "员工", dataIndex: "employee", width: 180 },
-            { title: "部门", dataIndex: "department", width: 160 },
-            { title: "业绩（元）", dataIndex: "performance", align: "right", render: (value: number) => currency(value) },
-            { title: "成本（元）", dataIndex: "cost", align: "right", render: (value: number) => currency(value) },
-            { title: "ROI", dataIndex: "roi", align: "right", render: (value: number | null, row: StaffRoiRow) => roiDisplay(value, row.cost) },
-          ]}
-        />
+        <div className="report-staff-cards">
+          {cards.map(card => (
+            <div key={card.label} className="report-staff-card">
+              <div className="report-staff-card-label">{card.label}</div>
+              <div className="report-staff-card-value">{card.value}</div>
+              {card.note && <div className="report-staff-card-note">{card.note}</div>}
+            </div>
+          ))}
+        </div>
+        {(display === "chart" || bigScreen) && <StaffPerformanceCharts data={data} bigScreen={bigScreen} />}
+        {display === "table" && !bigScreen && <div className="report-roi-table-panel">
+          <Table<StaffPerformanceRow>
+            rowKey="person"
+            dataSource={data.rows}
+            pagination={{ pageSize: 20, showSizeChanger: true, showTotal: total => `共 ${total} 人` }}
+            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前条件下暂无真实业务数据" /> }}
+            scroll={{ x: 820 }}
+            columns={[
+              { title: data.role_label, dataIndex: "person", width: 160, fixed: "left" },
+              ...(data.amount_visible ? [{ title: "代理费到账（元）", dataIndex: "agency_fee", width: 150, align: "right" as const,
+                sorter: (left: StaffPerformanceRow, right: StaffPerformanceRow) => Number(left.agency_fee || 0) - Number(right.agency_fee || 0),
+                render: (value: number | null) => currency(Number(value || 0)) }] : []),
+              { title: "在办案件", dataIndex: "active_cases", width: 110, align: "right", sorter: (left, right) => left.active_cases - right.active_cases },
+              { title: "开庭", dataIndex: "hearings", width: 100, align: "right", sorter: (left, right) => left.hearings - right.hearings },
+              { title: "结案归档", dataIndex: "archived_cases", width: 110, align: "right", sorter: (left, right) => left.archived_cases - right.archived_cases },
+              { title: "其中亏损归档", dataIndex: "loss_archived_cases", width: 130, align: "right" },
+            ]}
+          />
+        </div>}
       </Spin>
     </div>
   );

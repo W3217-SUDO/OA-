@@ -59,6 +59,31 @@ async def export_report_staff_roi(
     return Response(content=("\ufeff" + output.getvalue()).encode("utf-8"), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="staff-roi-{date.today()}.csv"'})
 
 
+@router.get(f"{settings.api_prefix}/reports/staff-performance")
+async def report_staff_performance(
+    year: int | None = Query(default=None, ge=2000, le=2100),
+    role: str = "source",
+    name: str = "",
+    identity: dict = Depends(current_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    """员工业绩统计中心（BUG 500799）：当年代理费到账、在办、开庭、结案归档，按角色按人统计。"""
+    from app.core.constants import CASE_EVENT_TIME_ZONE
+    from app.core.permissions import _record_scope_conditions, _require_record_module_menu
+    from app.core.person_names import refresh_person_names
+    from app.core.staff_performance import STAFF_ROLES, staff_performance
+    from app.core.system import _allowed_field_keys
+    await _require_record_module_menu("report", identity, db, action="查看")
+    if role not in STAFF_ROLES:
+        raise HTTPException(status_code=422, detail="角色只能是案源人、调查员、开庭律师或律师助理")
+    today = datetime.now(timezone.utc).astimezone(CASE_EVENT_TIME_ZONE).date()
+    scope = await _record_scope_conditions(identity, db)
+    await refresh_person_names(db)
+    cases = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case", *scope))).all())
+    amount_visible = "finance.amount" in await _allowed_field_keys(identity, db)
+    return await staff_performance(db, scope, cases, year=year or today.year, today=today, role=role, name=name, amount_visible=amount_visible)
+
+
 @router.get(f"{settings.api_prefix}/reports/large-screen")
 async def report_large_screen(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db), ranking_from: date | None = None, ranking_to: date | None = None):
     """Return one scoped, realtime snapshot for the report-centre large screen."""

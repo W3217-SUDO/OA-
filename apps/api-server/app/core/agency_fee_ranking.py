@@ -44,6 +44,16 @@ def hearing_people(record) -> list[str]:
     return _people(hearing, NO_HEARING_LAWYER)
 
 
+def investigator_people(record) -> list[str]:
+    data = (record.data or {}) if record.module == "case" else {}
+    return _people(data.get("investigator") or data.get("investigator_username"), "未填调查员")
+
+
+def assistant_people(record) -> list[str]:
+    data = (record.data or {}) if record.module == "case" else {}
+    return _people(data.get("assistant") or data.get("assistant_username"), "未填律师助理")
+
+
 def case_counts(cases) -> dict:
     """新建案件数按案源人、开庭律师分别统计（18:14：不要按案件负责人），多人各算一次。"""
     by_source: dict[str, int] = {}
@@ -60,7 +70,8 @@ def _is_test_customer(title: str) -> bool:
     return "测试" in title or "test" in title.lower()
 
 
-async def agency_fee_totals(db, scope: list, date_from: date, date_to: date) -> dict:
+async def agency_fee_totals(db, scope: list, date_from: date, date_to: date, *, extra_roles: dict | None = None) -> dict:
+    """extra_roles：员工业绩统计中心（BUG 500799）另按调查员、律师助理等角色归，{结果键: 取人函数}。"""
     from app.core.crm import _roi_receipts
     from app.core.internal_payers import is_internal_payer
     await refresh_person_names(db)
@@ -117,6 +128,7 @@ async def agency_fee_totals(db, scope: list, date_from: date, date_to: date) -> 
 
     by_source: dict[str, float] = {}
     by_hearing: dict[str, float] = {}
+    by_extra: dict[str, dict[str, float]] = {key: {} for key in (extra_roles or {})}
     total = 0.0
     for receipt, allocation in incomes:
         record = (by_id.get(_positive_int(allocation.get("case_id")))
@@ -132,8 +144,11 @@ async def agency_fee_totals(db, scope: list, date_from: date, date_to: date) -> 
             by_source[person] = by_source.get(person, 0.0) + amount
         for person in hearing_people(record):
             by_hearing[person] = by_hearing.get(person, 0.0) + amount
+        for key, people_of in (extra_roles or {}).items():
+            for person in people_of(record):
+                by_extra[key][person] = by_extra[key].get(person, 0.0) + amount
 
-    return {"by_source_person": by_source, "by_hearing_lawyer": by_hearing, "total": round(total, 2)}
+    return {"by_source_person": by_source, "by_hearing_lawyer": by_hearing, **by_extra, "total": round(total, 2)}
 
 
 def performance_rankings(counts: dict, fees: dict | None) -> dict:

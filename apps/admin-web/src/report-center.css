@@ -487,3 +487,20 @@
 @media (max-width: 1100px) {
   .large-screen-ranking-row { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* 员工业绩统计中心（BUG 500799）：筛选一排、四个数字卡片，图沿用客户ROI 的两图样式。 */
+.report-staff-performance-page .report-page-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.report-staff-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 16px; }
+.report-staff-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 12px 0 4px; }
+.report-staff-card { padding: 14px 16px; border: 1px solid var(--oa-border, #e3e6eb); background: var(--oa-surface, #fff); }
+.report-staff-card-label { color: var(--oa-text-2, #666); font-size: 13px; }
+.report-staff-card-value { margin-top: 6px; color: var(--oa-text, #222); font-size: 24px; font-weight: 600; }
+.report-staff-card-note { margin-top: 2px; color: var(--oa-text-3, #999); font-size: 12px; }
+.report-staff-performance-page.report-page-big-screen .report-staff-card-label { font-size: 18px; }
+.report-staff-performance-page.report-page-big-screen .report-staff-card-value { font-size: 36px; }
+.report-staff-performance-page.report-page-big-screen .report-roi-chart .report-chart-title { height: 44px; font-size: 18px; line-height: 24px; }
+.report-staff-performance-page.report-page-big-screen .report-roi-chart .report-chart-body { height: calc(100vh - 300px); min-height: 360px; }
+@media (max-width: 767px) {
+  .report-staff-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .report-staff-card-value { font-size: 18px; }
+}
