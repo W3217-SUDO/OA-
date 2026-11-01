@@ -1,4 +1,5 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+import re
 from app.core.constants import (
     CASE_DEFENDANT_FIELDS, CASE_PLAINTIFF_FIELDS, CASE_THIRD_PARTY_FIELDS, UPLOAD_ROOT,
 )
@@ -332,7 +333,10 @@ def _mark_customer_modified(customer: BusinessRecord, identity: dict) -> None:
 _ROI_DATA_KEYS = ("case_id", "contract_id", "contract_record_id", "case_no", "contract_no", "customer_id", "customer_record_id", "customer_no")
 
 
-async def _roi_records(db: AsyncSession, *conditions) -> list:
+_ROI_INVOICE_KEYS = ("amount", "customer_record_id", "customer_no", "invoice_title", "case_ids", "invoice_date")
+
+
+async def _roi_records(db: AsyncSession, *conditions, keys_wanted: tuple = _ROI_DATA_KEYS) -> list:
     """客户ROI只用记录的几列和 data 里的关联键；整行（含大 JSON）加载会让报表慢到数秒（BUG 500784）。"""
     from types import SimpleNamespace
     from sqlalchemy import Text, column, true
@@ -341,15 +345,15 @@ async def _roi_records(db: AsyncSession, *conditions) -> list:
     if db.get_bind().dialect.name == "postgresql":
         # json_to_record 一次解析整段 JSON 取全部键；逐个 ->> 每个键都要重新解析，慢约 3 倍。
         keys = func.json_to_record(BusinessRecord.data).table_valued(
-            *(column(key, Text) for key in _ROI_DATA_KEYS), name="roi_keys",
+            *(column(key, Text) for key in keys_wanted), name="roi_keys",
         ).render_derived(with_types=True).lateral()
-        statement = select(*columns, *(keys.c[key] for key in _ROI_DATA_KEYS)).select_from(BusinessRecord).join(keys, true())
+        statement = select(*columns, *(keys.c[key] for key in keys_wanted)).select_from(BusinessRecord).join(keys, true())
     else:
-        statement = select(*columns, *(BusinessRecord.data[key].as_string() for key in _ROI_DATA_KEYS))
+        statement = select(*columns, *(BusinessRecord.data[key].as_string() for key in keys_wanted))
     rows = (await db.execute(statement.where(*conditions))).all()
     result = []
     for row in rows:
-        data = {key: value for key, value in zip(_ROI_DATA_KEYS, row[len(columns):]) if value not in (None, "")}
+        data = {key: value for key, value in zip(keys_wanted, row[len(columns):]) if value not in (None, "")}
         result.append(SimpleNamespace(id=row[0], module=row[1], serial_no=row[2] or "", title=row[3] or "",
                                       customer=row[4] or "", department=row[5] or "", owner=row[6] or "", data=data))
     return result
@@ -417,7 +421,8 @@ async def _customer_roi_analytics(
 
     scope = await _record_scope_conditions(identity, db)
     # 先取收付款流水，只加载有流水的费用/合同/请款记录（结果与加载全部相同，只是少读无关行）。
-    transaction_conditions = [FinanceTransaction.transaction_type.in_({"回款", "付款", "合同付款"})]
+    # 思法汇成 11-01 定（BUG 500784）：收入 = 开给客户的发票 + 法院退费；成本 = 全部付款。
+    transaction_conditions = [FinanceTransaction.transaction_type.in_({"付款", "合同付款"})]
     if date_from:
         transaction_conditions.append(FinanceTransaction.transaction_date >= date_from)
     if date_to:
@@ -442,13 +447,22 @@ async def _customer_roi_analytics(
     if date_to:
         receipt_conditions.append(IncomingPayment.received_date <= date_to)
     receipts = await _roi_receipts(db, *receipt_conditions)
-    if not source_records and not receipts:
+    invoices = []
+    for invoice in await _roi_records(db, BusinessRecord.module == "invoice", BusinessRecord.status == "已开票", *scope,
+                                      keys_wanted=_ROI_INVOICE_KEYS):
+        invoice_day = str(invoice.data.get("invoice_date") or "")[:10]
+        if (date_from and (not invoice_day or invoice_day < date_from.isoformat())) or (date_to and (not invoice_day or invoice_day > date_to.isoformat())):
+            continue
+        case_ids = [_positive_record_id(value) for value in re.findall(r"\d+", str(invoice.data.get("case_ids") or ""))]
+        invoice.case_id = next((value for value in case_ids if value), 0)
+        invoices.append(invoice)
+    if not source_records and not receipts and not invoices:
         return {
             "view": "customer-roi", "rows": [],
             "totals": {"income": 0.0, "cost": 0.0, "profit": 0.0, "roi": None},
             "filter_options": {"departments": [], "employees": []},
-            "formula": "ROI=(已确认回款-已确认付款)/已确认付款×100%；成本为0时不计算ROI",
-            "date_basis": "收付款流水日期", "source": "realtime",
+            "formula": "ROI=(收入-成本)/成本×100%；收入=开给客户的发票（不含作废及公司之间的发票）+法院退费，成本=全部付款；成本为0时不计算ROI",
+            "date_basis": "开票日期、到账日期、付款日期", "source": "realtime",
         }
 
     source_by_id = {record.id: record for record in source_records}
@@ -460,6 +474,8 @@ async def _customer_roi_analytics(
         data = record.data or {}
         related_ids.update(_positive_record_id(data.get(key)) for key in ("case_id", "contract_id", "contract_record_id"))
         related_serials.update(str(data.get(key) or "").strip() for key in ("case_no", "contract_no"))
+    for invoice in invoices:
+        related_ids.add(invoice.case_id)
     for receipt in receipts:
         related_ids.add(int(receipt.contract_record_id or 0))
         related_serials.update((str(receipt.contract_no or "").strip(), str(receipt.case_no or "").strip()))
@@ -490,6 +506,10 @@ async def _customer_roi_analytics(
     customer_nos.discard("")
     claimed_names = {str(receipt.claimed_customer or "").strip() for receipt in receipts} - {""}
     customer_nos.update(receipt.customer_no for receipt in receipts if receipt.customer_no)
+    customer_ids.update(_positive_record_id(invoice.data.get("customer_record_id")) for invoice in invoices)
+    customer_nos.update(str(invoice.data.get("customer_no") or "").strip() for invoice in invoices)
+    customer_ids.discard(0)
+    customer_nos.discard("")
     customer_links = []
     if claimed_names:
         customer_links.append(scalar_in_values(BusinessRecord.title, claimed_names))
@@ -566,11 +586,7 @@ async def _customer_roi_analytics(
         })
         bucket["departments"].add(source.department)
         bucket["employees"].add(source.owner)
-        amount = abs(float(transaction.amount or 0))
-        if transaction.transaction_type == "回款":
-            bucket["income"] += amount
-        else:
-            bucket["cost"] += amount
+        bucket["cost"] += abs(float(transaction.amount or 0))
 
     def add_income(customer_record: BusinessRecord, owner_record: BusinessRecord | None, amount: float) -> None:
         department_name = (owner_record.department if owner_record else customer_record.department) or ""
@@ -598,16 +614,25 @@ async def _customer_roi_analytics(
         candidates = customers_by_title.get(_normalized_customer_name(receipt.claimed_customer or ""), [])
         return candidates[0] if len(candidates) == 1 else None
 
-    # 到账单按它自己登记的客户归（与旧系统回款单一致，思法汇成 11-01 核对味好美）；没有登记客户时才按分配的案件/合同归。
-    # 法院退费（is_refund）是法院退回我们垫付的官费，同样是收到的钱，照常计入（原先误按负数扣减）。
+    from app.core.internal_payers import is_internal_payer
     visible_people: list[tuple[str, str]] = []
+    # 收入一：开给客户的发票（已开票）；抬头是沪知/恒达/国定的是公司之间开票，不算。按开票时选的客户归。
+    for invoice in invoices:
+        if is_internal_payer(invoice.data.get("invoice_title")):
+            continue
+        customer_record = customers_by_id.get(_positive_record_id(invoice.data.get("customer_record_id")))
+        if customer_record is None:
+            candidates = customers_by_no.get(str(invoice.data.get("customer_no") or "").strip(), [])
+            customer_record = candidates[0] if len(candidates) == 1 else None
+        if customer_record:
+            add_income(customer_record, related_by_id.get(invoice.case_id), abs(float(invoice.data.get("amount") or 0)))
+    # 收入二：法院退费（法院退回我们垫付的官费）。到账单的其他部分不算收入（含被告赔偿款等不属于我们的钱）。
+    # 退费按到账单登记的客户归，没有登记客户时按分配的案件/合同归。
     for receipt in receipts:
-        allocated = 0.0
         for allocation in receipt.allocations or []:
-            if not isinstance(allocation, dict):
+            if not isinstance(allocation, dict) or not allocation.get("is_refund"):
                 continue
             amount = abs(float(allocation.get("amount") or 0))
-            allocated += amount
             records = [record for record in (
                 related_by_id.get(_positive_record_id(allocation.get("case_id"))),
                 related_by_serial.get(str(allocation.get("case_no") or "").strip()),
@@ -616,16 +641,6 @@ async def _customer_roi_analytics(
             customer_record = claimed_customer(receipt) or customer_of_records(records)
             if customer_record:
                 add_income(customer_record, records[0] if records else None, amount)
-        remainder = round(float(receipt.amount or 0) - allocated, 2)
-        if remainder > 0:
-            records = [record for record in (
-                related_by_id.get(int(receipt.contract_record_id or 0)),
-                related_by_serial.get(str(receipt.contract_no or "").strip()),
-                related_by_serial.get(str(receipt.case_no or "").strip()),
-            ) if record]
-            customer_record = claimed_customer(receipt) or customer_of_records(records)
-            if customer_record:
-                add_income(customer_record, records[0] if records else None, remainder)
 
     rows = []
     for bucket in sorted(grouped.values(), key=lambda value: (value["customer"], value["customer_id"])):
@@ -649,8 +664,8 @@ async def _customer_roi_analytics(
             "departments": sorted({source.department for source in visible_sources if source and source.department} | {name for name, _ in visible_people if name}),
             "employees": sorted({source.owner for source in visible_sources if source and source.owner} | {name for _, name in visible_people if name}),
         },
-        "formula": "ROI=(已确认回款-已确认付款)/已确认付款×100%；回款含到账单（按到账单登记的客户归，不含内部公司之间的转款）；成本为0时不计算ROI",
-        "date_basis": "收付款流水日期、到账日期", "source": "realtime",
+        "formula": "ROI=(收入-成本)/成本×100%；收入=开给客户的发票（不含作废及公司之间的发票）+法院退费，成本=全部付款；成本为0时不计算ROI",
+        "date_basis": "开票日期、到账日期、付款日期", "source": "realtime",
     }
 
 

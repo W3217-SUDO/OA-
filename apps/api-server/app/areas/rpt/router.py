@@ -286,7 +286,7 @@ async def export_customer_roi_report(date_from: date | None = None, date_to: dat
     data = await _customer_roi_analytics(identity, db, date_from=date_from, date_to=date_to, department=department, employee=employee)
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["客户编号", "客户", "部门", "员工", "已确认回款", "已确认付款", "利润", "ROI", "口径"])
+    writer.writerow(["客户编号", "客户", "部门", "员工", "收入（开票+法院退费）", "成本（付款）", "利润", "ROI", "口径"])
     for row in data["rows"]:
         writer.writerow([row["customer_no"], row["customer"], row["department"], row["employee"], row["income"], row["cost"], row["profit"], "" if row["roi"] is None else f'{row["roi"]:.2f}%', data["formula"]])
     return Response(content=("\ufeff" + output.getvalue()).encode("utf-8"), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="customer-roi-{date.today()}.csv"'})
