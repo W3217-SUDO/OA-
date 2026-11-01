@@ -3,7 +3,7 @@ import unittest
 
 import httpx
 from fastapi import FastAPI
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -117,6 +117,13 @@ class SealApprovalPathTest(unittest.IsolatedAsyncioTestCase):
             old_id = await db.scalar(select(Department.id).where(Department.name == "诉讼二部"))
         renamed = await self.client.patch(f"/api/v1/hr/departments/{old_id}", json={"sort_order": 9})
         self.assertEqual(renamed.status_code, 200, renamed.text)
+
+    async def test_department_list_counts_active_staff_for_org_tree(self):
+        listed = (await self.client.get("/api/v1/hr/departments")).json()["items"]
+        counts = {item["name"]: item["active_staff_count"] for item in listed}
+        async with self.sessions() as db:
+            expected = await db.scalar(select(func.count()).select_from(User).where(User.department == "诉讼一部", User.is_active.is_(True)))
+        self.assertEqual((counts["诉讼一部"], counts["诉讼二部"]), (expected, 0))
 
     async def test_standalone_seal_goes_through_each_step_then_to_stamp(self):
         await self._settings(firm_approver="firm")

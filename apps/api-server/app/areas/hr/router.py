@@ -594,8 +594,15 @@ async def list_departments(
     page_items, effective_page, effective_page_size, total = _organization_page(items, page, page_size)
     display_users = await _user_display_map({value for item in page_items for value in (item.manager, item.owner_username, item.created_by, item.updated_by)}, db)
     actor_sources = await _department_actor_sources(page_items, db)
+    # 组织树显示各部门在职人数（思法汇成 11-01 确认，BUG20261031002）
+    staff_counts = dict((await db.execute(
+        select(User.department, func.count()).where(User.is_active.is_(True), User.department.in_([item.name for item in page_items])).group_by(User.department)
+    )).all()) if page_items else {}
+    rows = await _with_seal_reviewers([_department_dict(item, names_by_id.get(item.parent_department_id or 0, ""), display_users, actor_sources.get(item.id)) for item in page_items], db)
+    for row, item in zip(rows, page_items):
+        row["active_staff_count"] = int(staff_counts.get(item.name, 0))
     return {
-        "items": await _with_seal_reviewers([_department_dict(item, names_by_id.get(item.parent_department_id or 0, ""), display_users, actor_sources.get(item.id)) for item in page_items], db),
+        "items": rows,
         "total": total, "page": effective_page, "page_size": effective_page_size,
     }
 

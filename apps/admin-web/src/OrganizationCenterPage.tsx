@@ -11,6 +11,7 @@ import {
   message,
   Modal,
   Popconfirm,
+  Segmented,
   Select,
   Space,
   Switch,
@@ -44,6 +45,7 @@ type Department = {
   overdue_deduction: boolean;
   sort_order: number;
   is_active: boolean;
+  active_staff_count?: number;
   created_by?: string;
   created_by_display_name?: string;
   created_by_display_name_missing?: boolean;
@@ -53,6 +55,7 @@ type Department = {
   created_at?: string;
   updated_at?: string;
 };
+type OrgNode = { department: Department; children: OrgNode[] };
 type PeopleOption = { value: string; label: string; username: string; search_text?: string };
 type JobRole = {
   id: number;
@@ -379,30 +382,65 @@ export default function OrganizationCenterPage({
     })).catch(() => setAccessRole({ role: "", menu_keys: [] }));
   }, []);
   const canManageOrganization = organizationActionAccess(accessRole).canManageOrganization;
-  const departmentTreeData = useMemo<TreeDataNode[]>(() => {
+  // 组织树（思法汇成 11-01 确认，BUG20261031002）：按排序号、再按名称排；“全所”为根；每个部门显示 名称 · 负责人 · 在职人数。
+  const departmentOrgTree = useMemo<OrgNode[]>(() => {
     const byParent = new Map<number | null, Department[]>();
     for (const department of departments) {
-      const parentId = department.parent_department_id && departments.some((candidate) => candidate.id === department.parent_department_id)
+      const parentId = department.parent_department_id && department.parent_department_id !== department.id
+        && departments.some((candidate) => candidate.id === department.parent_department_id)
         ? department.parent_department_id
         : null;
       const siblings = byParent.get(parentId) || [];
       siblings.push(department);
       byParent.set(parentId, siblings);
     }
-    const build = (parentId: number | null, trail: Set<number>): TreeDataNode[] =>
-      (byParent.get(parentId) || []).map((department) => {
-        const nextTrail = new Set(trail).add(department.id);
-        const children = nextTrail.has(department.parent_department_id || 0)
-          ? []
-          : build(department.id, nextTrail);
-        return {
-          key: `department:${department.id}`,
-          title: `${department.name}（${department.code}）${department.is_active ? "" : "（停用）"}`,
-          children,
-        };
+    const ordered = (items: Department[]) => [...items].sort((left, right) =>
+      (left.sort_order ?? 0) - (right.sort_order ?? 0) || left.name.localeCompare(right.name, "zh-CN"));
+    const placed = new Set<number>();
+    const build = (parentId: number | null): OrgNode[] =>
+      ordered(byParent.get(parentId) || []).filter((department) => !placed.has(department.id)).map((department) => {
+        placed.add(department.id);
+        return { department, children: build(department.id) };
       });
-    return build(null, new Set());
+    const roots = build(null);
+    // 上下级填成环的部门找不到顶级，放到顶层，不丢。
+    const looped = ordered(departments.filter((department) => !placed.has(department.id)));
+    return [...roots, ...looped.filter((department) => !placed.has(department.id)).map((department) => {
+      placed.add(department.id);
+      return { department, children: build(department.id) };
+    })];
   }, [departments]);
+  const departmentNodeLabel = (department: Department) => {
+    const manager = department.manager ? (department.manager_display_name || department.manager) : "未设负责人";
+    return `${department.name} · ${manager} · ${department.active_staff_count ?? 0}人${department.is_active ? "" : "（停用）"}`;
+  };
+  const departmentTreeData = useMemo<TreeDataNode[]>(() => {
+    const toTree = (nodes: OrgNode[]): TreeDataNode[] => nodes.map(({ department, children }) => ({
+      key: `department:${department.id}`,
+      title: departmentNodeLabel(department),
+      children: toTree(children),
+    }));
+    const total = departments.filter((department) => department.is_active)
+      .reduce((sum, department) => sum + (department.active_staff_count ?? 0), 0);
+    return departmentOrgTree.length
+      ? [{ key: "firm", title: `全所 · ${total}人`, children: toTree(departmentOrgTree) }]
+      : [];
+  }, [departmentOrgTree, departments]);
+  const [orgTreeView, setOrgTreeView] = useState<"tree" | "chart">("tree");
+  const renderOrgChart = (nodes: OrgNode[]) => (
+    <ul>
+      {nodes.map(({ department, children }) => (
+        <li key={department.id}>
+          <div className={`org-chart-box${department.is_active ? "" : " is-inactive"}`}>
+            <b>{department.name}</b>
+            <span>{department.manager ? (department.manager_display_name || department.manager) : "未设负责人"}</span>
+            <span>{department.active_staff_count ?? 0}人{department.is_active ? "" : "（停用）"}</span>
+          </div>
+          {children.length ? renderOrgChart(children) : null}
+        </li>
+      ))}
+    </ul>
+  );
   const start = (row?: Department | JobRole) => {
     if (!canManageOrganization) {
       message.error("仅系统管理员可以维护部门和角色");
@@ -764,9 +802,32 @@ export default function OrganizationCenterPage({
         )}
       </Card>
       {!rolesView && (
-        <Card className="panel organization-tree-panel" size="small" title="组织树">
+        <Card
+          className="panel organization-tree-panel"
+          size="small"
+          title="组织树"
+          extra={(
+            <Segmented
+              size="small"
+              value={orgTreeView}
+              onChange={(value) => setOrgTreeView(value as "tree" | "chart")}
+              options={[{ label: "树形", value: "tree" }, { label: "架构图", value: "chart" }]}
+            />
+          )}
+        >
           {departmentTreeData.length ? (
-            <Tree defaultExpandAll treeData={departmentTreeData} />
+            orgTreeView === "tree" ? (
+              <Tree key={departments.length} showLine blockNode defaultExpandAll treeData={departmentTreeData} />
+            ) : (
+              <div className="org-chart">
+                <ul>
+                  <li>
+                    <div className="org-chart-box is-root"><b>{String(departmentTreeData[0].title)}</b></div>
+                    {renderOrgChart(departmentOrgTree)}
+                  </li>
+                </ul>
+              </div>
+            )
           ) : (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无组织层级" />
           )}
