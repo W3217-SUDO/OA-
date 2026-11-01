@@ -25,9 +25,14 @@ class BrandReportTest(unittest.IsolatedAsyncioTestCase):
                 # 在办：不算回款时间；公证费付 200 未到账，但不在亏损阶段 → 不算亏损。
                 (3, "一审立案", ""),
             ]
+            # 品牌统计只算框架合作合同下的案件（tgn 11-01）。
+            db.add(BusinessRecord(id=61, module="contract", serial_no="HT61", title="框架合同", status="已审批", owner="codex",
+                                  data={"contract_type": "框架合作合同"}))
+            db.add(BusinessRecord(id=62, module="contract", serial_no="HT62", title="个案合同", status="已审批", owner="codex",
+                                  data={"contract_type": "争议解决合同"}))
             for case_id, status, archived in cases:
                 db.add(BusinessRecord(id=case_id, module="case", serial_no=f"AJ{case_id}", title=f"案件{case_id}", status=status,
-                                      owner="codex", customer="品牌甲", data={"archived_at": archived}))
+                                      owner="codex", customer="品牌甲", data={"archived_at": archived, "contract_record_id": 61}))
             fees = [
                 (11, 1, "官方费用", "11010020", 300, "2026-01-05"),
                 (12, 1, "代理费", "11020010", 1000, ""),
@@ -72,9 +77,9 @@ class BrandReportTest(unittest.IsolatedAsyncioTestCase):
         """tgn 11-01：只显示有数据的客户，不限个数，按已垫付官费从多到少排。"""
         async with self.sessions() as db:
             db.add(BusinessRecord(id=4, module="case", serial_no="AJ4", title="无费用案件", status="已归档", owner="codex",
-                                  customer="A无数据品牌", data={"archived_at": "2026-05-01"}))
+                                  customer="A无数据品牌", data={"archived_at": "2026-05-01", "contract_record_id": 61}))
             db.add(BusinessRecord(id=5, module="case", serial_no="AJ5", title="品牌乙案件", status="亏损归档", owner="codex",
-                                  customer="品牌乙", data={"archived_at": "2026-05-01"}))
+                                  customer="品牌乙", data={"archived_at": "2026-05-01", "contract_record_id": 61}))
             db.add(BusinessRecord(id=51, module="finance", serial_no="FY51", title="官方费用", status="已通知", owner="codex",
                                   data={"case_id": 5, "fee_type": "官方费用", "case_fee_type_id": "11010020", "amount": 5000,
                                         "inform_date": "2026-04-01"}))
@@ -85,6 +90,21 @@ class BrandReportTest(unittest.IsolatedAsyncioTestCase):
             fees = [await db.get(BusinessRecord, fee_id) for fee_id in (11, 12, 21, 31, 51)]
             charts, _ = await brand_charts(cases, fees, db)
         self.assertEqual([item["name"] for item in charts[0]["items"]], ["品牌乙", "品牌甲"])
+
+
+    async def test_only_framework_contract_cases_count(self):
+        """个案（争议解决）合同下的案件不算进品牌统计。"""
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, 2)
+            case.data = {**case.data, "contract_record_id": 62}
+            await db.commit()
+            cases = [await db.get(BusinessRecord, case_id) for case_id in (1, 2, 3)]
+            fees = [await db.get(BusinessRecord, fee_id) for fee_id in (11, 12, 21, 31)]
+            charts, _ = await brand_charts(cases, fees, db)
+        values = {chart["title"]: chart["items"][0]["value"] for chart in charts}
+        # 案件 2（亏损归档、亏 400）不算了：回款周期只剩案件 1 的 30 天，亏损为 0。
+        self.assertEqual(values["资金回款周期统计"], 30.0)
+        self.assertEqual(values["资金亏损金额统计"], 0.0)
 
 
 if __name__ == "__main__":

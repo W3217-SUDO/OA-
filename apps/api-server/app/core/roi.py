@@ -49,6 +49,31 @@ def _fee_case_id(fee, case_by_id, case_by_no):
     return case.id if case else None
 
 
+BRAND_CONTRACT_TYPE = "框架合作合同"
+
+
+async def _framework_contract_cases(cases, db):
+    """品牌统计只算框架协议客户：只要合同类型为“框架合作合同”的合同下的案件；个案（争议解决）、顾问、其他、非诉项目合同下的不算（tgn 11-01 确认）。"""
+    from sqlalchemy import select as sa_select
+    from app.models import BusinessRecord
+
+    def contract_id(case):
+        data = case.data or {}
+        try:
+            return int(data.get("contract_record_id") or data.get("contract_id") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    ids = {contract_id(case) for case in cases} - {0}
+    if not ids:
+        return []
+    framework = set((await db.scalars(sa_select(BusinessRecord.id).where(
+        BusinessRecord.module == "contract", BusinessRecord.id.in_(ids),
+        BusinessRecord.data["contract_type"].as_string() == BRAND_CONTRACT_TYPE,
+    ))).all())
+    return [case for case in cases if contract_id(case) in framework]
+
+
 async def brand_charts(cases, fees, db):
     """按品牌（案件客户）算四项：
     1. 平均回款时间 = 已归档、亏损归档案件从垫付款日期到归档日期的平均天数；垫付款日期取官费最早的请款单付款日期，没有请款单取费用通知日期。
@@ -58,6 +83,7 @@ async def brand_charts(cases, fees, db):
     """
     from app.core.customer_fee_balance import _cashed_by_fee, _paid_and_first_dates
 
+    cases = await _framework_contract_cases(cases, db)
     case_by_id = {case.id: case for case in cases}
     case_by_no = {case.serial_no: case for case in cases}
     fee_case = {}
