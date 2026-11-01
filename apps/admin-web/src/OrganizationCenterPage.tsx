@@ -695,7 +695,7 @@ export default function OrganizationCenterPage({
             icon={<EditOutlined />}
             onClick={() => start(row)}
           >
-            修改
+            编辑
           </Button>
           {row.is_active ? (
             <Popconfirm
@@ -796,8 +796,8 @@ export default function OrganizationCenterPage({
           <InputNumber min={0} style={{ width: "100%" }} />
         </Form.Item>
       </div>
-      <Button type="primary" icon={<PlusOutlined />} loading={creatingDepartment} disabled={!canManageOrganization} onClick={() => void createDepartment()}>
-        新建部门
+      <Button type="primary" loading={creatingDepartment} disabled={!canManageOrganization} onClick={() => void createDepartment()}>
+        保存
       </Button>
     </Form>
   );
@@ -906,7 +906,7 @@ export default function OrganizationCenterPage({
       )}
       <Modal
         open={open}
-        title={`${editingDepartment || editingRole ? "修改" : "新增"}${rolesView ? "角色" : "部门"}`}
+        title={`${editingDepartment ? "编辑" : editingRole ? "修改" : "新增"}${rolesView ? "角色" : "部门"}`}
         okText="保存"
         cancelText="取消"
         onOk={save}
