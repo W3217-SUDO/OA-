@@ -1,6 +1,6 @@
 """应收模板按真实费用记录和收款分配生成有符号明细。"""
 from collections import defaultdict
-from sqlalchemy import or_, select
+from sqlalchemy import literal_column, or_, select
 
 from app.models import BusinessRecord, ContractObject
 from app.core.constants import _INVALID_RECEIVABLE_FEE_STATUSES
@@ -24,13 +24,33 @@ async def receivable_export_rows(contracts, identity, db, *, case_ids=None, fees
         return []
     object_case_ids = select(ContractObject.case_record_id).where(
         scalar_in_values(ContractObject.contract_record_id, by_contract_id))
-    cases = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "case", *(await _record_scope_conditions(identity, db)),
-        or_(BusinessRecord.id.in_(object_case_ids),
-            scalar_in_values(BusinessRecord.data["contract_id"].as_integer(), by_contract_id),
-            scalar_in_values(BusinessRecord.data["contract_record_id"].as_integer(), by_contract_id),
-            scalar_in_values(BusinessRecord.data["contract_no"].as_string(), by_contract_no)),
-    ))).all())
+    scope = await _record_scope_conditions(identity, db)
+    if db.get_bind().dialect.name == "postgresql":
+        # 四种关联分开查、各走一个索引，再按编号取案件（结果与 OR 相同）。合在一个 OR 里规划器只能
+        # 逐条解析一万多个案件的 JSON，工作台“应收合同”计数要 1–2 秒（陶威 11-01）。
+        # 案件上的合同编号都是纯数字（生产核对过），按文本比较与按整数比较等价，也不会因脏值让索引写入失败。
+        contract_ids_text = [str(value) for value in by_contract_id]
+        linked = [
+            BusinessRecord.id.in_(object_case_ids),
+            literal_column("(business_records.data ->> 'contract_id')").in_(contract_ids_text),
+            literal_column("(business_records.data ->> 'contract_record_id')").in_(contract_ids_text),
+            literal_column("(business_records.data ->> 'contract_no')").in_([no for no in by_contract_no if no]),
+        ]
+        case_ids_found = set()
+        for condition in linked:
+            case_ids_found |= set((await db.scalars(select(BusinessRecord.id).where(
+                BusinessRecord.module == "case", condition))).all())
+        cases = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "case", *scope, scalar_in_values(BusinessRecord.id, case_ids_found),
+        ))).all()) if case_ids_found else []
+    else:
+        cases = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "case", *scope,
+            or_(BusinessRecord.id.in_(object_case_ids),
+                scalar_in_values(BusinessRecord.data["contract_id"].as_integer(), by_contract_id),
+                scalar_in_values(BusinessRecord.data["contract_record_id"].as_integer(), by_contract_id),
+                scalar_in_values(BusinessRecord.data["contract_no"].as_string(), by_contract_no)),
+        ))).all())
     if case_ids is not None:
         cases = [case for case in cases if case.id in case_ids]
     by_case_id = {case.id: case for case in cases}

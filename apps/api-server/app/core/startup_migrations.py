@@ -158,6 +158,17 @@ def _apply_department_owner(connection: Connection, _upgrade_schema: Callable[[C
         connection.execute(text("ALTER TABLE departments ADD COLUMN owner_username VARCHAR(64) NOT NULL DEFAULT ''"))
 
 
+def _apply_contract_link_indexes(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    """按文本建索引（不转整数），旧数据里即使有非数字值也不会让写入失败；表达式与 receivable_export_rows 查询一致。"""
+    if connection.dialect.name != "postgresql":
+        return
+    for name, key in (("ix_business_records_data_contract_id_text", "contract_id"),
+                      ("ix_business_records_data_contract_record_id_text", "contract_record_id"),
+                      ("ix_business_records_data_contract_no", "contract_no")):
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS {name} ON business_records ((data ->> '{key}'))"))
+    connection.execute(text("ANALYZE business_records"))
+
+
 def _apply_refund_candidate_indexes(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
     """只有少数费用登记退费进度或是律师代理费(退费)；部分索引只收这些行，表达式与 dashboard_scope 查询一致。"""
     if connection.dialect.name != "postgresql":
@@ -246,6 +257,8 @@ def _run_versioned_schema_migrations(
         ("finance_query_revision_bank_lines_v1", _apply_finance_query_revision),
         # 工作台待退费候选费用的部分索引（陶威 11-01：待缴官费页面慢）。
         ("business_record_refund_candidate_indexes_v1", _apply_refund_candidate_indexes),
+        # 应收合同按合同找案件的表达式索引（陶威 11-01：工作台慢）。
+        ("business_record_contract_link_indexes_v1", _apply_contract_link_indexes),
     )
     for revision, migration in revisions:
         if connection.execute(
