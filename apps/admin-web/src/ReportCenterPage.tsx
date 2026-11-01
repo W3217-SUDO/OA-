@@ -323,16 +323,16 @@ function CustomerRoiReport({ onNavigate }: { onNavigate?: (route: string) => voi
     <div className="report-page report-customer-roi-page">
       <div className="report-page-heading">客户ROI统计</div>
       <Form form={form} className="report-filter report-customer-roi-filter" onFinish={values => void load(values)}>
-        <Form.Item label="收付款日期" name="dateRange"><DatePicker.RangePicker /></Form.Item>
-        <Form.Item label="归属部门" name="department"><Select allowClear showSearch optionFilterProp="label" placeholder="全部收付款归属部门" options={data.filter_options.departments.map(value => ({ value, label: value }))} /></Form.Item>
-        <Form.Item label="负责人" name="employee"><KeywordPersonSelect allowClear showSearch optionFilterProp="label" placeholder="全部收付款负责人" options={data.filter_options.employees.map(value => ({ value, label: showPeople(value) }))} /></Form.Item>
+        <Form.Item label="日期" name="dateRange"><DatePicker.RangePicker /></Form.Item>
+        <Form.Item label="归属部门" name="department"><Select allowClear showSearch optionFilterProp="label" placeholder="全部部门" options={data.filter_options.departments.map(value => ({ value, label: value }))} /></Form.Item>
+        <Form.Item label="负责人" name="employee"><KeywordPersonSelect allowClear showSearch optionFilterProp="label" placeholder="全部负责人" options={data.filter_options.employees.map(value => ({ value, label: showPeople(value) }))} /></Form.Item>
         <div className="report-filter-action">
           <Button type="primary" htmlType="submit">查询</Button>
           <Button onClick={() => { form.resetFields(); void load({}); }}>重置</Button>
           <Button icon={<DownloadOutlined />} loading={exporting} onClick={() => void exportReport()}>导出CSV</Button>
         </div>
       </Form>
-      <div className="report-roi-description">{data.date_basis || "收付款流水日期"}；{data.formula || "ROI＝（收入－成本）÷ 成本 × 100%"}，成本为 0 时显示“—”。部门和负责人按收付款归属筛选。</div>
+      <div className="report-roi-description">按{data.date_basis || "开票日期、到账日期、付款日期"}筛选；{data.formula || "ROI＝（收入－成本）÷ 成本 × 100%"}。成本为 0 时显示“—”。部门和负责人按关联案件筛选。</div>
       <div className="report-roi-table-panel">
         <Table<CustomerRoiRow>
           rowKey={(row) => `${row.customer}-${row.department}-${row.employee}`}

@@ -2,6 +2,7 @@ import unittest
 from datetime import date
 
 from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -53,16 +54,25 @@ class CustomerRoiReportTest(unittest.IsolatedAsyncioTestCase):
             FinanceTransaction(finance_record_id=fee_b.id, transaction_type="付款", amount=20, transaction_date=date(2026, 8, 31), operator="admin"),
             FinanceTransaction(finance_record_id=ambiguous_fee.id, transaction_type="付款", amount=999, transaction_date=date(2026, 9, 2), operator="admin"),
             FinanceTransaction(finance_record_id=fee_a.id, transaction_type="开票", amount=777, transaction_date=date(2026, 9, 2), operator="admin"),
+            # 收入按代理费到账算（思法汇成 11-01）；上面的“回款”流水不再计入收入。
+            self._receipt("R-A", 300, "2026-09-01", "同名客户", [{"amount": 300, "contract_no": contract_a.serial_no, "fee_type": "代理费"}]),
+            self._receipt("R-B", 50, "2026-09-02", "同名客户", [{"amount": 50, "contract_no": contract_b.serial_no, "fee_type": "代理费"}]),
         ])
         await db.commit()
         return customer_a, customer_b
+
+    @staticmethod
+    def _receipt(receipt_no, amount, received, payer, allocations, claimed="同名客户"):
+        return IncomingPayment(source_kind="hz_crm_20260930", receipt_no=receipt_no, received_date=date.fromisoformat(received), amount=amount,
+                               payer_name=payer, status="已分配", claimed_customer=claimed, allocated_amount=amount, operator="admin",
+                               allocations=allocations)
 
     async def test_groups_by_customer_id_uses_posted_cash_and_returns_null_roi_for_zero_cost(self):
         async with self.sessions() as db:
             customer_a, customer_b = await self._seed(db)
             result = await _customer_roi_analytics(ADMIN, db, date_from=date(2026, 9, 1), date_to=date(2026, 9, 2))
 
-        self.assertEqual(result["date_basis"], "收付款流水日期、到账日期")
+        self.assertEqual(result["date_basis"], "到账日期、付款日期")
         self.assertEqual(len(result["rows"]), 2)
         by_customer = {row["customer_id"]: row for row in result["rows"]}
         self.assertEqual(by_customer[customer_a.id]["income"], 300)
@@ -101,38 +111,60 @@ class CustomerRoiReportTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(scoped["totals"], {"income": 300, "cost": 150, "profit": 150, "roi": 100})
         self.assertEqual(error.exception.status_code, 403)
 
-    async def test_bank_receipts_count_as_income_by_allocation_then_claimed_customer(self):
-        # BUG 500784：收入原来只取“回款”流水，迁来的到账单（按分配的案件/合同）全漏了。
+    async def test_income_is_agency_fee_received_without_internal_duplicates(self):
+        # 思法汇成 11-01 13:18：收入按代理费到账算；公司之间转款不重复算，赔偿款转到平台后的平台代理费算一次。
         async with self.sessions() as db:
             customer_a, _customer_b = await self._seed(db)
-            customer_c = BusinessRecord(module="customer", serial_no="CODEX-ROI-CUSTOMER-C", title="独立客户", customer="独立客户", status="正常", owner="owner-c", department="华北部", data={})
-            db.add(customer_c)
+            case_x = BusinessRecord(module="case", serial_no="CODEX-ROI-CASE-X", title="直接付代理费", customer="同名客户", status="办理中", owner="case-owner", department="华东部", data={"customer_id": customer_a.id})
+            case_y = BusinessRecord(module="case", serial_no="CODEX-ROI-CASE-Y", title="被告赔偿款", customer="同名客户", status="已归档", owner="case-owner", department="华东部", data={"customer_id": customer_a.id})
+            db.add_all([case_x, case_y])
             await db.flush()
-            case_a = BusinessRecord(module="case", serial_no="CODEX-ROI-CASE-A", title="案件A", customer="同名客户", status="办理中", owner="case-owner", department="华东部", data={"customer_id": customer_a.id, "customer_no": customer_a.serial_no})
-            db.add(case_a)
+            platform_fee = BusinessRecord(module="finance", serial_no="F-PLAT", title="平台代理费", customer="同名客户", status="已通知", owner="x", department="华东部", data={})
+            lawyer_fee = BusinessRecord(module="finance", serial_no="F-LAW", title="律师代理费", customer="同名客户", status="已通知", owner="x", department="华东部", data={})
+            platform_fee_x = BusinessRecord(module="finance", serial_no="F-PLAT-X", title="平台代理费", customer="同名客户", status="已通知", owner="x", department="华东部", data={})
+            db.add_all([platform_fee, lawyer_fee, platform_fee_x])
             await db.flush()
+            x, y = {"case_id": case_x.id, "case_no": case_x.serial_no}, {"case_id": case_y.id, "case_no": case_y.serial_no}
             db.add_all([
-                IncomingPayment(source_kind="hz_crm_20260930", receipt_no="R-1", received_date=date(2026, 9, 1), amount=1000, payer_name="同名客户",
-                                status="已分配", claimed_customer="同名客户", allocated_amount=1000, operator="admin",
-                                allocations=[{"amount": 800, "case_id": case_a.id, "case_no": case_a.serial_no},
-                                             {"amount": 200, "case_no": "CODEX-ROI-CASE-A", "is_refund": True}]),
-                IncomingPayment(source_kind="hz_crm_20260930", receipt_no="R-2", received_date=date(2026, 9, 2), amount=500, payer_name="独立客户",
-                                status="待分配", claimed_customer="独立客户", allocated_amount=0, operator="admin", allocations=[]),
-                IncomingPayment(source_kind="hz_crm_20260930", receipt_no="R-3", received_date=date(2026, 9, 2), amount=70, payer_name="同名客户",
-                                status="待分配", claimed_customer="同名客户", allocated_amount=0, operator="admin", allocations=[]),
-                IncomingPayment(source_kind="bank_import", receipt_no="R-4", received_date=date(2026, 10, 9), amount=90, payer_name="独立客户",
-                                status="待分配", claimed_customer="独立客户", allocated_amount=0, operator="admin", allocations=[]),
+                # 案件 X：客户直接付代理费 1000；律所再转给恒达 400（同一笔钱，不算）。
+                self._receipt("R-X1", 1000, "2026-09-01", "同名客户", [{"amount": 1000, "fee_type": "代理费", **x}]),
+                self._receipt("R-X2", 400, "2026-09-02", "上海恒达知识产权代理有限公司", [{"amount": 400, "fee_type": "代理费", "fee_id": platform_fee_x.id, **x}]),
+                # 案件 Y（味好美实例）：替被告付款 36,650（官费 1,950 + 赔偿款 34,700）→ 国定转平台：平台代理费 30,290 + 权利人分成 4,410
+                # → 恒达转律所：律师代理费 6,246（平台代理费的一部分）。只算平台代理费 30,290。
+                self._receipt("R-Y1", 36650, "2026-09-01", "姚志富", [{"amount": 1950, "fee_type": "官方费用", **y}, {"amount": 34700, "fee_type": "其他费用", **y}]),
+                self._receipt("R-Y2", 34700, "2026-09-02", "上海国定律师事务所 ", [{"amount": 30290, "fee_type": "代理费", "fee_id": platform_fee.id, **y}, {"amount": 4410, "fee_type": "其他费用", **y}]),
+                self._receipt("R-Y3", 6246, "2026-09-02", "上海恒达知识产权代理有限公司", [{"amount": 6246, "fee_type": "代理费", "fee_id": lawyer_fee.id, **y}]),
+                # 法院退费算收入；公司之间转款里标的退费不算。
+                self._receipt("R-Y4", 1650, "2026-09-02", "江苏省泰州市中级人民法院", [{"amount": 1650, "fee_type": "官方费用", "is_refund": True, **y}]),
+                self._receipt("R-Y5", 882, "2026-09-02", "上海恒达知识产权代理有限公司", [{"amount": 882, "fee_type": "官方费用", "is_refund": True, **y}]),
             ])
             await db.commit()
             result = await _customer_roi_analytics(ADMIN, db, date_from=date(2026, 9, 1), date_to=date(2026, 9, 2))
-            by_department = await _customer_roi_analytics(ADMIN, db, date_from=date(2026, 9, 1), date_to=date(2026, 9, 2), department="华北部")
-
         by_customer = {row["customer_id"]: row for row in result["rows"]}
-        # 300 回款流水 + 到账单分配 800 - 退款 200；同名客户的未分配到账（R-3）认领名不唯一，不计入。
-        self.assertEqual(by_customer[customer_a.id]["income"], 900)
-        self.assertEqual(by_customer[customer_c.id]["income"], 500)  # 未分配，归认领客户；R-4 在日期范围外
-        self.assertIn("case-owner", by_customer[customer_a.id]["employee"])
-        self.assertEqual(by_department["totals"]["income"], 500)
+        # 种子代理费 300 + X 1000 + Y 平台代理费 30290 + 法院退费 1650
+        self.assertEqual(by_customer[customer_a.id]["income"], 33240)
+        self.assertEqual(by_customer[customer_a.id]["cost"], 150)
+
+    async def test_cost_excludes_internal_company_and_customer_payees(self):
+        # 思法汇成 11-01 13:42：成本去掉付给沪知/恒达/国定的公司之间付款，以及付给客户本身的权利人分成、赔偿款转付。
+        async with self.sessions() as db:
+            customer_a, _customer_b = await self._seed(db)
+            contract_a = await db.scalar(select(BusinessRecord).where(BusinessRecord.serial_no == "CODEX-ROI-CONTRACT-A"))
+            link = {"contract_id": contract_a.id, "contract_no": contract_a.serial_no}
+            to_hengda = BusinessRecord(module="contract_payment", serial_no="CP-HD", title="付恒达", customer="同名客户", status="已付款", owner="x", department="华东部", data={**link, "payee": "上海恒达知识产权代理有限公司"})
+            to_customer = BusinessRecord(module="contract_payment", serial_no="CP-KH", title="权利人分成", customer="同名客户", status="已付款", owner="x", department="华东部", data={**link, "payee": "同名客户（代收代付）"})
+            to_court = BusinessRecord(module="contract_payment", serial_no="CP-FY", title="诉讼费", customer="同名客户", status="已付款", owner="x", department="华东部", data={**link, "payee": "某某人民法院"})
+            db.add_all([to_hengda, to_customer, to_court])
+            await db.flush()
+            db.add_all([
+                FinanceTransaction(finance_record_id=to_hengda.id, transaction_type="合同付款", amount=500, transaction_date=date(2026, 9, 2), operator="admin"),
+                FinanceTransaction(finance_record_id=to_customer.id, transaction_type="合同付款", amount=700, transaction_date=date(2026, 9, 2), operator="admin"),
+                FinanceTransaction(finance_record_id=to_court.id, transaction_type="合同付款", amount=90, transaction_date=date(2026, 9, 2), operator="admin"),
+            ])
+            await db.commit()
+            result = await _customer_roi_analytics(ADMIN, db, date_from=date(2026, 9, 1), date_to=date(2026, 9, 2))
+        by_customer = {row["customer_id"]: row for row in result["rows"]}
+        self.assertEqual(by_customer[customer_a.id]["cost"], 240)  # 原 150 + 付法院 90；付恒达、付客户本身不算
 
     async def test_employee_column_shows_person_names(self):
         # BUG 500787：员工列显示姓名，不显示登录账号；筛选项仍是账号。
