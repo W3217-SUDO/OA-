@@ -469,7 +469,7 @@ async def _customer_roi_analytics(
             "view": "customer-roi", "rows": [],
             "totals": {"income": 0.0, "cost": 0.0, "profit": 0.0, "roi": None},
             "filter_options": {"departments": [], "employees": []},
-            "formula": "ROI=(收入-成本)/成本×100%；只算框架合作合同；收入=代理费到账（不含公司之间重复转款）+法院退费，成本=全部付款（不含公司之间付款、付给客户的权利人分成和赔偿款转付、任务逾期扣款）；成本为0时不计算ROI",
+            "formula": "ROI=(收入-成本)/成本×100%；只算签过框架合作合同的客户；收入=代理费到账（不含公司之间重复转款）+法院退费，成本=全部付款（不含公司之间付款、付给客户的权利人分成和赔偿款转付、任务逾期扣款）；成本为0时不计算ROI",
             "date_basis": "到账日期、付款日期", "source": "realtime",
         }
 
@@ -551,57 +551,19 @@ async def _customer_roi_analytics(
     def resolve_customer(source: BusinessRecord) -> BusinessRecord | None:
         return customer_of_records(linked_records(source))
 
-    # 思法汇成 11-01 15:18：客户ROI 只算“框架合作合同”下的收入和成本（与品牌资金统计 1.2.122 同一判断：
-    # 案件按 contract_record_id/contract_id 关联合同，合同类型为“框架合作合同”才算）。
-    contract_ids_needed: set[int] = set()
-    contract_nos_needed: set[str] = set()
-    for record in [*source_records, *related_records]:
-        if record.module == "contract":
-            contract_ids_needed.add(record.id)
-            continue
-        data = record.data or {}
-        contract_ids_needed.update(_positive_record_id(data.get(key)) for key in ("contract_record_id", "contract_id"))
-        contract_nos_needed.add(str(data.get("contract_no") or "").strip())
-    for receipt in receipts:
-        for allocation in receipt.allocations or []:
-            if isinstance(allocation, dict):
-                contract_nos_needed.add(str(allocation.get("contract_no") or "").strip())
-    contract_ids_needed.discard(0)
-    contract_nos_needed.discard("")
-    framework_ids: set[int] = set()
-    framework_nos: set[str] = set()
-    if contract_ids_needed or contract_nos_needed:
-        contract_links = []
-        if contract_ids_needed:
-            contract_links.append(scalar_in_values(BusinessRecord.id, contract_ids_needed))
-        if contract_nos_needed:
-            contract_links.append(scalar_in_values(BusinessRecord.serial_no, contract_nos_needed))
-        for contract_id, contract_no in (await db.execute(select(BusinessRecord.id, BusinessRecord.serial_no).where(
-            BusinessRecord.module == "contract", or_(*contract_links),
+    # 思法汇成 11-01 15:42 定（方案 A）：客户ROI 按客户判断，签过“框架合作合同”的客户全部收支都算，
+    # 没签过的客户不列出。旧系统较早的维权合作协议常登记成其他类型，按合同判断会漏算。
+    framework_customer_ids = {
+        _positive_record_id(customer_id) for customer_id in (await db.execute(select(
+            BusinessRecord.data["customer_id"].as_string(),
+        ).where(
+            BusinessRecord.module == "contract", BusinessRecord.deleted_at.is_(None),
             BusinessRecord.data["contract_type"].as_string() == FRAMEWORK_CONTRACT_TYPE,
-        ))).all():
-            framework_ids.add(contract_id)
-            framework_nos.add(contract_no)
+        ))).scalars()
+    }
 
-    def record_framework(record) -> bool | None:
-        """记录所属合同是否框架合作合同；看不出合同时返回 None。"""
-        if record.module == "contract":
-            return record.id in framework_ids
-        data = record.data or {}
-        contract_id = _positive_record_id(data.get("contract_record_id") or data.get("contract_id"))
-        if contract_id:
-            return contract_id in framework_ids
-        contract_no = str(data.get("contract_no") or "").strip()
-        return (contract_no in framework_nos) if contract_no else None
-
-    def records_framework(records, contract_no: str = "") -> bool:
-        # 优先看案件（与品牌统计一致），其次合同、费用自身；都看不出合同的不算。
-        ordered = sorted(records, key=lambda record: {"case": 0, "contract": 1}.get(record.module, 2))
-        for record in ordered:
-            found = record_framework(record)
-            if found is not None:
-                return found
-        return bool(contract_no) and contract_no in framework_nos
+    def framework_customer(customer_record: BusinessRecord) -> bool:
+        return customer_record.id in framework_customer_ids
 
     def customer_of_records(records: list[BusinessRecord]) -> BusinessRecord | None:
         # Never fall back to a copied customer name.  A missing, ambiguous, or
@@ -641,7 +603,7 @@ async def _customer_roi_analytics(
         # 思法汇成 11-01 14:59：“任务逾期扣款”是扣员工的绩效，不是成本。
         if OVERDUE_DEDUCTION in (source.data.get("internal_fee_type"), source.data.get("fee_type_name")):
             continue
-        if not records_framework(linked_records(source)):
+        if not framework_customer(customer_record):
             continue
         if department.strip() and source.department != department.strip():
             continue
@@ -739,10 +701,8 @@ async def _customer_roi_analytics(
                 related_by_serial.get(str(allocation.get("case_no") or "").strip()),
                 related_by_serial.get(str(allocation.get("contract_no") or "").strip()),
             ) if record]
-            if not records_framework(records, str(allocation.get("contract_no") or "").strip()):
-                continue
             customer_record = claimed_customer(receipt) or customer_of_records(records)
-            if customer_record:
+            if customer_record and framework_customer(customer_record):
                 add_income(customer_record, records[0] if records else None, amount)
 
     rows = []
@@ -768,7 +728,7 @@ async def _customer_roi_analytics(
             "departments": sorted({source.department for source in visible_sources if source and source.department} | {name for name, _ in visible_people if name}),
             "employees": sorted({source.owner for source in visible_sources if source and source.owner} | {name for _, name in visible_people if name}),
         },
-        "formula": "ROI=(收入-成本)/成本×100%；只算框架合作合同；收入=代理费到账（不含公司之间重复转款）+法院退费，成本=全部付款（不含公司之间付款、付给客户的权利人分成和赔偿款转付、任务逾期扣款）；成本为0时不计算ROI",
+        "formula": "ROI=(收入-成本)/成本×100%；只算签过框架合作合同的客户；收入=代理费到账（不含公司之间重复转款）+法院退费，成本=全部付款（不含公司之间付款、付给客户的权利人分成和赔偿款转付、任务逾期扣款）；成本为0时不计算ROI",
         "date_basis": "到账日期、付款日期", "source": "realtime",
     }
 
