@@ -128,8 +128,8 @@ class CustomerRoiReportTest(unittest.IsolatedAsyncioTestCase):
             by_department = await _customer_roi_analytics(ADMIN, db, date_from=date(2026, 9, 1), date_to=date(2026, 9, 2), department="华北部")
 
         by_customer = {row["customer_id"]: row for row in result["rows"]}
-        # 300 回款流水 + 到账单分配 800 - 退款 200；同名客户的未分配到账（R-3）认领名不唯一，不计入。
-        self.assertEqual(by_customer[customer_a.id]["income"], 900)
+        # 300 回款流水 + 到账单分配 800 + 法院退费 200（同样是收到的钱）；同名客户的未分配到账（R-3）认领名不唯一，不计入。
+        self.assertEqual(by_customer[customer_a.id]["income"], 1300)
         self.assertEqual(by_customer[customer_c.id]["income"], 500)  # 未分配，归认领客户；R-4 在日期范围外
         self.assertIn("case-owner", by_customer[customer_a.id]["employee"])
         self.assertEqual(by_department["totals"]["income"], 500)

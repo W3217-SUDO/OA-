@@ -432,7 +432,11 @@ async def _customer_roi_analytics(
     ) if transaction_source_ids else []
     from app.core.internal_payers import not_internal_payer
     # 内部公司之间的转款不是客户收入（BUG 500784，思法汇成 11-01）。
-    receipt_conditions = [IncomingPayment.amount > 0, not_internal_payer(IncomingPayment.payer_name)]
+    receipt_conditions = [
+        IncomingPayment.amount > 0, not_internal_payer(IncomingPayment.payer_name),
+        # 旧系统登记在“××（代收代付）”客户下的到账，是替客户代收的款项，不算我们的收入（待思法汇成确认）。
+        ~func.coalesce(IncomingPayment.claimed_customer, "").contains("代收代付"),
+    ]
     if date_from:
         receipt_conditions.append(IncomingPayment.received_date >= date_from)
     if date_to:
@@ -595,7 +599,7 @@ async def _customer_roi_analytics(
         return candidates[0] if len(candidates) == 1 else None
 
     # 到账单按它自己登记的客户归（与旧系统回款单一致，思法汇成 11-01 核对味好美）；没有登记客户时才按分配的案件/合同归。
-    # 退款分配记负数。
+    # 法院退费（is_refund）是法院退回我们垫付的官费，同样是收到的钱，照常计入（原先误按负数扣减）。
     visible_people: list[tuple[str, str]] = []
     for receipt in receipts:
         allocated = 0.0
@@ -611,7 +615,7 @@ async def _customer_roi_analytics(
             ) if record]
             customer_record = claimed_customer(receipt) or customer_of_records(records)
             if customer_record:
-                add_income(customer_record, records[0] if records else None, -amount if allocation.get("is_refund") else amount)
+                add_income(customer_record, records[0] if records else None, amount)
         remainder = round(float(receipt.amount or 0) - allocated, 2)
         if remainder > 0:
             records = [record for record in (
