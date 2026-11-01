@@ -25,6 +25,7 @@ FEEDBACK_TZ = ZoneInfo("Asia/Shanghai")
 # 2026-10-28 加“已撤回”（陶威）：提交人在动手修改之前可以撤回（“没有动手改之前可以撤回，改了就不能撤回”），
 # 撤回后不再处理，页面只读，暂不支持重新打开。
 FEEDBACK_STATUSES = ("待处理", "待确认", "待验证", "已解决", "已撤回")
+FEEDBACK_STATUS_GROUPS = {"open": ("待处理", "待确认", "待验证"), "closed": ("已解决", "已撤回")}
 WITHDRAW_ACTION = "撤回"
 WITHDRAWN_STATUS = "已撤回"
 # 待确认随时可撤；待处理只在还没动手时可撤；待验证、已解决都已改过，不能撤。
@@ -424,6 +425,7 @@ async def feedback_status_counts(
 async def list_feedback(
     keyword: str = Query("", max_length=200), page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100), status: str = Query(""), mine: bool = Query(False),
+    group: str = Query("", pattern="^(|open|closed)$"),
     date_from: date | None = Query(None), date_to: date | None = Query(None),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
@@ -438,6 +440,10 @@ async def list_feedback(
         ))
     if status:
         conditions.append(BusinessRecord.status.in_(_stored_statuses(status)))
+    elif group:
+        # “我的反馈”分“处理中”“已解决”两个页签（tgn 11-01，BUG20261101005）：已撤回放进已解决。
+        conditions.append(BusinessRecord.status.in_(
+            {stored for value in FEEDBACK_STATUS_GROUPS[group] for stored in _stored_statuses(value)}))
     conditions.extend(_created_between(date_from, date_to))
     owner_user = aliased(User)
     assignee_user = aliased(User)

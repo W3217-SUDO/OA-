@@ -19,8 +19,9 @@ type Props = {
   /** 问题处理中心：只看和处理，不在这里提交；状态改成带数量的页签，多一列“涉及按钮”。 */
   center?: boolean;
   /** 问题反馈页头部的“提交反馈 / 我的反馈”切换：由页面控制，列表只看自己提交或指派给自己的。 */
-  view?: "create" | "mine";
-  onViewChange?: (view: "create" | "mine") => void;
+  /** “我的反馈”页：提交反馈、处理中、已解决（tgn 11-01，BUG20261101005）。 */
+  view?: FeedbackView;
+  onViewChange?: (view: FeedbackView) => void;
   /** 头部切换按钮每点一次加一，用来从详情回到对应视图。 */
   navKey?: number;
   onChanged?: () => void;
@@ -28,6 +29,11 @@ type Props = {
 // 处理流程：待处理 →（处理人写好怎么改）待确认 →（提交人确认修改）待处理 →（处理完）待验证 →（验证通过）已解决；
 // 没解决可重新打开回到待处理；解决前提交人可以撤回（已撤回，不再处理，2026-10-28）。
 const statuses = ["待处理", "待确认", "待验证", "已解决", "已撤回"];
+export type FeedbackView = "create" | "open" | "closed";
+// 处理中 = 还要有人处理或等提交人验证的；已解决 = 验证通过的和撤回的（tgn 选 A）。
+export const FEEDBACK_GROUP_STATUSES: Record<"open" | "closed", string[]> = {
+  open: ["待处理", "待确认", "待验证"], closed: ["已解决", "已撤回"],
+};
 const statusColors: Record<string, string> = {
   待处理: "warning", 待确认: "gold", 待验证: "processing", 已解决: "success", 已撤回: "default",
 };
@@ -55,16 +61,18 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
   const [creatingState, setCreatingState] = useState(!center && Boolean(sourceRoute));
   const creating = view ? view === "create" : creatingState;
   const setCreating = (next: boolean) => {
-    if (onViewChange) onViewChange(next ? "create" : "mine");
+    if (onViewChange) onViewChange(next ? "create" : "open");
     else setCreatingState(next);
   };
   const mine = Boolean(view);
+  const group = view === "open" || view === "closed" ? view : undefined;
+  const tabStatuses = group ? FEEDBACK_GROUP_STATUSES[group] : statuses;
   const [statusCounts, setStatusCounts] = useState<FeedbackStatusCounts | null>(null);
   // 管理员在问题处理中心可以删除问题（逻辑删除，回收站可恢复）。
   const [canDelete, setCanDelete] = useState(false);
   const listVisible = !viewingId && !creating;
   // 问题处理中心和“我的反馈”都在列表上方显示带数量的状态页签。
-  const statusTabs = center || view === "mine";
+  const statusTabs = center || Boolean(group);
 
   useEffect(() => {
     const openTarget = () => {
@@ -95,6 +103,8 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
   }, [center]);
 
   useEffect(() => { if (navKey) setViewingId(null); }, [navKey]);
+  // 处理中、已解决之间切换时清掉页签里的状态筛选。
+  useEffect(() => { if (group) { setStatus(""); setPage(1); } }, [group]);
   useEffect(() => { syncFeedbackIdToUrl(viewingId); }, [viewingId]);
 
   useEffect(() => {
@@ -103,7 +113,7 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
     setLoading(true);
     setError("");
     void api.get<FeedbackPage>("/feedback", {
-      params: { keyword: query, status, page, page_size: pageSize, mine: mine || undefined, ...dateParams }, signal: controller.signal,
+      params: { keyword: query, status, group: status ? undefined : group, page, page_size: pageSize, mine: mine || undefined, ...dateParams }, signal: controller.signal,
     }).then(({ data }) => {
       if (controller.signal.aborted) return;
       setRows(data.items);
@@ -116,7 +126,7 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
       if (!controller.signal.aborted) setLoading(false);
     });
     return () => controller.abort();
-  }, [listVisible, page, pageSize, query, status, reload, mine, dateKey]);
+  }, [listVisible, page, pageSize, query, status, reload, mine, group, dateKey]);
 
   // 状态页签上的数量随列表一起刷新（处理完回到列表也会更新）。
   useEffect(() => {
@@ -184,8 +194,8 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
       </Space>
       {statusTabs && <Segmented aria-label="按状态筛选反馈" className="feedback-status-tabs" style={{ marginBottom: 12 }} value={status}
         onChange={(value) => { setStatus(String(value)); setPage(1); }}
-        options={[{ value: "", label: `全部 ${statusCounts?.total ?? ""}` },
-          ...statuses.map((value) => ({ value, label: `${value} ${statusCounts?.counts[value] ?? ""}` }))]} />}
+        options={[{ value: "", label: `全部 ${statusCounts ? (group ? tabStatuses.reduce((sum, value) => sum + (statusCounts.counts[value] ?? 0), 0) : statusCounts.total) : ""}` },
+          ...tabStatuses.map((value) => ({ value, label: `${value} ${statusCounts?.counts[value] ?? ""}` }))]} />}
       {error ? <Alert type="error" showIcon title={error} /> : <Table<FeedbackRecord>
         rowKey="id" size="small" tableLayout="fixed" columns={columns} dataSource={rows}
         loading={loading} scroll={{ x: (center ? 1285 : 1125) + (showDelete ? 80 : 0) }} pagination={{

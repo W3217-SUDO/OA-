@@ -105,5 +105,20 @@ class FeedbackReopenFlowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(reopened.json(), {"status": "待处理"}, reopened.text)
 
 
+    async def test_my_feedback_groups_open_and_closed(self):
+        """BUG20261101005：我的反馈分“处理中”“已解决”，已撤回放进已解决。"""
+        self.identity = dict(STAFF)
+        open_ids = [item["id"] for item in (await self.client.get(API, params={"mine": True, "group": "open"})).json()["items"]]
+        self.assertIn(self.feedback_id, open_ids)
+        await self._to_verify()
+        self.identity = dict(STAFF)
+        self.assertEqual((await self._transition("验证通过")).json(), {"status": "已解决"})
+        open_ids = [item["id"] for item in (await self.client.get(API, params={"mine": True, "group": "open"})).json()["items"]]
+        closed_ids = [item["id"] for item in (await self.client.get(API, params={"mine": True, "group": "closed"})).json()["items"]]
+        self.assertNotIn(self.feedback_id, open_ids)
+        self.assertIn(self.feedback_id, closed_ids)
+        self.assertEqual((await self.client.get(API, params={"group": "other"})).status_code, 422)
+
+
 if __name__ == "__main__":
     unittest.main()
