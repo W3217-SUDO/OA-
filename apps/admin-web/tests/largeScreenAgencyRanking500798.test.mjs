@@ -10,8 +10,8 @@ test('大屏排行三图并排，日期默认今年，查询后按新区间取�
   assert.match(page, /const defaultRankingRange = \(\): \[Dayjs, Dayjs\] => \[dayjs\(\)\.startOf\("year"\), dayjs\(\)\];/);
   assert.match(page, /params: \{ ranking_from: range\[0\]\.format\("YYYY-MM-DD"\), ranking_to: range\[1\]\.format\("YYYY-MM-DD"\) \}/);
   assert.match(page, /\[\["by_source_person", "按案源人"\], \["by_hearing_lawyer", "按开庭律师"\]\]/);
-  assert.match(page, /\{group\}·新建案件数/);
-  assert.match(page, /\{group\}·代理费到账/);
+  assert.match(page, /<Bar yAxisId="cases" dataKey="cases" name="新建案件数"/);
+  assert.match(page, /<Bar yAxisId="fee" dataKey="fee" name="代理费到账"/);
   assert.ok(!page.includes('按案件负责人'), '18:14：不要按案件负责人');
   assert.match(page, /无财务金额查看权限/);
   const css = read('report-center.css').split('BUG 500798')[1];

@@ -44,13 +44,8 @@ def hearing_people(record) -> list[str]:
     return _people(hearing, NO_HEARING_LAWYER)
 
 
-def _ranking(values: dict[str, float], digits: int | None = 2) -> list[dict]:
-    return [{"name": name, "value": round(value, digits) if digits is not None else value}
-            for name, value in sorted(values.items(), key=lambda item: (-item[1], item[0]))[:RANKING_LIMIT]]
-
-
-def case_count_rankings(cases) -> dict:
-    """新建案件数按案源人、开庭律师分别排行（18:14：不要按案件负责人），多人各算一次。"""
+def case_counts(cases) -> dict:
+    """新建案件数按案源人、开庭律师分别统计（18:14：不要按案件负责人），多人各算一次。"""
     by_source: dict[str, int] = {}
     by_hearing: dict[str, int] = {}
     for case in cases:
@@ -58,14 +53,14 @@ def case_count_rankings(cases) -> dict:
             by_source[person] = by_source.get(person, 0) + 1
         for person in hearing_people(case):
             by_hearing[person] = by_hearing.get(person, 0) + 1
-    return {"by_source_person": _ranking(by_source, None), "by_hearing_lawyer": _ranking(by_hearing, None)}
+    return {"by_source_person": by_source, "by_hearing_lawyer": by_hearing}
 
 
 def _is_test_customer(title: str) -> bool:
     return "测试" in title or "test" in title.lower()
 
 
-async def agency_fee_rankings(db, scope: list, date_from: date, date_to: date) -> dict:
+async def agency_fee_totals(db, scope: list, date_from: date, date_to: date) -> dict:
     from app.core.crm import _roi_receipts
     from app.core.internal_payers import is_internal_payer
     await refresh_person_names(db)
@@ -138,4 +133,21 @@ async def agency_fee_rankings(db, scope: list, date_from: date, date_to: date) -
         for person in hearing_people(record):
             by_hearing[person] = by_hearing.get(person, 0.0) + amount
 
-    return {"by_source_person": _ranking(by_source), "by_hearing_lawyer": _ranking(by_hearing), "total": round(total, 2)}
+    return {"by_source_person": by_source, "by_hearing_lawyer": by_hearing, "total": round(total, 2)}
+
+
+def performance_rankings(counts: dict, fees: dict | None) -> dict:
+    """每组一张图：每人案件数和代理费到账两根柱子，按代理费从高到低前 10 名（18:17 选 B）。
+
+    没有金额权限（fees 为 None）时只给案件数，按案件数排。
+    """
+    result = {}
+    for key in ("by_source_person", "by_hearing_lawyer"):
+        case_values = counts.get(key, {})
+        fee_values = (fees or {}).get(key, {})
+        names = set(case_values) | set(fee_values)
+        rows = [{"name": name, "cases": case_values.get(name, 0),
+                 "fee": round(fee_values.get(name, 0.0), 2) if fees is not None else None} for name in names]
+        rows.sort(key=lambda row: (-(row["fee"] or 0), -row["cases"], row["name"]))
+        result[key] = rows[:RANKING_LIMIT]
+    return result

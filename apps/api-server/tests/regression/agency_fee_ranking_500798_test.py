@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 import app.main  # noqa: F401  注册全部模型
-from app.core.agency_fee_ranking import NO_HEARING_LAWYER, agency_fee_rankings, case_count_rankings
+from app.core.agency_fee_ranking import NO_HEARING_LAWYER, agency_fee_totals, case_counts, performance_rankings
 from app.core.person_names import refresh_person_names
 from app.database import Base
 from app.models import BusinessRecord, IncomingPayment, User
@@ -49,15 +49,16 @@ class AgencyFeeRankingTest(unittest.IsolatedAsyncioTestCase):
             ])
             await db.commit()
             await refresh_person_names(db, force=True)
-            result = await agency_fee_rankings(db, [], date(2026, 1, 1), date(2026, 12, 31))
-        self.assertEqual(result["total"], 1400)
-        self.assertEqual(result["by_source_person"], [{"name": "案源甲", "value": 1000}, {"name": "owner-c", "value": 400}])
-        self.assertEqual(result["by_hearing_lawyer"], [{"name": "开庭乙", "value": 1000}, {"name": NO_HEARING_LAWYER, "value": 400}])
-        # 18:14：案件数也按案源人、开庭律师分别统计，多人各算一次。
-        counts = case_count_rankings([case_a, case_t, BusinessRecord(module="case", serial_no="X", owner="owner-x", data={"source_person": "srca", "hearing_lawyer": "hla,hlb"})])
-        self.assertEqual(counts["by_source_person"], [{"name": "案源甲", "value": 3}])
-        self.assertEqual(counts["by_hearing_lawyer"], [{"name": "开庭乙", "value": 3}, {"name": "hlb", "value": 1}])
-
+            fees = await agency_fee_totals(db, [], date(2026, 1, 1), date(2026, 12, 31))
+        self.assertEqual(fees["total"], 1400)
+        self.assertEqual(fees["by_source_person"], {"案源甲": 1000, "owner-c": 400})
+        self.assertEqual(fees["by_hearing_lawyer"], {"开庭乙": 1000, NO_HEARING_LAWYER: 400})
+        # 18:14/18:17：案件数也按案源人、开庭律师；每组一张图，每人案件数和代理费两项，按代理费排。
+        counts = case_counts([case_a, case_t, BusinessRecord(module="case", serial_no="X", owner="owner-x", data={"source_person": "srca", "hearing_lawyer": "hla,hlb"})])
+        ranking = performance_rankings(counts, fees)
+        self.assertEqual(ranking["by_source_person"], [{"name": "案源甲", "cases": 3, "fee": 1000}, {"name": "owner-c", "cases": 0, "fee": 400}])
+        self.assertEqual(ranking["by_hearing_lawyer"], [{"name": "开庭乙", "cases": 3, "fee": 1000}, {"name": NO_HEARING_LAWYER, "cases": 0, "fee": 400}, {"name": "hlb", "cases": 1, "fee": 0}])
+        self.assertEqual(performance_rankings(counts, None)["by_hearing_lawyer"][0], {"name": "开庭乙", "cases": 3, "fee": None})
 
 if __name__ == "__main__":
     unittest.main()

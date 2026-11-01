@@ -576,15 +576,17 @@ function StaffRoiReport() {
 const largeScreenViews = ["reports-refund", "reports-execution-1"];
 const LARGE_SCREEN_COLORS = ["#18c7bb", "#4e8cff", "#ffb95c", "#8a74e8", "#ef6d85", "#2cc47c"];
 
+type PerformanceRow = { name: string; cases: number; fee: number | null };
+
 type LargeScreenData = {
   case_summary: { total: number; in_progress: number; closed: number };
   finance: { amount_visible: boolean; income: number | null; expense: number | null; income_label?: string; expense_label?: string };
   customer_summary: { total: number };
   employee_ranking: { username?: string; name: string; value: number }[];
-  // 代理费到账排行（BUG 500798）；没有财务金额权限时为 null。
-  agency_fee_ranking?: { by_source_person: { name: string; value: number }[]; by_hearing_lawyer: { name: string; value: number }[]; total: number } | null;
   ranking_period?: { date_from: string; date_to: string };
-  case_count_ranking?: { by_source_person: { name: string; value: number }[]; by_hearing_lawyer: { name: string; value: number }[] };
+  // 员工业绩排行：按案源人、开庭律师两组，每人新建案件数和代理费到账（BUG 500798，18:17 选 B）。
+  performance_ranking?: { by_source_person: PerformanceRow[]; by_hearing_lawyer: PerformanceRow[] };
+  agency_fee_total?: number | null;
   case_type_distribution: { name: string; value: number }[];
   monthly_trend: { month: string; cases: number; income: number | null; expense: number | null }[];
   definitions?: Record<string, string>;
@@ -606,18 +608,24 @@ const formatCurrency = (value: number | null) => value == null ? "—" : `¥${Nu
 const defaultRankingRange = (): [Dayjs, Dayjs] => [dayjs().startOf("year"), dayjs()];
 const formatWan = (value: number) => (Number(value || 0) / 10000).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-// 横向排行条：人名在左、数值在柱子右侧（报表大屏员工业绩排行，BUG 500798）。
-function RankingBarChart({ data, label, format, color, unit }: { data: { name: string; value: number }[]; label: string; format: (value: number) => string; color: string; unit?: string }) {
+// 每人两根柱子：新建案件数（左轴）、代理费到账万元（右轴），按代理费从高到低（BUG 500798，18:17 选 B）。
+function PerformanceChart({ rows, showFee }: { rows: PerformanceRow[]; showFee: boolean }) {
+  const chartRows = rows.map(row => ({ name: row.name, cases: row.cases, fee: row.fee == null ? null : Number((row.fee / 10000).toFixed(2)) }));
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={data} layout="vertical" margin={{ top: 8, right: 56, bottom: 0, left: 14 }}>
-        <CartesianGrid stroke="#e8f0f2" horizontal={false} />
-        <XAxis type="number" allowDecimals={false} domain={[0, (dataMax: number) => Math.ceil(dataMax * 1.18)]} tickFormatter={(value) => unit ? `${Math.round(Number(value) / 10000)}${unit}` : formatNumber(Number(value))} />
-        <YAxis type="category" dataKey="name" width={84} tick={{ fontSize: 12 }} interval={0} />
-        <Tooltip formatter={(value) => [format(Number(value)), label]} />
-        <Bar dataKey="value" fill={color} radius={[0, 5, 5, 0]} maxBarSize={18}>
-          <LabelList dataKey="value" position="right" fontSize={11} formatter={(value: unknown) => format(Number(value))} />
+      <BarChart data={chartRows} margin={{ top: 22, right: 8, bottom: 4, left: 0 }}>
+        <CartesianGrid stroke="#e8f0f2" vertical={false} />
+        <XAxis dataKey="name" interval={0} tick={{ fontSize: 12 }} angle={rows.length > 6 ? -30 : 0} textAnchor={rows.length > 6 ? "end" : "middle"} height={rows.length > 6 ? 56 : 30} />
+        <YAxis yAxisId="cases" allowDecimals={false} tick={{ fontSize: 11 }} />
+        {showFee && <YAxis yAxisId="fee" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(value) => `${value}万`} />}
+        <Tooltip formatter={(value, name) => name === "代理费到账" ? [`${Number(value).toLocaleString("zh-CN", { minimumFractionDigits: 2 })} 万元`, name] : [formatNumber(Number(value)), name]} />
+        <Legend />
+        <Bar yAxisId="cases" dataKey="cases" name="新建案件数" fill="#00a65a" maxBarSize={22}>
+          <LabelList dataKey="cases" position="top" fontSize={10} />
         </Bar>
+        {showFee && <Bar yAxisId="fee" dataKey="fee" name="代理费到账" fill="#3e8ef7" maxBarSize={22}>
+          <LabelList dataKey="fee" position="top" fontSize={10} />
+        </Bar>}
       </BarChart>
     </ResponsiveContainer>
   );
@@ -719,28 +727,18 @@ export function ReportLargeScreenPage({ onExit }: { onExit?: () => void }) {
                   <Button type="primary" onClick={() => queryRanking(rankingRange)}>查询</Button>
                   <Button onClick={() => queryRanking(defaultRankingRange())}>重置</Button>
                 </div>
-                {/* 按案源人、开庭律师两组，每组新建案件数和代理费到账各一张图（BUG 500798 18:14）。 */}
                 <div className="large-screen-ranking-row">
                   {([["by_source_person", "按案源人"], ["by_hearing_lawyer", "按开庭律师"]] as const).map(([key, group]) => {
-                    const cases = data.case_count_ranking?.[key] ?? [];
-                    const fees = data.agency_fee_ranking?.[key] ?? [];
-                    return [
-                      <article key={`${key}-cases`} className="large-screen-card ranking-card">
-                        <h2>{group}·新建案件数 <small>{data.ranking_period ? `${data.ranking_period.date_from} 至 ${data.ranking_period.date_to}` : ""}</small></h2>
-                        <div className="large-screen-chart">{cases.length ? <RankingBarChart data={cases} label="新建案件" format={(value) => formatNumber(value)} color="#00a65a" /> : <LargeScreenEmpty />}</div>
-                      </article>,
-                      <article key={`${key}-fees`} className="large-screen-card ranking-card">
-                        <h2>{group}·代理费到账 <small>{data.agency_fee_ranking ? `合计 ${formatWan(data.agency_fee_ranking.total)} 万元` : ""}</small></h2>
-                        <div className="large-screen-chart">{!data.finance.amount_visible || !data.agency_fee_ranking
-                          ? <LargeScreenEmpty description="无财务金额查看权限" />
-                          : fees.length
-                            ? <RankingBarChart data={fees} label="代理费到账（万元）" format={(value) => formatWan(value)} color={key === "by_source_person" ? "#3e8ef7" : "#8a74e8"} unit="万" />
-                            : <LargeScreenEmpty />}</div>
-                      </article>,
-                    ];
+                    const rows = data.performance_ranking?.[key] ?? [];
+                    return (
+                      <article key={key} className="large-screen-card ranking-card">
+                        <h2>{group} <small>{data.finance.amount_visible && data.agency_fee_total != null ? `新建案件数 + 代理费到账（合计 ${formatWan(data.agency_fee_total)} 万元）` : "新建案件数（无财务金额查看权限）"}</small></h2>
+                        <div className="large-screen-chart">{rows.length ? <PerformanceChart rows={rows} showFee={data.finance.amount_visible && data.agency_fee_total != null} /> : <LargeScreenEmpty />}</div>
+                      </article>
+                    );
                   })}
                 </div>
-                <p className="large-screen-ranking-note">{[data.definitions?.case_count_ranking, data.agency_fee_ranking ? data.definitions?.agency_fee_ranking : ""].filter(Boolean).join("；")}</p>
+                <p className="large-screen-ranking-note">{data.definitions?.performance_ranking}</p>
               </section>
               <section className="large-screen-grid">
                 <article className="large-screen-card distribution-card">
