@@ -107,5 +107,31 @@ class BrandReportTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(values["资金亏损金额统计"], 0.0)
 
 
+    async def test_lawyer_view_same_formulas_each_lawyer_full(self):
+        """BUG20261101003：律师资金统计同一套算法，按开庭律师；两位律师各算全额，没登记的不算。"""
+        from app.core.roi import operating_charts
+        async with self.sessions() as db:
+            for case_id, lawyers in ((1, "lawa,lawb"), (2, "lawa"), (3, "")):
+                case = await db.get(BusinessRecord, case_id)
+                case.data = {**case.data, "hearing_lawyer_username": lawyers}
+            await db.commit()
+            cases = [await db.get(BusinessRecord, case_id) for case_id in (1, 2, 3)]
+            fees = [await db.get(BusinessRecord, fee_id) for fee_id in (11, 12, 21, 31)]
+            charts, _ = await operating_charts(cases, fees, "lawyer", "按律师分组统计", db)
+        by_name = {item["name"]: item["value"] for item in charts[0]["items"]}
+        self.assertEqual(by_name, {"lawa": 29.5, "lawb": 30.0})
+
+    async def test_archive_before_payment_not_in_cycle(self):
+        """归档早于垫付的案件不算进回款周期（tgn 11-01 选 B1）。"""
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, 1)
+            case.data = {**case.data, "archived_at": "2025-12-01"}
+            await db.commit()
+            cases = [await db.get(BusinessRecord, case_id) for case_id in (1, 2, 3)]
+            fees = [await db.get(BusinessRecord, fee_id) for fee_id in (11, 12, 21, 31)]
+            charts, _ = await brand_charts(cases, fees, db)
+        self.assertEqual(charts[0]["items"][0]["value"], 29.0)
+
+
 if __name__ == "__main__":
     unittest.main()

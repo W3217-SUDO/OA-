@@ -44,6 +44,8 @@ type ChartSpec = {
   unit: "天/案" | "元" | "百分比" | "个/案";
   metricKeys?: string[];
   limit?: number;
+  /** 柱子变窄（每项约 64 像素、柱宽不超过 28 像素），律师资金统计用（tgn 11-01）。 */
+  narrowBars?: boolean;
 };
 
 type PageSpec = {
@@ -117,10 +119,10 @@ const PAGE_SPECS: Record<string, PageSpec> = {
     tab: "按开庭律师统计",
     filter: "lawyer",
     charts: [
-      { title: "资金回款周期统计", unit: "天/案", metricKeys: ["资金回款周期", "资金回款周期统计"] },
-      { title: "资金亏损金额统计", unit: "元", metricKeys: ["资金亏损金额", "资金亏损金额统计"] },
-      { title: "资金回报率统计", unit: "百分比", metricKeys: ["资金回报率", "资金回报率统计"] },
-      { title: "资金亏损率统计", unit: "百分比", metricKeys: ["资金亏损率", "资金亏损率统计"] },
+      { title: "资金回款周期统计", unit: "天/案", metricKeys: ["资金回款周期", "资金回款周期统计"], narrowBars: true },
+      { title: "资金亏损金额统计", unit: "元", metricKeys: ["资金亏损金额", "资金亏损金额统计"], narrowBars: true },
+      { title: "资金回报率统计", unit: "百分比", metricKeys: ["资金回报率", "资金回报率统计"], narrowBars: true },
+      { title: "资金亏损率统计", unit: "百分比", metricKeys: ["资金亏损率", "资金亏损率统计"], narrowBars: true },
     ],
   },
   "reports-refund": {
@@ -206,6 +208,7 @@ function Filters({ kind, options, onQuery }: { kind: "brand" | "lawyer"; options
 
 function MetricChart({ spec, items }: { spec: ChartSpec; items: { name: string; value: number | null }[] }) {
   const chartItems = spec.limit ? items.slice(0, spec.limit) : items;
+  const slot = spec.narrowBars ? 64 : 88;
   return (
     <section className="report-chart-panel">
       <div className="report-chart-title">
@@ -214,7 +217,7 @@ function MetricChart({ spec, items }: { spec: ChartSpec; items: { name: string; 
       </div>
       <div className="report-chart-body report-chart-scroll">
         {/* 客户多时每个柱子固定宽度，超出部分左右拖动查看（tgn 11-01，BUG20261101001）。 */}
-        {chartItems.length ? <div className="report-chart-track" style={{ minWidth: chartItems.length > 8 ? chartItems.length * 88 : undefined }}>
+        {chartItems.length ? <div className="report-chart-track" style={{ minWidth: chartItems.length > 8 ? chartItems.length * slot : undefined }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartItems} margin={{ top: 20, right: 24, bottom: 16, left: 4 }}>
             <CartesianGrid stroke="#ececec" vertical={false} />
@@ -227,7 +230,7 @@ function MetricChart({ spec, items }: { spec: ChartSpec; items: { name: string; 
               tick={{ fill: "#777", fontSize: 11 }}
             />
             <Tooltip formatter={(item) => [item == null ? '不可计算' : `${Number(item).toLocaleString()} ${spec.unit}`, spec.title]} />
-            <Bar dataKey="value" fill="#36b978" maxBarSize={72} />
+            <Bar dataKey="value" fill="#36b978" maxBarSize={spec.narrowBars ? 28 : 72} />
           </BarChart>
         </ResponsiveContainer>
         </div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前条件下暂无真实业务数据" />}

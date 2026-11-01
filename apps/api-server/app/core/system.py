@@ -874,6 +874,7 @@ def _large_screen_month_keys(today: date) -> list[str]:
 REPORT_CASE_FIELDS = (
     "handling_lawyers", "hearing_lawyer", "hearing_lawyers", "assistant", "investigator", "archived_at",
     "case_phase_id", "case_stage", "business_stage", "phase", "legacy", "contract_record_id", "contract_id",
+    "hearing_lawyer_username", "assistant_username",
 )
 REPORT_FEE_FIELDS = (
     "case_id", "case_record_id", "case_no", "fee_type", "case_fee_type_id", "fee_type_code", "fee_type_name",
