@@ -3,6 +3,7 @@ import { Alert,Button,DatePicker,Form,Input,Modal,Select,Space,Tag } from "antd"
 import Table from "../../components/ResizableTable";
 import { AttachmentFileInput } from "../../components/common/AttachmentContent";
 import type { Attachment,IprDetailPageState,IprFileType,IprRecord } from "../types";
+import { IprRowContextMenu } from "./IprRowContextMenu";
 
 interface IprFilesPanelProps {
   detail: IprRecord;
@@ -24,6 +25,7 @@ interface IprFilesPanelProps {
   onMarkTransmitted: (row: Attachment) => void;
   onMarkSelectedTransmitted: () => void;
   onDeleteFile: (row: Attachment) => Promise<void>;
+  onGenerateApplication: (row: Attachment) => void;
   onSelectedFileIdsChange: (ids: number[]) => void;
   confirmIprDeletion: (kind: string, label: string, operation: () => Promise<void>) => void;
   onPageChange: (page: number, pageSize: number) => void;
@@ -49,6 +51,7 @@ export function IprFilesPanel({
   onMarkTransmitted,
   onMarkSelectedTransmitted,
   onDeleteFile,
+  onGenerateApplication,
   onSelectedFileIdsChange,
   confirmIprDeletion,
   onPageChange,
@@ -61,6 +64,29 @@ export function IprFilesPanel({
     pageSizeOptions: ["15", "20", "50"],
     onChange: onPageChange,
   };
+
+  const active = detail.status === "在办";
+  const canManage = active && roleActionAllowed("ipr.case.file.manage");
+  // 右键菜单按原系统：上传、查看、下载、标记已转、删除、生成申请文件、刷新。
+  const menuItems = (row: Attachment | null) => [
+    { key: "upload", label: "上传", disabled: !canManage, onClick: onOpenUpload },
+    { key: "view", label: "查看", disabled: !row, onClick: () => row && onPreviewAttachment(row) },
+    { key: "download", label: "下载", disabled: !row, onClick: () => row && onDownloadAttachment(row) },
+    {
+      key: "transmitted", label: "标记已转",
+      disabled: !row || !canManage || !row.requires_transmission || !!row.is_transmitted,
+      onClick: () => row && onMarkTransmitted(row),
+    },
+    {
+      key: "delete", label: "删除", disabled: !row || !active || !roleActionAllowed("ipr.case.file.delete"),
+      onClick: () => row && confirmIprDeletion("file", row.original_name, () => onDeleteFile(row)),
+    },
+    {
+      key: "generate", label: "生成申请文件", disabled: !row || !active || !roleActionAllowed("ipr.case.document.generate"),
+      onClick: () => row && onGenerateApplication(row),
+    },
+    { key: "refresh", label: "刷新", onClick: onRefresh },
+  ];
 
   return (
     <>
@@ -75,6 +101,7 @@ export function IprFilesPanel({
           <Button size="small" onClick={onRefresh}>刷新</Button>
         </Space>
       ) : null}
+      <IprRowContextMenu rows={attachments} rowKey={(row) => row.id} items={menuItems}>
       <Table
         rowKey="id"
         size="small"
@@ -134,6 +161,7 @@ export function IprFilesPanel({
           }] : []),
         ]}
       />
+      </IprRowContextMenu>
 
       <Modal
         open={iprFileOpen}

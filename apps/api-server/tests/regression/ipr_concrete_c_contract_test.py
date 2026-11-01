@@ -304,6 +304,36 @@ class IprConcreteCBackendContractTest(unittest.IsolatedAsyncioTestCase):
         after = await self.client.get(f"{API}/ipr/cases/{self.case_a_id}/fees")
         self.assertEqual(after.json()["total"], 4)
 
+    async def test_fee_context_menu_edits_only_draft_fee(self):
+        """BUG20261028020：费用明细右键“修改”只能改未提交的草稿费用。"""
+        created = await self.client.post(
+            f"{API}/ipr/cases/{self.case_a_id}/fees",
+            json={"title": "IPR C 待改费用", "amount": 100.0, "fee_type": "官方费用", "handler": ""},
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        fee_id = created.json()["id"]
+        edited = await self.client.patch(
+            f"{API}/ipr/cases/{self.case_a_id}/fees/{fee_id}",
+            json={"amount": 250.5, "fee_type": "代理费", "fee_date": "2026-08-06", "description": "改金额"},
+        )
+        self.assertEqual(edited.status_code, 200, edited.text)
+        self.assertEqual(edited.json()["data"]["amount"], 250.5)
+        async with self.sessions() as db:
+            stored = await db.get(BusinessRecord, fee_id)
+            self.assertEqual(stored.data["fee_type"], "代理费")
+            self.assertEqual(stored.data["fee_date"], "2026-08-06")
+            self.assertEqual(stored.description, "改金额")
+        bad = await self.client.patch(f"{API}/ipr/cases/{self.case_a_id}/fees/{fee_id}", json={"amount": -1, "fee_type": "官方费用"})
+        self.assertEqual(bad.status_code, 422, bad.text)
+
+        payment = await self.client.post(
+            f"{API}/ipr/cases/{self.case_a_id}/fees/{fee_id}/payment-application",
+            json={"payment_type_id": self.payment_type_id, "application_date": "2026-08-05"},
+        )
+        self.assertEqual(payment.status_code, 201, payment.text)
+        locked = await self.client.patch(f"{API}/ipr/cases/{self.case_a_id}/fees/{fee_id}", json={"amount": 300.0, "fee_type": "代理费"})
+        self.assertEqual(locked.status_code, 409, locked.text)
+
     async def test_fee_invoice_payment_arrival_unlock_and_delete(self):
         created = await self.client.post(
             f"{API}/ipr/cases/{self.case_a_id}/fees",

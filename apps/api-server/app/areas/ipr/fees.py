@@ -6,7 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from app.core.constants import EXPENSE_SCOPE_FEE_TYPES, FINANCE_FEE_TYPES, UPLOAD_ROOT
 from app.core.dependencies import AsyncSession, BusinessRecord, Depends, File, FileAttachment, Form, HTTPException, IncomingPayment, IprCaseAssistedFee, Path, Query, Response, UploadFile, User, WorkflowEvent, current_identity, date, datetime, func, get_db, select, settings, status, uuid4
-from app.models_shared import FinancePaymentTypeCreateInput, IprCaseAssistedFeeConfirmInput, IprCaseAssistedFeeCreateInput, IprCaseAssistedFeeUpdateInput, IprCaseFeeActionInput, IprCaseFeeArrivalInput, IprCaseFeeCreateInput, IprCaseFeeInvoiceInput, IprCaseFeePaymentApplicationInput
+from app.models_shared import FinancePaymentTypeCreateInput, IprCaseAssistedFeeConfirmInput, IprCaseAssistedFeeCreateInput, IprCaseAssistedFeeUpdateInput, IprCaseFeeActionInput, IprCaseFeeArrivalInput, IprCaseFeeCreateInput, IprCaseFeeInvoiceInput, IprCaseFeePaymentApplicationInput, IprCaseFeeUpdateInput
 
 router = APIRouter()
 
@@ -301,6 +301,42 @@ async def create_ipr_case_fee(case_id: int, body: IprCaseFeeCreateInput, identit
     db.add(fee); await db.flush()
     db.add(WorkflowEvent(record_id=fee.id, action="创建费用", to_status="草稿", operator=identity["username"], comment=f"{body.fee_type}：{amount:.2f} 元"))
     db.add(WorkflowEvent(record_id=record.id, action="新建知识产权案件费用", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{fee.serial_no}｜{body.fee_type}｜{amount:.2f} 元"))
+    await db.commit()
+    return await _ipr_case_fee_row(record, fee.id, identity, db)
+
+@router.patch(f"{settings.api_prefix}/ipr/cases/{{case_id}}/fees/{{fee_id}}")
+async def update_ipr_case_fee(case_id: int, fee_id: int, body: IprCaseFeeUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """费用明细右键“修改”（BUG20261028020，按原系统）：只能改还没开票、没申请付款的草稿费用。"""
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "ipr.case.fee.create")
+    from app.core.finance import (
+        _ipr_case_fee, _ipr_case_fee_row, _round_fee_amount,
+    )
+    from app.core.permissions import (
+        _ensure_ipr_case_fee_write,
+    )
+    record = await _ensure_ipr_case_fee_write(case_id, identity, db)
+    fee = await _ipr_case_fee(record, fee_id, identity, db)
+    data = dict(fee.data or {})
+    if fee.status != "草稿" or data.get("locked") or data.get("is_locked") or data.get("payment_application_id"):
+        raise HTTPException(status_code=409, detail="只有未提交的草稿费用可以修改")
+    if body.fee_type not in FINANCE_FEE_TYPES:
+        raise HTTPException(status_code=422, detail="费用类型无效")
+    amount = _round_fee_amount(body.amount)
+    if amount == 0:
+        raise HTTPException(status_code=422, detail="费用金额不能为 0")
+    if amount < 0 and body.fee_type != "内部费用":
+        raise HTTPException(status_code=422, detail="只有内部费用可以使用负数冲销")
+    before = f"{data.get('fee_type') or ''}：{float(data.get('amount') or 0):.2f} 元"
+    fee.data = {
+        **data, "amount": amount, "fee_type": body.fee_type,
+        "is_refund": body.fee_type == "内部费用" and amount < 0,
+        "fee_date": str(body.fee_date) if body.fee_date else data.get("fee_date") or str(date.today()),
+    }
+    fee.description = body.description.strip()
+    fee.updated_at = func.now()
+    db.add(WorkflowEvent(record_id=fee.id, action="修改费用", from_status=fee.status, to_status=fee.status, operator=identity["username"], comment=f"{before} → {body.fee_type}：{amount:.2f} 元"))
+    db.add(WorkflowEvent(record_id=record.id, action="修改知识产权案件费用", from_status=record.status, to_status=record.status, operator=identity["username"], comment=f"{fee.serial_no}｜{body.fee_type}｜{amount:.2f} 元"))
     await db.commit()
     return await _ipr_case_fee_row(record, fee.id, identity, db)
 

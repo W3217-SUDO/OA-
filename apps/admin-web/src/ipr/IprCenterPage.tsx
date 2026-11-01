@@ -20,6 +20,8 @@ import Table from "../components/ResizableTable";
 import dayjs from "dayjs";
 import { useEffect,useMemo,useRef,useState } from "react";
 import { api } from "../api";
+import { resolveDetailRelation } from "../detailRelationResolver";
+import { rememberContractDetailTarget } from "../contractDetailNavigation";
 import { IprConflictActions } from "./IprConflictActions";
 import { confirmOperation } from "../components/common/confirmOperation";
 import { DetailTabs } from "../components/common/DetailTabs";
@@ -1001,6 +1003,28 @@ export default function IprCenterPage({
         filesPageState.page,
         filesPageState.pageSize
       );
+  };
+  // 文档信息右键“生成申请文件”：按原系统规则把这份文档生成锁定的申请文件包（BUG20261028020）。
+  const generateIprApplicationFile = async (row: Attachment) => {
+    if (!detail) return;
+    try {
+      await api.post(`/ipr/cases/${detail.id}/files/${row.id}/generate-application`);
+      message.success("申请文件已生成");
+      refreshIprFiles();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "申请文件生成失败");
+    }
+  };
+  // 费用明细右键“合同文件”：打开费用关联的合同，在合同页查看合同文件。
+  const openIprFeeContract = async (contractNo: string) => {
+    try {
+      const record = await resolveDetailRelation("contract", { serial_no: contractNo });
+      if (!record) return void message.warning("未找到关联合同或当前账号无权查看");
+      rememberContractDetailTarget({ id: record.id, serial_no: record.serial_no });
+      onNavigate?.("contract-company");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "关联合同加载失败");
+    }
   };
 
   // ==================== 律所 ====================
@@ -1987,6 +2011,7 @@ export default function IprCenterPage({
                           markSelectedIprFilesTransmitted
                         }
                         onDeleteFile={deleteIprFile}
+                        onGenerateApplication={(row) => void generateIprApplicationFile(row)}
                         onSelectedFileIdsChange={setSelectedIprFileIds}
                         confirmIprDeletion={confirmIprDeletion}
                         onPageChange={handleFilesPageChange}
@@ -1997,7 +2022,7 @@ export default function IprCenterPage({
                     key: "fees",
                     label: "费用明细",
                     children: (
-                      <IprCaseFeesPanel detail={detail} />
+                      <IprCaseFeesPanel detail={detail} onOpenContract={(contractNo) => void openIprFeeContract(contractNo)} />
                     ),
                   },
                   {

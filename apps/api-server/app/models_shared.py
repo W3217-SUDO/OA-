@@ -229,6 +229,7 @@ from app.api_schemas.ipr import (
     IprCaseFeeActionInput as IprCaseFeeActionInput,
     IprCaseFeeArrivalInput as IprCaseFeeArrivalInput,
     IprCaseFeeCreateInput as IprCaseFeeCreateInput,
+    IprCaseFeeUpdateInput as IprCaseFeeUpdateInput,
     IprCaseFeeInvoiceInput as IprCaseFeeInvoiceInput,
     IprCaseFeePaymentApplicationInput as IprCaseFeePaymentApplicationInput,
     IprCaseCrossModuleLinkInput as IprCaseCrossModuleLinkInput,

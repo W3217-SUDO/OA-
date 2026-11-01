@@ -3,6 +3,7 @@ import { Alert,Button,Card,DatePicker,Form,Input,Modal,Select,Space } from "antd
 import Table from "../../components/ResizableTable";
 import { personDisplayName } from "../constants";
 import type { AssistedFee,Attachment,IprDetailPageState,IprRecord } from "../types";
+import { IprRowContextMenu } from "./IprRowContextMenu";
 
 interface IprAssistedFeesPanelProps {
   detail: IprRecord;
@@ -103,6 +104,15 @@ export function IprAssistedFeesPanel({
             style={{ marginBottom: 12 }}
           />
         ) : null}
+        {/* 右键菜单按原系统：新建资助费用、刷新（BUG20261028020）。 */}
+        <IprRowContextMenu
+          rows={assistedFees}
+          rowKey={(row) => row.id}
+          items={() => [
+            { key: "create", label: "新建资助费用", disabled: detail.status !== "在办" || !canManageAssistedFees, onClick: onOpenCreate },
+            { key: "refresh", label: "刷新", onClick: onRefresh },
+          ]}
+        >
         <Table
           rowKey="id"
           size="small"
@@ -213,9 +223,9 @@ export function IprAssistedFeesPanel({
             },
           ]}
         />
+        </IprRowContextMenu>
       </Card>
 
-      <Modal open={assistedOpen} title="新增知识产权协助费" onCancel={onCloseCreate} onOk={onCreate} okText="提交" />
       <Modal
         open={assistedOpen}
         title="新建知识产权资助费用"

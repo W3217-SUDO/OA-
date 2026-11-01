@@ -121,6 +121,14 @@ class IprCaseFeeCreateInput(BaseModel):
     fee_date: date | None = None
 
 
+class IprCaseFeeUpdateInput(BaseModel):
+    """案件页费用明细右键“修改”：只改草稿费用的类型、金额、日期和说明。"""
+    amount: float
+    fee_type: str = Field(min_length=1, max_length=64)
+    fee_date: date | None = None
+    description: str = Field(default="", max_length=2000)
+
+
 class IprCaseFeeInvoiceInput(BaseModel):
     customer: str = Field(min_length=1, max_length=255)
     amount: float = Field(gt=0)
