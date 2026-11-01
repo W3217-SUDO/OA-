@@ -7,7 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base
 from app.main import _customer_roi_analytics
-from app.models import BusinessRecord, FinanceTransaction, User
+from app.models import BusinessRecord, FinanceTransaction, IncomingPayment, User
 
 
 ADMIN = {"username": "admin", "role": "admin"}
@@ -62,7 +62,7 @@ class CustomerRoiReportTest(unittest.IsolatedAsyncioTestCase):
             customer_a, customer_b = await self._seed(db)
             result = await _customer_roi_analytics(ADMIN, db, date_from=date(2026, 9, 1), date_to=date(2026, 9, 2))
 
-        self.assertEqual(result["date_basis"], "收付款流水日期")
+        self.assertEqual(result["date_basis"], "收付款流水日期、到账日期")
         self.assertEqual(len(result["rows"]), 2)
         by_customer = {row["customer_id"]: row for row in result["rows"]}
         self.assertEqual(by_customer[customer_a.id]["income"], 300)
@@ -100,6 +100,39 @@ class CustomerRoiReportTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(scoped["totals"], {"income": 300, "cost": 150, "profit": 150, "roi": 100})
         self.assertEqual(error.exception.status_code, 403)
+
+    async def test_bank_receipts_count_as_income_by_allocation_then_claimed_customer(self):
+        # BUG 500784：收入原来只取“回款”流水，迁来的到账单（按分配的案件/合同）全漏了。
+        async with self.sessions() as db:
+            customer_a, _customer_b = await self._seed(db)
+            customer_c = BusinessRecord(module="customer", serial_no="CODEX-ROI-CUSTOMER-C", title="独立客户", customer="独立客户", status="正常", owner="owner-c", department="华北部", data={})
+            db.add(customer_c)
+            await db.flush()
+            case_a = BusinessRecord(module="case", serial_no="CODEX-ROI-CASE-A", title="案件A", customer="同名客户", status="办理中", owner="case-owner", department="华东部", data={"customer_id": customer_a.id, "customer_no": customer_a.serial_no})
+            db.add(case_a)
+            await db.flush()
+            db.add_all([
+                IncomingPayment(source_kind="hz_crm_20260930", receipt_no="R-1", received_date=date(2026, 9, 1), amount=1000, payer_name="同名客户",
+                                status="已分配", claimed_customer="同名客户", allocated_amount=1000, operator="admin",
+                                allocations=[{"amount": 800, "case_id": case_a.id, "case_no": case_a.serial_no},
+                                             {"amount": 200, "case_no": "CODEX-ROI-CASE-A", "is_refund": True}]),
+                IncomingPayment(source_kind="hz_crm_20260930", receipt_no="R-2", received_date=date(2026, 9, 2), amount=500, payer_name="独立客户",
+                                status="待分配", claimed_customer="独立客户", allocated_amount=0, operator="admin", allocations=[]),
+                IncomingPayment(source_kind="hz_crm_20260930", receipt_no="R-3", received_date=date(2026, 9, 2), amount=70, payer_name="同名客户",
+                                status="待分配", claimed_customer="同名客户", allocated_amount=0, operator="admin", allocations=[]),
+                IncomingPayment(source_kind="bank_import", receipt_no="R-4", received_date=date(2026, 10, 9), amount=90, payer_name="独立客户",
+                                status="待分配", claimed_customer="独立客户", allocated_amount=0, operator="admin", allocations=[]),
+            ])
+            await db.commit()
+            result = await _customer_roi_analytics(ADMIN, db, date_from=date(2026, 9, 1), date_to=date(2026, 9, 2))
+            by_department = await _customer_roi_analytics(ADMIN, db, date_from=date(2026, 9, 1), date_to=date(2026, 9, 2), department="华北部")
+
+        by_customer = {row["customer_id"]: row for row in result["rows"]}
+        # 300 回款流水 + 到账单分配 800 - 退款 200；同名客户的未分配到账（R-3）认领名不唯一，不计入。
+        self.assertEqual(by_customer[customer_a.id]["income"], 900)
+        self.assertEqual(by_customer[customer_c.id]["income"], 500)  # 未分配，归认领客户；R-4 在日期范围外
+        self.assertIn("case-owner", by_customer[customer_a.id]["employee"])
+        self.assertEqual(by_department["totals"]["income"], 500)
 
 
 if __name__ == "__main__":

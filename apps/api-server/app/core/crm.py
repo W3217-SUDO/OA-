@@ -3,7 +3,7 @@ from app.core.constants import (
     CASE_DEFENDANT_FIELDS, CASE_PLAINTIFF_FIELDS, CASE_THIRD_PARTY_FIELDS, UPLOAD_ROOT,
 )
 from app.core.dependencies import (
-    AsyncSession, BusinessRecord, FileAttachment, FinanceTransaction, HTTPException,
+    AsyncSession, BusinessRecord, FileAttachment, FinanceTransaction, HTTPException, IncomingPayment,
     LawFirm, LawFirmAudit, LawFirmContact, NAMESPACE_URL, Path,
     User, WorkflowEvent, date, datetime,
     and_, func, or_, select, uuid4, uuid5, verify_password,
@@ -341,9 +341,11 @@ async def _customer_roi_analytics(
     """Aggregate settled cash movements by an unambiguous, visible customer.
 
     This is deliberately distinct from the legacy-style ``brand`` chart above:
-    it counts only posted ``回款`` plus ``付款``/``合同付款`` transactions,
-    rather than fee applications or their denormalized received fields.  That
-    makes the result a net ROI: (income - cost) / cost * 100.
+    cost counts posted ``付款``/``合同付款`` transactions; income counts posted
+    ``回款`` transactions plus bank receipts (到账单, incl. those migrated from the
+    legacy system) by their allocations to cases/contracts — BUG 500784（思法汇成
+    11-01）：收入原来只取“回款”流水，迁来的到账单全漏了。  Net ROI:
+    (income - cost) / cost * 100.
     """
     from app.core.formatters import (
         _normalized_customer_name,
@@ -363,7 +365,13 @@ async def _customer_roi_analytics(
     source_records = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module.in_({"finance", "contract", "contract_payment"}), *scope,
     ))).all())
-    if not source_records:
+    receipt_conditions = [IncomingPayment.amount > 0]
+    if date_from:
+        receipt_conditions.append(IncomingPayment.received_date >= date_from)
+    if date_to:
+        receipt_conditions.append(IncomingPayment.received_date <= date_to)
+    receipts = list((await db.scalars(select(IncomingPayment).where(*receipt_conditions))).all())
+    if not source_records and not receipts:
         return {
             "view": "customer-roi", "rows": [],
             "totals": {"income": 0.0, "cost": 0.0, "profit": 0.0, "roi": None},
@@ -381,6 +389,13 @@ async def _customer_roi_analytics(
         data = record.data or {}
         related_ids.update(_positive_record_id(data.get(key)) for key in ("case_id", "contract_id", "contract_record_id"))
         related_serials.update(str(data.get(key) or "").strip() for key in ("case_no", "contract_no"))
+    for receipt in receipts:
+        related_ids.add(int(receipt.contract_record_id or 0))
+        related_serials.update((str(receipt.contract_no or "").strip(), str(receipt.case_no or "").strip()))
+        for allocation in receipt.allocations or []:
+            if isinstance(allocation, dict):
+                related_ids.add(_positive_record_id(allocation.get("case_id")))
+                related_serials.update(str(allocation.get(key) or "").strip() for key in ("case_no", "contract_no"))
     related_ids.discard(0)
     related_serials.discard("")
     related_conditions = [BusinessRecord.module.in_({"case", "contract"}), *scope]
@@ -404,7 +419,10 @@ async def _customer_roi_analytics(
         customer_nos.add(str(data.get("customer_no") or "").strip())
     customer_ids.discard(0)
     customer_nos.discard("")
+    claimed_names = {str(receipt.claimed_customer or "").strip() for receipt in receipts} - {""}
     customer_links = []
+    if claimed_names:
+        customer_links.append(scalar_in_values(BusinessRecord.title, claimed_names))
     if customer_ids:
         customer_links.append(scalar_in_values(BusinessRecord.id, customer_ids))
     if customer_nos:
@@ -414,8 +432,10 @@ async def _customer_roi_analytics(
     ))).all()) if customer_links else []
     customers_by_id = {record.id: record for record in customers}
     customers_by_no: dict[str, list[BusinessRecord]] = {}
+    customers_by_title: dict[str, list[BusinessRecord]] = {}
     for customer_record in customers:
         customers_by_no.setdefault(customer_record.serial_no, []).append(customer_record)
+        customers_by_title.setdefault(_normalized_customer_name(customer_record.title), []).append(customer_record)
 
     def linked_records(source: BusinessRecord) -> list[BusinessRecord]:
         if source.module == "contract":
@@ -433,10 +453,13 @@ async def _customer_roi_analytics(
         return result
 
     def resolve_customer(source: BusinessRecord) -> BusinessRecord | None:
+        return customer_of_records(linked_records(source))
+
+    def customer_of_records(records: list[BusinessRecord]) -> BusinessRecord | None:
         # Never fall back to a copied customer name.  A missing, ambiguous, or
         # out-of-scope customer relation is excluded instead of risking a merge
         # of same-named customers or disclosure of an inaccessible master row.
-        for record in linked_records(source):
+        for record in records:
             data = record.data or {}
             customer_id = _positive_record_id(data.get("customer_id") or data.get("customer_record_id"))
             customer_no = str(data.get("customer_no") or "").strip()
@@ -461,7 +484,7 @@ async def _customer_roi_analytics(
         transaction_conditions.append(FinanceTransaction.transaction_date >= date_from)
     if date_to:
         transaction_conditions.append(FinanceTransaction.transaction_date <= date_to)
-    transactions = list((await db.scalars(select(FinanceTransaction).where(*transaction_conditions))).all())
+    transactions = list((await db.scalars(select(FinanceTransaction).where(*transaction_conditions))).all()) if source_by_id else []
 
     grouped: dict[int, dict] = {}
     eligible_sources: set[int] = set()
@@ -490,6 +513,55 @@ async def _customer_roi_analytics(
         else:
             bucket["cost"] += amount
 
+    def add_income(customer_record: BusinessRecord, owner_record: BusinessRecord | None, amount: float) -> None:
+        department_name = (owner_record.department if owner_record else customer_record.department) or ""
+        owner_name = (owner_record.owner if owner_record else customer_record.owner) or ""
+        visible_people.append((department_name, owner_name))
+        if department.strip() and department_name != department.strip():
+            return
+        if employee.strip() and owner_name != employee.strip():
+            return
+        bucket = grouped.setdefault(customer_record.id, {
+            "customer_id": customer_record.id, "customer": customer_record.title,
+            "customer_no": customer_record.serial_no, "income": 0.0, "cost": 0.0,
+            "departments": set(), "employees": set(),
+        })
+        bucket["departments"].add(department_name)
+        bucket["employees"].add(owner_name)
+        bucket["income"] += amount
+
+    def claimed_customer(receipt: IncomingPayment) -> BusinessRecord | None:
+        candidates = customers_by_title.get(_normalized_customer_name(receipt.claimed_customer or ""), [])
+        return candidates[0] if len(candidates) == 1 else None
+
+    # 到账单：按分配到的案件/合同归客户（与成本口径一致）；未分配部分归认领客户；退款分配记负数。
+    visible_people: list[tuple[str, str]] = []
+    for receipt in receipts:
+        allocated = 0.0
+        for allocation in receipt.allocations or []:
+            if not isinstance(allocation, dict):
+                continue
+            amount = abs(float(allocation.get("amount") or 0))
+            allocated += amount
+            records = [record for record in (
+                related_by_id.get(_positive_record_id(allocation.get("case_id"))),
+                related_by_serial.get(str(allocation.get("case_no") or "").strip()),
+                related_by_serial.get(str(allocation.get("contract_no") or "").strip()),
+            ) if record]
+            customer_record = customer_of_records(records) or claimed_customer(receipt)
+            if customer_record:
+                add_income(customer_record, records[0] if records else None, -amount if allocation.get("is_refund") else amount)
+        remainder = round(float(receipt.amount or 0) - allocated, 2)
+        if remainder > 0:
+            records = [record for record in (
+                related_by_id.get(int(receipt.contract_record_id or 0)),
+                related_by_serial.get(str(receipt.contract_no or "").strip()),
+                related_by_serial.get(str(receipt.case_no or "").strip()),
+            ) if record]
+            customer_record = customer_of_records(records) or claimed_customer(receipt)
+            if customer_record:
+                add_income(customer_record, records[0] if records else None, remainder)
+
     rows = []
     for bucket in sorted(grouped.values(), key=lambda value: (value["customer"], value["customer_id"])):
         income, cost = round(bucket["income"], 2), round(bucket["cost"], 2)
@@ -509,11 +581,11 @@ async def _customer_roi_analytics(
         "view": "customer-roi", "rows": rows,
         "totals": {"income": total_income, "cost": total_cost, "profit": total_profit, "roi": round(total_profit / total_cost * 100, 2) if total_cost else None},
         "filter_options": {
-            "departments": sorted({source.department for source in visible_sources if source and source.department}),
-            "employees": sorted({source.owner for source in visible_sources if source and source.owner}),
+            "departments": sorted({source.department for source in visible_sources if source and source.department} | {name for name, _ in visible_people if name}),
+            "employees": sorted({source.owner for source in visible_sources if source and source.owner} | {name for _, name in visible_people if name}),
         },
-        "formula": "ROI=(已确认回款-已确认付款)/已确认付款×100%；成本为0时不计算ROI",
-        "date_basis": "收付款流水日期", "source": "realtime",
+        "formula": "ROI=(已确认回款-已确认付款)/已确认付款×100%；回款含到账单（按分配的案件/合同归客户）；成本为0时不计算ROI",
+        "date_basis": "收付款流水日期、到账日期", "source": "realtime",
     }
 
 
