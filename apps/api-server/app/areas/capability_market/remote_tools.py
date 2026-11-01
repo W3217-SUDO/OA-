@@ -86,9 +86,12 @@ async def execute_call(payload, identity, db, *, action_id):
         raise HTTPException(409, '个人MCP服务已不存在，请重新准备调用')
     if safe_remote(payload['arguments'], configuration) != payload['arguments']:
         raise HTTPException(422, '远程工具参数不能包含凭据')
+    batch = payload.get('batch')
+    if batch is not None and (batch.get('kind') != 'full_law' or payload['tool_name'] != 'get_law_item_content'):
+        raise HTTPException(409, '批量调用类型无效，禁止执行')
     # 持有当前连接行锁直到结果落库，防止确认后配置更换造成目的地漂移。
-    async with asyncio.timeout(25):
-        async with remote_session(server, file_results=True) as (session, initialized):
+    async with asyncio.timeout(25 if batch is None else 100):
+        async with remote_session(server, file_results=batch is None) as (session, initialized):
             tools = await session_tools(session)
             tool = next((tool for tool in tools if tool.name == payload['tool_name']), None)
             if tool is None or schema_fingerprint(tool.input_schema) != payload['schema_fingerprint']:
@@ -96,11 +99,29 @@ async def execute_call(payload, identity, db, *, action_id):
             if redact_verification(tool.input_schema, configuration) != tool.input_schema:
                 raise HTTPException(502, '外部工具schema包含连接凭据回声，已阻断调用')
             validate_arguments(tool.input_schema, payload['arguments'])
-            try:
-                result = await session.call_tool(tool.name, arguments=payload['arguments'])
-            except Exception as exc:
-                raise HTTPException(502, remote_error(exc, 'tools/call', server)) from None
-            if result.is_error:
-                raise HTTPException(502, '外部MCP工具报告执行失败，请核对外部实际状态，禁止重复提交')
+            if batch is not None:
+                from .remote_full_law import fetch_articles
+                try:
+                    articles, calls, complete = await fetch_articles(session, payload['arguments']['lawTitle'], batch['max_calls'])
+                except HTTPException:
+                    raise
+                except Exception as exc:
+                    raise HTTPException(502, remote_error(exc, 'tools/call', server)) from None
+            else:
+                try:
+                    result = await session.call_tool(tool.name, arguments=payload['arguments'])
+                except Exception as exc:
+                    raise HTTPException(502, remote_error(exc, 'tools/call', server)) from None
+                if result.is_error:
+                    raise HTTPException(502, '外部MCP工具报告执行失败，请核对外部实际状态，禁止重复提交')
+    if batch is not None:
+        from .remote_full_law import save_full_law
+        if safe_remote(articles, configuration) != articles:
+            raise HTTPException(502, '外部MCP结果包含连接凭据回声，已阻断保存')
+        title, reference = await save_full_law(articles, complete, identity, db,
+                                               conversation_id=request.data['conversation_id'], action_id=action_id)
+        price = batch.get('points_per_call')
+        return {'full_law': {'law_title': title, 'articles': len(articles), 'calls': calls, 'complete': complete,
+                             'points': calls * price if price else None}, 'files': [reference]}
     return await store_remote_files(result, configuration, identity, db, tool_name=payload['tool_name'],
                                     conversation_id=request.data['conversation_id'], action_id=action_id)
