@@ -1,5 +1,5 @@
 import { POPUP_WIDTH } from "./components/common/popupSize";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Button,
@@ -427,7 +427,35 @@ export default function OrganizationCenterPage({
       : [];
   }, [departmentOrgTree, departments]);
   const [orgTreeView, setOrgTreeView] = useState<"tree" | "chart">("tree");
-  const renderOrgChart = (nodes: OrgNode[]) => (
+  const orgChartBodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // 架构图比卡片宽时，打开就把“全所”滚到中间
+    if (orgTreeView !== "chart") return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const scroller = orgChartBodyRef.current;
+      if (scroller) scroller.scrollLeft = (scroller.scrollWidth - scroller.clientWidth) / 2;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [orgTreeView, departmentOrgTree]);
+  const renderOrgChart = (nodes: OrgNode[]) => {
+    // 同一级下级部门很多且都没有再下级时，折行排成方阵，避免一排拉得很宽
+    if (nodes.length > 6 && nodes.every((node) => !node.children.length)) {
+      const columns = Math.min(6, Math.ceil(Math.sqrt(nodes.length * 2)));
+      return (
+        <ul className={`org-chart-leaves${columns > 3 ? " is-wide" : ""}`} style={{ gridTemplateColumns: `repeat(${columns}, 104px)` }}>
+          {nodes.map(({ department }) => (
+            <li key={department.id}>
+              <div className={`org-chart-box${department.is_active ? "" : " is-inactive"}`}>
+                <b>{department.name}</b>
+                <span>{department.manager ? (department.manager_display_name || department.manager) : "未设负责人"}</span>
+                <span>{department.active_staff_count ?? 0}人{department.is_active ? "" : "（停用）"}</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    return (
     <ul>
       {nodes.map(({ department, children }) => (
         <li key={department.id}>
@@ -440,7 +468,8 @@ export default function OrganizationCenterPage({
         </li>
       ))}
     </ul>
-  );
+    );
+  };
   const start = (row?: Department | JobRole) => {
     if (!canManageOrganization) {
       message.error("仅系统管理员可以维护部门和角色");
@@ -819,6 +848,7 @@ export default function OrganizationCenterPage({
             orgTreeView === "tree" ? (
               <Tree key={departments.length} showLine blockNode defaultExpandAll treeData={departmentTreeData} />
             ) : (
+              <div className="org-chart-scroll" ref={orgChartBodyRef}>
               <div className="org-chart">
                 <ul>
                   <li>
@@ -826,6 +856,7 @@ export default function OrganizationCenterPage({
                     {renderOrgChart(departmentOrgTree)}
                   </li>
                 </ul>
+              </div>
               </div>
             )
           ) : (
