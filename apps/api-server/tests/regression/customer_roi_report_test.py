@@ -32,8 +32,8 @@ class CustomerRoiReportTest(unittest.IsolatedAsyncioTestCase):
         customer_b = BusinessRecord(module="customer", serial_no="CODEX-ROI-CUSTOMER-B", title="同名客户", customer="同名客户", status="正常", owner="owner-b", department="华南部", data={})
         db.add_all([customer_a, customer_b])
         await db.flush()
-        contract_a = BusinessRecord(module="contract", serial_no="CODEX-ROI-CONTRACT-A", title="合同A", customer="同名客户", status="审批通过", owner="income-owner", department="华东部", data={"customer_id": customer_a.id, "customer_no": customer_a.serial_no})
-        contract_b = BusinessRecord(module="contract", serial_no="CODEX-ROI-CONTRACT-B", title="合同B", customer="同名客户", status="审批通过", owner="other-owner", department="华南部", data={"customer_id": customer_b.id, "customer_no": customer_b.serial_no})
+        contract_a = BusinessRecord(module="contract", serial_no="CODEX-ROI-CONTRACT-A", title="合同A", customer="同名客户", status="审批通过", owner="income-owner", department="华东部", data={"contract_type": "框架合作合同", "customer_id": customer_a.id, "customer_no": customer_a.serial_no})
+        contract_b = BusinessRecord(module="contract", serial_no="CODEX-ROI-CONTRACT-B", title="合同B", customer="同名客户", status="审批通过", owner="other-owner", department="华南部", data={"contract_type": "框架合作合同", "customer_id": customer_b.id, "customer_no": customer_b.serial_no})
         db.add_all([contract_a, contract_b])
         await db.flush()
         fee_a = BusinessRecord(module="finance", serial_no="CODEX-ROI-FEE-A", title="费用A", customer="同名客户", status="已付款", owner="cost-owner", department="华东部", data={"contract_id": contract_a.id, "contract_no": contract_a.serial_no})
@@ -115,8 +115,9 @@ class CustomerRoiReportTest(unittest.IsolatedAsyncioTestCase):
         # 思法汇成 11-01 13:18：收入按代理费到账算；公司之间转款不重复算，赔偿款转到平台后的平台代理费算一次。
         async with self.sessions() as db:
             customer_a, _customer_b = await self._seed(db)
-            case_x = BusinessRecord(module="case", serial_no="CODEX-ROI-CASE-X", title="直接付代理费", customer="同名客户", status="办理中", owner="case-owner", department="华东部", data={"customer_id": customer_a.id})
-            case_y = BusinessRecord(module="case", serial_no="CODEX-ROI-CASE-Y", title="被告赔偿款", customer="同名客户", status="已归档", owner="case-owner", department="华东部", data={"customer_id": customer_a.id})
+            contract_a = await db.scalar(select(BusinessRecord).where(BusinessRecord.serial_no == "CODEX-ROI-CONTRACT-A"))
+            case_x = BusinessRecord(module="case", serial_no="CODEX-ROI-CASE-X", title="直接付代理费", customer="同名客户", status="办理中", owner="case-owner", department="华东部", data={"customer_id": customer_a.id, "contract_record_id": contract_a.id})
+            case_y = BusinessRecord(module="case", serial_no="CODEX-ROI-CASE-Y", title="被告赔偿款", customer="同名客户", status="已归档", owner="case-owner", department="华东部", data={"customer_id": customer_a.id, "contract_record_id": contract_a.id})
             db.add_all([case_x, case_y])
             await db.flush()
             platform_fee = BusinessRecord(module="finance", serial_no="F-PLAT", title="平台代理费", customer="同名客户", status="已通知", owner="x", department="华东部", data={})
@@ -180,6 +181,31 @@ class CustomerRoiReportTest(unittest.IsolatedAsyncioTestCase):
             await db.commit()
             result = await _customer_roi_analytics(ADMIN, db, date_from=date(2026, 9, 1), date_to=date(2026, 9, 2))
         by_customer = {row["customer_id"]: row for row in result["rows"]}
+        self.assertEqual(by_customer[customer_a.id]["cost"], 150)
+
+    async def test_only_framework_contracts_count(self):
+        # 思法汇成 11-01 15:18：客户ROI 只算框架合作合同。
+        async with self.sessions() as db:
+            customer_a, _customer_b = await self._seed(db)
+            single = BusinessRecord(module="contract", serial_no="CODEX-ROI-CONTRACT-S", title="单项合同", customer="同名客户", status="审批通过", owner="income-owner", department="华东部",
+                                    data={"contract_type": "单项委托合同", "customer_id": customer_a.id, "customer_no": customer_a.serial_no})
+            db.add(single)
+            await db.flush()
+            case_s = BusinessRecord(module="case", serial_no="CODEX-ROI-CASE-S", title="单项案件", customer="同名客户", status="办理中", owner="case-owner", department="华东部",
+                                    data={"customer_id": customer_a.id, "contract_record_id": single.id})
+            fee_s = BusinessRecord(module="finance", serial_no="CODEX-ROI-FEE-S", title="单项费用", customer="同名客户", status="已付款", owner="cost-owner", department="华东部",
+                                   data={"contract_id": single.id, "contract_no": single.serial_no})
+            db.add_all([case_s, fee_s])
+            await db.flush()
+            db.add_all([
+                self._receipt("R-S1", 800, "2026-09-01", "同名客户", [{"amount": 800, "fee_type": "代理费", "case_id": case_s.id, "case_no": case_s.serial_no}]),
+                self._receipt("R-S2", 200, "2026-09-01", "同名客户", [{"amount": 200, "fee_type": "代理费", "contract_no": single.serial_no}]),
+                FinanceTransaction(finance_record_id=fee_s.id, transaction_type="付款", amount=70, transaction_date=date(2026, 9, 2), operator="admin"),
+            ])
+            await db.commit()
+            result = await _customer_roi_analytics(ADMIN, db, date_from=date(2026, 9, 1), date_to=date(2026, 9, 2))
+        by_customer = {row["customer_id"]: row for row in result["rows"]}
+        self.assertEqual(by_customer[customer_a.id]["income"], 300)
         self.assertEqual(by_customer[customer_a.id]["cost"], 150)
 
     async def test_employee_column_shows_person_names(self):
