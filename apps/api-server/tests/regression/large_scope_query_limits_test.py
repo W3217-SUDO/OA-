@@ -42,14 +42,13 @@ class LargeScopeQueryLimitTests(unittest.IsolatedAsyncioTestCase):
             ])
             await db.flush()
             fee_id = (await db.execute(BusinessRecord.__table__.select().where(BusinessRecord.serial_no == "CODEX-LIMIT-F0"))).first().id
-            # 客户ROI的收入改按发票（BUG 500784），这里用付款流水验证大量费用来源不超绑定参数上限。
-            db.add(FinanceTransaction(finance_record_id=fee_id, transaction_type="付款", amount=100, transaction_date=date(2026, 9, 30), operator="admin"))
+            db.add(FinanceTransaction(finance_record_id=fee_id, transaction_type="回款", amount=100, transaction_date=date(2026, 9, 30), operator="admin"))
             await db.commit()
         async with self.sessions() as db:
             result = await _customer_roi_analytics(ADMIN, db)
         self.assertEqual(result["view"], "customer-roi")
         self.assertEqual(len(result["rows"]), 1)
-        self.assertEqual(result["rows"][0]["cost"], 100.0)
+        self.assertEqual(result["rows"][0]["income"], 100.0)
 
     async def test_stage_statistics_counts_phase_and_refund_columns_per_assistant(self):
         async with self.sessions() as db:
