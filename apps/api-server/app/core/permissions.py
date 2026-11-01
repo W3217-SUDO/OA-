@@ -640,6 +640,18 @@ CASE_MINE_TEXT_FIELDS = (
 )
 
 
+CASE_PERSON_SEPARATORS = ("，", ";", "；", "、", "|", " ")
+
+
+def _person_list_contains(value, username: str):
+    """账号字段可能是多人串（迁移数据如 "fanyg,zhangwf"），按分隔符拆开逐个比，整串相等也算。"""
+    from sqlalchemy import literal
+    normalized = func.lower(func.coalesce(value, ""))
+    for separator in CASE_PERSON_SEPARATORS:
+        normalized = func.replace(normalized, separator, ",")
+    return literal(",").concat(normalized).concat(",").contains(f",{username.lower()},", autoescape=True)
+
+
 async def _case_mine_scope_condition(identity: dict, db: AsyncSession, *, projected_data=None):
     """Limit the Mine list to concrete case participation, even for admins."""
     from app.core.record_json_text_query import projected_record_condition, record_json_text_projection
@@ -667,17 +679,13 @@ async def _case_mine_scope_condition(identity: dict, db: AsyncSession, *, projec
         data["case_team_usernames"].contains(exact_username_token),
         data["handling_lawyer_usernames"].contains(exact_username_token),
         data["legacy_participants"].contains(f'"staff_name":"{username}"'),
-        # 迁移案件的调查员姓名存在 investigator，账号在 investigator_username（旧系统 Investigator 也算我的案件）。
-        func.lower(func.coalesce(data["investigator_username"], "")) == username.lower(),
-        func.lower(func.coalesce(data["source_person_username"], "")) == username.lower(),
-        func.lower(func.coalesce(data["source_person"], "")) == username.lower(),
-        func.lower(func.coalesce(data["business_owner"], "")) == username.lower(),
-        func.lower(func.coalesce(data["assistant_username"], "")) == username.lower(),
-        func.lower(func.coalesce(data["investigator"], "")) == username.lower(),
-        func.lower(func.coalesce(data["court_lawyer_username"], "")) == username.lower(),
+        # 迁移案件的调查员姓名存在 investigator，账号在 investigator_username（旧系统 Investigator 也算我的案件）；
         # 出庭律师实际存在 court_lawyer / hearing_lawyer_username（旧系统 CourtLawyer 也算我的案件）。
-        func.lower(func.coalesce(data["court_lawyer"], "")) == username.lower(),
-        func.lower(func.coalesce(data["hearing_lawyer_username"], "")) == username.lower(),
+        # 这些字段在迁移数据里可能是多人串，逐个比（旧系统按 LIKE 算我的；分支2 按人对数发现）。
+        *(_person_list_contains(data[key], username) for key in (
+            "investigator_username", "source_person_username", "source_person", "business_owner", "assistant_username",
+            "investigator", "court_lawyer_username", "court_lawyer", "hearing_lawyer_username",
+        )),
     ]
     return or_(
         projected_record_condition(projection, or_(*conditions)),
