@@ -35,8 +35,12 @@ def _declaration(value):
     name = ''
     if isinstance(value, dict) and 'mcpServers' in value:
         servers = value['mcpServers']
-        if not isinstance(servers, dict) or len(servers) != 1:
-            raise HTTPException(422, '每条消息只能配置一个 MCP 服务')
+        if not isinstance(servers, dict) or not servers:
+            raise HTTPException(422, '没有找到要配置的 MCP 服务，请粘贴完整配置')
+        if len(servers) != 1:
+            names = '、'.join(f'「{key}」' for key in list(servers)[:5]) + ('等' if len(servers) > 5 else '')
+            raise HTTPException(422, f'每条消息只能配置一个 MCP 服务，这次粘贴了 {len(servers)} 个（{names}）。'
+                                     '请分开发送：每条消息只保留 mcpServers 里的一个服务，连同它自己的地址和密钥。')
         name, value = next(iter(servers.items()))
     if not isinstance(value, dict) or set(value) - {
         'name', 'url', 'server_url', 'type', 'transport', 'headers',

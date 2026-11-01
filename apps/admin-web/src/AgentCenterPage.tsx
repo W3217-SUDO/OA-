@@ -4,7 +4,7 @@ import { Button, Empty, Image, Input, List, message, Modal, Select, Space, Spin,
 import { AppstoreAddOutlined, CheckCircleOutlined, CloseOutlined, FolderOpenOutlined, FolderOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, SendOutlined, StopOutlined } from "@ant-design/icons";
 import { api, AUTH_EXPIRED_EVENT } from "./api";
 import { AgentMessageContent } from "./AgentMessageContent";
-import { AgentOperationPreview, agentOperationError, hasAgentOperationPreview, type AgentActionPreview } from "./AgentOperationPreview";
+import { AgentOperationPreview, agentOperationError, hasAgentOperationPreview, responseErrorMessage, type AgentActionPreview } from "./AgentOperationPreview";
 import { AgentToolRequests } from "./AgentToolRequests";
 import { AgentToolResult } from "./AgentToolResult";
 import { availableAgentSkillId, DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, NO_AGENT_SKILL_OPTION, type AgentSkill } from "./agentSkillRouting";
@@ -205,8 +205,7 @@ export default function AgentCenterPage({ onOpenPersonalAgent, onOpenCaseAgentFo
           localStorage.removeItem("user");
           window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
         }
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.detail || "智能体响应失败，请重新发送");
+        throw new Error(await responseErrorMessage(response, "智能体响应失败，请重新发送"));
       }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();

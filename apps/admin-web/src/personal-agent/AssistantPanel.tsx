@@ -16,7 +16,7 @@ import { CaseAgentFileFolderModal } from "./CaseAgentFileFolderModal";
 import { PersonalMcpConnectionCard } from "./PersonalMcpConnectionCard";
 import { LocalAgentAccess } from "./LocalAgentAccess";
 import { McpConnectionTurn } from "./McpConnectionTurn";
-import { agentOperationMessage, userFacingAgentText } from "../AgentOperationPreview";
+import { agentOperationMessage, responseErrorMessage, userFacingAgentText } from "../AgentOperationPreview";
 import { errorText, workspaceDocumentSaveTarget, type CaseAgentConversationSummary, type ConfirmationDetail, type PendingAction, type WorkspaceMessage, type WorkspaceState } from "./types";
 import type { usePersonalWorkspace } from "./usePersonalWorkspace";
 import { COURT_INTAKE_SKILL } from "../agentSkillRouting";
@@ -133,7 +133,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
     setCaseSession({ item, loading: true, sending: false, state: { conversation_id: String(item.id), conversation_title: item.title, messages: [], pending_actions: [], dismissed_action_ids: [], workspace: { kind: "case", case_id: item.case_id } } });
     try {
       const response = await fetch(`/api/v1/case-spaces/${item.case_id}/agent/state?agent_id=${encodeURIComponent(item.agent_id)}&conversation_id=${encodeURIComponent(item.id)}`, { headers: { Authorization: `Bearer ${localStorage.getItem("access_token") || ""}` } });
-      if (!response.ok) throw new Error((await response.text()) || "案件会话读取失败");
+      if (!response.ok) throw new Error(await responseErrorMessage(response, "案件会话读取失败"));
       const data = await response.json() as { messages?: Array<{ id?: string; role: "user" | "assistant"; content: string; created_at?: string }> };
       const messages: WorkspaceMessage[] = (data.messages || []).map((entry) => ({ ...entry, case_id: item.case_id, case_no: item.case_serial_no, can_save_case_document: entry.role === "assistant" }));
       setCaseSession((current) => current?.item.id === item.id ? { ...current, loading: false, state: { ...current.state, messages } } : current);
@@ -152,7 +152,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
     setCaseSession((current) => current ? { ...current, sending: true, state: { ...current.state, messages: [...current.state.messages, userMessage, { role: "assistant", content: "", case_id: item.case_id, case_no: item.case_serial_no }] } } : current);
     try {
       const response = await fetch(`/api/v1/case-spaces/${item.case_id}/agent/messages`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("access_token") || ""}` }, body: JSON.stringify({ message: content, skill_id: workspace.skillId, attachment_ids: [], document_ids: [], stream: true, agent_id: item.agent_id, conversation_id: item.id }) });
-      if (!response.ok || !response.body) throw new Error((await response.text()) || "案件智能体响应失败");
+      if (!response.ok || !response.body) throw new Error(await responseErrorMessage(response, "案件智能体响应失败"));
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";

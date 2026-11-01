@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { errorText, type ConversationWorkspace, type WorkspaceMessage, type WorkspaceState } from "./types";
+import { responseErrorMessage } from "../AgentOperationPreview";
 
 type Activity = { progress: string; stopping: boolean };
 type Generation = { controller: AbortController; stopping: boolean; finished: boolean; done: Promise<WorkspaceState | null>; stopRequest?: Promise<WorkspaceState>; stopPromise?: Promise<void> };
@@ -58,7 +59,7 @@ export function useConversationRuntime() {
           method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("access_token") || ""}` },
           body: JSON.stringify({ ...body, conversation_id: id }), signal: entry.controller.signal,
         });
-        if (!response.ok || !response.body) throw new Error((await response.text()) || "智能体响应失败");
+        if (!response.ok || !response.body) throw new Error(await responseErrorMessage(response, "智能体响应失败"));
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";

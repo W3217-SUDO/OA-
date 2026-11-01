@@ -1,7 +1,7 @@
 import { message, Modal } from "antd";
 import { availableAgentSkillId, DEFAULT_AGENT_SKILL, encodeAgentSkillMessage } from "../../agentSkillRouting";
 import { api } from "../../api";
-import { AgentOperationPreview, agentOperationError } from "../../AgentOperationPreview";
+import { AgentOperationPreview, agentOperationError, responseErrorMessage } from "../../AgentOperationPreview";
 import { confirmCaseAgentDocument } from "./agentDocumentConfirmation";
 import { AGENT_DOCUMENT_LIMIT, aiWordDocumentName, isAiWordGenerationRequest, isExistingAnswerWordConversionRequest, isUsableAiDocumentContent } from "../constants";
 import type { CaseAgentAction, CaseAgentAttachment, CaseAgentConversation, CaseAgentDocument, CaseAgentState, CaseAgentStatus, CaseAgentSummary, CaseRow } from "../types";
@@ -173,8 +173,7 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
                 }),
             });
             if (!response.ok || !response.body) {
-                const payload = await response.json().catch(() => ({}));
-                throw new Error(payload.detail || "案件智能体响应失败");
+                throw new Error(await responseErrorMessage(response, "案件智能体响应失败"));
             }
             const reader = response.body.getReader();
             const decoder = new TextDecoder();

@@ -91,6 +91,18 @@ export const agentOperationMessage = (value: unknown): string => {
   return JSON.stringify(value) ?? String(value);
 };
 
+/** fetch 失败时只取后端的中文说明（detail），不把 {"detail": ...} 原样显示给用户。 */
+export const responseErrorMessage = async (response: Response, defaultMessage: string): Promise<string> => {
+  try {
+    const payload = (typeof response.text === "function" ? JSON.parse(await response.text()) : await response.json()) as unknown;
+    if (payload !== null && typeof payload === "object") {
+      const detail = (payload as Record<string, unknown>).detail ?? (payload as Record<string, unknown>).message;
+      if (detail !== undefined && detail !== null && detail !== "") return agentOperationMessage(detail);
+    }
+  } catch { /* 非 JSON（如网关错误页）用默认提示。 */ }
+  return defaultMessage;
+};
+
 export const agentOperationError = (error: unknown, defaultMessage: string): string => {
   if (isAxiosError(error) && error.response?.data?.detail !== undefined) {
     return agentOperationMessage(error.response.data.detail);

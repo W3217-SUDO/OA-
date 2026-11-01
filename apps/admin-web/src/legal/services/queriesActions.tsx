@@ -642,8 +642,9 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
         }
         catch (error: any) {
             const payload = error?.response?.data;
-            const detail = payload instanceof Blob ? await payload.text() : payload?.detail;
-            message.error(detail || error?.message || "案件导出失败");
+            let detail = payload?.detail;
+            if (payload instanceof Blob) { try { detail = JSON.parse(await payload.text()).detail; } catch { detail = ""; } }
+            message.error(typeof detail === "string" && detail ? detail : "案件导出失败");
         }
     };
     const exportCounselCases = async (selectedOnly: boolean) => {
