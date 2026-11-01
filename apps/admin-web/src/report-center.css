@@ -435,3 +435,13 @@
     min-height: 170px;
   }
 }
+
+/* 按人统计的进度表（BUG 500789）：每人一行、横向是进度；大屏放大字号。 */
+.progress-matrix-table .progress-matrix-count { padding: 0 4px; height: auto; font-weight: 600; }
+.progress-matrix-table .progress-matrix-zero { color: var(--oa-text-3, #b0b7c3); }
+.progress-matrix-table .progress-matrix-total-row > td { background: var(--oa-fill-2, #f5f7fa); font-weight: 700; }
+.progress-matrix-page.is-big-screen .progress-matrix-table .ant-table { font-size: 22px; }
+.progress-matrix-page.is-big-screen .progress-matrix-table .ant-table-thead > tr > th { font-size: 20px; }
+.progress-matrix-page.is-big-screen .progress-matrix-table .progress-matrix-count,
+.progress-matrix-page.is-big-screen .progress-matrix-table .progress-matrix-count[disabled] { font-size: 24px; color: var(--oa-primary, #1f6feb); cursor: default; }
+.progress-matrix-page.is-big-screen .report-page-heading { font-size: 28px; }

@@ -21,6 +21,7 @@ import { api } from "./api";
 import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./customerDetailNavigation";
 import { useMobileFilterToggle } from "./components/common/MobileFilterToggle";
 import { usePeopleNames } from "./personNames";
+import ProgressMatrixReport from "./ProgressMatrixReport";
 import "./report-center.css";
 
 type ChartResult = { title: string; unit: ChartSpec["unit"]; items: { name: string; value: number | null }[] };
@@ -549,7 +550,7 @@ export function ReportLargeScreenPage({ onExit }: { onExit?: () => void }) {
       {screenMode === "legacy" ? (
         <section className="large-screen-legacy">
           <div className="large-screen-legacy-note">旧版专题报表每 30 秒自动切换，可保留用于会议轮播展示。</div>
-          <ReportCenterPage key={largeScreenViews[legacyIndex]} initialView={largeScreenViews[legacyIndex]} />
+          <ReportCenterPage key={largeScreenViews[legacyIndex]} initialView={largeScreenViews[legacyIndex]} bigScreen />
         </section>
       ) : (
         <Spin spinning={loading} tip="正在汇总实时数据">
@@ -586,7 +587,10 @@ export function ReportLargeScreenPage({ onExit }: { onExit?: () => void }) {
   );
 }
 
-function StandardReportCenterPage({ initialView = "reports-brand", onNavigate }: { initialView?: string; onNavigate?: (route: string) => void }) {  const page = PAGE_SPECS[initialView] ?? PAGE_SPECS["reports-brand"];
+// 这些报表自己取数，不走 /reports/analytics。
+const PAGE_OWN_LOADERS = new Set(["reports-customer-roi", "reports-staff-roi", "reports-refund"]);
+
+function StandardReportCenterPage({ initialView = "reports-brand", onNavigate, bigScreen = false }: { initialView?: string; onNavigate?: (route: string) => void; bigScreen?: boolean }) {  const page = PAGE_SPECS[initialView] ?? PAGE_SPECS["reports-brand"];
   const [loading, setLoading] = useState(false);
   const [analytics, setAnalytics] = useState<Analytics>({ charts: [], filter_options: { customers: [], lawyers: [] }, source: "realtime" });
   const [query, setQuery] = useState<ReportFilterValues>({});
@@ -620,12 +624,13 @@ function StandardReportCenterPage({ initialView = "reports-brand", onNavigate }:
 
   useEffect(() => {
     setQuery({});
-    if (initialView !== "reports-customer-roi") void load({});
+    if (!PAGE_OWN_LOADERS.has(initialView)) void load({});
   }, [initialView]);
   const queryReport = (values: ReportFilterValues) => { setQuery(values); void load(values); };
   const chartItems = (title: string) => analytics.charts.find(item => item.title === title)?.items ?? [];
   if (initialView === "reports-customer-roi") return <CustomerRoiReport onNavigate={onNavigate} />;
   if (initialView === "reports-staff-roi") return <StaffRoiReport />;
+  if (initialView === "reports-refund") return <ProgressMatrixReport title="退费进度案件统计" endpoint="/reports/refund-progress" bigScreen={bigScreen} onNavigate={onNavigate} />;
   return (
     <div className={`report-page ${page.filter === "none" ? "report-page-no-filter" : ""}`}>
       <div className="report-page-heading">
@@ -649,8 +654,8 @@ function StandardReportCenterPage({ initialView = "reports-brand", onNavigate }:
   );
 }
 
-export default function ReportCenterPage({ initialView = "reports-brand", onNavigate }: { initialView?: string; onNavigate?: (route: string) => void }) {
+export default function ReportCenterPage({ initialView = "reports-brand", onNavigate, bigScreen = false }: { initialView?: string; onNavigate?: (route: string) => void; bigScreen?: boolean }) {
   return initialView === "reports-large-screen"
     ? <ReportLargeScreenPage onExit={() => onNavigate?.("reports-brand")} />
-    : <StandardReportCenterPage initialView={initialView} onNavigate={onNavigate} />;
+    : <StandardReportCenterPage initialView={initialView} onNavigate={onNavigate} bigScreen={bigScreen} />;
 }

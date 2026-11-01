@@ -351,3 +351,16 @@ async def download_report(report_id: int, identity: dict = Depends(current_ident
         lines.append(f'"{safe_label}","{safe_value}"')
     content = "\ufeff" + "\r\n".join(lines)
     return Response(content=content.encode("utf-8"), media_type="text/csv; charset=utf-8", headers={"Content-Disposition": f'attachment; filename="{report.serial_no}.csv"'})
+
+
+@router.get(f"{settings.api_prefix}/reports/refund-progress")
+async def refund_progress_report(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    # 退费进度按律师助理统计（BUG 500789）。
+    from app.core.progress_reports import refund_progress_report as build
+    return await build(identity, db)
+
+
+@router.get(f"{settings.api_prefix}/reports/refund-progress/cases")
+async def refund_progress_report_cases(person: str = "", stage: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.progress_reports import refund_progress_cases
+    return await refund_progress_cases(identity, db, person=person.strip(), stage=stage.strip())
