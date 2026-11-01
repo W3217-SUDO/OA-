@@ -134,6 +134,31 @@ class CustomerRoiReportTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("case-owner", by_customer[customer_a.id]["employee"])
         self.assertEqual(by_department["totals"]["income"], 500)
 
+    async def test_receipt_own_customer_wins_and_internal_transfers_are_excluded(self):
+        # 味好美核对（思法汇成 11-01）：按到账单自己登记的客户归；内部公司之间的转款不算收入。
+        async with self.sessions() as db:
+            customer_a, _customer_b = await self._seed(db)
+            other = BusinessRecord(module="customer", serial_no="CODEX-ROI-CUSTOMER-D", title="另一客户", customer="另一客户", status="正常", owner="owner-d", department="华北部", data={})
+            db.add(other)
+            await db.flush()
+            case_a = BusinessRecord(module="case", serial_no="CODEX-ROI-CASE-A2", title="案件A", customer="同名客户", status="办理中", owner="case-owner", department="华东部", data={"customer_id": customer_a.id, "customer_no": customer_a.serial_no})
+            db.add(case_a)
+            await db.flush()
+            header = {"source_header": {"source_payload": {"CustomerNo": other.serial_no}}}
+            db.add_all([
+                IncomingPayment(source_kind="hz_crm_20260930", receipt_no="R-OWN", received_date=date(2026, 9, 1), amount=400, payer_name="另一客户",
+                                status="已分配", claimed_customer="另一客户", allocated_amount=400, operator="admin",
+                                allocations=[{"amount": 400, "case_id": case_a.id, "case_no": case_a.serial_no, **header}]),
+                IncomingPayment(source_kind="hz_crm_20260930", receipt_no="R-INT", received_date=date(2026, 9, 1), amount=999, payer_name="上海国定律师事务所 ",
+                                status="已分配", claimed_customer="另一客户", allocated_amount=999, operator="admin",
+                                allocations=[{"amount": 999, "case_id": case_a.id, "case_no": case_a.serial_no, **header}]),
+            ])
+            await db.commit()
+            result = await _customer_roi_analytics(ADMIN, db, date_from=date(2026, 9, 1), date_to=date(2026, 9, 2))
+        by_customer = {row["customer_id"]: row for row in result["rows"]}
+        self.assertEqual(by_customer[other.id]["income"], 400)  # 分配到 A 的案件，但到账单登记的是 D
+        self.assertEqual(by_customer[customer_a.id]["income"], 300)  # 只有原来的回款流水，没有内部转款的 999
+
     async def test_prewarm_replay_recomputes_same_report(self):
         from app.areas.rpt.router import _replay_customer_roi
         from app.core import query_prewarm

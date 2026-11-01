@@ -360,7 +360,9 @@ async def _roi_receipts(db: AsyncSession, *conditions) -> list:
     from types import SimpleNamespace
     from sqlalchemy import Text, column, literal_column, true
     head = [IncomingPayment.id, IncomingPayment.amount, IncomingPayment.contract_record_id, IncomingPayment.contract_no,
-            IncomingPayment.case_no, IncomingPayment.claimed_customer]
+            IncomingPayment.case_no, IncomingPayment.claimed_customer,
+            # 旧系统回款单上登记的客户编号（迁移时随分配明细保存）。
+            IncomingPayment.allocations[(0, "source_header", "source_payload", "CustomerNo")].as_string()]
     receipts: dict[int, SimpleNamespace] = {}
     if db.get_bind().dialect.name == "postgresql":
         parts = func.json_to_recordset(func.coalesce(IncomingPayment.allocations, literal_column("'[]'::json"))).table_valued(
@@ -369,15 +371,16 @@ async def _roi_receipts(db: AsyncSession, *conditions) -> list:
         rows = (await db.execute(select(*head, *parts.c).select_from(IncomingPayment).outerjoin(parts, true()).where(*conditions))).all()
         for row in rows:
             receipt = receipts.setdefault(row[0], SimpleNamespace(
-                amount=row[1], contract_record_id=row[2], contract_no=row[3], case_no=row[4], claimed_customer=row[5], allocations=[]))
-            amount, case_id, case_no, contract_no, is_refund = row[6:11]
+                amount=row[1], contract_record_id=row[2], contract_no=row[3], case_no=row[4], claimed_customer=row[5],
+                customer_no=(row[6] or "").strip(), allocations=[]))
+            amount, case_id, case_no, contract_no, is_refund = row[7:12]
             if amount is not None or case_id is not None or case_no is not None:
                 receipt.allocations.append({"amount": amount, "case_id": case_id, "case_no": case_no,
                                             "contract_no": contract_no, "is_refund": str(is_refund).lower() == "true"})
         return list(receipts.values())
     rows = (await db.execute(select(*head, IncomingPayment.allocations).where(*conditions))).all()
     return [SimpleNamespace(amount=row[1], contract_record_id=row[2], contract_no=row[3], case_no=row[4],
-                            claimed_customer=row[5], allocations=row[6] or []) for row in rows]
+                            claimed_customer=row[5], customer_no=(row[6] or "").strip(), allocations=row[7] or []) for row in rows]
 
 
 async def _customer_roi_analytics(
@@ -427,7 +430,9 @@ async def _customer_roi_analytics(
         db, BusinessRecord.module.in_({"finance", "contract", "contract_payment"}),
         scalar_in_values(BusinessRecord.id, transaction_source_ids), *scope,
     ) if transaction_source_ids else []
-    receipt_conditions = [IncomingPayment.amount > 0]
+    from app.core.internal_payers import not_internal_payer
+    # 内部公司之间的转款不是客户收入（BUG 500784，思法汇成 11-01）。
+    receipt_conditions = [IncomingPayment.amount > 0, not_internal_payer(IncomingPayment.payer_name)]
     if date_from:
         receipt_conditions.append(IncomingPayment.received_date >= date_from)
     if date_to:
@@ -480,6 +485,7 @@ async def _customer_roi_analytics(
     customer_ids.discard(0)
     customer_nos.discard("")
     claimed_names = {str(receipt.claimed_customer or "").strip() for receipt in receipts} - {""}
+    customer_nos.update(receipt.customer_no for receipt in receipts if receipt.customer_no)
     customer_links = []
     if claimed_names:
         customer_links.append(scalar_in_values(BusinessRecord.title, claimed_names))
@@ -580,10 +586,16 @@ async def _customer_roi_analytics(
         bucket["income"] += amount
 
     def claimed_customer(receipt) -> BusinessRecord | None:
+        # 到账单自己登记的客户：旧系统回款单上的客户编号，其次是认领客户（名称唯一时）。
+        if receipt.customer_no:
+            candidates = customers_by_no.get(receipt.customer_no, [])
+            if len(candidates) == 1:
+                return candidates[0]
         candidates = customers_by_title.get(_normalized_customer_name(receipt.claimed_customer or ""), [])
         return candidates[0] if len(candidates) == 1 else None
 
-    # 到账单：按分配到的案件/合同归客户（与成本口径一致）；未分配部分归认领客户；退款分配记负数。
+    # 到账单按它自己登记的客户归（与旧系统回款单一致，思法汇成 11-01 核对味好美）；没有登记客户时才按分配的案件/合同归。
+    # 退款分配记负数。
     visible_people: list[tuple[str, str]] = []
     for receipt in receipts:
         allocated = 0.0
@@ -597,7 +609,7 @@ async def _customer_roi_analytics(
                 related_by_serial.get(str(allocation.get("case_no") or "").strip()),
                 related_by_serial.get(str(allocation.get("contract_no") or "").strip()),
             ) if record]
-            customer_record = customer_of_records(records) or claimed_customer(receipt)
+            customer_record = claimed_customer(receipt) or customer_of_records(records)
             if customer_record:
                 add_income(customer_record, records[0] if records else None, -amount if allocation.get("is_refund") else amount)
         remainder = round(float(receipt.amount or 0) - allocated, 2)
@@ -607,7 +619,7 @@ async def _customer_roi_analytics(
                 related_by_serial.get(str(receipt.contract_no or "").strip()),
                 related_by_serial.get(str(receipt.case_no or "").strip()),
             ) if record]
-            customer_record = customer_of_records(records) or claimed_customer(receipt)
+            customer_record = claimed_customer(receipt) or customer_of_records(records)
             if customer_record:
                 add_income(customer_record, records[0] if records else None, remainder)
 
@@ -633,7 +645,7 @@ async def _customer_roi_analytics(
             "departments": sorted({source.department for source in visible_sources if source and source.department} | {name for name, _ in visible_people if name}),
             "employees": sorted({source.owner for source in visible_sources if source and source.owner} | {name for _, name in visible_people if name}),
         },
-        "formula": "ROI=(已确认回款-已确认付款)/已确认付款×100%；回款含到账单（按分配的案件/合同归客户）；成本为0时不计算ROI",
+        "formula": "ROI=(已确认回款-已确认付款)/已确认付款×100%；回款含到账单（按到账单登记的客户归，不含内部公司之间的转款）；成本为0时不计算ROI",
         "date_basis": "收付款流水日期、到账日期", "source": "realtime",
     }
 

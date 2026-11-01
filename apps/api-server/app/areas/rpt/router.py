@@ -132,7 +132,9 @@ async def report_large_screen(identity: dict = Depends(current_identity), db: As
         # IncomingPayment is the bank-arrival source of truth.  Payments are
         # recorded financial transactions, so applications and approvals do not
         # inflate either total.
-        incoming = list((await db.scalars(select(IncomingPayment))).all())
+        from app.core.internal_payers import not_internal_payer
+        # 内部公司之间的转款不算实际到账（BUG 500784）。
+        incoming = list((await db.scalars(select(IncomingPayment).where(not_internal_payer(IncomingPayment.payer_name)))).all())
         if identity.get("role") not in {"admin", "auditor"}:
             visible_customer_titles = {item.title for item in customers}
             incoming = [
