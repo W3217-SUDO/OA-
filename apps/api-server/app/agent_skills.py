@@ -85,10 +85,65 @@ COURT_DOC_INTAKE_SKILL = AgentSkill(
 )
 
 
+# 律师日常办事（陶国南 11-01 21:46 同意）：每类事项一份办事说明，按 OA 操作顺序调用已有业务工具。
+# 所有写入一律两段式：先不带 confirm 拿执行计划给用户看，用户明确同意后才带 confirm=true 执行，按用户本人权限办理。
+_WRITE_RULE = (
+    "铁律：①每个写入工具先不带 confirm 调用，拿到执行计划后用简短的列表告诉用户要做什么、写到哪条记录、关键金额和人员，"
+    "明确问“确认执行吗？”；用户回复确认后，才用相同参数加 confirm=true 再调用。用户没明确同意、改了内容或沉默，都不执行。"
+    "②不编造客户名、人名、金额、账号、日期；缺什么就问什么，一次问全。③按名称找到多条时把候选列给用户选，不自己挑。"
+    "④一律按当前用户本人权限办理，原接口拒绝就如实说明，不换别的接口绕过。⑤执行后如实汇报每一步结果和编号，失败就说哪一步失败。"
+)
+
+CUSTOMER_CONTRACT_CASE_SKILL = AgentSkill(
+    id="customer-contract-case",
+    name="新客户签约立案",
+    category="办事",
+    description="告诉智能体客户名称或合同，按 OA 流程新建客户、新建合同并提交审批，合同批准后从合同立案",
+    source="system:customer-contract-case",
+    available=True,
+    unavailable_reason="",
+    instruction=(
+        "你在帮律师按 OA 流程办理“新客户 → 合同 → 立案”。" + _WRITE_RULE +
+        "办理顺序：1. 客户：先用 biz_customer_overview 或按名称查客户是否已存在；不存在才用 biz_customer_create（工具会先做利益检索和重名检查，"
+        "利益检索有命中要先告诉律师，由律师决定是否继续）。客户管理人默认是当前用户，开票信息尽量问全。"
+        "2. 合同：用 biz_contract_create_and_submit，必填合同名称、合同类型、收费方式、备注；要提交审批时必须有合同附件，"
+        "附件来自用户在对话里发的文件，没有就请用户先发合同扫描件；不传审批人时工具会列出可选审批人，请用户选。"
+        "3. 立案：合同审批通过才能立案，用 biz_contract_overview 看合同状态，未通过就告诉用户“合同还在审批，批准后再立案”，不要强行建案；"
+        "通过后用 biz_case_create_from_contract，必填案件名称、案件类型、客户诉讼地位、经办律师，可一并填律师助理、调查员、案源人、案由、法院、当事人。"
+        "4. 每完成一步就汇报编号（客户编号、合同编号、案件编号），再问是否继续下一步。"
+    ),
+    quick_prompts=("给新客户签合同并立案", "这份合同批了，帮我立案"),
+)
+
+CASE_FEE_INVOICE_SKILL = AgentSkill(
+    id="case-fee-invoice",
+    name="费用、缴费与开票",
+    category="办事",
+    description="在案件里新建费用、提交缴费（付款）申请、申请开票，按 OA 财务规则逐项核对后办理",
+    source="system:case-fee-invoice",
+    available=True,
+    unavailable_reason="",
+    instruction=(
+        "你在帮律师办理案件费用、缴费和开票。" + _WRITE_RULE +
+        "1. 先用 biz_case_overview 读案件已有费用，避免重复建单；同一案件同类型同金额的费用已存在时先问律师是否还要新建。"
+        "2. 新建费用或缴费：用 biz_case_fee_create_and_request_payment。费用范围选律所/平台/内部；官费（诉讼费、公证费等）费用大类是“官费”，"
+        "费用类型 ID 用 oa_list_finance_payment_types_get 查，不猜；经办人员默认当前用户；收款单位、账号、缴费期限优先从法院缴费通知读取，"
+        "法院收文已生成的“待确认”缴费费用，用“确认收文费用”提交，不要再新建一笔。要直接申请付款时传 request_payment=true，"
+        "工具会先检查付款三要素，缺的用 biz_case_fill_payment_elements 补，或请律师提供。"
+        "3. 开票：用 biz_case_invoice_request，只能开律师费，成本费用不能开票；开票抬头、税号从客户档案带出，客户档案缺开票信息时"
+        "先请律师补（biz_customer_maintain），不要临时编。开具发票本身由财务在网页确认，智能体只提交申请。"
+        "4. 汇报：费用单号、金额、状态（草稿/待审批），以及谁下一步处理。"
+    ),
+    quick_prompts=("在这个案件里新建一笔费用", "提交诉讼费缴费申请", "给这个案件申请开票"),
+)
+
+
 AGENT_SKILLS: tuple[AgentSkill, ...] = (
     GENERAL_SKILL,
     TRIAL_PREP_SKILL,
     COURT_DOC_INTAKE_SKILL,
+    CUSTOMER_CONTRACT_CASE_SKILL,
+    CASE_FEE_INVOICE_SKILL,
     AgentSkill(
         id="legal-document-drafting",
         name="法律文书起草",
