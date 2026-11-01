@@ -202,8 +202,7 @@ async def report_analytics(view: str, customer: str = "", court_lawyer: str = ""
     return await _report_analytics(view, identity, db, customer, court_lawyer, handling_lawyer, assistant, investigator, court, source_from, source_to, hearing_from, hearing_to, group_mode)
 
 
-@router.get(f"{settings.api_prefix}/reports/customer-roi")
-async def customer_roi_report(date_from: date | None = None, date_to: date | None = None, department: str = "", employee: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def _cached_customer_roi(identity: dict, db: AsyncSession, date_from: date | None, date_to: date | None, department: str, employee: str):
     from app.core.crm import (
         _customer_roi_analytics,
     )
@@ -216,6 +215,33 @@ async def customer_roi_report(date_from: date | None = None, date_to: date | Non
         lambda: _customer_roi_analytics(identity, db, date_from=date_from, date_to=date_to, department=department, employee=employee),
         snapshot_reader=finance_revision_snapshot,
     )
+
+
+@router.get(f"{settings.api_prefix}/reports/customer-roi")
+async def customer_roi_report(date_from: date | None = None, date_to: date | None = None, department: str = "", employee: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core import query_prewarm
+    # 登记后台预热：数据变化后主进程提前重算，用户打开时直接命中缓存（BUG 500784，陶威要求 2 秒内）。
+    await query_prewarm.remember(db, "reports", "customer_roi", identity, {
+        "date_from": date_from.isoformat() if date_from else None, "date_to": date_to.isoformat() if date_to else None,
+        "department": department, "employee": employee,
+    })
+    return await _cached_customer_roi(identity, db, date_from, date_to, department, employee)
+
+
+async def _replay_customer_roi(name, identity, parameters, db):
+    if name != "customer_roi":
+        raise ValueError("未知的报表预热登记")
+    parse = lambda value: date.fromisoformat(value) if value else None
+    await _cached_customer_roi(identity, db, parse(parameters.get("date_from")), parse(parameters.get("date_to")),
+                               str(parameters.get("department") or ""), str(parameters.get("employee") or ""))
+
+
+def _register_report_prewarm():
+    from app.core import query_prewarm
+    query_prewarm.register("reports", _replay_customer_roi)
+
+
+_register_report_prewarm()
 
 
 @router.get(f"{settings.api_prefix}/reports/customer-roi/export")

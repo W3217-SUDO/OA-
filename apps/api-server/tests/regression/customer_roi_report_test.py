@@ -134,6 +134,16 @@ class CustomerRoiReportTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("case-owner", by_customer[customer_a.id]["employee"])
         self.assertEqual(by_department["totals"]["income"], 500)
 
+    async def test_prewarm_replay_recomputes_same_report(self):
+        from app.areas.rpt.router import _replay_customer_roi
+        from app.core import query_prewarm
+        self.assertIn("reports", query_prewarm._replayers)
+        async with self.sessions() as db:
+            await self._seed(db)
+            await _replay_customer_roi("customer_roi", ADMIN, {"date_from": "2026-09-01", "date_to": None, "department": "", "employee": ""}, db)
+            with self.assertRaises(ValueError):
+                await _replay_customer_roi("other", ADMIN, {}, db)
+
 
 if __name__ == "__main__":
     unittest.main()
