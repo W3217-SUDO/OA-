@@ -283,7 +283,7 @@ export function UserPagePermissionEditor({
               </Checkbox>
               <div style={{ marginLeft: 24, marginTop: 4 }}>
                 <Checkbox checked={mcpPersonalToken && mcpTokenWrite} disabled={saving || !mcpPersonalToken} onChange={event => setMcpTokenWrite(event.target.checked)}>
-                  同时允许新增、修改、删除（直接执行，确认由本地 agent 向使用者负责）
+                  同时允许新增、修改、删除（每次写入须本人在 OA 网页智能体中心确认后才执行）
                 </Checkbox>
               </div>
             </div>

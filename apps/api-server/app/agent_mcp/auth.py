@@ -24,7 +24,7 @@ class AuthContext:
     token_id: int | None = None  # 个人访问令牌进来的请求：令牌编号；此时一律只读
     username: str = ""
     groups: frozenset | None = None  # 连接地址选定的业务分组；None=没选业务，只给入口工具
-    write_allowed: bool = False  # 账号当前有“写入”授权（管理员默认有；同一把令牌，写不写由账号权限决定）：写入类工具直接执行，确认由本地 agent 负责
+    write_allowed: bool = False  # 账号当前有“写入”授权（管理员默认有；同一把令牌，写不写由账号权限决定）：写入类工具调用后生成待确认请求，须本人在 OA 网页确认（陶威 11-01）
 
     @property
     def readonly(self) -> bool:
@@ -63,6 +63,19 @@ def tool_origin(case_id: int):
     )
     if type(case_id) is not int or case_id <= 0 or match is None or int(match[1]) != case_id:
         raise HTTPException(403, "案件来源必须来自当前已授权的案件智能体入口")
+    token = _case_origin.set(case_id)
+    try:
+        yield
+    finally:
+        _case_origin.reset(token)
+
+
+@contextmanager
+def confirmed_case_origin(case_id: int | None):
+    """人工确认入口执行已确认的业务工具时，沿用准备请求时记录的案件来源，内部步骤仍只能动这个案件。"""
+    get_auth_context()
+    if case_id is not None and (type(case_id) is not int or case_id <= 0):
+        raise HTTPException(403, "确认请求记录的案件来源无效")
     token = _case_origin.set(case_id)
     try:
         yield

@@ -221,7 +221,7 @@ class UsageSkillTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(read_only.startswith("---\nname: oa-mcp-usage"))
         self.assertIn("只读", read_only)
         self.assertIn("当前可用接口：1 个", read_only)  # 只读令牌看不到写入类
-        for rule in ("oa_describe_tool", "先问用户", "直接执行", "待确认", "逻辑删除", "429", "等用户明确说"):
+        for rule in ("oa_describe_tool", "先问用户", "只生成待确认请求", "智能体中心确认", "逻辑删除", "429", "等用户明确说"):
             self.assertIn(rule, read_only)
         writable = AuthContext(application=object(), bearer="jwt", scope={}, token_id=7, write_allowed=True, groups=None)
         text = usage_skill.build_skill(writable, catalog)
@@ -277,10 +277,11 @@ class IrreversibleTest(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(irreversible_category(self._spec(method, path)), path)
         self.assertIsNone(irreversible_category(SimpleNamespace(is_write=False, path="/api/v1/notifications/send")))
 
-    async def test_in_app_agent_write_executes_directly_and_is_labelled_agent(self):
+    async def test_in_app_agent_write_needs_card_and_approved_step_is_labelled_agent(self):
         from app.agent_mcp import service
         from app.core import change_log
         spec = self._spec("PATCH", "/cases/{case_id}")
+        spec.title, spec.name = "修改案件", "x"
         seen = []
 
         async def fake_execute(spec, params, **kwargs):
@@ -290,6 +291,7 @@ class IrreversibleTest(unittest.IsolatedAsyncioTestCase):
         class FakeSession:
             async def __aenter__(self): return self
             async def __aexit__(self, *args): return False
+            async def get(self, *args): return None
 
         async def passthrough(spec, arguments, params, identity, db):
             return arguments
@@ -297,15 +299,28 @@ class IrreversibleTest(unittest.IsolatedAsyncioTestCase):
         async def nothing(*args, **kwargs):
             return None
 
+        async def fake_pending(identity, db, **kwargs):
+            return {"request_id": "req-1", "status": "pending", "summary": "s", "preview": kwargs["preview"]}
+
         context = AuthContext(application=object(), bearer="jwt", scope={})  # 站内智能体：不是个人令牌
         catalog = SimpleNamespace(get=lambda name: spec)
         with patch.object(service, "get_auth_context", lambda: context), patch.object(service, "get_catalog", lambda _app: catalog), \
              patch.object(service, "authenticated_identity", lambda: _async({"username": "boss", "department": "d"})), \
              patch.object(service, "SessionLocal", FakeSession), patch.object(service, "require_business_record_target", nothing), \
              patch.object(service, "prepare_business_arguments", passthrough), patch.object(service, "execute_original", fake_execute), \
-             patch.object(service, "trusted_case_origin", lambda: None), patch.object(service, "_record_agent_call", nothing) as _:
-            result = await service.call_tool("x", {})
-        self.assertEqual(result, {"updated": True})  # 不再生成待确认，直接执行
+             patch.object(service, "trusted_case_origin", lambda: None), patch.object(service, "_record_agent_call", nothing), \
+             patch.object(service, "_create_pending_request", fake_pending), \
+             patch.object(service, "descriptor_fingerprint", lambda spec: "fp"), patch.object(service, "render_path", lambda spec, params: spec.path):
+            pending = await service.call_tool("x", {})
+            token = service.APPROVED_EXECUTION.set(True)  # 用户已在确认卡片上同意的业务工具内部步骤
+            try:
+                result = await service.call_tool("x", {})
+            finally:
+                service.APPROVED_EXECUTION.reset(token)
+        # 陶威 11-01 21:55：站内智能体的写入先生成确认卡片，不直接执行。
+        self.assertEqual((pending["status"], pending["request_id"]), ("pending", "req-1"))
+        self.assertIn("确认卡片", pending["next_step"])
+        self.assertEqual(result, {"updated": True})  # 确认后的内部步骤才直接执行
         self.assertEqual(seen, ["agent"])  # 变更留痕记为“智能体”来源
         self.assertEqual(change_log.source_var.get(), "system")  # 调用结束后来源复原
 
@@ -335,7 +350,7 @@ class ReadOnlyGatewayTest(unittest.IsolatedAsyncioTestCase):
                 await service.call_tool("create_case", {})
         self.assertEqual(caught.exception.status_code, 403)
 
-    async def test_write_token_lists_writes_and_executes_directly_without_pending_record(self):
+    async def test_write_token_lists_writes_and_writes_need_confirmation(self):
         from app.agent_mcp import gateway, service
         remover = SimpleNamespace(name="delete_case", is_write=True, method="DELETE", path="/api/v1/cases/{case_id}",
                                   title="删除案件", validate_arguments=lambda arguments: {"path": {"case_id": 1}, "query": {}, "body": None, "files": {}},
@@ -349,6 +364,9 @@ class ReadOnlyGatewayTest(unittest.IsolatedAsyncioTestCase):
         write_entry = next(item for item in listed.tools if item.name == "oa_call_write_tool")
         self.assertFalse(write_entry.annotations.read_only_hint)
         self.assertTrue(write_entry.annotations.destructive_hint)
+        async def fake_pending(identity, db, **kwargs):
+            return {"request_id": "req-2", "status": "pending", "summary": "s", "preview": kwargs["preview"]}
+
         with patch.object(service, "get_auth_context", lambda: self._context(7, write=True)), patch.object(service, "get_catalog", lambda _app: catalog), \
              patch.object(service, "public_tool", lambda spec: spec.to_mcp()):
             described = service.describe_tool("delete_case")
@@ -364,6 +382,7 @@ class ReadOnlyGatewayTest(unittest.IsolatedAsyncioTestCase):
         class FakeSession:
             async def __aenter__(self): return self
             async def __aexit__(self, *args): return False
+            async def get(self, *args): return None
 
         async def passthrough(spec, arguments, params, identity, db):
             return arguments
@@ -375,10 +394,13 @@ class ReadOnlyGatewayTest(unittest.IsolatedAsyncioTestCase):
              patch.object(service, "authenticated_identity", lambda: _async({"username": "boss", "department": "d"})), \
              patch.object(service, "SessionLocal", FakeSession), patch.object(service, "require_business_record_target", nothing), \
              patch.object(service, "prepare_business_arguments", passthrough), patch.object(service, "execute_original", fake_execute), \
-             patch.object(service, "trusted_case_origin", lambda: None):
+             patch.object(service, "trusted_case_origin", lambda: None), patch.object(service, "_create_pending_request", fake_pending), \
+             patch.object(service, "descriptor_fingerprint", lambda spec: "fp"), patch.object(service, "render_path", lambda spec, params: spec.path):
             result = await service.call_tool("delete_case", {})
-        self.assertEqual(result, {"deleted": True})
-        self.assertEqual(executed[0][0], "delete_case")
+        # 陶威 11-01 21:55：外部 MCP 的写入也先生成待确认请求，由本人在 OA 网页智能体中心确认。
+        self.assertEqual(result["status"], "pending")
+        self.assertIn("OA 网页的智能体中心", result["next_step"])
+        self.assertEqual(executed, [])
         # 只读令牌即使点名调用也被拒绝
         with patch.object(service, "get_auth_context", lambda: self._context(7, write=False)), patch.object(service, "get_catalog", lambda _app: catalog), \
              patch.object(service, "authenticated_identity", lambda: _async({"username": "boss"})):

@@ -47,6 +47,8 @@ const ACTION_FIELD_NAMES: Record<string, string> = {
 };
 const PARAMETER_GROUP_NAMES: Record<string, string> = {
   path: "相关信息", query: "相关信息", body: "确认信息", files: "附件信息",
+  // 业务工具整体确认时列出的办理步骤（陶威 11-01：所有写操作先确认）。
+  steps: "办理步骤",
 };
 const USER_FACING_FIELD_NAMES: Record<string, string> = {
   case_id: "案件",

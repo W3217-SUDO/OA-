@@ -2,7 +2,8 @@
 
 一个业务动作一个工具（例如“新建合同并提交审批”），内部每一步都经 call_tool 调用目录里的原接口：
 原接口的角色权限、数据范围、校验、审批流，个人令牌的只读/业务范围限制和操作日志全部照旧，不另开通道。
-写工具两段式：不带 confirm=true 时只跑查询并返回执行计划，不写任何数据；用户同意后带 confirm=true 才执行。
+写工具两段式：不带 confirm=true 时只跑查询并返回执行计划，不写任何数据；带 confirm=true 时生成确认卡片（待确认请求），
+用户在卡片或 OA 网页智能体中心点确认后才执行（陶威 11-01：所有写操作先确认）。
 审批、盖章、付款核销、开票作废、退费到账等不可撤回步骤仍由原通道生成待确认请求，须本人在 OA 网页确认。
 设计与对照见 docs/业务工具/。
 """
@@ -140,6 +141,13 @@ def business_tool(name, title, description, properties, required=(), *, write, u
     return register
 
 
+def business_fingerprint(tool: "BusinessTool") -> str:
+    """业务工具定义指纹：参数结构或内部接口变了，旧的待确认请求不能再执行。"""
+    import hashlib
+    descriptor = {"name": tool.name, "schema": tool.input_schema, "uses": list(tool.uses), "write": tool.write}
+    return hashlib.sha256(json.dumps(descriptor, ensure_ascii=False, sort_keys=True, default=str).encode()).hexdigest()
+
+
 def is_business_tool(name: object) -> bool:
     return isinstance(name, str) and name in TOOLS
 
@@ -163,7 +171,7 @@ def visible_tools(catalog=None, context=None) -> list[BusinessTool]:
     return result
 
 
-async def run_business_tool(name: str, arguments: object, *, call=None, context=None) -> dict:
+async def run_business_tool(name: str, arguments: object, *, call=None, context=None, conversation_id: str | None = None) -> dict:
     """call 默认是 service.call_tool；站内智能体传入带会话上下文的调用。"""
     if call is None:
         from app.agent_mcp.service import call_tool as call
@@ -177,6 +185,16 @@ async def run_business_tool(name: str, arguments: object, *, call=None, context=
         raise HTTPException(422, detail=[{"loc": ["arguments", *map(str, error.path)], "msg": error.message} for error in errors[:20]])
     confirm = bool(arguments.get("confirm")) if tool.write else True
     values = {key: value for key, value in arguments.items() if key != "confirm"}
+    from app.agent_mcp.service import APPROVED_EXECUTION
+    if tool.write and confirm and not APPROVED_EXECUTION.get():
+        # 陶威 11-01：所有写操作先确认。带 confirm=true 时不直接执行：先出执行计划，没问题就整体生成一条待确认请求（确认卡片）。
+        plan = await run_business_tool(name, values, call=call, context=context)
+        if plan.get("isError") or any(step.get("problem") for step in plan.get("steps") or []):
+            return plan
+        from app.agent_mcp.service import prepare_business_request
+        pending = await prepare_business_request(tool, values, plan, conversation_id=conversation_id)
+        return {"tool": name, "mode": "待确认", "steps": plan.get("steps"), **pending,
+                "next_step": "已生成确认卡片，用户在卡片上点“确认并执行”后才会按以上步骤办理；聊天回复不算确认。"}
     run = Run(tool, confirm, call)
     try:
         data = await tool.handler(run, values)

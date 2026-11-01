@@ -1,5 +1,6 @@
 """业务工具的只读调用、持久准备和人工确认状态机。"""
 
+from contextvars import ContextVar
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -25,6 +26,9 @@ from app.models import BusinessRecord, WorkflowEvent
 
 logger = logging.getLogger(__name__)
 ACTION_MODULE = "agent_mcp_action"
+# 用户已在确认卡片上同意的业务工具正在执行：其内部的普通写入步骤直接执行，不再逐步生成确认卡片
+# （不可撤回的五类仍单独生成待确认请求）。陶威 11-01 21:55 定：站内智能体和外部 MCP 的所有写操作都先确认。
+APPROVED_EXECUTION: ContextVar[bool] = ContextVar("agent_mcp_approved_execution", default=False)
 _UNSET = object()
 STATUS_NAMES = {"待确认": "pending", "执行中": "executing", "已执行": "succeeded", "执行失败": "failed", "已拒绝": "rejected"}
 
@@ -254,6 +258,67 @@ async def _record_agent_call(context, name, arguments, ok, outcome) -> None:
         logger.exception("站内智能体操作日志写入失败 tool=%s", name)
 
 
+def _preview_only(spec, params: dict) -> bool:
+    """接口自带“先预览、confirm=true 才写入”时（如一键法院收文），不带 confirm 的调用只是预览，不写业务数据。"""
+    body_schema = ((getattr(spec, "input_schema", None) or {}).get("properties") or {}).get("body")
+    if not isinstance(body_schema, dict) or "confirm" not in (body_schema.get("properties") or {}):
+        return False
+    body = params.get("body")
+    return not (isinstance(body, dict) and body.get("confirm") is True)
+
+
+# 路径参数名 → 允许的业务记录模块；模块对不上就不读，避免把别的表的 ID 当成业务记录。
+_TARGET_ID_PARAMS = {"record_id": None, "case_id": {"case"}, "customer_id": {"customer"}, "contract_id": {"contract"},
+                     "fee_id": {"finance"}, "finance_id": {"finance"}, "task_id": {"task"}}
+
+
+async def _original_changes(spec, params: dict, db) -> tuple[str, list[dict], str]:
+    """确认卡片的“改前改后”：路径里指向一条业务记录时读出它当前的值，与本次提交的字段逐项对照。读不到就只列提交值。"""
+    path = params.get("path") if isinstance(params.get("path"), dict) else {}
+    key = next((key for key in _TARGET_ID_PARAMS if isinstance(path.get(key), int)), None)
+    if key is None:
+        return "", [], "未读取原值"
+    record = await db.get(BusinessRecord, path[key])
+    modules = _TARGET_ID_PARAMS[key]
+    if record is None or record.deleted_at is not None or (modules is not None and record.module not in modules):
+        return "", [], "未读取原值"
+    target = " ".join(part for part in (record.serial_no, record.title) if part)
+    body = params.get("body") if isinstance(params.get("body"), dict) else {}
+    data = record.data or {}
+    changes = []
+    for field, after in body.items():
+        if field in {"comment", "confirm"} or isinstance(after, (dict, list)) and len(json.dumps(after, ensure_ascii=False, default=str)) > 300:
+            continue
+        before = getattr(record, field) if field in {"title", "status", "owner", "customer", "department", "description"} else data.get(field)
+        changes.append({"field": field, "before": before, "before_read": True, "after": after})
+    original = f"{target}（当前状态：{record.status}）" if target else f"当前状态：{record.status}"
+    return target, changes[:40], original
+
+
+async def _create_pending_request(identity: dict, db, *, tool_name: str, fingerprint: str, arguments: dict, params: dict,
+                                  preview: dict, case_origin, conversation_id, kind: str = "catalog") -> dict:
+    """只落一条待确认记录，不调用任何业务写入；用户在确认卡片（或 OA 网页智能体中心）点确认后才执行。"""
+    request_id = uuid4().hex
+    summary = summary_from_preview(preview)
+    preview["summary"] = summary
+    data = {
+        "request_id": request_id, "kind": kind, "tool_name": tool_name, "descriptor_fingerprint": fingerprint,
+        "arguments": json.loads(json.dumps(arguments, ensure_ascii=False, allow_nan=False, default=str)),
+        "params": params, "preview": preview, "case_origin": case_origin, "summary": summary,
+        "conversation_id": conversation_id,
+    }
+    record = BusinessRecord(
+        module=ACTION_MODULE, serial_no="MCP-" + request_id, title=summary[:255],
+        status="待确认", owner=identity["username"], department=identity["department"], data=data,
+    )
+    db.add(record)
+    await db.flush()
+    db.add(_event(record.id, identity, "", "待确认"))
+    await db.commit()
+    return {"request_id": request_id, "status": "pending", "summary": summary, "preview": preview,
+            "confirmation_url": settings.api_prefix + f"/agent-tools/requests/{request_id}"}
+
+
 async def _call_tool(name: str, arguments: dict, *, conversation_id: str | None = None):
     context = get_auth_context()
     identity = await authenticated_identity()
@@ -283,43 +348,27 @@ async def _call_tool(name: str, arguments: dict, *, conversation_id: str | None 
         reject_credentials(params)
         from app.agent_mcp.irreversible import irreversible_category
         category = irreversible_category(spec)
-        if category is None:
-            # 普通写入：直接执行原接口（原权限、数据范围、校验、审批流程照常生效），每次变更在服务器留痕、可还原。
+        if category is None and (APPROVED_EXECUTION.get() or _preview_only(spec, params)):
+            # 用户已确认的业务工具内部步骤，或接口自带的预览调用：直接执行原接口（原权限、数据范围、校验、审批流程照常生效），留痕可还原。
             if context.readonly:
                 from app.agent_mcp.personal_tokens import check_write_rate
                 check_write_rate(context.token_id)
             return await execute_original(spec, params, case_origin=case_origin, conversation_id=conversation_id)
-        # 需要网页确认的五类（审批、盖章与对外转交、付款与核销、开具或作废发票、退费登记到账）：仍生成待确认请求，须用户在 OA 网页确认。
-        path = render_path(spec, params)
-        # 写操作只落准备记录，不调用任何业务写入或新建附件。
-        request_id = uuid4().hex
+        # 其余写入一律先生成待确认请求（陶威 11-01 21:55）：站内智能体弹确认卡片，外部 MCP 由本人在 OA 网页智能体中心确认。
+        target, changes, original = await _original_changes(spec, params, db)
         preview = {
             "operation_name": spec.title, "tool_name": spec.name, "method": spec.method,
-            "path": path, "path_template": spec.path, "params": params,
-            "original_values": "未读取原值", "requires_confirmation": True,
+            "path": render_path(spec, params), "path_template": spec.path, "params": params,
+            "original_values": original, "requires_confirmation": True,
+            **({"target": target} if target else {}), **({"changes": changes} if changes else {}),
         }
-        summary = summary_from_preview(preview)
-        preview["summary"] = summary
-        data = {
-            "request_id": request_id, "tool_name": spec.name, "descriptor_fingerprint": descriptor_fingerprint(spec),
-            "arguments": json.loads(json.dumps(arguments, ensure_ascii=False, allow_nan=False)),
-            "params": params, "preview": preview, "case_origin": case_origin, "summary": summary,
-            "conversation_id": conversation_id,
-        }
-        record = BusinessRecord(
-            module=ACTION_MODULE, serial_no="MCP-" + request_id, title=summary[:255],
-            status="待确认", owner=identity["username"], department=identity["department"], data=data,
-        )
-        db.add(record)
-        await db.flush()
-        db.add(_event(record.id, identity, "", "待确认"))
-        await db.commit()
-        return {
-            "request_id": request_id, "status": "pending", "summary": summary, "preview": preview,
-            "irreversible_category": category,
-            "next_step": f"这是不可撤回的操作（{category}），已生成待确认请求，需要用户在 OA 网页的智能体中心确认后才会执行。",
-            "confirmation_url": settings.api_prefix + f"/agent-tools/requests/{request_id}",
-        }
+        pending = await _create_pending_request(
+            identity, db, tool_name=spec.name, fingerprint=descriptor_fingerprint(spec), arguments=arguments, params=params,
+            preview=preview, case_origin=case_origin, conversation_id=conversation_id)
+        where = "OA 网页的智能体中心" if context.readonly else "对话里的确认卡片上"
+        return {**pending, **({"irreversible_category": category} if category else {}),
+                "next_step": (f"这是不可撤回的操作（{category}），" if category else "这是写入操作，")
+                             + f"已生成待确认请求，需要用户在{where}点“确认并执行”后才会执行；聊天回复不算确认。"}
 
 
 async def decide_tool_request(
@@ -340,7 +389,14 @@ async def decide_tool_request(
     data = dict(record.data)
     if expected_case_id is not _UNSET and data["case_origin"] != expected_case_id:
         raise HTTPException(403, "确认请求与当前案件或个人智能体入口不一致")
-    if decision == "approved":
+    business = data.get("kind") == "business"
+    if decision == "approved" and business:
+        from app.agent_mcp.business_tools import TOOLS, business_fingerprint
+        tool = TOOLS.get(data["tool_name"])
+        if tool is None or not tool.write or business_fingerprint(tool) != data["descriptor_fingerprint"]:
+            raise HTTPException(409, "业务工具定义已变化，请重新准备并在前端确认")
+        reject_credentials(data["arguments"])
+    elif decision == "approved":
         spec = get_catalog(get_auth_context().application).get(data["tool_name"])
         if not spec.is_write or descriptor_fingerprint(spec) != data["descriptor_fingerprint"]:
             raise HTTPException(409, "业务接口定义已变化，请重新准备并在前端确认")
@@ -367,10 +423,13 @@ async def decide_tool_request(
     from app.core import change_log
     source_token = change_log.set_source("agent")  # 智能体准备、用户在网页确认后执行
     try:
-        result = await execute_original(
-            spec, params, case_origin=data["case_origin"],
-            conversation_id=data.get("conversation_id"), source_request_id=request_id,
-        )
+        if business:
+            result = await _execute_confirmed_business(data)
+        else:
+            result = await execute_original(
+                spec, params, case_origin=data["case_origin"],
+                conversation_id=data.get("conversation_id"), source_request_id=request_id,
+            )
     except Exception as exc:
         error = safe_result(
             {"status_code": exc.status_code, "detail": exc.detail} if isinstance(exc, HTTPException)
@@ -386,6 +445,40 @@ async def decide_tool_request(
         change_log.source_var.reset(source_token)
     await _finish_request(record.id, execution_id, actual_identity, db, "已执行", result=result)
     return await get_tool_request(request_id, actual_identity, db)
+
+
+async def _execute_confirmed_business(data: dict) -> dict:
+    """执行用户已确认的业务工具：内部普通写入直接执行，不可撤回步骤仍生成待确认请求；任一步失败按执行失败处理。"""
+    from app.agent_mcp.auth import confirmed_case_origin
+    from app.agent_mcp.business_tools import run_business_tool
+    token = APPROVED_EXECUTION.set(True)
+    try:
+        with confirmed_case_origin(data.get("case_origin")):
+            result = await run_business_tool(data["tool_name"], {**data["arguments"], "confirm": True})
+    finally:
+        APPROVED_EXECUTION.reset(token)
+    if isinstance(result, dict) and result.get("isError"):
+        raise HTTPException(422, {"message": result.get("message"), "failed_step": result.get("failed_step"),
+                                  "completed_steps": result.get("completed_steps")})
+    return result
+
+
+async def prepare_business_request(tool, values: dict, plan: dict, *, conversation_id: str | None = None) -> dict:
+    """业务工具带 confirm=true 时：先跑一遍执行计划（不写数据），再整体生成一条待确认请求，卡片上列出每一步。"""
+    from app.agent_mcp.business_tools import business_fingerprint
+    identity = await authenticated_identity()
+    steps = [f"{step['step']}. {step['purpose']}" + ("（写入）" if step.get("kind") == "写" else "")
+             for step in plan.get("steps") or []]
+    preview = {
+        "operation_name": tool.title, "tool_name": tool.name, "method": "POST",
+        "path": f"业务工具 {tool.name}", "path_template": f"/business-tools/{tool.name}",
+        "params": {"path": {}, "query": {}, "body": values, "steps": "\n".join(steps)},
+        "original_values": "按下列步骤依次办理，任一步失败即停止", "requires_confirmation": True,
+    }
+    async with SessionLocal() as db:
+        return await _create_pending_request(
+            identity, db, tool_name=tool.name, fingerprint=business_fingerprint(tool), arguments=values, params={"body": values},
+            preview=preview, case_origin=trusted_case_origin(), conversation_id=conversation_id, kind="business")
 
 
 async def _finish_request(record_id: int, execution_id: str, identity: dict, db, status: str, **outcome) -> None:

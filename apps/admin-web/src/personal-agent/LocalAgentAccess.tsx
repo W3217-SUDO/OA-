@@ -73,7 +73,7 @@ export function LocalAgentAccess() {
     <Modal title={listing.can_write ? "让我电脑上的 agent 连接 OA（可读写）" : "让我电脑上的 agent 连接 OA（只读）"} open={open} width={POPUP_WIDTH.lg} footer={null} onCancel={() => { setOpen(false); setFresh(""); }} destroyOnHidden>
       {listing.can_write
         ? <Alert type="error" showIcon style={{ marginBottom: 12 }}
-          title="这把令牌可以新增、修改、删除 OA 数据，权限和你的账号一致。写入会直接执行，OA 不再二次确认：请在本地 agent 里保持“每次调用前询问”，不要对写入类工具设置“始终允许”。OA 数据会进入你电脑上的 agent（及其所用的模型），请确认符合律所保密要求。令牌等同密码，不要发给他人，不用时请撤销。" />
+          title="这把令牌可以新增、修改、删除 OA 数据，权限和你的账号一致。每次写入都只生成待确认请求，须你在 OA 网页的智能体中心确认后才执行；本地 agent 里也请保持“每次调用前询问”。OA 数据会进入你电脑上的 agent（及其所用的模型），请确认符合律所保密要求。令牌等同密码，不要发给他人，不用时请撤销。" />
         : <Alert type="warning" showIcon style={{ marginBottom: 12 }}
           title="令牌只能读取、不能修改；权限和你的账号一致。OA 数据会进入你电脑上的 agent（及其所用的模型），请确认符合律所保密要求。令牌等同密码，不要发给他人或写进共享文件，不用时请撤销。" />}
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>

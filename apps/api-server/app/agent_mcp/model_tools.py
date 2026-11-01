@@ -137,7 +137,15 @@ class ModelToolSession:
             self.discovered.update({tool["name"]: catalog.get(tool["name"]) for tool in result["tools"]})
             return result
         if is_business_tool(name):
-            return {"result": await run_business_tool(name, arguments, call=self._call_catalog)}
+            result = await run_business_tool(name, arguments, call=self._call_catalog, conversation_id=self.conversation_id)
+            if isinstance(result, dict) and result.get("status") == "pending":
+                # 业务工具整体生成的待确认请求，和单个接口一样显示成对话里的确认卡片。
+                request_id, preview = result.get("request_id"), result.get("preview")
+                if not isinstance(request_id, str) or not request_id or not isinstance(preview, dict):
+                    raise RuntimeError("oa_pending_request_invalid")
+                self.pending_actions.append({"type": "mcp.call", "summary": str(result["summary"]),
+                                             "payload": {"request_id": request_id}, "preview": preview})
+            return {"result": result}
         if name != "oa_call_tool":
             raise HTTPException(status_code=422, detail="模型只能使用 OA 工具发现与受控调用")
         if set(arguments) != {"name", "arguments"} or not isinstance(arguments.get("name"), str):

@@ -208,7 +208,7 @@ def title_for(route: APIRoute, method: str) -> str:
     return (verb + subject)[:80]
 
 
-DIRECT_WRITE_TEXT = "直接执行（原权限、数据范围、校验和业务审批照常生效），每次变更在服务器留痕、可由管理员还原；参数齐全时不需要再向用户确认。"
+DIRECT_WRITE_TEXT = "调用后先生成待确认请求（站内智能体弹确认卡片，外部 MCP 由用户在 OA 网页智能体中心确认），用户确认后才执行；原权限、数据范围、校验和业务审批照常生效，每次变更留痕可还原。"
 IRREVERSIBLE_TEXT = "属于不可撤回操作，调用后只生成待确认请求，须用户在 OA 网页确认后才执行。"
 
 
