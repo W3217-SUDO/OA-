@@ -183,6 +183,66 @@ async def _backfill_hearing(case: BusinessRecord, documents: list[dict], level: 
     return {"status": "已回填", "hearing": f"{day} {clock} {room}", "previous": previous, "also_filled": filled}
 
 
+def _staff(documents: list[dict]) -> dict:
+    """各文书识别出的承办法官、书记员、法官电话；同一项在不同文书里不一致时不回填，只报告。"""
+    result = {}
+    for key in ("承办法官", "书记员", "法官电话"):
+        values = list(dict.fromkeys(item["fields"].get(key) for item in documents if item["fields"].get(key)))
+        result[key] = values[0] if len(values) == 1 else ""
+        if len(values) > 1:
+            result[key + "冲突"] = values
+    basis = next((item["fields"].get("承办法官依据") for item in documents if item["fields"].get("承办法官") == result["承办法官"] and result["承办法官"]), "")
+    result["承办法官依据"] = basis
+    return result
+
+
+def _staff_plan(case: BusinessRecord, documents: list[dict], level: str, court_name: str) -> dict:
+    """承办法官、书记员只填该审级空着的字段，已有的不覆盖；审级不明不填。法官电话只报告给律师，不写入。"""
+    staff = _staff(documents)
+    data = case.data or {}
+    prefix = HEARING_PREFIX.get(level)
+    fields = {"承办法官": prefix + "_judge" if prefix else "", "书记员": prefix + "_clerk" if prefix else ""}
+    plan, notes = {}, []
+    for label, field in fields.items():
+        value = staff.get(label)
+        if staff.get(label + "冲突"):
+            notes.append(f"{label}在不同文书里不一致（{'、'.join(staff[label + '冲突'])}），不回填")
+            continue
+        if not value:
+            continue
+        if not field:
+            notes.append(f"{label} {value}：审级不明，不回填")
+            continue
+        existing = str(data.get(field) or "").strip()
+        if existing and existing != value:
+            notes.append(f"{label}已登记为 {existing}，文书为 {value}，不覆盖")
+        elif not existing:
+            plan[field] = value
+    if staff.get("法官电话"):
+        notes.append(f"法官电话 {staff['法官电话']}（只报告，不写入案件）")
+    labels = {fields[label]: label for label in fields if fields[label]}
+    display = [f"{labels[field]} {value}" for field, value in plan.items()]
+    if plan and not str(data.get(prefix + "_name") or "").strip():
+        # 填某审级的法官时，该审级法院名称必须有；没有就一并填文书上的法院，取不到则不回填。
+        if not court_name:
+            return {"fields": {}, "display": [], "basis": staff.get("承办法官依据") or "",
+                    "notes": [*notes, "缺法院名称，承办法官和书记员不回填"]}
+        plan[prefix + "_name"] = court_name
+        display.append(f"{level}法院 {court_name}")
+    return {"fields": plan, "display": display, "basis": staff.get("承办法官依据") or "", "notes": notes}
+
+
+async def _backfill_staff(case: BusinessRecord, documents: list[dict], level: str, court_name: str,
+                          identity: dict, db: AsyncSession) -> dict:
+    from app.api_schemas.cases import CaseCourtInfoInput
+    from app.areas.legal.router import update_case_court_info
+    plan = _staff_plan(case, documents, level, court_name)
+    if plan["fields"]:
+        await update_case_court_info(case.id, CaseCourtInfoInput(**plan["fields"], comment="法院收文：按文书回填承办法官、书记员"),
+                                     identity=identity, db=db)
+    return {"status": "已回填" if plan["fields"] else "无需回填", "filled": plan["display"], "basis": plan["basis"], "notes": plan["notes"]}
+
+
 def _deadline(fields: dict, documents: list[dict]) -> str:
     """“收到次日起 N 日内”：以送达当日（文书落款日，缺失时取同批文书落款日，再缺则今天）加 N 日。"""
     days = fields.get("预交天数")
@@ -245,6 +305,8 @@ def _preview(case: BusinessRecord, documents: list[dict], court_no: str, level: 
         "hearing": ([f"{day} {clock} {room}" for day, clock, room in hearings] if hearings else []),
         "hearing_note": "开庭信息不一致，入库后只报告不回填" if len({(day, clock) for day, clock, _ in hearings}) > 1 else "",
         "court_name": court_name, "fees": fees,
+        # 承办法官、书记员、法官电话（BUG 陶国南 11-01 智能体日常办事第 4 项）：只填空着的字段。
+        "court_staff": _staff_plan(case, documents, level, court_name),
     }
 
 
@@ -298,12 +360,14 @@ async def intake_court_service(body: CourtIntakeInput, identity: dict = Depends(
                 for item in documents]
     await db.refresh(case)
     hearing = await _backfill_hearing(case, documents, level, court_name, court_no, identity, db)
+    await db.refresh(case)
+    staff = await _backfill_staff(case, documents, level, court_name, identity, db)
     fees = [await _prepare_fee(case, item, court_no, level, documents, identity, db)
             for item in documents if item["fields"].get("文书类型") == "交纳诉讼费用通知书"]
     await db.refresh(case)
     report.update({
         "status": "已收文", "case": _brief(case), "instance_level": level, "received": received,
-        "court_case_no": (case.data or {}).get("court_case_no") or "", "hearing": hearing, "fees": fees,
+        "court_case_no": (case.data or {}).get("court_case_no") or "", "hearing": hearing, "court_staff": staff, "fees": fees,
         "next_step": ("有待确认的官方费用：请向律师确认是否提交缴纳并设缴费期限提醒，确认后对每个 fee_id 调用“确认收文费用”。"
                       if any(item.get("status") == "待确认" for item in fees) else "收文完成。"),
     })

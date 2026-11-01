@@ -1,4 +1,4 @@
-"""从法院文书正文识别收文要素：文书类型、案号、法院、案由、当事人、开庭、缴费、落款日期。
+"""从法院文书正文识别收文要素：文书类型、案号、法院、案由、当事人、开庭、缴费、承办法官与书记员、落款日期。
 
 只用标准库。识别不到的项留空并列入“需人工核对”，绝不臆造。
     python extract_doc_fields.py --text "<正文>" [--name "<文书名称>"]
@@ -126,6 +126,55 @@ def fee(text: str) -> dict:
             "收款账户": {key: value for key, value in account.items() if value}}
 
 
+_STAFF_LABELS = ("承办法官", "主审法官", "承办人", "审判长", "代理审判员", "审判员", "人民陪审员", "法官助理", "书记员")
+_STAFF_STOP = (r"(?=[，,；;。、（(:：]|联系|电话|手机|担任|组成|主持|独任|适用|审理|与|和|为|" + "|".join(_STAFF_LABELS)
+               + r"|[0-9〇○零一二三四五六七八九]{4}年|本件|$)")
+
+
+def _staff_names(compact: str, label: str) -> list[str]:
+    names = []
+    # “代理审判员”“审判员”互不吞并：审判员前不能紧跟“代理”。
+    prefix = r"(?<!代理)" if label == "审判员" else ""
+    for match in re.finditer(prefix + label + r"[:：]?([\u4e00-\u9fff·]{2,5}?)" + _STAFF_STOP, compact):
+        name = match.group(1)
+        if name not in names:
+            names.append(name)
+    return names
+
+
+def court_staff(compact: str) -> dict:
+    """承办法官、书记员、法官电话。承办法官：文书写明“承办法官/主审法官/承办人”的优先；
+    否则独任审判（只有一位审判员、没有审判长）取该审判员；合议庭没写明承办人时取审判长并标注。"""
+    found = {label: _staff_names(compact, label) for label in _STAFF_LABELS}
+    # 传票常见写法“承办法官/法官助理：徐某/（法官助理）”：斜杠前是法官，后面是助理，括号里的是没填的占位字。
+    paired = re.search(r"承办法官/法官助理[:：]([^/（(]{0,6})/([^/（(:：]{0,6})", compact)
+    if paired:
+        for label, value in (("承办法官", paired.group(1)), ("法官助理", paired.group(2))):
+            name = re.sub(r"(书记员|联系).*$", "", value)
+            if 2 <= len(name) <= 5 and name not in found[label]:
+                found[label].insert(0, name)
+    judge, basis = "", ""
+    for label in ("承办法官", "主审法官", "承办人"):
+        if found[label]:
+            judge, basis = found[label][0], label
+            break
+    judges = found["审判员"] + found["代理审判员"]
+    if not judge and len(judges) == 1 and not found["审判长"]:
+        judge, basis = judges[0], "独任审判员"
+    if not judge and found["审判长"]:
+        judge, basis = found["审判长"][0], "审判长（合议庭未写明承办人）"
+    phone = ""
+    for anchor in re.finditer(r"承办|法官|书记员|联系电话|联系人", compact):
+        match = re.search(r"(?:电话|手机|联系方式)[:：]?(1[3-9]\d{9}|(?:\d{3,4}-)?\d{7,8}(?:-\d{1,6})?)", compact[anchor.start():anchor.start() + 60])
+        if match:
+            phone = match.group(1)
+            break
+    panel = [*found["审判长"], *judges, *found["人民陪审员"]]
+    return {"承办法官": judge, "承办法官依据": basis, "审判人员": list(dict.fromkeys(panel)),
+            "法官助理": found["法官助理"][0] if found["法官助理"] else "",
+            "书记员": found["书记员"][0] if found["书记员"] else "", "法官电话": phone}
+
+
 def signing_date(text: str) -> str:
     """落款日期：取正文最后一个完整日期（文书落款一般在末尾）。"""
     dates = [value for value in (to_date(match) for match in _DATE.finditer(text[-600:])) if value]
@@ -167,6 +216,7 @@ def extract(text: str, name: str = "") -> dict:
         "原告": _parties(text, "原告") or _parties(text, "上诉人") or _parties(text, "申请人") or sued_plaintiffs,
         "被告": _parties(text, "被告") or _parties(text, "被上诉人") or _parties(text, "被申请人") or sued_defendants,
         "落款日期": signing_date(compact),
+        **court_staff(compact),
     }
     kind = result["文书类型"]
     if kind in {"传票", "出庭通知书"} or "开庭" in text:

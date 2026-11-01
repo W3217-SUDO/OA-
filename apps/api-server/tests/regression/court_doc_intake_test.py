@@ -432,3 +432,45 @@ class CourtIntakeOssStorageTest(unittest.IsolatedAsyncioTestCase):
         signature = base64.b64encode(hmac.new(b"SK", expected.encode(), hashlib.sha1).digest()).decode()
         self.assertEqual(headers["Authorization"], f"OSS AK:{signature}")
         self.assertTrue(all(ord(char) < 128 for value in headers.values() for char in value if value != headers["Authorization"]))
+
+
+class CourtStaffExtractionTest(unittest.TestCase):
+    """陶国南 11-01：收文时把承办法官、书记员、法官电话读出来，承办法官、书记员只填空着的字段。"""
+
+    def test_judge_clerk_and_phone_from_common_documents(self):
+        panel = extract("合议庭组成通知书\n（2026）浙0102民初123号\n本院受理原告甲有限公司诉被告乙有限公司侵害商标权纠纷一案，"
+                        "由审判员张三担任审判长，与审判员李四、人民陪审员王五组成合议庭。\n承办法官：李四，联系电话：0571-87654321\n"
+                        "书记员：赵六\n二〇二六年十月二十二日", "合议庭组成通知书")
+        self.assertEqual((panel["承办法官"], panel["承办法官依据"], panel["书记员"], panel["法官电话"]), ("李四", "承办法官", "赵六", "0571-87654321"))
+        self.assertEqual(panel["审判人员"], ["张三", "李四", "王五"])
+        judgment = extract("民事判决书\n本判决为终审判决。\n审 判 员  陈 小 明\n二〇二六年十月二十二日\n法官助理  刘 一\n书 记 员  周 二 三", "判决书")
+        self.assertEqual((judgment["承办法官"], judgment["承办法官依据"], judgment["法官助理"], judgment["书记员"]), ("陈小明", "独任审判员", "刘一", "周二三"))
+        collegial = extract("审判长 张大伟\n审判员 李娜\n人民陪审员 王强\n二〇二六年九月一日\n书记员 孙丽", "判决书")
+        self.assertEqual((collegial["承办法官"], collegial["承办法官依据"]), ("张大伟", "审判长（合议庭未写明承办人）"))
+        notice = extract("举证通知书 本案由审判员王芳适用简易程序独任审理。书记员：陈晨，电话：13912345678", "举证通知书")
+        self.assertEqual((notice["承办法官"], notice["书记员"], notice["法官电话"]), ("王芳", "陈晨", "13912345678"))
+        # 线上真实传票写法：“承办法官/法官助理：徐某/（法官助理）”，括号里的是没填的占位字。
+        summons = extract("民事传票 应到处所第十一审判庭 4.承办法官/法官助理：徐芝若/（法官助理）书记员：陈洁联系电话：86849427/"
+                          "（法官助理电话）/86849427联系地址：某市某路1号", "民事传票")
+        self.assertEqual((summons["承办法官"], summons["法官助理"], summons["书记员"], summons["法官电话"]), ("徐芝若", "", "陈洁", "86849427"))
+        self.assertEqual(extract("没有任何人员信息的文书")["承办法官"], "")
+
+    def test_staff_plan_fills_only_empty_fields_and_reports_conflicts(self):
+        from app.areas.aws.court_intake import _staff_plan
+
+        def doc(**fields):
+            return {"name": "文书", "fields": {"承办法官": "", "书记员": "", "法官电话": "", **fields}}
+
+        case = BusinessRecord(module="case", serial_no="C1", data={"first_court_judge": "老法官"})
+        plan = _staff_plan(case, [doc(承办法官="李四", 承办法官依据="承办法官", 书记员="赵六", 法官电话="0571-1")], "一审", "某区人民法院")
+        self.assertEqual(plan["fields"], {"first_court_clerk": "赵六", "first_court_name": "某区人民法院"})
+        self.assertTrue(any("已登记为 老法官" in note for note in plan["notes"]))
+        self.assertTrue(any("法官电话 0571-1" in note for note in plan["notes"]))
+        conflict = _staff_plan(BusinessRecord(module="case", serial_no="C2", data={}),
+                               [doc(承办法官="李四"), doc(承办法官="王五")], "一审", "某区人民法院")
+        self.assertEqual(conflict["fields"], {})
+        self.assertTrue(any("不一致" in note for note in conflict["notes"]))
+        unknown = _staff_plan(BusinessRecord(module="case", serial_no="C3", data={}), [doc(承办法官="李四")], "", "某区人民法院")
+        self.assertEqual(unknown["fields"], {})
+        no_court = _staff_plan(BusinessRecord(module="case", serial_no="C4", data={}), [doc(承办法官="李四")], "二审", "")
+        self.assertEqual(no_court["fields"], {})
