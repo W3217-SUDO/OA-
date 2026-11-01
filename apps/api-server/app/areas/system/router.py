@@ -1404,6 +1404,19 @@ async def update_role_permission(role: str, body: RolePermissionUpdate, identity
     return _role_permission_dict(item)
 
 
+@router.get(f"{settings.api_prefix}/dashboard/hearings")
+async def dashboard_hearings_http(
+    scope: str = Query("personal", pattern="^(personal|company)$"),
+    page: int = Query(1, ge=1), page_size: int = Query(13, ge=1, le=50),
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """工作台开庭排期“个人 / 全所”页签（陶国南 11-01 定）：全所数据多，按页取。"""
+    from app.core.dashboard_cases import dashboard_hearings
+    items, total = await dashboard_hearings(identity, db, company=scope == "company",
+                                            offset=(page - 1) * page_size, limit=page_size)
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
 @router.get(f"{settings.api_prefix}/dashboard", name="dashboard")
 async def dashboard_http(
     request: Request,

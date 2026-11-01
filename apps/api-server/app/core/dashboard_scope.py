@@ -83,7 +83,7 @@ class DashboardScopeData:
     finance_pool: FeeReceiptPool | None = None
 
 
-async def company_hearing_conditions(identity, db):
+async def company_hearing_conditions(identity, db, *, company: bool = False):
     user = await db.scalar(select(User).where(User.username == identity['username'], User.is_active.is_(True)))
     if user is None:
         raise HTTPException(401, '当前用户不存在或已停用')
@@ -98,15 +98,24 @@ async def company_hearing_conditions(identity, db):
     if not user.department or user.department in excluded or ''.join(user.department.split()) in {'合作律师部', '外部合作调查取证部'}:
         return [false()]
     conditions = [BusinessRecord.module == 'case', BusinessRecord.status.notin_(['已合并', '已删除', '已回收'])]
-    # 旧系统开庭排期：管理员看全公司（PageId 1001103100），其他人看“我的案件”（PageId 100110110，
-    # 含本人办理的案件和本人作为客户管理人/协作人的客户的案件）。
-    if 'admin' in _system_user_role_ids(user):
+    # 开庭排期分“个人 / 全所”两个页签（陶国南 11-01 定）：默认“个人”= 我的案件（本人办理的案件和本人作为
+    # 客户管理人/协作人的客户的案件），管理员也一样；所有人都能切到“全所”看全公司。
+    if company:
         return conditions
     from app.core.permissions import _coordinated_case_condition
     return [*conditions, or_(
         await _case_mine_scope_condition(identity, db),
         _coordinated_case_condition(user.username, db.get_bind().dialect.name),
     )]
+
+
+async def dashboard_company_account(user, db) -> bool:
+    """工作台数字按全公司算的管理员类账号（陶国南 11-01 定）：系统角色 admin，或岗位“财务审核管理”。
+
+    被驳回数不受影响，仍只算本人（见 dashboard_todos.REJECTED_COUNT_SCOPE）。
+    """
+    role = await _job_role_for_name(_configured_user_job_role_name(user), db)
+    return "admin" in _system_user_role_ids(user) or bool(role and role.name == "财务审核管理")
 
 
 async def dashboard_identity(identity, db, *, personal_cases=False):
@@ -122,8 +131,7 @@ async def load_dashboard_scope(identity, db, *, personal_cases=False, include_su
     if user is None or not user.is_active:
         raise HTTPException(401, "当前用户不存在或已停用")
     roles = _system_user_role_ids(user)
-    role = await _job_role_for_name(_configured_user_job_role_name(user), db)
-    all_cases = "admin" in roles or bool(role and role.name == "财务审核管理")
+    all_cases = await dashboard_company_account(user, db)
     conditions = [BusinessRecord.module == "case", BusinessRecord.status.notin_(["已合并", "已删除", "已回收"])]
     if personal_cases:
         conditions.append(await _case_mine_scope_condition(identity, db))
@@ -354,10 +362,11 @@ async def personal_refund_identity(scoped_identity, db, *, scope_data=None):
 
 
 async def dashboard_urgent_cases(identity, db, personal_case_ids, *, scope_data=None):
-    """紧急案件按旧系统只看“我的案件”（本人办理或本人作为客户管理人/协作人的客户的案件），管理员也一样。"""
+    """紧急案件的案件范围和其他案件提醒一样：普通账号看“我的案件”（本人办理或本人作为客户管理人/协作人的客户的案件），
+    管理员类账号看全公司（陶国南 11-01 定）。"""
     from app.core.permissions import _coordinated_case_condition
 
-    if scope_data is not None and not scope_data.all_cases:
+    if scope_data is not None:
         return scope_data.cases
     conditions = [
         BusinessRecord.module == "case",

@@ -644,6 +644,7 @@ CASE_EXECUTION_STATUS_ALIASES = {
 }
 
 
+# 工作台“待执行”含再审待执行（陶国南 11-01 定，旧系统只算一审和二审）。
 CASE_PENDING_EXECUTION_PHASES = frozenset({
     "一审待执行", "二审待执行", "再审待执行",
 })

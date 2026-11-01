@@ -178,6 +178,7 @@ export default function Dashboard({
   const schedule = (
     <DashboardHearingSchedule
       hearings={data.hearings || []}
+      hearingsTotal={data.hearings_total}
       loading={loading.cases}
       status={sectionStatus("cases")}
       canOpenSchedule={canNavigate("case-mine-schedule")}

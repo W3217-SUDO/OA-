@@ -1,6 +1,8 @@
 """控制台个人统计和明细使用同一队列口径。"""
 from app.core.dashboard_personal_queues import personal_case_queues, personal_finance_queues, personal_queues
 from app.core.dashboard_scope import CASE_QUEUES
+from sqlalchemy import select
+from app.models import User
 
 
 METRIC_DEFINITIONS = (
@@ -42,9 +44,13 @@ async def _with_customer_unreceived(queues_job, definitions, identity, db):
     客户合计和各提醒队列互不依赖，用独立只读会话并行计算。"""
     from app.core.customer_fee_balance import managed_customers_official_unreceived
     from app.core.dashboard_list_counts import gather_counts
+    from app.core.dashboard_scope import dashboard_company_account
+    user = await db.scalar(select(User).where(User.username == identity["username"]))
+    # 管理员类账号按全公司客户合计（陶国南 11-01 定）。
+    company = bool(user) and await dashboard_company_account(user, db)
     results = await gather_counts(db, {
         "queues": queues_job,
-        "unreceived": lambda session: managed_customers_official_unreceived(session, identity["username"]),
+        "unreceived": lambda session: managed_customers_official_unreceived(session, identity["username"], company=company),
     })
     response = await _official_fee_audit_metric(_metrics_response(results["queues"], definitions), identity, db)
     for metric in response["metrics"]:

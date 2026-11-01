@@ -127,8 +127,8 @@ async def _has_table(db, name: str) -> bool:
     return _table_ready[key]
 
 
-# 旧系统工作台橙色“被驳回”数字的范围。旧系统实际：合同按我的客户；用印、归档、亏损、结算没有按人过滤，是全公司数。
-# 陶国南确认前先按本人算（"personal"）；改成 "company" 即与旧系统显示一致。
+# 工作台橙色“被驳回”数字的范围：只算本人的（陶国南 11-01 定，管理员账号也一样）。不要改回全公司。
+# 旧系统实际：合同按我的客户；用印、归档、亏损、结算没有按人过滤，是全公司数。
 REJECTED_COUNT_SCOPE = "personal"
 CIVIL_CASE_TYPES = ("民事争议", "民事案件")
 

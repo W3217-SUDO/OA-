@@ -150,13 +150,17 @@ test('R26 已授权开庭排期标题实际点击跳到我的案件开庭排期�
     });
     return renderer;
   };
+  // 标题之外还有“个人 / 全所”两个页签按钮（陶国南 11-01 定）。
+  const textOf = (node) => (node.children || []).map((child) => typeof child === 'string' ? child : textOf(child)).join('');
+  const titleButtons = (renderer) => renderer.root.findAllByType('button').filter((node) => textOf(node).includes('开庭排期'));
   const granted = await renderSchedule(true);
-  await act(async () => { granted.root.findByType('button').props.onClick(); });
+  assert.deepEqual(granted.root.findAllByProps({ role: 'tab' }).filter((node) => node.type === 'button').map(textOf), ['个人', '全所']);
+  await act(async () => { titleButtons(granted)[0].props.onClick(); });
   assert.deepEqual(routes, ['case-mine-schedule']);
   await act(async () => granted.unmount());
 
   const denied = await renderSchedule(false);
-  assert.equal(denied.root.findAllByType('button').length, 0);
+  assert.equal(titleButtons(denied).length, 0);
   assert.deepEqual(routes, ['case-mine-schedule']);
   await act(async () => denied.unmount());
 });

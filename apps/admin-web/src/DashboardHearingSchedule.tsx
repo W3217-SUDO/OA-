@@ -1,5 +1,6 @@
-import { useMemo, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Button, Empty } from "antd";
+import { api } from "./api";
 import { RightOutlined } from "@ant-design/icons";
 import AgentAvatar from "./personal-agent/AgentAvatar";
 import dayjs from "dayjs";
@@ -9,6 +10,7 @@ type Hearing = Record<string, string>;
 
 type Props = {
   hearings: Hearing[];
+  hearingsTotal?: number;
   loading: boolean;
   status: ReactNode;
   canOpenSchedule: boolean;
@@ -28,13 +30,39 @@ function dayHint(date: string) {
   return "";
 }
 
+type Scope = "personal" | "company";
+const PAGE_SIZE = 13;
+
 // 开庭排期按日期排成日程表：左侧是日期，右侧是当天的每一场开庭。
-export default function DashboardHearingSchedule({ hearings, loading, status, canOpenSchedule, canOpenCase, canOpenCustomer, onOpenSchedule, onOpenCase, onOpenCustomer, onOpenHearingAgent, onAsk }: Props) {
+// 分“个人 / 全所”两个页签（陶国南 11-01 定）：默认看本人相关的开庭，所有人都能切到全所；全所数据多，按页加载。
+export default function DashboardHearingSchedule({ hearings, hearingsTotal, loading, status, canOpenSchedule, canOpenCase, canOpenCustomer, onOpenSchedule, onOpenCase, onOpenCustomer, onOpenHearingAgent, onAsk }: Props) {
+  const [scope, setScope] = useState<Scope>("personal");
+  const [company, setCompany] = useState<{ rows: Hearing[]; total: number; page: number; loading: boolean; error: string }>(
+    { rows: [], total: 0, page: 0, loading: false, error: "" });
+  const loadCompany = useCallback(async (page: number) => {
+    setCompany((current) => ({ ...current, loading: true, error: "" }));
+    try {
+      const { data } = await api.get("/dashboard/hearings", { params: { scope: "company", page, page_size: PAGE_SIZE } });
+      setCompany((current) => ({
+        rows: page === 1 ? data.items || [] : [...current.rows, ...(data.items || [])],
+        total: data.total || 0, page, loading: false, error: "",
+      }));
+    } catch (error: any) {
+      setCompany((current) => ({ ...current, loading: false, error: error?.response?.data?.detail || "全所开庭排期加载失败" }));
+    }
+  }, []);
+  const switchScope = (next: Scope) => {
+    setScope(next);
+    if (next === "company") void loadCompany(1);
+  };
+  const shown = scope === "company" ? company.rows : hearings;
+  const total = scope === "company" ? company.total : (hearingsTotal ?? hearings.length);
+  const busy = scope === "company" ? company.loading && !company.rows.length : loading;
   const days = useMemo(() => {
     const byDate = new Map<string, Hearing[]>();
-    hearings.forEach((item) => byDate.set(item.date, [...(byDate.get(item.date) || []), item]));
+    shown.forEach((item) => byDate.set(item.date, [...(byDate.get(item.date) || []), item]));
     return Array.from(byDate, ([date, items]) => ({ date, weekday: items[0].weekday.replace("星期", "周"), items }));
-  }, [hearings]);
+  }, [shown]);
   return (
     <section className="wb-docket" aria-label="开庭排期">
       <header className="wb-section-head">
@@ -44,11 +72,21 @@ export default function DashboardHearingSchedule({ hearings, loading, status, ca
             ? <Button type="link" className="wb-title-link" onClick={onOpenSchedule}>开庭排期<RightOutlined /></Button>
             : <span className="wb-title-link">开庭排期</span>}
         </h3>
-        {hearings.length > 0 && <span className="wb-count" title={`近期共 ${hearings.length} 场开庭`}>{hearings.length}</span>}
+        <span className="wb-docket-tools">
+          <span className="wb-docket-scope" role="tablist" aria-label="开庭范围">
+            {([["personal", "个人"], ["company", "全所"]] as const).map(([value, label]) => (
+              <Button key={value} size="small" role="tab" aria-selected={scope === value}
+                type={scope === value ? "primary" : "default"} onClick={() => scope !== value && switchScope(value)}>
+                {label}
+              </Button>
+            ))}
+          </span>
+          {total > 0 && <span className="wb-count" title={`近期共 ${total} 场开庭`}>{total}</span>}
+        </span>
       </header>
-      {status}
+      {scope === "personal" ? status : company.error ? <div className="dashboard-section-status" role="alert">{company.error}</div> : null}
       <div className="wb-docket-body">
-        {!loading && !days.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="近期没有开庭安排" />}
+        {!busy && !days.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="近期没有开庭安排" />}
         {days.map((day) => (
           <div className="wb-day" key={day.date}>
             <div className="wb-day-date">
@@ -97,6 +135,13 @@ export default function DashboardHearingSchedule({ hearings, loading, status, ca
             </ul>
           </div>
         ))}
+        {scope === "company" && company.rows.length < company.total && (
+          <div className="wb-docket-more">
+            <Button size="small" loading={company.loading} onClick={() => void loadCompany(company.page + 1)}>
+              加载更多（已显示 {company.rows.length} / {company.total}）
+            </Button>
+          </div>
+        )}
       </div>
     </section>
   );

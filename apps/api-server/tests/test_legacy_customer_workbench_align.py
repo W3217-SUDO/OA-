@@ -60,6 +60,8 @@ class LegacyCustomerWorkbenchAlignTest(unittest.IsolatedAsyncioTestCase):
             # 工作台“未到官费金额”= 本人是负责人或协作人的客户合计。
             self.assertEqual(await managed_customers_official_unreceived(db, "codexmgr"), 500.0)
             self.assertEqual(await managed_customers_official_unreceived(db, "nobody"), 0)
+            # 管理员类账号按全公司客户合计（陶国南 11-01 定）。
+            self.assertEqual(await managed_customers_official_unreceived(db, "nobody", company=True), 500.0)
 
     async def test_contact_count_counts_legacy_customer_events(self):
         async with self.sessions() as db:

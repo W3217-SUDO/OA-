@@ -173,17 +173,21 @@ async def legacy_customer_event_counts(db, customer_ids: list[int]) -> dict[int,
       .group_by(LegacyCustomerHistoryEvent.customer_record_id))).all())
 
 
-async def managed_customers_official_unreceived(db, username: str) -> float:
-    """工作台“未到官费金额”：旧系统 GetTotalCaseFeeAmount，本人是客户负责人或在客户协作人里的全部客户（不看是否公海、是否删除）。"""
+async def managed_customers_official_unreceived(db, username: str, *, company: bool = False) -> float:
+    """工作台“未到官费金额”：旧系统 GetTotalCaseFeeAmount，本人是客户负责人或在客户协作人里的全部客户（不看是否公海、是否删除）。
+
+    company=True 时是全公司全部客户（管理员类账号，陶国南 11-01 定）。
+    """
     import json
     token = json.dumps(username, ensure_ascii=False)
     data = BusinessRecord.data
-    customers = (await db.execute(select(BusinessRecord.id, BusinessRecord.serial_no).where(
-        BusinessRecord.module == "customer", or_(
+    conditions = [BusinessRecord.module == "customer"]
+    if not company:
+        conditions.append(or_(
             BusinessRecord.owner == username,
             data["customer_managers"].as_string().contains(token, autoescape=True),
             data["coordinators"].as_string().contains(token, autoescape=True),
-        ),
-    ))).all()
+        ))
+    customers = (await db.execute(select(BusinessRecord.id, BusinessRecord.serial_no).where(*conditions))).all()
     balances = await customer_fee_balances(db, customers)
     return round(sum(item["official_fee_unreceived"] for item in balances.values()), 2)

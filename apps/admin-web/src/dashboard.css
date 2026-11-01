@@ -124,6 +124,9 @@ button.wb-todo-entry:active{background:color-mix(in srgb, #dcece3 var(--oa-tint)
 .wb-section-head h3{margin:0;color:var(--wb-ink);font-size:15px;font-weight:600}
 .wb-section-head .wb-title-link{height:auto;padding:0;color:var(--wb-ink);font-size:15px;font-weight:600}
 .wb-title-link .anticon{margin-left:4px;color:var(--wb-mute);font-size:11px}
+.wb-docket-tools{display:flex;align-items:center;gap:8px;flex:none}
+.wb-docket-scope{display:inline-flex;gap:4px}
+.wb-docket-more{display:flex;justify-content:center;padding:8px 0 4px}
 .wb-count{min-width:22px;padding:1px 8px;border-radius:999px;background:var(--oa-primary-tint);color:var(--oa-primary-ink);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;text-align:center}
 .wb-count.is-alert{background:color-mix(in srgb, #fbeae7 var(--oa-tint), var(--oa-surface));color:var(--wb-red)}
 .wb-docket-body,.wb-rejection-list{flex:1;min-height:0;margin:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--oa-border-strong) transparent}

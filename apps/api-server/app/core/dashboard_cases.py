@@ -65,6 +65,71 @@ async def dashboard_cases(identity, db):
     latest_case_records = list((await db.scalars(select(BusinessRecord).where(
         *conditions,
     ).order_by(BusinessRecord.created_at.desc(), BusinessRecord.id.desc()).limit(13))).all())
+    hearings, hearings_total = await dashboard_hearings(identity, db, today=today)
+    customer_ids: set[int] = set()
+    customer_nos: set[str] = set()
+    customer_names: set[str] = set()
+    person_usernames: set[str] = set()
+    for item in latest_case_records:
+        data = item.data or {}
+        try:
+            customer_id = int(data.get("customer_record_id") or data.get("customer_id") or 0)
+        except (TypeError, ValueError):
+            customer_id = 0
+        if customer_id:
+            customer_ids.add(customer_id)
+        if customer_no := str(data.get("customer_no") or "").strip():
+            customer_nos.add(customer_no)
+        if item.customer:
+            customer_names.add(_normalized_customer_name(item.customer))
+        person_usernames.update(_record_person_usernames(item))
+        for person_key in (
+            "customer_manager", "customer_managers", "customer_manager_username", "customer_manager_usernames",
+            "hearing_lawyer", "hearing_lawyers",
+            "hearing_lawyer_username", "hearing_lawyer_usernames", "handling_lawyers",
+            "handling_lawyer_usernames", "assistant", "assistants", "assistant_username",
+            "assistant_usernames",
+        ):
+            person_usernames.update(_contract_person_values(data.get(person_key)))
+    customer_conditions = []
+    if customer_ids:
+        customer_conditions.append(BusinessRecord.id.in_(customer_ids))
+    if customer_nos:
+        customer_conditions.append(BusinessRecord.serial_no.in_(customer_nos))
+    if customer_names:
+        customer_conditions.append(BusinessRecord.title.in_({item.customer for item in latest_case_records if item.customer}))
+    related_customers = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "customer", or_(*customer_conditions),
+    ))).all()) if customer_conditions else []
+    customers_by_id = {item.id: item for item in related_customers}
+    customers_by_no: dict[str, list[BusinessRecord]] = {}
+    customers_by_name: dict[str, list[BusinessRecord]] = {}
+    for item in related_customers:
+        customers_by_no.setdefault(str(item.serial_no or "").strip(), []).append(item)
+        customers_by_name.setdefault(_normalized_customer_name(item.title), []).append(item)
+    for customer in related_customers:
+        person_usernames.add(customer.owner)
+        person_usernames.update(_contract_person_values((customer.data or {}).get("customer_managers")))
+        person_usernames.update(_contract_person_values((customer.data or {}).get("coordinators")))
+    users_by_username = await _user_display_map(person_usernames, db)
+    latest_cases = [
+        _dashboard_latest_case_row(
+            item,
+            _dashboard_customer_for_case(item, customers_by_id, customers_by_no, customers_by_name),
+            users_by_username,
+        )
+        for item in latest_case_records
+    ]
+    return {"case_trend": case_trend, "civil_distribution": civil_distribution, "hearings": hearings,
+            "hearings_total": hearings_total, "latest_cases": latest_cases}
+
+
+async def dashboard_hearings(identity, db, *, company: bool = False, offset: int = 0, limit: int = 13, today: date | None = None):
+    """工作台开庭排期（今天起 100 天内）：默认“个人”是本人相关的开庭，“全所”是全公司的（陶国南 11-01 定，所有人都能切换）。
+
+    返回 (这一页的开庭, 总场数)。
+    """
+    today = today or datetime.now(timezone.utc).astimezone(CASE_EVENT_TIME_ZONE).date()
     cutoff = today + timedelta(days=100)
     scheduled_ids = select(HearingSchedule.case_record_id).where(
         HearingSchedule.hearing_date >= today, HearingSchedule.hearing_date <= cutoff,
@@ -72,7 +137,7 @@ async def dashboard_cases(identity, db):
     hearing_keys = [f"{prefix}_court_hearing_date" for prefix, _ in _CASE_HEARING_LEVELS]
     hearing_keys.extend(("hearing_date", "next_hearing_date"))
     from app.core.dashboard_scope import company_hearing_conditions
-    hearing_conditions = await company_hearing_conditions(identity, db)
+    hearing_conditions = await company_hearing_conditions(identity, db, company=company)
     hearing_projection, hearing_data = record_json_text_projection(db, hearing_keys)
     hearing_fields = (*hearing_keys, "hearing_time", "next_hearing_time", "hearing_lawyer",
                       "handling_lawyers", "assistant", "court", "courtroom", "case_phase_name", "opponent",
@@ -106,59 +171,16 @@ async def dashboard_cases(identity, db):
         hearings.append({"case_record_id": case.id, "weekday": "星期" + "一二三四五六日"[item.hearing_date.weekday()], "date": str(item.hearing_date), "time": item.hearing_time, "court": item.court, "case_no": case.serial_no, "client": case.customer, "lawyer": item.hearing_lawyer or data.get("hearing_lawyer", ""), "agent": ",".join(data.get("handling_lawyers", [])), "assistant": data.get("assistant", ""), "hearing_type": item.hearing_type, "courtroom": item.courtroom,
                          "stage": str(data.get("case_phase_name") or case.status or ""), "opponent": _dashboard_text(data.get("opponent"))})
     hearings.sort(key=lambda item: (item["date"], item["time"], item["case_no"]))
-    hearings = hearings[:13]
-    customer_ids: set[int] = set()
-    customer_nos: set[str] = set()
-    customer_names: set[str] = set()
+    page = hearings[offset:offset + limit]
+    # 只给这一页补法院名称和人员显示名。
     person_usernames: set[str] = set()
-    for item in latest_case_records:
-        data = item.data or {}
-        try:
-            customer_id = int(data.get("customer_record_id") or data.get("customer_id") or 0)
-        except (TypeError, ValueError):
-            customer_id = 0
-        if customer_id:
-            customer_ids.add(customer_id)
-        if customer_no := str(data.get("customer_no") or "").strip():
-            customer_nos.add(customer_no)
-        if item.customer:
-            customer_names.add(_normalized_customer_name(item.customer))
-        person_usernames.update(_record_person_usernames(item))
-        for person_key in (
-            "customer_manager", "customer_managers", "customer_manager_username", "customer_manager_usernames",
-            "hearing_lawyer", "hearing_lawyers",
-            "hearing_lawyer_username", "hearing_lawyer_usernames", "handling_lawyers",
-            "handling_lawyer_usernames", "assistant", "assistants", "assistant_username",
-            "assistant_usernames",
-        ):
-            person_usernames.update(_contract_person_values(data.get(person_key)))
-    for hearing in hearings:
+    for hearing in page:
         for person_key in ("lawyer", "agent", "assistant"):
             person_usernames.update(_contract_person_values(hearing.get(person_key)))
-    customer_conditions = []
-    if customer_ids:
-        customer_conditions.append(BusinessRecord.id.in_(customer_ids))
-    if customer_nos:
-        customer_conditions.append(BusinessRecord.serial_no.in_(customer_nos))
-    if customer_names:
-        customer_conditions.append(BusinessRecord.title.in_({item.customer for item in latest_case_records if item.customer}))
-    related_customers = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "customer", or_(*customer_conditions),
-    ))).all()) if customer_conditions else []
-    customers_by_id = {item.id: item for item in related_customers}
-    customers_by_no: dict[str, list[BusinessRecord]] = {}
-    customers_by_name: dict[str, list[BusinessRecord]] = {}
-    for item in related_customers:
-        customers_by_no.setdefault(str(item.serial_no or "").strip(), []).append(item)
-        customers_by_name.setdefault(_normalized_customer_name(item.title), []).append(item)
-    for customer in related_customers:
-        person_usernames.add(customer.owner)
-        person_usernames.update(_contract_person_values((customer.data or {}).get("customer_managers")))
-        person_usernames.update(_contract_person_values((customer.data or {}).get("coordinators")))
     users_by_username = await _user_display_map(person_usernames, db)
     court_values = {
         str(hearing.get("court") or "").strip()
-        for hearing in hearings
+        for hearing in page
         if str(hearing.get("court") or "").strip()
     }
     court_rows = (await db.scalars(select(SystemParameter).where(
@@ -167,17 +189,9 @@ async def dashboard_cases(identity, db):
         SystemParameter.code.in_(court_values),
     ))).all() if court_values else []
     court_names_by_code = {str(item.code).strip().casefold(): str(item.name).strip() for item in court_rows}
-    for hearing in hearings:
+    for hearing in page:
         raw_court = str(hearing.get("court") or "").strip()
         hearing["court"] = court_names_by_code.get(raw_court.casefold(), raw_court)
         for person_key in ("lawyer", "agent", "assistant"):
             hearing[person_key] = _dashboard_people(users_by_username, hearing.get(person_key))
-    latest_cases = [
-        _dashboard_latest_case_row(
-            item,
-            _dashboard_customer_for_case(item, customers_by_id, customers_by_no, customers_by_name),
-            users_by_username,
-        )
-        for item in latest_case_records
-    ]
-    return {"case_trend": case_trend, "civil_distribution": civil_distribution, "hearings": hearings, "latest_cases": latest_cases}
+    return page, len(hearings)

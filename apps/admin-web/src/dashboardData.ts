@@ -13,6 +13,7 @@ export type DashboardData = {
   }[];
   todos: (string | number)[][];
   hearings: Record<string, string>[];
+  hearings_total?: number;
   latest_cases: Record<string, string>[];
   case_trend: { date: string; value: number }[];
   civil_distribution: { label: string; value: number; color: string }[];

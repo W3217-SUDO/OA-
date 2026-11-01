@@ -109,12 +109,13 @@ class CaseCourtInfoPermissionContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body["data"]["first_court_name"], self.payload()["first_instance_court"])
         self.assertEqual(body["data"]["second_instance_court"], self.payload()["second_court_name"])
 
-        # 工作台开庭排期按旧系统：非管理员只看“我的案件”，由管理员核对全公司排期（2026-10-31 对齐）。
-        self.identity = ADMIN
-        dashboard = await self.client.get(f"{API}/dashboard")
-        self.identity = EDITOR
+        # 工作台开庭排期分“个人 / 全所”（陶国南 11-01 定）：默认只看本人相关的，所有人都能切到“全所”看全公司。
+        personal = await self.client.get(f"{API}/dashboard")
+        self.assertEqual(personal.status_code, 200, personal.text)
+        self.assertFalse([item for item in personal.json()["hearings"] if item["case_no"] == "CODEX-824-COURT-001"])
+        dashboard = await self.client.get(f"{API}/dashboard/hearings", params={"scope": "company"})
         self.assertEqual(dashboard.status_code, 200, dashboard.text)
-        matching = [item for item in dashboard.json()["hearings"] if item["case_no"] == "CODEX-824-COURT-001"]
+        matching = [item for item in dashboard.json()["items"] if item["case_no"] == "CODEX-824-COURT-001"]
         self.assertEqual(len(matching), 1)
         self.assertEqual(matching[0]["date"], str(date.today() + timedelta(days=3)))
         self.assertEqual(matching[0]["time"], "09:45")
