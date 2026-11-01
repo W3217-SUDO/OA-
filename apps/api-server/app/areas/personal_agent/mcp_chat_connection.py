@@ -36,9 +36,16 @@ async def configure_chat_connections(batch, identity, db, state, on_delta, on_pr
 
     lines = []
     total = len(batch.items)
+    header = f'这次粘贴了 {total} 个 MCP 服务，逐个配置，配好一个返回一个：\n'
+    await on_delta(header)
+
+    async def report(line):
+        lines.append(line)
+        await on_delta(line + '\n')
+
     for index, (name, submission, error) in enumerate(batch.items, 1):
         if submission is None:
-            lines.append(f'{index}. 「{name}」未配置：{error}')
+            await report(f'{index}. 「{name}」未配置：{error}')
             continue
         if on_progress:
             await on_progress(f'正在配置第 {index}/{total} 个 MCP 服务「{name}」…')
@@ -46,23 +53,23 @@ async def configure_chat_connections(batch, identity, db, state, on_delta, on_pr
             await configure_chat_connection(submission, identity, db, state, quiet, None, save_state=persist, case_id=case_id)
         except HTTPException as exc:
             await db.rollback()
-            lines.append(f'{index}. 「{name}」未配置：{exc.detail}')
+            await report(f'{index}. 「{name}」未配置：{exc.detail}')
             continue
         except Exception:
             # 不把异常原文写进回复，避免带出请求里的凭据。
             await db.rollback()
-            lines.append(f'{index}. 「{name}」配置没有完成，请稍后在“管理连接”里重试。')
+            await report(f'{index}. 「{name}」配置没有完成，请稍后在“管理连接”里重试。')
             continue
-        lines.append(_batch_line(index, name, state['messages'][-1].get('connection_result') or {}))
-    response = (f'这次粘贴了 {total} 个 MCP 服务，已逐个配置：\n' + '\n'.join(lines)
-                + '\n没配好的可以在“管理连接”里修改或重试，不用重新粘贴已连接的服务。')
+        await report(_batch_line(index, name, state['messages'][-1].get('connection_result') or {}))
+    footer = '没配好的可以在“管理连接”里修改或重试，不用重新粘贴已连接的服务。'
+    await on_delta(footer)
+    response = header + '\n'.join(lines) + '\n' + footer
     now = datetime.now(timezone.utc).isoformat()
     state['messages'].append({'role': 'assistant', 'content': response, 'created_at': now, 'source': 'mcp_connection'})
     state['updated_at'] = now
     state['last_response'] = response
     state['last_operator'] = identity['username']
     await persist(identity['username'], state)
-    await on_delta(response)
     return {'response': response, 'state': state, 'context': {}}
 
 

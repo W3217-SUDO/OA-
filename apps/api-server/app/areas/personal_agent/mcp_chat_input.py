@@ -27,7 +27,15 @@ class ChatConnection:
                 + ('凭据已提交并隐藏。' if self.credential.get_secret_value() else '无需凭据。'))
 
 
-MAX_BATCH_SERVERS = 10
+MAX_BATCH_SERVERS = 20  # 北大法宝整份 mcp.json 有 14 个服务（陶国南 11-01）
+# 每个服务握手和工具目录验证最多 25 秒，批量时本轮时限按服务数放宽，逐个配好逐个返回结果。
+BATCH_SECONDS_PER_SERVER = 30
+
+
+def chat_connection_timeout(submission, default=180):
+    if isinstance(submission, ChatConnectionBatch):
+        return max(default, 60 + BATCH_SECONDS_PER_SERVER * len(submission.items))
+    return default
 
 
 @dataclass(frozen=True)

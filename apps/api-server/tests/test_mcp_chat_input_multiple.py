@@ -4,7 +4,8 @@ import unittest
 
 from fastapi import HTTPException
 
-from app.areas.personal_agent.mcp_chat_input import MAX_BATCH_SERVERS, ChatConnectionBatch, extract_chat_connection
+from app.areas.personal_agent.mcp_chat_input import (MAX_BATCH_SERVERS, ChatConnectionBatch, chat_connection_timeout,
+                                                     extract_chat_connection)
 
 
 def server(index, auth="Bearer fake-token-%d"):
@@ -30,6 +31,16 @@ class McpChatInputMultipleTest(unittest.TestCase):
         with self.assertRaises(HTTPException) as caught:
             extract_chat_connection(json.dumps({"mcpServers": servers}))
         self.assertIn("请分几条消息发送", caught.exception.detail)
+
+    def test_fourteen_servers_fit_and_turn_time_grows_with_count(self):
+        """北大法宝整份 mcp.json 有 14 个服务（陶国南 11-01），上限 20。"""
+        self.assertEqual(MAX_BATCH_SERVERS, 20)
+        batch = extract_chat_connection(json.dumps({"mcpServers": {f"pkulaw-{index}": server(index) for index in range(14)}}))
+        self.assertEqual(len(batch.items), 14)
+        # 每个服务验证最多 25 秒，14 个也要在本轮时限内配完。
+        self.assertGreaterEqual(chat_connection_timeout(batch), 14 * 25)
+        self.assertEqual(chat_connection_timeout(None), 180)
+        self.assertEqual(chat_connection_timeout(extract_chat_connection(json.dumps({"mcpServers": {"a": server(1)}}))), 180)
 
     def test_single_server_still_works(self):
         submission = extract_chat_connection(json.dumps({"mcpServers": {"amap": server(1)}}))

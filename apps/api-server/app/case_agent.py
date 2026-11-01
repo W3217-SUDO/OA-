@@ -514,9 +514,14 @@ class CaseAgentRuntime:
     ) -> dict[str, Any]:
         selection = {"operator": kwargs["operator"], "case_id": kwargs["case_id"],
                      "conversation": self.thread_id(kwargs["case_id"], kwargs["operator"], kwargs.get("agent_id"), kwargs.get("conversation_id"))}
+        from .areas.personal_agent.mcp_chat_input import chat_connection_timeout, extract_chat_connection
+        try:
+            timeout = chat_connection_timeout(extract_chat_connection(kwargs.get("message") or ""))
+        except Exception:
+            timeout = 180  # 配置不合法时由 _invoke_impl 照常报错。
         token = _CASE_SELECTION.set(selection)
         try:
-            return await asyncio.wait_for(self._invoke_impl(**kwargs), timeout=180)
+            return await asyncio.wait_for(self._invoke_impl(**kwargs), timeout=timeout)
         except asyncio.TimeoutError as exc:
             raise RuntimeError("model_request_timeout") from exc
         finally:

@@ -345,9 +345,11 @@ async def personal_agent_identity_file(identity: dict = Depends(current_identity
 
 @router.post(f"{settings.api_prefix}/personal-agent/messages")
 async def personal_agent_message(body: PersonalMessageInput, request: Request, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from .mcp_chat_input import extract_chat_connection
-    if extract_chat_connection(body.content) is None:
+    from .mcp_chat_input import chat_connection_timeout, extract_chat_connection
+    submission = extract_chat_connection(body.content)
+    if submission is None:
         reject_mcp_chat_credentials(body.content)
+    turn_timeout = chat_connection_timeout(submission)
     safe_identity = await personal_identity(identity, db)
     from app.harness_agent.affinity import forward
 
@@ -367,7 +369,7 @@ async def personal_agent_message(body: PersonalMessageInput, request: Request, i
             from app.harness_agent.affinity import request_turn
             with request_turn(request.app):
                 result = await asyncio.wait_for(generate_response(safe_identity, db, body.content, on_delta, conversation_id=body.conversation_id, skill_id=body.skill_id, attachment_ids=body.attachment_ids, case_id=body.case_id, document_ids=body.document_ids, response_mode=body.response_mode, on_progress=on_progress,
-                                                                   workspace=body.workspace.model_dump(exclude_none=True) if body.workspace is not None else None), timeout=180)
+                                                                   workspace=body.workspace.model_dump(exclude_none=True) if body.workspace is not None else None), timeout=turn_timeout)
             await queue.put({"type": "state", "state": result["state"]})
         except TimeoutError:
             await queue.put({"type": "error", "detail": "个人智能体本轮处理超时，请查看待确认请求后继续"})

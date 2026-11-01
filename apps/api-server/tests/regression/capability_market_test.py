@@ -719,11 +719,14 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
             results = [message['connection_result'] for message in state['messages'] if message.get('connection_result')]
             self.assertEqual([(item['name'], item['status']) for item in results], [('codex-law', 'verified'), ('codex-case', 'verified')])
             summary = result['response']
-            self.assertIn('这次粘贴了 3 个 MCP 服务', summary)
+            self.assertIn('这次粘贴了 3 个 MCP 服务，逐个配置，配好一个返回一个', summary)
             self.assertIn('1. 「codex-law」已连接', summary)
             self.assertIn('2. 「codex-bad」未配置：Authorization 仅支持 Bearer Token', summary)
             self.assertIn('3. 「codex-case」已连接', summary)
-            delta.assert_awaited_once_with(summary)
+            # 逐个配好逐个返回：开头一段、每个服务一行、结尾一段，连起来就是最终回复。
+            streamed = [call.args[0] for call in delta.await_args_list]
+            self.assertEqual(len(streamed), 5)
+            self.assertEqual(''.join(streamed), summary)
             self.assertNotIn(self.secret, json.dumps(snapshots) + summary)
             self.assertNotIn(other, json.dumps(snapshots) + summary)
             records = (await db.scalars(select(SystemConfig))).all()
