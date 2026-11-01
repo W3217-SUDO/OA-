@@ -42,6 +42,29 @@ class McpChatInputMultipleTest(unittest.TestCase):
         self.assertEqual(chat_connection_timeout(None), 180)
         self.assertEqual(chat_connection_timeout(extract_chat_connection(json.dumps({"mcpServers": {"a": server(1)}}))), 180)
 
+    def test_provider_page_copy_with_several_addresses_and_one_key(self):
+        """华语元典网页上的地址表整段复制，加上自己的 Key：5 个服务逐个配置，示例占位符不算密钥（陶国南 11-01）。"""
+        text = ("元典法律智能 MCP 接入\n请求 Header 使用\nAuthorization: Bearer YOUR_API_KEY\n"
+                "yuandian-law\n法律法规\nhttps://open.chineselaw.com/mcp/law/stream\n"
+                "yuandian-case\n案例文书\nhttps://open.chineselaw.com/mcp/case/stream\n"
+                "yuandian-company\n企业信息\nhttps://open.chineselaw.com/mcp/company/stream\n"
+                "我的 Key：Bearer fake-yd-token-123")
+        batch = extract_chat_connection(text)
+        self.assertIsInstance(batch, ChatConnectionBatch)
+        self.assertEqual([name for name, _, _ in batch.items], ["yuandian-law", "yuandian-case", "yuandian-company"])
+        self.assertEqual({item.credential.get_secret_value() for _, item, _ in batch.items}, {"fake-yd-token-123"})
+        self.assertEqual(batch.items[1][1].plan.server_url, "https://open.chineselaw.com/mcp/case/stream")
+        self.assertNotIn("fake-yd-token", batch.message())
+
+    def test_harmless_extra_fields_are_ignored_and_local_commands_explained(self):
+        submission = extract_chat_connection(json.dumps({"mcpServers": {"yuandian-law": {
+            "type": "streamable-http", "url": "https://open.chineselaw.com/mcp/law/stream", "timeout": 60,
+            "description": "法律法规", "disabled": False, "headers": {"Authorization": "Bearer fake-yd-1"}}}}))
+        self.assertEqual((submission.plan.name, submission.plan.transport), ("yuandian-law", "streamable_http"))
+        with self.assertRaises(HTTPException) as caught:
+            extract_chat_connection(json.dumps({"mcpServers": {"local": {"command": "npx", "args": ["x"], "env": {"K": "v"}}}}))
+        self.assertIn("本机启动方式", caught.exception.detail)
+
     def test_single_server_still_works(self):
         submission = extract_chat_connection(json.dumps({"mcpServers": {"amap": server(1)}}))
         self.assertEqual((submission.plan.name, submission.credential.get_secret_value()), ("amap", "fake-token-1"))

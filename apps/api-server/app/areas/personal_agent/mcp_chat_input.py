@@ -27,6 +27,8 @@ class ChatConnection:
                 + ('凭据已提交并隐藏。' if self.credential.get_secret_value() else '无需凭据。'))
 
 
+IGNORED_FIELDS = {'description', 'timeout', 'disabled', 'enabled', 'autoApprove', 'alwaysAllow', 'note', 'notes',
+                  'title', 'icon', 'category', 'tags', 'readTimeout', 'connectTimeout', 'sse_read_timeout'}
 MAX_BATCH_SERVERS = 20  # 北大法宝整份 mcp.json 有 14 个服务（陶国南 11-01）
 # 每个服务握手和工具目录验证最多 25 秒，批量时本轮时限按服务数放宽，逐个配好逐个返回结果。
 BATCH_SECONDS_PER_SERVER = 30
@@ -72,6 +74,11 @@ def _declaration(value):
         if len(servers) > 1:
             return _batch(servers)
         name, value = next(iter(servers.items()))
+    if isinstance(value, dict) and value.keys() & {'command', 'args', 'env'}:
+        raise HTTPException(422, '这是本机启动方式（command）的配置，系统不能在服务器上运行它；请改用服务方提供的远程地址（https 开头）和 Key')
+    if isinstance(value, dict):
+        # 各家配置示例常带说明、超时、开关等字段（如华语元典），与连接无关，忽略即可（陶国南 11-01）。
+        value = {key: item for key, item in value.items() if key not in IGNORED_FIELDS}
     if not isinstance(value, dict) or set(value) - {
         'name', 'url', 'server_url', 'type', 'transport', 'headers',
         'auth_type', 'credential', 'api_key_header',
@@ -125,6 +132,23 @@ def _connection(*, credential, **declaration):
     return ChatConnection(plan, SecretStr(credential))
 
 
+_PLACEHOLDER = re.compile(r'(?:YOUR[_-]?)?(?:API[_-]?)?(?:KEY|TOKEN)|x{3,}|<[^>]*>|\.\.\.', re.I)
+_NAME_TOKEN = re.compile(r'[A-Za-z][A-Za-z0-9_-]{2,60}')
+
+
+def _text_server_name(text, url):
+    """网页复制来的地址表里，地址前面通常就是服务名（如 yuandian-law）；找不到就用域名加路径。"""
+    before = text[max(0, text.find(url) - 80):text.find(url)]
+    tokens = [token for token in _NAME_TOKEN.findall(before)
+              if token.lower() not in {'https', 'http', 'bearer', 'authorization', 'mcp', 'server', 'stream'}
+              and ('-' in token or '_' in token)]
+    if tokens:
+        return tokens[-1]
+    parts = urlsplit(url)
+    segments = [part for part in parts.path.split('/') if part and part not in {'mcp', 'stream', 'sse'}]
+    return '-'.join([parts.hostname.split('.')[-2] if parts.hostname.count('.') else parts.hostname, *segments[:2]])
+
+
 def extract_chat_connection(text):
     stripped = re.sub(r'^```(?:json)?\s*|\s*```$', '', text.strip(), flags=re.I)
     is_json = stripped.startswith('{') and re.search(r'"(?:mcpServers|mcp\.json|server_url)"\s*:|https://[^"\s]+/mcp', stripped)
@@ -135,12 +159,13 @@ def extract_chat_connection(text):
             raise HTTPException(422, 'MCP JSON 不完整，请粘贴完整配置；密钥不会写入聊天记录') from None
         return _declaration(value)
     urls = _URL.findall(text)
-    secrets = list(_SECRET.finditer(text))
+    # 从服务方网页整段复制时会带上示例占位符（如 Bearer YOUR_API_KEY），不当作密钥。
+    secrets = [match for match in _SECRET.finditer(text) if not _PLACEHOLDER.fullmatch(match[1])]
     intent = re.search(r'\bmcp\b|mcpServers|(?:连接|链接|配置|接入|connect|setup)', text, re.I)
     if not intent or not (secrets or re.search(r'无需认证|无需\s*token|无认证', text, re.I)):
         return None
-    if len(urls) != 1:
-        raise HTTPException(422, '请在同一条消息中提供唯一的 HTTPS MCP 服务地址和认证方式')
+    if not urls:
+        raise HTTPException(422, '请在同一条消息中提供 HTTPS MCP 服务地址和认证方式')
     if len(secrets) > 1 and len({match[1] for match in secrets}) != 1:
         raise HTTPException(422, '检测到不同密钥，请每条消息只配置一个服务及其凭据')
     credential = secrets[0][1] if secrets else ''
@@ -155,7 +180,22 @@ def extract_chat_connection(text):
         authentication, header = 'none', 'X-API-Key'
     else:
         raise HTTPException(422, '请注明此 Token 使用 Bearer 还是 API Key 认证；无需另填输入框')
+    transport = 'sse' if re.search(r'\bsse\b', text, re.I) else 'streamable_http'
+    unique = list(dict.fromkeys(urls))
+    if len(unique) > 1:
+        # 服务方网页上列了几个地址、共用一个 Key（如华语元典 5 个服务）：逐个配置。
+        if len(unique) > MAX_BATCH_SERVERS:
+            raise HTTPException(422, f'一次最多配置 {MAX_BATCH_SERVERS} 个 MCP 服务，请分几条消息发送。')
+        items = []
+        for url in unique:
+            name = _text_server_name(text, url)
+            try:
+                items.append((name, _connection(name=name, server_url=url, transport=transport, authentication=authentication,
+                                                header_name=header, credential=credential), ''))
+            except HTTPException as exc:
+                items.append((name, None, str(exc.detail)))
+        return ChatConnectionBatch(tuple(items))
     named = re.search(r'(?:连接名称|服务名称|名称)\s*[:=：]\s*([^\s，；。,;]+)', text)
     return _connection(name=named[1] if named else urlsplit(urls[0]).hostname,
-                       server_url=urls[0], transport='sse' if re.search(r'\bsse\b', text, re.I) else 'streamable_http',
+                       server_url=urls[0], transport=transport,
                        authentication=authentication, header_name=header, credential=credential)
