@@ -17,6 +17,8 @@ const requiresComment: Record<string, string> = {
   "未解决，重新打开": "请在上面写明哪里还没解决",
   "请确认修改方案": "请在上面写明打算怎么改",
 };
+// 状态流转说明的长度上限，与服务端 FeedbackTransition.comment 一致。
+const TRANSITION_COMMENT_LIMIT = 2000;
 const primaryActions = new Set(["确认修改", "处理完成，请验证", "验证通过"]);
 const statusColors: Record<string, string> = {
   待处理: "warning", 待确认: "gold", 待验证: "processing", 已解决: "success", 已撤回: "default",
@@ -140,6 +142,11 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
   const transition = (action: string) => {
     if (requiresComment[action] && !comment.trim()) {
       message.warning(requiresComment[action]);
+      return;
+    }
+    // 状态说明最多 2000 字（服务端同样限制）：超长时先提示，内容保留在输入框里，可以删减或改用“发送”作为回复。
+    if (comment.trim().length > TRANSITION_COMMENT_LIMIT) {
+      message.warning(`说明最多 ${TRANSITION_COMMENT_LIMIT} 字，现在 ${comment.trim().length} 字。请删减后再点“${action}”，或先把详细内容作为回复发送。`, 6);
       return;
     }
     void perform("transitions", { action, comment: comment.trim() }, "状态已更新");
