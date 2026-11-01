@@ -1,5 +1,5 @@
 import { Button, Empty, Tag, Tooltip } from "antd";
-import { DeleteOutlined, DownloadOutlined, EditOutlined, EyeOutlined, MessageOutlined, FolderAddOutlined } from "@ant-design/icons";
+import { DeleteOutlined, DownloadOutlined, EditOutlined, EyeOutlined, MessageOutlined, FolderAddOutlined, FilePdfOutlined } from "@ant-design/icons";
 import { personalAiFilePreviewKind, type PersonalAiFile } from "./personalAiSpaceApi";
 import { PersonalAiFileShare } from "./PersonalAiFileShare";
 
@@ -16,13 +16,14 @@ const SOURCE_LABELS: Record<string, string> = {
   personal_edit: "在线编辑新版本",
 };
 
-export function PersonalAiSpaceFiles({ items, downloadingId, deletingId, latestSavedId, busy, onDownload, onPreview, onEdit, onDelete, onConversation, onSaveToCase }: {
+export function PersonalAiSpaceFiles({ items, downloadingId, deletingId, latestSavedId, busy, onDownload, onDownloadPdf, onPreview, onEdit, onDelete, onConversation, onSaveToCase }: {
   items: PersonalAiFile[];
   downloadingId: string;
   deletingId?: string;
   latestSavedId?: string;
   busy: boolean;
   onDownload: (item: PersonalAiFile) => void;
+  onDownloadPdf?: (item: PersonalAiFile) => void;
   onPreview: (item: PersonalAiFile) => void;
   onEdit: (item: PersonalAiFile) => void;
   onDelete: (item: PersonalAiFile) => void;
@@ -48,6 +49,7 @@ export function PersonalAiSpaceFiles({ items, downloadingId, deletingId, latestS
           {personalAiFilePreviewKind(item.name) && <Button icon={<EyeOutlined />} disabled={busy || !!downloadingId} onClick={() => onPreview(item)}>在线查看</Button>}
           {/\.(docx|xlsx|xls|md|txt)$/i.test(item.name) && <Button icon={<EditOutlined />} disabled={busy || !!downloadingId} onClick={() => onEdit(item)}>在线编辑</Button>}
           <Button icon={<DownloadOutlined />} loading={downloadingId === item.id} disabled={busy || (!!downloadingId && downloadingId !== item.id)} onClick={() => onDownload(item)}>下载 {item.name.includes(".") ? item.name.slice(item.name.lastIndexOf(".") + 1).toUpperCase() : "文件"}</Button>
+          {onDownloadPdf && /\.(docx|md|txt)$/i.test(item.name) && <Tooltip title="转换成 PDF 后下载，原文件不变"><Button icon={<FilePdfOutlined />} loading={downloadingId === item.id + ":pdf"} disabled={busy || (!!downloadingId && downloadingId !== item.id + ":pdf")} onClick={() => onDownloadPdf(item)}>下载 PDF</Button></Tooltip>}
           <PersonalAiFileShare file={item} disabled={busy || !!downloadingId} />
           {/* 陶国南 11-01：个人空间的文件可以另存到案件空间。 */}
           {onSaveToCase && item.can_delete && /\.(docx|md|txt)$/i.test(item.name) && <Tooltip title="复制一份到所选案件的 AI 空间，原文件保留"><Button icon={<FolderAddOutlined />} disabled={busy || !!downloadingId} onClick={() => onSaveToCase(item)}>另存到案件</Button></Tooltip>}

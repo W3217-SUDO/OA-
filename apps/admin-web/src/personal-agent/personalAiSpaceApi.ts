@@ -52,15 +52,15 @@ export async function personalAiMessageSha256(content: string): Promise<string> 
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export async function downloadPersonalAiFile(file: PersonalAiFile): Promise<void> {
+export async function downloadPersonalAiFile(file: PersonalAiFile, format: "original" | "pdf" = "original"): Promise<void> {
   const { data: current } = await api.get<PersonalAiFile>(`/personal-agent/ai-space/files/${encodeURIComponent(file.id)}`);
   if (current.id !== file.id || current.status !== "available" || !current.download_url) throw new Error("文件尚未可用，不能下载，请刷新核对保存状态");
-  const { data } = await api.get<Blob>(`/personal-agent/ai-space/files/${encodeURIComponent(file.id)}/download`, { responseType: "blob" });
+  const { data } = await api.get<Blob>(`/personal-agent/ai-space/files/${encodeURIComponent(file.id)}/download`, { responseType: "blob", params: format === "pdf" ? { format } : undefined });
   const url = URL.createObjectURL(data);
   try {
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = current.name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_");
+    anchor.download = (format === "pdf" ? current.name.replace(/\.[^.]+$/, "") + ".pdf" : current.name).replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_");
     anchor.click();
   } finally {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);

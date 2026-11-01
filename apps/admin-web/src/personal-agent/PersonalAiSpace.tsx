@@ -64,11 +64,17 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [open, page, refresh, revision]);
-  const download = async (file: PersonalAiFile) => {
+  const download = async (file: PersonalAiFile, format: "original" | "pdf" = "original") => {
     if (downloadingId) return;
-    setDownloadingId(file.id); setError("");
-    try { await downloadPersonalAiFile(file); }
-    catch (failure) { setError(errorText(failure, "文件下载失败")); }
+    setDownloadingId(format === "pdf" ? file.id + ":pdf" : file.id); setError("");
+    try { await downloadPersonalAiFile(file, format); }
+    catch (failure) {
+      // 下载按文件流请求，出错时后端说明在 Blob 里，取出中文说明再显示。
+      const data = (failure as { response?: { data?: unknown } })?.response?.data;
+      let detail = "";
+      if (data instanceof Blob) { try { detail = String(JSON.parse(await data.text()).detail || ""); } catch { detail = ""; } }
+      setError(detail || errorText(failure, format === "pdf" ? "PDF 下载失败" : "文件下载失败"));
+    }
     finally { setDownloadingId(""); }
   };
   const previewFile = (file: PersonalAiFile) => {
@@ -126,7 +132,7 @@ export function PersonalAiSpace({ open, onClose, revision, busy, onOpenConversat
       <div className="personal-ai-space-toolbar"><Tooltip title={`刷新${label}`}><Button icon={<ReloadOutlined />} aria-label={`刷新${label}`} loading={loading} onClick={() => setRefresh((value) => value + 1)} /></Tooltip>{files && <span>共 {files.total} 个文件</span>}</div>
       {space && !space.configured && <Alert type="warning" showIcon title="OSS 尚未配置，不能保存新文件" />}
       {error && <Alert type="error" showIcon title="个人空间操作未完成" description={error} />}
-      {loading ? <Spin /> : files && <PersonalAiSpaceFiles items={files.items} downloadingId={downloadingId} deletingId={deleting ? deleteTarget?.id : undefined} latestSavedId={latestSavedId} busy={busy || editorBusy || officeBusy || deleting || !!preview} onDownload={(file) => void download(file)} onPreview={previewFile} onEdit={(file) => void openEditor(file)} onDelete={(file) => { if (!officeOperation.current && !editorBusy && !deleteLock.current) { setDeleteError(""); setDeleteTarget(file); } }} onConversation={(id) => void openConversation(id)} onSaveToCase={setCaseCopyFile} />}
+      {loading ? <Spin /> : files && <PersonalAiSpaceFiles items={files.items} downloadingId={downloadingId} deletingId={deleting ? deleteTarget?.id : undefined} latestSavedId={latestSavedId} busy={busy || editorBusy || officeBusy || deleting || !!preview} onDownload={(file) => void download(file)} onDownloadPdf={(file) => void download(file, "pdf")} onPreview={previewFile} onEdit={(file) => void openEditor(file)} onDelete={(file) => { if (!officeOperation.current && !editorBusy && !deleteLock.current) { setDeleteError(""); setDeleteTarget(file); } }} onConversation={(id) => void openConversation(id)} onSaveToCase={setCaseCopyFile} />}
       {caseCopyFile && <CaseWorkspaceSelector open title={`另存「${caseCopyFile.name}」到案件`} onClose={() => setCaseCopyFile(null)} onSelect={async (item) => {
         await api.post(`/cases/${item.id}/ai-space/files/from-personal`, { personal_file_id: caseCopyFile.id });
         message.success(`已另存到 ${item.serial_no} 的案件 AI 空间：${caseCopyFile.name}`);

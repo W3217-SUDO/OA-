@@ -84,10 +84,18 @@ async def delete_personal_ai_file(body: PersonalFileDeleteInput, request: Reques
 
 @router.get("/files/{file_id}/download")
 async def download_personal_ai_file(file_id: str = Path(pattern=r"^[a-f0-9]{32}$"),
+                                    format: str = Query("original", pattern="^(original|pdf)$"),
                                     identity=Depends(current_identity), db=Depends(get_db)):
     item, content = await space_file_bytes(file_id, identity, db)
-    return Response(content, media_type=item["content_type"], headers={
-        "Content-Disposition": "attachment; filename*=UTF-8''" + quote(item["name"], safe=""),
+    name, media_type = item["name"], item["content_type"]
+    if format == "pdf":
+        # 陶国南 11-01：个人空间文件可以下载为 PDF；原文件不变，只在下载时转换。
+        from app.core.pdf_conversion import PDF_CONTENT_TYPE, convert_to_pdf, pdf_name
+
+        await db.rollback()  # 转换期间不占着文件记录锁
+        content, name, media_type = await convert_to_pdf(name, content), pdf_name(name), PDF_CONTENT_TYPE
+    return Response(content, media_type=media_type, headers={
+        "Content-Disposition": "attachment; filename*=UTF-8''" + quote(name, safe=""),
         "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
     })
 
