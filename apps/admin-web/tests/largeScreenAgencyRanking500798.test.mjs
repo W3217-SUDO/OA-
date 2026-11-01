@@ -18,3 +18,10 @@ test('大屏排行三图并排，日期默认今年，查询后按新区间取�
   assert.match(css, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.ok(!/color-mix|:has\(|@container|dvh/.test(css), '要兼容钉钉 Chrome 100 内核');
 });
+
+test('大屏只在确实没有金额权限时提示；发布新版本后自动重新加载（BUG 500800）', () => {
+  const page = read('ReportCenterPage.tsx');
+  assert.match(page, /\{!data\.finance\.amount_visible \? "新建案件数（无财务金额查看权限）"/);
+  assert.match(page, /fetch\(`\/build-info\.json\?_=\$\{Date\.now\(\)\}`, \{ cache: "no-store" \}\)/);
+  assert.match(page, /else if \(version !== loadedVersion\) window\.location\.reload\(\);/);
+});

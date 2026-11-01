@@ -662,7 +662,22 @@ export function ReportLargeScreenPage({ onExit }: { onExit?: () => void }) {
 
   useEffect(() => {
     void load();
-    const refreshTimer = window.setInterval(() => void load(), 60_000);
+    // 大屏常开不关：发布新版本后旧页面还在定时取数，会和新接口对不上（BUG 500800，旧页面把缺字段显示成“无财务金额查看权限”）。
+    // 每次定时刷新顺带看一下线上版本，变了就整页重新加载。
+    let loadedVersion = "";
+    const checkVersion = async () => {
+      try {
+        const response = await fetch(`/build-info.json?_=${Date.now()}`, { cache: "no-store" });
+        const version = String((await response.json())?.version || "");
+        if (!version) return;
+        if (!loadedVersion) loadedVersion = version;
+        else if (version !== loadedVersion) window.location.reload();
+      } catch {
+        // 取不到版本信息不影响大屏数据刷新。
+      }
+    };
+    void checkVersion();
+    const refreshTimer = window.setInterval(() => { void checkVersion(); void load(); }, 60_000);
     const syncFullscreen = () => setFullscreen(Boolean(document.fullscreenElement));
     document.addEventListener("fullscreenchange", syncFullscreen);
     return () => {
@@ -732,7 +747,7 @@ export function ReportLargeScreenPage({ onExit }: { onExit?: () => void }) {
                     const rows = data.performance_ranking?.[key] ?? [];
                     return (
                       <article key={key} className="large-screen-card ranking-card">
-                        <h2>{group} <small>{data.finance.amount_visible && data.agency_fee_total != null ? `新建案件数 + 代理费到账（合计 ${formatWan(data.agency_fee_total)} 万元）` : "新建案件数（无财务金额查看权限）"}</small></h2>
+                        <h2>{group} <small>{!data.finance.amount_visible ? "新建案件数（无财务金额查看权限）" : data.agency_fee_total != null ? `新建案件数 + 代理费到账（合计 ${formatWan(data.agency_fee_total)} 万元）` : "新建案件数"}</small></h2>
                         <div className="large-screen-chart">{rows.length ? <PerformanceChart rows={rows} showFee={data.finance.amount_visible && data.agency_fee_total != null} /> : <LargeScreenEmpty />}</div>
                       </article>
                     );
