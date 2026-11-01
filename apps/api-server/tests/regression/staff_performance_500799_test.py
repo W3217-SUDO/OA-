@@ -33,7 +33,7 @@ class StaffPerformanceTest(unittest.IsolatedAsyncioTestCase):
             active = case("C-ACTIVE", "一审立案受理", first_court_hearing_date="2026-03-01", second_court_hearing_date="2026-06-01",
                           execution_court_hearing_date="2025-12-30")
             judged = case("C-JUDGED", "一审判决结案", first_court_hearing_date="2026-02-01")  # 已结案，不算在办，开庭照算
-            reviewing = case("C-REVIEW", "归档审核")  # 归档审核中不算在办，也还不算归档
+            reviewing = case("C-REVIEW", "归档审核")  # 归档审核中算在办（18:46），还不算归档
             archived = case("C-ARCH", "已归档", archive_reviewed_at="2026-05-01T10:00:00")
             loss = case("C-LOSS", "亏损归档", archived_at="2026-07-01")
             old = case("C-OLD", "已归档", archive_reviewed_at="2025-12-01")  # 去年归档不算
@@ -53,9 +53,9 @@ class StaffPerformanceTest(unittest.IsolatedAsyncioTestCase):
             hidden = await staff_performance(db, [], cases, year=2026, today=today, role="source", name="案源", amount_visible=False)
         self.assertEqual(hearing["totals"]["new_cases"], 6)  # 去年建的 C-OLD 和测试客户不算
         hearing["totals"].pop("new_cases"); [row.pop("new_cases") for row in hearing["rows"]]
-        self.assertEqual(hearing["totals"], {"active_cases": 2, "hearings": 3, "archived_cases": 2, "loss_archived_cases": 1, "agency_fee": 1000})
+        self.assertEqual(hearing["totals"], {"active_cases": 3, "hearings": 3, "archived_cases": 2, "loss_archived_cases": 1, "agency_fee": 1000})
         rows = {row["person"]: row for row in hearing["rows"]}
-        self.assertEqual(rows["开庭乙"], {"person": "开庭乙", "active_cases": 2, "hearings": 3, "archived_cases": 2, "loss_archived_cases": 1, "agency_fee": 1000})
+        self.assertEqual(rows["开庭乙"], {"person": "开庭乙", "active_cases": 3, "hearings": 3, "archived_cases": 2, "loss_archived_cases": 1, "agency_fee": 1000})
         self.assertEqual(rows["hlb"]["active_cases"], 1)  # 同角色多人各算一次
         self.assertEqual({row["person"]: row["agency_fee"] for row in investigator["rows"]}, {"inv": 1000})
         self.assertIsNone(hidden["totals"]["agency_fee"])  # 没有金额权限不给代理费

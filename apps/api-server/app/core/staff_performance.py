@@ -2,7 +2,7 @@
 
 当年四类数（另加报表大屏搬来的“新建案件数”，BUG 500801），按案源人 / 调查员 / 开庭律师 / 律师助理分别统计，一个案件同角色几个人各算一次：
 - 代理费到账：与报表大屏员工业绩排行（BUG 500798）同一口径，按到账日期；
-- 在办案件：当前没结束的案件，不按年份（结束的判断与报表大屏相同，另不算已过期）；
+- 在办案件：当前没结束的案件，不按年份（结束的判断与报表大屏相同，另不算已过期；正在走归档审核的算在办）；
 - 开庭数：案件上一审、二审、再审、执行开庭日期落在当年的，每个日期算一次；
 - 结案归档：归档审核通过日期在当年的案件，含亏损归档（另列“其中亏损归档”）。
 - 新建案件：当年新建的案件数，与报表大屏员工业绩排行（BUG 500798）相同，按建案日期。
@@ -21,7 +21,7 @@ STAFF_ROLES = {
     "assistant": ("律师助理", assistant_people, "by_assistant"),
 }
 HEARING_DATE_KEYS = ("first_court_hearing_date", "second_court_hearing_date", "retrial_court_hearing_date", "execution_court_hearing_date")
-# 正在走归档审核的案件不算在办（待思法汇成确认 A）。
+# 正在走归档审核的案件算在办（思法汇成 11-01 18:46）。
 ARCHIVING_STATUSES = frozenset({"归档审核", "亏损内审", "亏损审核", "归档拒绝", "亏损拒绝"})
 NOT_ACTIVE_STATUSES = frozenset({"已过期"})
 
@@ -36,7 +36,7 @@ def case_figures(case, year: int) -> dict:
     from app.core.formatters import _case_filing_date
     data = case.data or {}
     status = str(case.status or "").strip()
-    active = not _large_screen_case_is_closed(case) and status not in NOT_ACTIVE_STATUSES and status not in ARCHIVING_STATUSES
+    active = status in ARCHIVING_STATUSES or (not _large_screen_case_is_closed(case) and status not in NOT_ACTIVE_STATUSES)
     archived_on = data.get("archive_reviewed_at") or data.get("archived_at")
     archived = status in {"已归档", "亏损归档"} and _in_year(archived_on, year)
     filed = _case_filing_date(case)
@@ -88,7 +88,7 @@ async def staff_performance(db, scope: list, cases: list, *, year: int, today: d
         "roles": [{"value": key, "label": value[0]} for key, value in STAFF_ROLES.items()],
         "definition": (
             "代理费到账：到账单分配到代理费的金额（按到账日期），不含公司之间转款、代收代付、测试客户和退款，与报表大屏员工业绩排行口径相同；"
-            "在办案件：当前没结束的案件，不按年份；开庭数：一审、二审、再审、执行开庭日期落在当年的，每个日期算一次；"
+            "在办案件：当前没结束的案件（含正在走归档审核的），不按年份；开庭数：一审、二审、再审、执行开庭日期落在当年的，每个日期算一次；"
             "结案归档：归档审核通过日期在当年的案件，含亏损归档；新建案件：当年新建的案件数，与报表大屏员工业绩排行相同。一个案件同角色有几个人，每人各算一次。"
         ),
     }
