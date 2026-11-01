@@ -461,3 +461,18 @@
 @media (max-width: 767px) {
   .progress-matrix-page .progress-stage-charts { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* 客户ROI 图（BUG 500793）：页面两图并排，ROI 排行人多时在框内上下滚动；大屏两图放大铺满一屏。 */
+.report-customer-roi-page .report-page-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.report-roi-charts { margin: 12px 0 16px; }
+.report-roi-chart .report-chart-body { height: 380px; }
+.report-roi-chart .report-roi-ranking-body { overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
+.report-roi-tooltip { padding: 8px 10px; border: 1px solid #e3e6eb; border-radius: 4px; background: #fff; color: #333; font-size: 12px; line-height: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); }
+.report-roi-tooltip-title { margin-bottom: 2px; font-weight: 600; }
+.report-customer-roi-page.report-page-big-screen .report-roi-chart .report-chart-title { height: 44px; font-size: 18px; line-height: 24px; }
+.report-customer-roi-page.report-page-big-screen .report-roi-chart .report-chart-unit { font-size: 14px; }
+.report-customer-roi-page.report-page-big-screen .report-roi-chart .report-chart-body { height: calc(100vh - 160px); min-height: 420px; }
+@media (max-width: 767px) {
+  .report-roi-charts { grid-template-columns: minmax(0, 1fr); margin: 10px 0 12px; }
+  .report-roi-chart .report-chart-body { height: 320px; }
+}

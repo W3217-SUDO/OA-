@@ -1,12 +1,13 @@
 import { KeywordPersonSelect } from "./components/KeywordPersonSelect";
 import { useEffect, useState } from "react";
 import { DownloadOutlined } from "@ant-design/icons";
-import { Alert, Button, DatePicker, Empty, Form, Input, Select, Spin, message } from "antd";
+import { Alert, Button, DatePicker, Empty, Form, Input, Segmented, Select, Space, Spin, message } from "antd";
 import Table from "./components/ResizableTable";import {
   Bar,
   BarChart,
   Cell,
   CartesianGrid,
+  ComposedChart,
   Legend,
   Line,
   LineChart,
@@ -247,11 +248,141 @@ const currency = (value: number) => Number(value || 0).toLocaleString("zh-CN", {
 const percentage = (value: number) => `${Number(value || 0).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 const roiDisplay = (roi: number | null, cost: number) => Number(cost || 0) === 0 || roi === null ? "—" : percentage(roi);
 
+// 客户ROI 图（BUG 500793，思法汇成 11-01 17:19）：收入和成本对比柱叠 ROI 折线（收入前 15 名），ROI 排行横条（正绿负红）。
+const ROI_TOP_INCOME = 15;
+const ROI_BIG_SCREEN_EDGE = 10;
+const ROI_REGION_PREFIXES = [
+  "北京市", "上海市", "天津市", "重庆市", "北京", "上海", "天津", "重庆", "黑龙江", "内蒙古",
+  "河北", "山西", "辽宁", "吉林", "江苏", "浙江", "安徽", "福建", "江西", "山东", "河南", "湖北", "湖南",
+  "广东", "广西", "海南", "四川", "贵州", "云南", "陕西", "甘肃", "青海", "宁夏", "新疆", "西藏",
+  "杭州", "广州", "深圳", "青岛", "苏州", "南京", "宁波", "厦门", "武汉", "成都", "西安", "无锡", "佛山", "东莞",
+];
+const ROI_COMPANY_SUFFIXES = ["股份有限公司", "有限责任公司", "有限公司", "集团", "公司"];
+
+// 与品牌资金统计横轴简称同一规则：去掉省市名、括号内容和公司字样，最多 8 个字。
+export function customerShortName(name: string, limit = 8) {
+  let text = String(name || "").replace(/[（(][^）)]*[）)]/g, "").trim();
+  const prefix = ROI_REGION_PREFIXES.find(item => text.startsWith(item) && text.length > item.length + 1);
+  if (prefix) text = text.slice(prefix.length).replace(/^[省市]+/, "");
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const suffix of ROI_COMPANY_SUFFIXES) {
+      if (text.endsWith(suffix) && text.length > suffix.length + 1) {
+        text = text.slice(0, -suffix.length);
+        changed = true;
+      }
+    }
+  }
+  return (text || String(name || "")).slice(0, limit);
+}
+
+type RoiChartItem = CustomerRoiRow & { label: string };
+
+export function customerRoiChartItems(rows: CustomerRoiRow[], bigScreen: boolean) {
+  const withLabel = rows.map(row => ({ ...row, label: customerShortName(row.customer) }));
+  const incomeTop = [...withLabel]
+    .filter(row => row.income || row.cost)
+    .sort((left, right) => right.income - left.income || right.cost - left.cost)
+    .slice(0, ROI_TOP_INCOME);
+  const ranked = withLabel
+    .filter(row => row.roi !== null && row.roi !== undefined && Number(row.cost || 0) !== 0)
+    .sort((left, right) => Number(right.roi) - Number(left.roi));
+  // 大屏一屏放下：只显示最高 10 家和最低 10 家。
+  const roiRanking = bigScreen && ranked.length > ROI_BIG_SCREEN_EDGE * 2
+    ? [...ranked.slice(0, ROI_BIG_SCREEN_EDGE), ...ranked.slice(-ROI_BIG_SCREEN_EDGE)]
+    : ranked;
+  // 个别客户 ROI 特别高（如成本很小）时，横轴按第二名放大，最高那条画到边上、数字照实显示，其他客户的条不至于看不见。
+  const values = roiRanking.map(row => Number(row.roi));
+  const [first = 0, second = 0] = [...values].sort((left, right) => right - left);
+  const roiAxisMax = first > 0 && second > 0 && first > second * 3 ? Math.ceil(second * 1.3) : undefined;
+  const roiBars = roiRanking.map(row => ({ ...row, roiBar: roiAxisMax ? Math.min(Number(row.roi), roiAxisMax) : Number(row.roi), roiText: `${Number(row.roi).toFixed(2)}%` }));
+  return { incomeTop, roiRanking: roiBars, roiAxisMax };
+}
+
+const wan = (value: number) => Math.abs(value) >= 10000 ? `${(value / 10000).toLocaleString("zh-CN", { maximumFractionDigits: 1 })}万` : Number(value || 0).toLocaleString("zh-CN");
+
+function RoiTooltip({ active, payload }: { active?: boolean; payload?: { payload: RoiChartItem }[] }) {
+  const row = active ? payload?.[0]?.payload : undefined;
+  if (!row) return null;
+  return (
+    <div className="report-roi-tooltip">
+      <div className="report-roi-tooltip-title">{row.customer}</div>
+      <div>收入：{currency(row.income)} 元</div>
+      <div>成本：{currency(row.cost)} 元</div>
+      <div>利润：{currency(row.profit)} 元</div>
+      <div>ROI：{roiDisplay(row.roi, row.cost)}</div>
+    </div>
+  );
+}
+
+function CustomerRoiCharts({ rows, bigScreen }: { rows: CustomerRoiRow[]; bigScreen: boolean }) {
+  const { incomeTop, roiRanking, roiAxisMax } = customerRoiChartItems(rows, bigScreen);
+  const fontSize = bigScreen ? 14 : 11;
+  const rankingHeight = Math.max(240, roiRanking.length * (bigScreen ? 30 : 26) + 40);
+  const empty = <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前条件下暂无真实业务数据" />;
+  return (
+    <div className="report-chart-grid report-roi-charts">
+      <section className="report-chart-panel report-roi-chart">
+        <div className="report-chart-title">
+          <span>收入、成本与 ROI（收入前 {ROI_TOP_INCOME} 名）</span>
+          <span className="report-chart-unit">柱：元　线：ROI %</span>
+        </div>
+        <div className="report-chart-body report-chart-scroll report-roi-chart-body">
+          {incomeTop.length ? <div className="report-chart-track" style={{ minWidth: !bigScreen && incomeTop.length > 8 ? incomeTop.length * 76 : undefined }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={incomeTop} margin={{ top: 22, right: 8, bottom: 8, left: 8 }}>
+                <CartesianGrid stroke="#ececec" vertical={false} />
+                <XAxis dataKey="label" interval={0} axisLine={{ stroke: "#d8d8d8" }} tickLine={false} tick={{ fill: "#666", fontSize }} angle={-30} textAnchor="end" height={bigScreen ? 70 : 58} />
+                <YAxis yAxisId="amount" axisLine={false} tickLine={false} tick={{ fill: "#777", fontSize }} tickFormatter={wan} width={bigScreen ? 70 : 56} />
+                <YAxis yAxisId="roi" orientation="right" axisLine={false} tickLine={false} tick={{ fill: "#777", fontSize }} tickFormatter={value => `${value}%`} width={bigScreen ? 64 : 52} />
+                <Tooltip content={<RoiTooltip />} />
+                <Legend wrapperStyle={{ fontSize }} />
+                <Bar yAxisId="amount" dataKey="income" name="收入" fill="#4e8cff" maxBarSize={28} isAnimationActive={false} />
+                <Bar yAxisId="amount" dataKey="cost" name="成本" fill="#ffb95c" maxBarSize={28} isAnimationActive={false} />
+                <Line yAxisId="roi" dataKey="roi" name="ROI" stroke="#2cc47c" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} isAnimationActive={false} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div> : empty}
+        </div>
+      </section>
+      <section className="report-chart-panel report-roi-chart">
+        <div className="report-chart-title">
+          <span>ROI 排行{bigScreen && roiRanking.length >= ROI_BIG_SCREEN_EDGE * 2 ? `（最高、最低各 ${ROI_BIG_SCREEN_EDGE} 家）` : ""}</span>
+          <span className="report-chart-unit">单位：%（成本为 0 的不计算）</span>
+        </div>
+        <div className="report-chart-body report-roi-ranking-body">
+          {roiRanking.length ? <div style={{ height: rankingHeight }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={roiRanking} layout="vertical" margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+                <CartesianGrid stroke="#ececec" horizontal={false} />
+                <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: "#777", fontSize }} tickFormatter={value => `${value}%`}
+                  {...(roiAxisMax ? { domain: [(dataMin: number) => Math.min(0, dataMin), roiAxisMax] } : {})} />
+                <YAxis type="category" dataKey="label" interval={0} axisLine={{ stroke: "#d8d8d8" }} tickLine={false} tick={{ fill: "#666", fontSize }} width={bigScreen ? 130 : 110} />
+                <Tooltip content={<RoiTooltip />} />
+                <YAxis yAxisId="value" orientation="right" type="category" dataKey="roiText" interval={0} axisLine={false} tickLine={false} tick={{ fill: "#333", fontSize }} width={bigScreen ? 96 : 80} />
+                {/* ROI 数字放在右侧一列；两张图都不用动画，手机钉钉和大屏上打开就能看到完整的图。 */}
+                <Bar dataKey="roiBar" name="ROI" maxBarSize={18} isAnimationActive={false}>
+                  {roiRanking.map(row => <Cell key={row.customer_id ?? row.customer} fill={Number(row.roi) < 0 ? "#ef6d85" : "#2cc47c"} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div> : empty}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function CustomerRoiReport({ onNavigate }: { onNavigate?: (route: string) => void }) {
   const showPeople = usePeopleNames();
   const [form] = Form.useForm<CustomerRoiFilterValues>();
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  // 默认显示图，右上角“图 / 表格”切换；“大屏展示”只放图（BUG 500793，与 500789/500792 同一做法）。
+  const [display, setDisplay] = useState<"chart" | "table">("chart");
+  const pageBigScreen = useReportBigScreen();
+  const bigScreen = pageBigScreen.active;
   const [data, setData] = useState<CustomerRoiData>({
     view: "customer-roi",
     rows: [],
@@ -304,9 +435,17 @@ function CustomerRoiReport({ onNavigate }: { onNavigate?: (route: string) => voi
 
   useEffect(() => { void load({}); }, []);
   return (
-    <div className="report-page report-customer-roi-page">
-      <div className="report-page-heading">客户ROI统计</div>
-      <Form form={form} className="report-filter report-customer-roi-filter" onFinish={values => void load(values)}>
+    <div ref={pageBigScreen.ref} className={`report-page report-customer-roi-page${bigScreen ? " report-page-big-screen" : ""}`}>
+      <div className="report-page-heading">
+        <span>客户ROI统计</span>
+        {bigScreen
+          ? <Button size="small" onClick={pageBigScreen.exit}>退出大屏</Button>
+          : <Space size={8}>
+            <Segmented size="small" value={display} onChange={value => setDisplay(value as "chart" | "table")} options={[{ label: "图", value: "chart" }, { label: "表格", value: "table" }]} />
+            <Button size="small" type="primary" onClick={pageBigScreen.enter}>大屏展示</Button>
+          </Space>}
+      </div>
+      {!bigScreen && <Form form={form} className="report-filter report-customer-roi-filter" onFinish={values => void load(values)}>
         <Form.Item label="日期" name="dateRange"><DatePicker.RangePicker /></Form.Item>
         <Form.Item label="归属部门" name="department"><Select allowClear showSearch optionFilterProp="label" placeholder="全部部门" options={data.filter_options.departments.map(value => ({ value, label: value }))} /></Form.Item>
         <Form.Item label="负责人" name="employee"><KeywordPersonSelect allowClear showSearch optionFilterProp="label" placeholder="全部负责人" options={data.filter_options.employees.map(value => ({ value, label: showPeople(value) }))} /></Form.Item>
@@ -315,9 +454,10 @@ function CustomerRoiReport({ onNavigate }: { onNavigate?: (route: string) => voi
           <Button onClick={() => { form.resetFields(); void load({}); }}>重置</Button>
           <Button icon={<DownloadOutlined />} loading={exporting} onClick={() => void exportReport()}>导出CSV</Button>
         </div>
-      </Form>
-      <div className="report-roi-description">按{data.date_basis || "开票日期、到账日期、付款日期"}筛选；{data.formula || "ROI＝（收入－成本）÷ 成本 × 100%"}。成本为 0 时显示“—”。部门和负责人按关联案件筛选。</div>
-      <div className="report-roi-table-panel">
+      </Form>}
+      {!bigScreen && <div className="report-roi-description">按{data.date_basis || "开票日期、到账日期、付款日期"}筛选；{data.formula || "ROI＝（收入－成本）÷ 成本 × 100%"}。成本为 0 时显示“—”。部门和负责人按关联案件筛选。</div>}
+      {(display === "chart" || bigScreen) && <Spin spinning={loading}><CustomerRoiCharts rows={data.rows} bigScreen={bigScreen} /></Spin>}
+      {display === "table" && !bigScreen && <div className="report-roi-table-panel">
         <Table<CustomerRoiRow>
           rowKey={(row) => `${row.customer}-${row.department}-${row.employee}`}
           loading={loading}
@@ -344,7 +484,7 @@ function CustomerRoiReport({ onNavigate }: { onNavigate?: (route: string) => voi
             { title: "ROI", dataIndex: "roi", width: 130, align: "right", render: (value, row) => roiDisplay(value, row.cost) },
           ]}
         />
-      </div>
+      </div>}
     </div>
   );
 }
