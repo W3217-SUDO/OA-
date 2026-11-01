@@ -476,3 +476,14 @@
   .report-roi-charts { grid-template-columns: minmax(0, 1fr); margin: 10px 0 12px; }
   .report-roi-chart .report-chart-body { height: 320px; }
 }
+
+/* 报表大屏员工业绩排行：日期筛选 + 案件数、代理费（按案源人）、代理费（按开庭律师）三图并排（BUG 500798）。 */
+.large-screen-ranking { margin-top: 14px; }
+.large-screen-ranking-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.large-screen-ranking-filter strong { margin-right: 8px; font-size: 15px; }
+.large-screen-ranking-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.large-screen-ranking-row .large-screen-chart { height: 340px; }
+.large-screen-ranking-note { margin: 8px 2px 0; color: #7c9094; font-size: 11px; }
+@media (max-width: 1100px) {
+  .large-screen-ranking-row { grid-template-columns: minmax(0, 1fr); }
+}

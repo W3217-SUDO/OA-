@@ -1,5 +1,6 @@
 import { KeywordPersonSelect } from "./components/KeywordPersonSelect";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import dayjs, { type Dayjs } from "dayjs";
 import { DownloadOutlined } from "@ant-design/icons";
 import { Alert, Button, DatePicker, Empty, Form, Input, Segmented, Select, Space, Spin, message } from "antd";
 import Table from "./components/ResizableTable";import {
@@ -7,6 +8,7 @@ import Table from "./components/ResizableTable";import {
   BarChart,
   Cell,
   CartesianGrid,
+  LabelList,
   Legend,
   Line,
   LineChart,
@@ -579,6 +581,9 @@ type LargeScreenData = {
   finance: { amount_visible: boolean; income: number | null; expense: number | null; income_label?: string; expense_label?: string };
   customer_summary: { total: number };
   employee_ranking: { username?: string; name: string; value: number }[];
+  // 代理费到账排行（BUG 500798）；没有财务金额权限时为 null。
+  agency_fee_ranking?: { by_source_person: { name: string; value: number }[]; by_hearing_lawyer: { name: string; value: number }[]; total: number } | null;
+  ranking_period?: { date_from: string; date_to: string };
   case_type_distribution: { name: string; value: number }[];
   monthly_trend: { month: string; cases: number; income: number | null; expense: number | null }[];
   definitions?: Record<string, string>;
@@ -597,6 +602,26 @@ const emptyLargeScreenData: LargeScreenData = {
 const formatNumber = (value: number) => Number(value || 0).toLocaleString("zh-CN");
 const formatCurrency = (value: number | null) => value == null ? "—" : `¥${Number(value).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+const defaultRankingRange = (): [Dayjs, Dayjs] => [dayjs().startOf("year"), dayjs()];
+const formatWan = (value: number) => (Number(value || 0) / 10000).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// 横向排行条：人名在左、数值在柱子右侧（报表大屏员工业绩排行，BUG 500798）。
+function RankingBarChart({ data, label, format, color, unit }: { data: { name: string; value: number }[]; label: string; format: (value: number) => string; color: string; unit?: string }) {
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={data} layout="vertical" margin={{ top: 8, right: 56, bottom: 0, left: 14 }}>
+        <CartesianGrid stroke="#e8f0f2" horizontal={false} />
+        <XAxis type="number" allowDecimals={false} domain={[0, (dataMax: number) => Math.ceil(dataMax * 1.18)]} tickFormatter={(value) => unit ? `${Math.round(Number(value) / 10000)}${unit}` : formatNumber(Number(value))} />
+        <YAxis type="category" dataKey="name" width={84} tick={{ fontSize: 12 }} interval={0} />
+        <Tooltip formatter={(value) => [format(Number(value)), label]} />
+        <Bar dataKey="value" fill={color} radius={[0, 5, 5, 0]} maxBarSize={18}>
+          <LabelList dataKey="value" position="right" fontSize={11} formatter={(value: unknown) => format(Number(value))} />
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
 function LargeScreenEmpty({ description = "暂无可展示的真实业务数据" }: { description?: string }) {
   return <Empty className="large-screen-empty" image={Empty.PRESENTED_IMAGE_SIMPLE} description={description} />;
 }
@@ -608,12 +633,16 @@ export function ReportLargeScreenPage({ onExit }: { onExit?: () => void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [data, setData] = useState<LargeScreenData>(emptyLargeScreenData);
+  // 员工业绩排行的日期区间：默认今年，重新筛选后按新条件显示（BUG 500798）。
+  const [rankingRange, setRankingRange] = useState<[Dayjs, Dayjs]>(defaultRankingRange);
+  // 定时刷新沿用最近一次点“查询”时的区间，改了日期没点查询不影响。
+  const rankingRangeRef = useRef(rankingRange);
 
-  const load = async () => {
+  const load = async (range: [Dayjs, Dayjs] = rankingRangeRef.current) => {
     setLoading(true);
     setError("");
     try {
-      const response = await api.get<LargeScreenData>("/reports/large-screen");
+      const response = await api.get<LargeScreenData>("/reports/large-screen", { params: { ranking_from: range[0].format("YYYY-MM-DD"), ranking_to: range[1].format("YYYY-MM-DD") } });
       setData({ ...emptyLargeScreenData, ...response.data, case_summary: { ...emptyLargeScreenData.case_summary, ...response.data.case_summary }, finance: { ...emptyLargeScreenData.finance, ...response.data.finance }, customer_summary: { ...emptyLargeScreenData.customer_summary, ...response.data.customer_summary } });
     } catch (requestError: any) {
       setError(requestError?.response?.data?.detail || "大屏实时数据加载失败，请稍后重试。");
@@ -647,7 +676,8 @@ export function ReportLargeScreenPage({ onExit }: { onExit?: () => void }) {
     void document.documentElement.requestFullscreen?.().catch(() => message.warning("当前浏览器不支持进入全屏模式"));
   };
 
-  const rankingData = data.employee_ranking.slice(0, 8);
+  const rankingData = data.employee_ranking.slice(0, 10);
+  const queryRanking = (range: [Dayjs, Dayjs]) => { rankingRangeRef.current = range; setRankingRange(range); void load(range); };
   const typeData = data.case_type_distribution;
   const trendData = data.monthly_trend;
   return (
@@ -682,11 +712,32 @@ export function ReportLargeScreenPage({ onExit }: { onExit?: () => void }) {
                 <article><span>财务支出</span><strong>{formatCurrency(data.finance.expense)}</strong><em>{data.finance.amount_visible ? (data.definitions?.expense || data.finance.expense_label || "当前数据范围") : "无财务数据查看权限"}</em></article>
                 <article><span>客户总数</span><strong>{formatNumber(data.customer_summary.total)}</strong><em>全部可见客户</em></article>
               </section>
+              <section className="large-screen-ranking" aria-label="员工业绩排行">
+                <div className="large-screen-ranking-filter">
+                  <strong>员工业绩排行</strong>
+                  <DatePicker.RangePicker allowClear={false} value={rankingRange} onChange={(value) => value?.[0] && value?.[1] && setRankingRange([value[0], value[1]])} />
+                  <Button type="primary" onClick={() => queryRanking(rankingRange)}>查询</Button>
+                  <Button onClick={() => queryRanking(defaultRankingRange())}>重置</Button>
+                </div>
+                <div className="large-screen-ranking-row">
+                  <article className="large-screen-card ranking-card">
+                    <h2>新建案件数 <small>{data.definitions?.employee_ranking || "按案件负责人"}</small></h2>
+                    <div className="large-screen-chart">{rankingData.length ? <RankingBarChart data={rankingData} label="新建案件" format={(value) => formatNumber(value)} color="#00a65a" /> : <LargeScreenEmpty />}</div>
+                  </article>
+                  {([["by_source_person", "代理费到账（按案源人）", "#3e8ef7"], ["by_hearing_lawyer", "代理费到账（按开庭律师）", "#8a74e8"]] as const).map(([key, title, color]) => (
+                    <article key={key} className="large-screen-card ranking-card">
+                      <h2>{title} <small>{data.agency_fee_ranking ? `合计 ${formatWan(data.agency_fee_ranking.total)} 万元` : ""}</small></h2>
+                      <div className="large-screen-chart">{!data.finance.amount_visible || !data.agency_fee_ranking
+                        ? <LargeScreenEmpty description="无财务金额查看权限" />
+                        : data.agency_fee_ranking[key].length
+                          ? <RankingBarChart data={data.agency_fee_ranking[key]} label="代理费到账（万元）" format={(value) => formatWan(value)} color={color} unit="万" />
+                          : <LargeScreenEmpty />}</div>
+                    </article>
+                  ))}
+                </div>
+                {data.agency_fee_ranking && <p className="large-screen-ranking-note">{data.definitions?.agency_fee_ranking}</p>}
+              </section>
               <section className="large-screen-grid">
-                <article className="large-screen-card ranking-card">
-                  <h2>员工业绩排行 <small>{data.definitions?.employee_ranking || "统计口径以系统数据为准"}</small></h2>
-                  <div className="large-screen-chart">{rankingData.length ? <ResponsiveContainer width="100%" height="100%"><BarChart data={rankingData} layout="vertical" margin={{ top: 8, right: 24, bottom: 0, left: 14 }}><CartesianGrid stroke="#e8f0f2" horizontal={false} /><XAxis type="number" allowDecimals={false} /><YAxis type="category" dataKey="name" width={72} tick={{ fontSize: 12 }} /><Tooltip formatter={(value) => [formatNumber(Number(value)), "办案量"]} /><Bar dataKey="value" fill="#00a65a" radius={[0, 5, 5, 0]} maxBarSize={20} /></BarChart></ResponsiveContainer> : <LargeScreenEmpty />}</div>
-                </article>
                 <article className="large-screen-card distribution-card">
                   <h2>案件类型分布 <small>按案件数量</small></h2>
                   <div className="large-screen-chart">{typeData.length ? <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={typeData} dataKey="value" nameKey="name" innerRadius="48%" outerRadius="72%" paddingAngle={3}>{typeData.map((entry, index) => <Cell key={`${entry.name}-${index}`} fill={LARGE_SCREEN_COLORS[index % LARGE_SCREEN_COLORS.length]} />)}</Pie><Tooltip formatter={(value) => [formatNumber(Number(value)), "案件"]} /><Legend /></PieChart></ResponsiveContainer> : <LargeScreenEmpty />}</div>

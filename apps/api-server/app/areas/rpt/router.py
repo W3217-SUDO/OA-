@@ -60,7 +60,7 @@ async def export_report_staff_roi(
 
 
 @router.get(f"{settings.api_prefix}/reports/large-screen")
-async def report_large_screen(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def report_large_screen(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db), ranking_from: date | None = None, ranking_to: date | None = None):
     """Return one scoped, realtime snapshot for the report-centre large screen."""
     from app.core.cases import (
         _large_screen_case_is_closed, _large_screen_case_is_excluded,
@@ -96,6 +96,11 @@ async def report_large_screen(identity: dict = Depends(current_identity), db: As
         type_counts[case_type] = type_counts.get(case_type, 0) + 1
 
     today = datetime.now(timezone.utc).astimezone(CASE_EVENT_TIME_ZONE).date()
+    # 员工业绩排行的日期区间：默认今年 1 月 1 日到今天，可在大屏上重新筛选（BUG 500798）。
+    ranking_from = ranking_from or date(today.year, 1, 1)
+    ranking_to = ranking_to or today
+    if ranking_from > ranking_to:
+        raise HTTPException(status_code=422, detail="开始日期不能晚于结束日期")
     month_keys = _large_screen_month_keys(today)
     monthly_cases = {key: 0 for key in month_keys}
     employee_counts: dict[str, int] = {}
@@ -105,7 +110,7 @@ async def report_large_screen(identity: dict = Depends(current_identity), db: As
             month_key = created_at.strftime("%Y-%m")
             if month_key in monthly_cases:
                 monthly_cases[month_key] += 1
-            if created_at.year == today.year:
+            if ranking_from <= created_at <= ranking_to:
                 owner = str(case.owner or "").strip() or "未分配"
                 employee_counts[owner] = employee_counts.get(owner, 0) + 1
     users_by_username = await _user_display_map(set(employee_counts), db)
@@ -119,6 +124,10 @@ async def report_large_screen(identity: dict = Depends(current_identity), db: As
     ]
 
     amount_visible = "finance.amount" in await _allowed_field_keys(identity, db)
+    agency_ranking = None
+    if amount_visible:
+        from app.core.agency_fee_ranking import agency_fee_rankings
+        agency_ranking = await agency_fee_rankings(db, scope, ranking_from, ranking_to)
     monthly_income = {key: None for key in month_keys}
     monthly_expense = {key: None for key in month_keys}
     finance: dict = {
@@ -175,6 +184,9 @@ async def report_large_screen(identity: dict = Depends(current_identity), db: As
         "finance": finance,
         "customer_summary": {"total": len(customers)},
         "employee_ranking": employee_ranking,
+        "ranking_period": {"date_from": ranking_from.isoformat(), "date_to": ranking_to.isoformat()},
+        # 代理费到账排行（按案源人、按开庭律师）；没有财务金额权限时为 null。
+        "agency_fee_ranking": agency_ranking,
         "case_type_distribution": [
             {"name": name, "value": value}
             for name, value in sorted(type_counts.items(), key=lambda item: (-item[1], item[0]))
@@ -194,7 +206,8 @@ async def report_large_screen(identity: dict = Depends(current_identity), db: As
             "case_closed": "已写入办结确认，或状态/案件阶段属于明确结案阶段，或历史状态为已归档、亏损归档的案件数",
             "income": "可见银行到账记录的实际到账金额，包含未认领到账，不按申请或分配次数重复计算",
             "expense": "可见付款流水的实际已支付金额，不包含费用申请或审批金额",
-            "employee_ranking": f"{today.year}年有效新建案件数，按案件负责人排序",
+            "employee_ranking": f"{ranking_from:%Y-%m-%d} 至 {ranking_to:%Y-%m-%d} 有效新建案件数，按案件负责人排序",
+            "agency_fee_ranking": "到账单分配到代理费的金额（按到账日期），不含公司之间转款、代收代付、测试客户和退款；按案件的案源人、开庭律师分别统计，多人各计",
             "monthly_trend": "最近12个自然月的有效新建案件数；有财务金额权限时同时返回实际到账和实际已支付金额",
         },
     }
