@@ -235,7 +235,8 @@ async def copy_personal_file_to_case_ai_space(
     owner_id = await db.scalar(select(User.id).where(User.username == identity["username"]))
     if owner_id is None or item["owner_user_id"] != owner_id:
         raise HTTPException(status_code=403, detail="只能另存本人个人空间里的文件")
-    name = _case_ai_draft_name(item["name"])
+    # Excel 表格也可以另存（陶国南 11-01），进 AI 空间后可下载、可转入正式文档，但不在线编辑。
+    name = item["name"] if Path(item["name"]).suffix.lower() == ".xlsx" else _case_ai_draft_name(item["name"])
 
     async def on_available(session, attachment):
         attachment.remark = "从个人空间另存，尚未转入正式案件文档"
@@ -248,7 +249,8 @@ async def copy_personal_file_to_case_ai_space(
         db, identity, name=name, content=content, content_type=item["content_type"],
         source_kind="case_draft", case_record=record, on_available=on_available,
     )
-    return {**_attachment_dict(result["attachment"], record), "content_editable": True}
+    return {**_attachment_dict(result["attachment"], record),
+            "content_editable": Path(name).suffix.lower() in AI_SPACE_EDITABLE_SUFFIXES}
 
 
 @router.get(f"{settings.api_prefix}/cases/{{case_id}}/ai-space/files/{{attachment_id}}/content")

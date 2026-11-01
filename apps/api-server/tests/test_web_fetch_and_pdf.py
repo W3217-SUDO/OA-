@@ -47,7 +47,7 @@ class WebFetchRulesTest(unittest.IsolatedAsyncioTestCase):
 class PdfConversionTest(unittest.IsolatedAsyncioTestCase):
     async def test_unsupported_and_missing_tool(self):
         with self.assertRaises(HTTPException) as caught:
-            await pdf_conversion.convert_to_pdf("表格.xlsx", b"x")
+            await pdf_conversion.convert_to_pdf("演示.pptx", b"x")
         self.assertEqual(caught.exception.status_code, 422)
         with patch.object(pdf_conversion.shutil, "which", return_value=None):
             with self.assertRaises(HTTPException) as caught:

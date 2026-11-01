@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
-PDF_CONVERTIBLE_SUFFIXES = {".docx", ".md", ".txt"}
+PDF_CONVERTIBLE_SUFFIXES = {".docx", ".md", ".txt", ".xlsx"}
 PDF_CONTENT_TYPE = "application/pdf"
 _SLOTS = asyncio.Semaphore(2)
 _TIMEOUT_SECONDS = 60
@@ -24,16 +24,16 @@ async def convert_to_pdf(name: str, content: bytes) -> bytes:
 
     suffix = Path(name).suffix.lower()
     if suffix not in PDF_CONVERTIBLE_SUFFIXES:
-        raise HTTPException(422, "只有 Word、Markdown 和文本文件可以转成 PDF")
+        raise HTTPException(422, "只有 Word、Excel、Markdown 和文本文件可以转成 PDF")
     soffice = shutil.which("soffice")
     if not soffice:
         raise HTTPException(503, "服务器还没有安装 PDF 转换工具")
-    if suffix != ".docx":
+    if suffix in {".md", ".txt"}:
         # Markdown 和文本先排成 Word，标题、列表、加粗与在线保存的 Word 一致。
-        content = _docx_bytes(Path(name).stem, content.decode("utf-8", errors="replace"))
+        content, suffix = _docx_bytes(Path(name).stem, content.decode("utf-8", errors="replace")), ".docx"
     async with _SLOTS:
         with tempfile.TemporaryDirectory(prefix="oa-pdf-") as work:
-            source = Path(work) / "source.docx"
+            source = Path(work) / ("source" + suffix)
             source.write_bytes(content)
             process = await asyncio.create_subprocess_exec(
                 "nice", "-n", "10", soffice, "--headless", "--norestore", "--nologo",

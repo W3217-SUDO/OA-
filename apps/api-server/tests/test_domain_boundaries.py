@@ -226,6 +226,12 @@ class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
             await copy_personal_file_to_case_ai_space(case.id, CaseAiDraftFromPersonalInput(personal_file_id=other_id),
                                                       identity=await self.identity(), db=self.db)
         self.assertEqual(caught.exception.status_code, 403)
+        # Excel 也可以另存，进 AI 空间后不在线编辑。
+        sheet = await self.save(name="查询结果.xlsx", content=b"PK-xlsx", source_kind="personal_document",
+                                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        copied = await copy_personal_file_to_case_ai_space(case.id, CaseAiDraftFromPersonalInput(personal_file_id=sheet["file"]["id"]),
+                                                           identity=await self.identity(), db=self.db)
+        self.assertEqual((copied["original_name"], copied["content_editable"]), ("查询结果.xlsx", False))
 
     async def test_bound_employee_is_authoritative_and_conflicting_binding_rejected(self):
         employee = BusinessRecord(module="hr", serial_no="CODEX-AI-HR", title="真实档案姓名", owner=self.actor.username,
