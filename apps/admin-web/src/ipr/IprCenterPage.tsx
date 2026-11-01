@@ -2098,6 +2098,8 @@ export default function IprCenterPage({
                         />
                         <IprContactsPanel
                           detail={detail}
+                          caseCustomers={caseCustomers}
+                          onOpenContactSelector={openContactSelector}
                           caseContacts={caseContacts}
                           contactOpen={contactOpen}
                           contactCustomer={contactCustomer}

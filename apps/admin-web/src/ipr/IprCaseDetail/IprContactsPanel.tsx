@@ -2,22 +2,28 @@ import { POPUP_WIDTH } from "../../components/common/popupSize";
 import { Card,Checkbox,Modal } from "antd";
 import Table from "../../components/ResizableTable";
 import type { CustomerContact,IprCaseContact,IprCaseCustomer,IprRecord } from "../types";
+import { IprRowContextMenu } from "./IprRowContextMenu";
 
 interface IprContactsPanelProps {
   detail: IprRecord;
+  caseCustomers: IprCaseCustomer[];
   caseContacts: IprCaseContact[];
   contactOpen: boolean;
   contactCustomer: IprCaseCustomer | null;
   contactCandidates: CustomerContact[];
   documentContactIds: string[];
   technologyContactIds: string[];
+  onOpenContactSelector: (customer: IprCaseCustomer) => void;
   onCloseContactSelector: () => void;
   onSaveContacts: () => void;
   onDocumentContactChange: (ids: string[]) => void;
   onTechnologyContactChange: (ids: string[]) => void;
 }
 
-export function IprContactsPanel({ caseContacts, contactOpen, contactCustomer, contactCandidates, documentContactIds, technologyContactIds, onCloseContactSelector, onSaveContacts, onDocumentContactChange, onTechnologyContactChange }: IprContactsPanelProps) {
+export function IprContactsPanel({ detail, caseCustomers, onOpenContactSelector, caseContacts, contactOpen, contactCustomer, contactCandidates, documentContactIds, technologyContactIds, onCloseContactSelector, onSaveContacts, onDocumentContactChange, onTechnologyContactChange }: IprContactsPanelProps) {
+  // 右键菜单按原系统：添加案件联系人（BUG20261028020）。联系人从案件客户的联系人里选，先选主客户。
+  const customer = caseCustomers.find((row) => row.is_primary) || caseCustomers[0];
+  const editable = ["草稿", "已驳回", "在办"].includes(detail.status);
   return (
     <>
       <Card
@@ -25,6 +31,13 @@ export function IprContactsPanel({ caseContacts, contactOpen, contactCustomer, c
         title="案件联系人"
         style={{ marginTop: 16 }}
       >
+        <IprRowContextMenu
+          rows={caseContacts}
+          rowKey={(row) => row.id}
+          items={() => [
+            { key: "add", label: "添加案件联系人", disabled: !editable || !customer, onClick: () => customer && onOpenContactSelector(customer) },
+          ]}
+        >
         <Table
           rowKey="id"
           size="small"
@@ -55,6 +68,7 @@ export function IprContactsPanel({ caseContacts, contactOpen, contactCustomer, c
             },
           ]}
         />
+        </IprRowContextMenu>
       </Card>
 
       <Modal

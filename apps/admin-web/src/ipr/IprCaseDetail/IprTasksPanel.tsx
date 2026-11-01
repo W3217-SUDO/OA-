@@ -3,6 +3,8 @@ import { Alert,Button,Card,DatePicker,Form,Input,Modal,Select,Space,Tag } from "
 import Table from "../../components/ResizableTable";
 import { personDisplayName } from "../constants";
 import type { IprCaseTask,IprDetailPageState,IprRecord,PeopleOption } from "../types";
+import { IprRowContextMenu } from "./IprRowContextMenu";
+import { roleActionAllowed } from "../../roleActions";
 
 interface IprTasksPanelProps {
   detail: IprRecord;
@@ -71,6 +73,15 @@ export function IprTasksPanel({
             style={{ marginBottom: 12 }}
           />
         ) : null}
+        {/* 右键菜单按原系统：发布任务、刷新（BUG20261028020）。 */}
+        <IprRowContextMenu
+          rows={iprCaseTasks}
+          rowKey={(row) => row.id}
+          items={() => [
+            { key: "create", label: "发布任务", disabled: detail.status !== "在办" || !roleActionAllowed("ipr.case.task.create"), onClick: () => onOpenTask(detail) },
+            { key: "refresh", label: "刷新", onClick: onRefresh },
+          ]}
+        >
         <Table
           rowKey="id"
           size="small"
@@ -105,6 +116,7 @@ export function IprTasksPanel({
             },
           ]}
         />
+        </IprRowContextMenu>
       </Card>
 
       <Modal
