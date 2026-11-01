@@ -5,6 +5,9 @@ export type CaseContractOptionSource = {
   title: string;
   owner?: string;
   owner_display_name?: string;
+  // 新建案件默认案源人（后端算好）：客户在合同之后变更过案源人时是新案源人。
+  case_source_person?: string;
+  case_source_person_display_name?: string;
   data?: {
     source_person?: string;
     source_person_display_name?: string;
@@ -95,7 +98,9 @@ export function takeIprCaseContractContext(
 export function resolveCaseSourcePerson(contract: CaseContractOptionSource | null | undefined): string {
   if (!contract) return "";
   return String(
-    contract.data?.source_person_display_name
+    contract.case_source_person_display_name
+      || contract.case_source_person
+      || contract.data?.source_person_display_name
       || contract.owner_display_name
       || contract.data?.source_person
       || contract.owner

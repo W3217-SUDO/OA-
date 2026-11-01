@@ -1172,6 +1172,20 @@ async def list_case_eligible_contracts(identity: dict = Depends(current_identity
     items = await _contract_customer_record_dicts(
         list(contracts), await _allowed_field_keys(identity, db), db, identity=identity,
     )
+    # 新建案件默认案源人：客户在合同之后变更过案源人的，按客户现在的案源人（陶国南 2026-11-01）。
+    from app.core.contracts import _case_default_source_person
+    from app.core.formatters import _user_display_map
+    customer_ids = {int((item.data or {}).get("customer_record_id") or 0) for item in contracts} - {0}
+    customers = {row.id: row for row in (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.id.in_(customer_ids), BusinessRecord.module == "customer",
+    ))).all()} if customer_ids else {}
+    defaults = {item.id: _case_default_source_person(item, customers.get(int((item.data or {}).get("customer_record_id") or 0))) for item in contracts}
+    users = await _user_display_map(set(defaults.values()) - {""}, db)
+    for item in items:
+        username = defaults.get(item.get("id"), "")
+        user = users.get(username.lower()) or users.get(username)
+        item["case_source_person"] = username
+        item["case_source_person_display_name"] = getattr(user, "display_name", None) or username
     return {"items": items, "total": len(contracts)}
 
 
@@ -1415,7 +1429,8 @@ async def create_case(body: CaseCreateInput, identity: dict = Depends(current_id
         raise HTTPException(status_code=409, detail="业务编号已存在")
     contract_data = contract.data or {}
     opponent = body.opponent.strip()
-    source_token = body.source_person.strip() or str(contract_data.get("source_person") or contract.owner or "").strip()
+    from app.core.contracts import _case_default_source_person
+    source_token = body.source_person.strip() or _case_default_source_person(contract, contract_customer)
     source_user = await db.scalar(select(User).where(User.username == source_token)) if source_token else None
     source_person, _ = _person_display_name(source_user.display_name, source_user.username) if source_user else (source_token, False)
     owner = body.owner.strip() or identity["username"]

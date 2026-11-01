@@ -382,6 +382,29 @@ def _contract_customer_source_person(customer: BusinessRecord) -> str:
     ).strip()
 
 
+def _case_default_source_person(contract: BusinessRecord, customer: BusinessRecord | None) -> str:
+    """新建案件默认的案源人（陶国南 2026-11-01，变更案源人方案 A）。
+
+    客户在这份合同之后变更过案源人，新案件按客户现在的案源人；否则按合同上的案源人。
+    已有合同、案件里记录的案源人不改（涉及原案源人提成）。
+    """
+    from datetime import datetime, timezone
+    contract_source = str((contract.data or {}).get("source_person") or contract.owner or "").strip()
+    history = list(((customer.data or {}).get("source_person_history") or [])) if customer is not None else []
+    if not history or not contract.created_at:
+        return contract_source
+    try:
+        changed_at = datetime.fromisoformat(str(history[-1].get("created_at") or ""))
+    except ValueError:
+        return contract_source
+    # 变更记录是服务器本地时间（不带时区）；合同创建时间在 SQLite 里不带时区、按 UTC 存。
+    changed_at = changed_at.astimezone() if changed_at.tzinfo is None else changed_at
+    created_at = contract.created_at if contract.created_at.tzinfo else contract.created_at.replace(tzinfo=timezone.utc)
+    if changed_at > created_at:
+        return _contract_customer_source_person(customer) or contract_source
+    return contract_source
+
+
 async def _user_has_contract_approval_action(user: User, db: AsyncSession) -> bool:
     """Resolve the explicit approval action without recursing through candidate payloads."""
     from app.core.permissions import (

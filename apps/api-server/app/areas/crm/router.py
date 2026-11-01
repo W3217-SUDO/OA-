@@ -1130,7 +1130,10 @@ async def update_customer_managers(customer_id: int, body: CustomerManagersInput
 
 @router.post(f"{settings.api_prefix}/customers/{{customer_id}}/source-person")
 async def change_customer_source_person(customer_id: int, body: CustomerSourcePersonInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    """变更案源人（一位）：同时更新客户负责人；只影响以后新建的合同、案件，原有案件、合同、调查不变（陶国南 2026-10-31）。"""
+    """变更案源人（一位，陶国南 2026-11-01 方案 A）：只改客户来源（客户负责人），客户管理人不变。
+
+    原有合同、调查任务、线索、案件里记录的案源人不改（涉及原案源人提成）；以后新建的合同、案件用新案源人。
+    """
     from app.core.permissions import _require_role_action
     await _require_role_action(identity, db, "crm.customer.assign")
     from app.core.crm import (

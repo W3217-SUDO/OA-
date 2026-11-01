@@ -803,7 +803,13 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     # shared to ``joann`` while remaining portable across SQLite and
     # PostgreSQL.
     exact_username_token = f'"{user.username}"'
-    managed_customer = and_(BusinessRecord.module == "customer", BusinessRecord.data["customer_managers"].as_string().contains(exact_username_token))
+    # 案源人（客户来源）默认就有客户管理人的权限（陶国南 2026-11-01），不受部门范围限制。
+    managed_customer = and_(BusinessRecord.module == "customer", or_(
+        BusinessRecord.data["customer_managers"].as_string().contains(exact_username_token),
+        BusinessRecord.owner == user.username,
+        BusinessRecord.data["customer_source"].as_string() == user.username,
+        BusinessRecord.data["source_person"].as_string() == user.username,
+    ))
     shared_to_text = BusinessRecord.data["shared_to"].as_string()
     shared_with_text = BusinessRecord.data["shared_with"].as_string()
     shared_customer = and_(BusinessRecord.module == "customer", shared_with_text.contains(exact_username_token))
