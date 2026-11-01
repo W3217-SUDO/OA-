@@ -134,6 +134,22 @@ class CustomerRoiReportTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("case-owner", by_customer[customer_a.id]["employee"])
         self.assertEqual(by_department["totals"]["income"], 500)
 
+    async def test_employee_column_shows_person_names(self):
+        # BUG 500787：员工列显示姓名，不显示登录账号；筛选项仍是账号。
+        from app.core.person_names import refresh_person_names
+        async with self.sessions() as db:
+            await self._seed(db)
+            db.add_all([User(username="owner-a", display_name="陈律师", password_hash="x", role="staff"),
+                        User(username="cost-owner", display_name="罗会计", password_hash="x", role="staff")])
+            await db.commit()
+            await refresh_person_names(db, force=True)
+            result = await _customer_roi_analytics(ADMIN, db)
+        employees = "、".join(row["employee"] for row in result["rows"])
+        self.assertNotIn("owner-a", employees)
+        self.assertNotIn("cost-owner", employees)
+        self.assertIn("罗会计", employees)
+        self.assertIn("cost-owner", result["filter_options"]["employees"])
+
     async def test_prewarm_replay_recomputes_same_report(self):
         from app.areas.rpt.router import _replay_customer_roi
         from app.core import query_prewarm

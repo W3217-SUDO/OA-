@@ -9,6 +9,7 @@ from app.core.dependencies import (
     and_, func, or_, select, uuid4, uuid5, verify_password,
 )
 from app.core.json_relation_query import scalar_in_values
+from app.core.person_names import person_name, refresh_person_names
 from app.models_shared import (
     CustomerPortalLoginInput, LawFirmInput,
 )
@@ -398,6 +399,7 @@ async def _customer_roi_analytics(
     11-01）：收入原来只取“回款”流水，迁来的到账单全漏了。  Net ROI:
     (income - cost) / cost * 100.
     """
+    await refresh_person_names(db)  # 预热重算不经过登录校验，这里补一次姓名对照
     from app.core.formatters import (
         _normalized_customer_name,
     )
@@ -618,7 +620,8 @@ async def _customer_roi_analytics(
         rows.append({
             "customer_id": bucket["customer_id"], "customer": bucket["customer"], "customer_no": bucket["customer_no"],
             "department": "、".join(sorted(value for value in bucket["departments"] if value)),
-            "employee": "、".join(sorted(value for value in bucket["employees"] if value)),
+            # 员工列显示姓名，不显示登录账号（BUG 500787）；筛选项仍按账号取值。
+            "employee": "、".join(sorted({person_name(value) for value in bucket["employees"] if value})),
             "income": income, "cost": cost, "profit": profit,
             "roi": round(profit / cost * 100, 2) if cost else None,
         })

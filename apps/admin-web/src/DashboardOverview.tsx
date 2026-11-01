@@ -3,6 +3,7 @@ import { Button, Empty, Segmented, Tooltip } from "antd";
 import { CheckCircleFilled, ReloadOutlined } from "@ant-design/icons";
 import type { DashboardData, DashboardPortal } from "./dashboardData";
 import DashboardGreeting from "./DashboardGreeting";
+import { usePeopleNames } from "./personNames";
 import { dashboardPortalItems, dashboardTodoItems, prepareTodoNavigation, type DashboardPortalTodoItem } from "./dashboardTodos";
 
 const PORTAL_TAB_STORAGE = "sunhold:dashboard-portal";
@@ -89,6 +90,7 @@ type Props = {
 };
 
 export default function DashboardOverview({ showHead = true, greeting, name, briefing, todos, cases, todoStatus, caseStatus, todosLoading, casesLoading, todosError, casesError, canNavigate, canOpenCase, onNavigate, onOpenCase, onRefresh, portals = [], portalData, portalsLoading = false, onOpenMetric }: Props) {
+  const showPeople = usePeopleNames();
   const [portalKey, setPortalKey] = useState(rememberedPortal);
   const [gridRef, gridWidth] = useElementWidth<HTMLDivElement>();
   // 每个端（没有分端时为原“我的待办”）当前看第几页。
@@ -217,14 +219,14 @@ export default function DashboardOverview({ showHead = true, greeting, name, bri
                     <span><i>被告</i>{item.defendant || "—"}</span>
                   </td>
                   <td className="wb-overview-case-date"><time>{item.date || "—"}</time></td>
-                  <td className="wb-overview-case-manager">{item.manager || "—"}</td>
-                  <td className="case-wide">{item.lawyer || "—"}</td>
-                  <td className="case-wide">{item.agent || "—"}</td>
-                  <td className="case-wide">{item.assistant || "—"}</td>
+                  <td className="wb-overview-case-manager">{showPeople(item.manager)}</td>
+                  <td className="case-wide">{showPeople(item.lawyer)}</td>
+                  <td className="case-wide">{showPeople(item.agent)}</td>
+                  <td className="case-wide">{showPeople(item.assistant)}</td>
                   <td className="case-narrow wb-overview-team">
-                    <span><i>开庭</i>{item.lawyer || "—"}</span>
-                    <span><i>经办</i>{item.agent || "—"}</span>
-                    <span><i>助理</i>{item.assistant || "—"}</span>
+                    <span><i>开庭</i>{showPeople(item.lawyer)}</span>
+                    <span><i>经办</i>{showPeople(item.agent)}</span>
+                    <span><i>助理</i>{showPeople(item.assistant)}</span>
                   </td>
                 </tr>
               ))}</tbody>

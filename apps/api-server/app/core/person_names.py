@@ -30,6 +30,6 @@ def person_name(username: object) -> str:
     key = str(username or "").strip()
     if not key:
         return ""
-    if key == "system":
+    if key.lower() == "system":
         return "系统"
     return _names.get(key.lower()) or key

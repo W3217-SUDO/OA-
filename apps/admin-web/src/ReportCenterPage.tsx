@@ -20,6 +20,7 @@ import Table from "./components/ResizableTable";import {
 import { api } from "./api";
 import { rememberCustomerDetailTarget, resolveCustomerDetailTarget } from "./customerDetailNavigation";
 import { useMobileFilterToggle } from "./components/common/MobileFilterToggle";
+import { usePeopleNames } from "./personNames";
 import "./report-center.css";
 
 type ChartResult = { title: string; unit: ChartSpec["unit"]; items: { name: string; value: number | null }[] };
@@ -263,6 +264,7 @@ const percentage = (value: number) => `${Number(value || 0).toLocaleString("zh-C
 const roiDisplay = (roi: number | null, cost: number) => Number(cost || 0) === 0 || roi === null ? "—" : percentage(roi);
 
 function CustomerRoiReport({ onNavigate }: { onNavigate?: (route: string) => void }) {
+  const showPeople = usePeopleNames();
   const [form] = Form.useForm<CustomerRoiFilterValues>();
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -323,7 +325,7 @@ function CustomerRoiReport({ onNavigate }: { onNavigate?: (route: string) => voi
       <Form form={form} className="report-filter report-customer-roi-filter" onFinish={values => void load(values)}>
         <Form.Item label="收付款日期" name="dateRange"><DatePicker.RangePicker /></Form.Item>
         <Form.Item label="归属部门" name="department"><Select allowClear showSearch optionFilterProp="label" placeholder="全部收付款归属部门" options={data.filter_options.departments.map(value => ({ value, label: value }))} /></Form.Item>
-        <Form.Item label="负责人" name="employee"><KeywordPersonSelect allowClear showSearch optionFilterProp="label" placeholder="全部收付款负责人" options={data.filter_options.employees.map(value => ({ value, label: value }))} /></Form.Item>
+        <Form.Item label="负责人" name="employee"><KeywordPersonSelect allowClear showSearch optionFilterProp="label" placeholder="全部收付款负责人" options={data.filter_options.employees.map(value => ({ value, label: showPeople(value) }))} /></Form.Item>
         <div className="report-filter-action">
           <Button type="primary" htmlType="submit">查询</Button>
           <Button onClick={() => { form.resetFields(); void load({}); }}>重置</Button>
@@ -351,7 +353,7 @@ function CustomerRoiReport({ onNavigate }: { onNavigate?: (route: string) => voi
           columns={[
             { title: "客户", dataIndex: "customer", width: 240, ellipsis: true, render: (value, row) => <Button type="link" className="report-roi-customer-link" onClick={() => void openCustomer(row)}>{value || "—"}</Button> },
             { title: "部门", dataIndex: "department", width: 170, ellipsis: true, render: value => value || "—" },
-            { title: "员工", dataIndex: "employee", width: 160, ellipsis: true, render: value => value || "—" },
+            { title: "员工", dataIndex: "employee", width: 160, ellipsis: true, render: value => showPeople(value) },
             { title: "收入（元）", dataIndex: "income", width: 150, align: "right", render: currency },
             { title: "成本（元）", dataIndex: "cost", width: 150, align: "right", render: currency },
             { title: "利润（元）", dataIndex: "profit", width: 150, align: "right", render: currency },

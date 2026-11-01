@@ -3,6 +3,7 @@ import { Empty } from "antd";
 import AgentAvatar from "./personal-agent/AgentAvatar";
 import type { DashboardRejection } from "./dashboardData";
 import { rejectionPrompt } from "./dashboardPrompts";
+import { usePeopleNames } from "./personNames";
 
 type Props = {
   items: DashboardRejection[];
@@ -15,6 +16,7 @@ type Props = {
 
 // 右侧栏：当前账号提交后被驳回的单据，可以直接查看或交给智能体处理。
 export default function DashboardRejectionReminder({ items, total, loading, status, onOpen, onAsk }: Props) {
+  const showPeople = usePeopleNames();
   return (
     <aside className="wb-rail" aria-label="审批驳回提醒">
       <header className="wb-section-head">
@@ -34,7 +36,7 @@ export default function DashboardRejectionReminder({ items, total, loading, stat
             <p className="wb-rejection-reason" title={item.reason}>{item.reason || "未填写驳回原因"}</p>
             <div className="wb-rejection-foot">
               <span className="wb-rejection-by">
-                {item.rejected_by && <span>{item.rejected_by} 驳回</span>}
+                {item.rejected_by && <span>{showPeople(item.rejected_by)} 驳回</span>}
                 <time>{item.rejected_at}</time>
               </span>
               <button type="button" className="wb-ask" onClick={() => onAsk(rejectionPrompt(item))}>

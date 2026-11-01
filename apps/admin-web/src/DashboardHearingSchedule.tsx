@@ -5,6 +5,7 @@ import { RightOutlined } from "@ant-design/icons";
 import AgentAvatar from "./personal-agent/AgentAvatar";
 import dayjs from "dayjs";
 import { hearingPrompt } from "./dashboardPrompts";
+import { usePeopleNames } from "./personNames";
 
 type Hearing = Record<string, string>;
 
@@ -36,6 +37,7 @@ const PAGE_SIZE = 13;
 // 开庭排期按日期排成日程表：左侧是日期，右侧是当天的每一场开庭。
 // 分“个人 / 全所”两个页签（陶国南 11-01 定）：默认看本人相关的开庭，所有人都能切到全所；全所数据多，按页加载。
 export default function DashboardHearingSchedule({ hearings, hearingsTotal, loading, status, canOpenSchedule, canOpenCase, canOpenCustomer, onOpenSchedule, onOpenCase, onOpenCustomer, onOpenHearingAgent, onAsk }: Props) {
+  const showPeople = usePeopleNames();
   const [scope, setScope] = useState<Scope>("personal");
   const [company, setCompany] = useState<{ rows: Hearing[]; total: number; page: number; loading: boolean; error: string }>(
     { rows: [], total: 0, page: 0, loading: false, error: "" });
@@ -125,9 +127,9 @@ export default function DashboardHearingSchedule({ hearings, hearingsTotal, load
                     )}
                     {item.opponent && <span className="wb-hearing-opponent"><label>对方</label>{item.opponent}</span>}
                     <span className="wb-hearing-people">
-                      <span><label>开庭</label>{item.lawyer || "—"}</span>
-                      <span><label>经办</label>{item.agent || "—"}</span>
-                      <span><label>助理</label>{item.assistant || "—"}</span>
+                      <span><label>开庭</label>{showPeople(item.lawyer)}</span>
+                      <span><label>经办</label>{showPeople(item.agent)}</span>
+                      <span><label>助理</label>{showPeople(item.assistant)}</span>
                     </span>
                   </div>
                 </li>
