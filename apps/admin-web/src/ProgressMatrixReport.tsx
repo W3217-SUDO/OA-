@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Alert, Button, Empty, Modal, Spin, message } from "antd";
+import { Alert, Button, Empty, Modal, Segmented, Space, Spin, message } from "antd";
 import Table from "./components/ResizableTable";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "./api";
@@ -87,8 +87,10 @@ export default function ProgressMatrixReport({ title, endpoint, bigScreen: rotat
   const [drillLoading, setDrillLoading] = useState(false);
   const [drillItems, setDrillItems] = useState<ProgressCase[]>([]);
   const [drillColumns, setDrillColumns] = useState<DetailColumn[]>([]);
-  // 大屏时上方说明默认收起（BUG 500792）。
+  // 页面默认显示 6 个图，右上角切换“图 / 表格”；上方说明默认收起（BUG 500792，思法汇成 11-01 16:16）。
+  const [display, setDisplay] = useState<"chart" | "table">("chart");
   const [notesOpen, setNotesOpen] = useState(false);
+  const showTable = display === "table" && !bigScreen;
 
   const load = async () => {
     setLoading(true);
@@ -158,19 +160,22 @@ export default function ProgressMatrixReport({ title, endpoint, bigScreen: rotat
         <span>{title}</span>
         {!rotatingBigScreen && (pageBigScreen.active
           ? <Button size="small" onClick={pageBigScreen.exit}>退出大屏</Button>
-          : <Button size="small" type="primary" onClick={pageBigScreen.enter}>大屏展示</Button>)}
+          : <Space size={8}>
+            <Segmented size="small" value={display} onChange={value => setDisplay(value as "chart" | "table")} options={[{ label: "图", value: "chart" }, { label: "表格", value: "table" }]} />
+            <Button size="small" type="primary" onClick={pageBigScreen.enter}>大屏展示</Button>
+          </Space>)}
       </div>
-      {data.definition && (!bigScreen || notesOpen
-        ? <div className="report-roi-description">{data.definition}{bigScreen && <Button type="link" size="small" onClick={() => setNotesOpen(false)}>收起</Button>}</div>
+      {data.definition && (notesOpen
+        ? <div className="report-roi-description">{data.definition}<Button type="link" size="small" onClick={() => setNotesOpen(false)}>收起</Button></div>
         : <Button type="link" size="small" className="progress-matrix-notes-toggle" onClick={() => setNotesOpen(true)}>▸ 展开说明</Button>)}
       {error && <Alert type="error" showIcon message={error} action={<Button size="small" onClick={() => void load()}>重试</Button>} />}
       <Spin spinning={loading}>
-        <div className="report-chart-grid progress-stage-charts">
+        {!showTable && <div className="report-chart-grid progress-stage-charts">
           {data.stages.map(stage => (
             <StageChart key={stage} stage={stage} rows={data.rows} bigScreen={bigScreen} onOpen={person => void openDrill(person, stage)} />
           ))}
-        </div>
-        {!bigScreen && <Table<ProgressMatrixRow>
+        </div>}
+        {showTable && <Table<ProgressMatrixRow>
           className="progress-matrix-table"
           rowKey="person"
           size={bigScreen ? "large" : "middle"}

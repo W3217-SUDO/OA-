@@ -48,6 +48,9 @@ test('每个进度一个柱状图，横轴律师助理、纵轴案件数，大�
   assert.match(matrix, /data\.stages\.map\(stage => \(\s*<StageChart/);
   assert.match(matrix, /<span>\{stage\}案件数量<\/span>/);
   assert.match(matrix, /▸ 展开说明/);
+  assert.match(matrix, /useState<"chart" \| "table">\("chart"\)/);
+  assert.match(matrix, /const showTable = display === "table" && !bigScreen;/);
+  assert.match(matrix, /\{ label: "图", value: "chart" \}, \{ label: "表格", value: "table" \}/);
   const css = read('report-center.css').split('BUG 500792')[1];
   assert.match(css, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
   assert.ok(!/color-mix|:has\(|@container|dvh/.test(css), '要兼容钉钉 Chrome 100 内核');
