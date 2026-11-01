@@ -1,3 +1,4 @@
+import asyncio
 """供已审计的纯 JSON 查询入口复用，鉴权仍由每次请求执行。"""
 import hashlib
 import json
@@ -15,6 +16,7 @@ from app.core.query_cache_flow import read_shared_query, release_lock, visible_s
 
 
 logger = logging.getLogger(__name__)
+FALLBACK_COMPUTE = asyncio.Semaphore(4)
 
 
 def _digest(value):
@@ -65,5 +67,11 @@ async def _cached_query(db, identity, namespace, parameters, compute, *, snapsho
             release=release, label="查询结果",
         )
     except RedisError as exc:
-        logger.error("查询共享缓存请求失败：%s namespace=%s", type(exc).__name__, namespace)
-        raise store.unavailable() from exc
+        # 缓存不可用（如 Redis 重启的那一两秒）时直接现算，不让用户看到报错（陶威 11-01）；
+        # 每个进程同时最多现算几个，防止 Redis 长时间不可用时所有请求一起压到数据库，超出的仍提示稍后重试。
+        if FALLBACK_COMPUTE.locked():
+            logger.error("查询共享缓存请求失败且现算已满：%s namespace=%s", type(exc).__name__, namespace)
+            raise store.unavailable() from exc
+        logger.error("查询共享缓存请求失败，改为现算：%s namespace=%s", type(exc).__name__, namespace)
+        async with FALLBACK_COMPUTE:
+            return await compute()

@@ -60,8 +60,14 @@ async def read_dashboard_metrics(identity, db):
         try:
             return await _read_shared_metrics(identity, db, snapshot)
         except RedisError as exc:
-            logger.error("控制台共享缓存请求失败：%s", type(exc).__name__)
-            raise shared.unavailable() from exc
+            # 缓存不可用时直接现算，不让用户看到报错；同时现算的数量有上限（见 query_cache.FALLBACK_COMPUTE）。
+            from app.core.query_cache import FALLBACK_COMPUTE
+            if FALLBACK_COMPUTE.locked():
+                logger.error("控制台共享缓存请求失败且现算已满：%s", type(exc).__name__)
+                raise shared.unavailable() from exc
+            logger.error("控制台共享缓存请求失败，改为现算：%s", type(exc).__name__)
+            async with FALLBACK_COMPUTE:
+                return await dashboard_metrics(identity, db)
 
     # 包含完整已认证身份和权限，不跨账号、权限集合或数据库连接复用。
     key = (bind, json.dumps(identity, ensure_ascii=True, sort_keys=True, separators=(",", ":")))

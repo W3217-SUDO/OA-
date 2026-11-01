@@ -111,6 +111,7 @@ async def _memory_allows_publish():
 
 
 async def _publish(key, token, snapshot, result, ttl):
+    ttl = shared.ttl_until_midnight(ttl)  # 按天缓存，最多留到下一个零点（陶威 11-01 定）
     # 文件、流和自定义响应的状态、头部不可被 JSON 缓存替换。
     if isinstance(result, Response):
         logger.info("查询结果未进入共享缓存：响应对象；key=%s", key)

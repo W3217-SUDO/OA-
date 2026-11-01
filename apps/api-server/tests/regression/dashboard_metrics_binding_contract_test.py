@@ -779,10 +779,16 @@ class DashboardSharedMetricsCacheTest(unittest.IsolatedAsyncioTestCase):
         self.db.rollback.assert_awaited_once()
         self.compute.assert_not_awaited()
 
-    async def test_redis_failure_is_explicit_and_does_not_compute(self):
+    async def test_redis_failure_computes_directly_within_a_bound(self):
+        # 陶威 11-01：缓存不可用（如 Redis 重启）时直接现算不报错；同时现算的数量有上限，超出的仍返回 503。
+        from app.core.query_cache import FALLBACK_COMPUTE
         self.read.side_effect = RedisConnectionError("unavailable")
-        with self.assertRaises(HTTPException) as caught:
-            await self.cache.read_dashboard_metrics(IDENTITY, self.db)
+        await self.cache.read_dashboard_metrics(IDENTITY, self.db)
+        self.compute.assert_awaited()
+        self.compute.reset_mock()
+        with patch.object(FALLBACK_COMPUTE, "locked", return_value=True):
+            with self.assertRaises(HTTPException) as caught:
+                await self.cache.read_dashboard_metrics(IDENTITY, self.db)
         self.assertEqual(caught.exception.status_code, 503)
         self.compute.assert_not_awaited()
 
@@ -1013,12 +1019,17 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(caught.exception.status_code, 503)
         self.compute.assert_not_awaited()
 
-    async def test_enabled_redis_network_or_oom_failure_never_recomputes(self):
+    async def test_enabled_redis_network_or_oom_failure_computes_within_a_bound(self):
+        from app.core.query_cache import FALLBACK_COMPUTE
         for error in (RedisConnectionError("offline"), RedisResponseError("OOM command not allowed")):
             self.read.side_effect = error
+            await self.query()
+        self.assertEqual(self.compute.await_count, 2)
+        self.compute.reset_mock()
+        with patch.object(FALLBACK_COMPUTE, "locked", return_value=True):
             with self.assertRaises(HTTPException) as caught:
                 await self.query()
-            self.assertEqual(caught.exception.status_code, 503)
+        self.assertEqual(caught.exception.status_code, 503)
         self.compute.assert_not_awaited()
 
     async def test_oversize_result_is_marked_so_the_same_revision_skips_the_encoding(self):
@@ -1077,7 +1088,8 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
             await self.original_publish("key", "owner", "10:20:", self.result)
             args = client.eval.await_args.args
             self.assertEqual(args[:5], (self.shared._PUBLISH, 2, "key:lock", "key:data", "owner"))
-            self.assertEqual(args[6], 86400)
+            # 有效期最多到下一个零点（陶威 11-01 定）。
+            self.assertEqual(args[6], self.shared.ttl_until_midnight(86400))
             self.assertEqual(self.store._decode(args[5])["result"], jsonable_encoder(self.result))
             client.eval.return_value = 0
             with self.assertRaises(HTTPException) as caught:
@@ -1089,10 +1101,10 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
                                  info=AsyncMock(return_value={"used_memory": 1, "maxmemory": 0}))
         with patch.object(self.shared, "client", return_value=client):
             await self.original_publish("key", "owner", "10:20:", self.result, ttl_seconds=300)
-            self.assertEqual(client.eval.await_args.args[-1], 300)
+            self.assertEqual(client.eval.await_args.args[-1], self.shared.ttl_until_midnight(300))
             self.assertEqual(self.store.settings.query_cache_ttl_seconds, 86400)
             await self.original_publish("key", "owner", "10:20:", self.result)
-            self.assertEqual(client.eval.await_args.args[-1], 86400)
+            self.assertEqual(client.eval.await_args.args[-1], self.shared.ttl_until_midnight(86400))
 
     async def test_dashboard_retention_survives_refresh_expires_and_checks_live_revision(self):
         from app.core import dashboard_metrics_cache as dashboard_cache
@@ -1120,7 +1132,8 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
              patch.object(self.store, "read", self.original_read), \
              patch.object(self.cache, "read_shared_query", side_effect=read_query), \
              patch.object(dashboard_cache, "dashboard_snapshot", reader), \
-             patch.object(dashboard_cache.settings, "dashboard_metrics_cache_ttl_seconds", 3600):
+             patch.object(dashboard_cache.settings, "dashboard_metrics_cache_ttl_seconds", 3600), \
+             patch.object(self.shared, "ttl_until_midnight", side_effect=lambda ttl: ttl):  # 本用例用模拟时钟，不受零点截断影响
             async def query():
                 return await dashboard_cache.cached_dashboard_query(self.db, IDENTITY, "metrics_finance", self.compute)
 
@@ -1175,11 +1188,11 @@ class QuerySharedCacheTest(unittest.IsolatedAsyncioTestCase):
         with patch.object(self.shared, "client", return_value=client), \
              patch.object(dashboard_cache.settings, "dashboard_metrics_cache_ttl_seconds", 86400):
             await dashboard_cache._publish_dashboard_query("key", "owner", "1:100:", self.result)
-            self.assertEqual(client.eval.await_args.args[-1], 86400)
+            self.assertEqual(client.eval.await_args.args[-1], self.shared.ttl_until_midnight(86400))
             with self.assertRaises(ValueError):
                 await self.original_publish("key", "owner", "1:100:", self.result, ttl_seconds=86401)
             await self.original_publish("key", "owner", "1:100:", self.result)
-            self.assertEqual(client.eval.await_args.args[-1], 86400)
+            self.assertEqual(client.eval.await_args.args[-1], self.shared.ttl_until_midnight(86400))
             client.eval.return_value = 0
             with self.assertRaises(HTTPException) as caught:
                 await dashboard_cache._publish_dashboard_query("key", "expired", "1:100:", self.result)

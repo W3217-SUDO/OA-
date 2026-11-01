@@ -154,6 +154,15 @@ async def acquire(key):
     return token if acquired else None
 
 
+def ttl_until_midnight(ttl: int) -> int:
+    """缓存键按业务日期区分，过了零点旧键就用不上了；有效期最多到下一个零点（留 5 分钟余量），
+    避免前一天的结果占着 Redis 直到 24 小时后（陶威 11-01 定：按天缓存零点过期）。"""
+    from datetime import datetime, timedelta
+    now = datetime.now().astimezone()
+    midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return max(1, min(int(ttl), int((midnight - now).total_seconds()) + 300))
+
+
 async def publish(key, token, snapshot, result):
     entry = {"snapshot": snapshot, "result": result}
     if not _valid_entry(entry):
@@ -161,7 +170,7 @@ async def publish(key, token, snapshot, result):
     payload = json.dumps(entry,
                          ensure_ascii=True, separators=(",", ":"), allow_nan=False)
     if not await client().eval(_PUBLISH, 2, key + ":lock", key + ":data",
-                               token, payload, settings.dashboard_metrics_cache_ttl_seconds):
+                               token, payload, ttl_until_midnight(settings.dashboard_metrics_cache_ttl_seconds)):
         raise unavailable("控制台统计重算锁已失效，请重新查询")
 
 
