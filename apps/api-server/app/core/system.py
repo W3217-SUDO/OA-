@@ -721,7 +721,7 @@ async def _staff_roi_report(
     )
     await _require_record_module_menu("report", identity, db, action="查看")
     if "finance.amount" not in await _allowed_field_keys(identity, db):
-        raise HTTPException(status_code=403, detail="当前角色没有查看员工业绩ROI金额的字段权限")
+        raise HTTPException(status_code=403, detail="当前角色没有查看员工业绩金额的字段权限")
     if start_date and end_date and start_date > end_date:
         raise HTTPException(status_code=422, detail="开始日期不能晚于结束日期")
 

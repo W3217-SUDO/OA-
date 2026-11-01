@@ -60,3 +60,34 @@ class StaffPerformanceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({row["person"]: row["agency_fee"] for row in investigator["rows"]}, {"inv": 1000})
         self.assertIsNone(hidden["totals"]["agency_fee"])  # 没有金额权限不给代理费
         self.assertEqual([row["person"] for row in hidden["rows"]], ["案源甲"])
+
+
+class StaffCenterMenuRenameTest(unittest.IsolatedAsyncioTestCase):
+    async def test_startup_renames_system_menu_but_keeps_admin_edits(self):
+        # tgn 19:01：菜单、面包屑、标签页的名字取库里的菜单名，启动时把系统默认的旧名改成“员工业绩统计中心”。
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from sqlalchemy import select
+        from app.config import settings
+        from app.core.lifecycle import _backfill_clue_generated_case_register_dates, _upgrade_schema
+        from app.core.startup_data import initialize_startup_data
+        from app.core.startup_migrations import migrate_startup_schema
+        from app.models import SystemMenu
+
+        for updated_by, expected in (("system", "员工业绩统计中心"), ("admin", "员工业绩ROI统计")):
+            with tempfile.TemporaryDirectory() as directory:
+                engine = create_async_engine(f"sqlite+aiosqlite:///{Path(directory) / 'menu.db'}")
+                try:
+                    await migrate_startup_schema(engine, _upgrade_schema)
+                    sessions = async_sessionmaker(engine, expire_on_commit=False)
+                    async with sessions() as db:
+                        db.add(SystemMenu(key="reports-staff-roi", parent_key="reports", label="员工业绩ROI统计", icon="", sort_order=9, updated_by=updated_by))
+                        await db.commit()
+                    with patch.object(settings, "seed_demo_data", False), patch.object(settings, "initial_admin_password", "Menu500799Startup!"):
+                        await initialize_startup_data(sessions, _backfill_clue_generated_case_register_dates)
+                    async with sessions() as db:
+                        menu = await db.scalar(select(SystemMenu).where(SystemMenu.key == "reports-staff-roi"))
+                    self.assertEqual(menu.label, expected, updated_by)
+                finally:
+                    await engine.dispose()
