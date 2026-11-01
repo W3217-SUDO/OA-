@@ -42,11 +42,11 @@ const payerLabels: Record<BankKey, [string, string]> = {
 const amountKeys = new Set(["CashedAmount", "TradeAmount"]);
 
 type FlowLine = {
-  id: number; bank_label: string; group: string; received_date: string; amount: number; payer_name: string;
+  id: number; bank_label: string; group: string; received_date: string; amount: number; payer_name: string; payer_account: string;
   bank_reference: string; remark: string; status: string; receipt_no: string; file_name: string; row_no: number;
   operator: string; created_at: string; imported_by: string; imported_at: string;
 };
-type LineFilters = { bank?: string; payer_name?: string; dates?: [Dayjs | null, Dayjs | null] | null; status?: string };
+type LineFilters = { bank?: string; payer_name?: string; payer_account?: string; dates?: [Dayjs | null, Dayjs | null] | null; status?: string };
 const lineBanks = [
   { value: "icbc", label: "工行" }, { value: "citic", label: "中信" }, { value: "boc", label: "中行" }, { value: "cmb", label: "招商" },
 ];
@@ -71,6 +71,7 @@ function NewFlowLines({ financeScope }: { financeScope: FinanceScope }) {
           finance_scope: financeScope, page, page_size: pageSize, status: filters.status || "",
           ...(filters.bank ? { bank: filters.bank } : {}),
           ...(filters.payer_name?.trim() ? { payer_name: filters.payer_name.trim() } : {}),
+          ...(filters.payer_account?.trim() ? { payer_account: filters.payer_account.trim() } : {}),
           ...(from ? { date_from: from.format("YYYY-MM-DD") } : {}),
           ...(to ? { date_to: to.format("YYYY-MM-DD") } : {}),
         },
@@ -122,6 +123,7 @@ function NewFlowLines({ financeScope }: { financeScope: FinanceScope }) {
     { title: "银行", dataIndex: "bank_label", width: 70 },
     { title: "到账日期", dataIndex: "received_date", width: 110 },
     { title: "对方户名", dataIndex: "payer_name", width: 200 },
+    { title: "对方账号", dataIndex: "payer_account", width: 180, render: (value: string) => value || "—" },
     { title: "金额", dataIndex: "amount", width: 120, align: "right", render: (value: number) => money(Number(value || 0)) },
     { title: "银行流水号", dataIndex: "bank_reference", width: 200, render: (value: string) => value || "—" },
     { title: "摘要/备注", dataIndex: "remark", width: 200, render: (value: string) => value || "—" },
@@ -156,6 +158,9 @@ function NewFlowLines({ financeScope }: { financeScope: FinanceScope }) {
           <Select allowClear placeholder="全部" style={{ width: 100 }} options={lineBanks} />
         </Form.Item>
         <Form.Item name="payer_name" label="对方户名">
+          <Input allowClear style={{ width: 180 }} />
+        </Form.Item>
+        <Form.Item name="payer_account" label="对方账号">
           <Input allowClear style={{ width: 180 }} />
         </Form.Item>
         <Form.Item name="dates" label="到账日期">

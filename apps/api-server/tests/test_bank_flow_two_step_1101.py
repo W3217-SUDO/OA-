@@ -125,6 +125,41 @@ class BankFlowTwoStepTest(unittest.IsolatedAsyncioTestCase):
             row = await db.scalar(select(BankStatementLine).where(BankStatementLine.id == first["id"]).execution_options(include_deleted=True))
             self.assertIsNotNone(row.deleted_at)
 
+    async def test_payer_account_is_parsed_and_filterable(self):
+        csv = "对方户名,对方账号,银行流水号,到账日期,到账金额\n丙公司,6222 0000 1111,BF-9,2026-10-30,66\n".encode("utf-8-sig")
+        params = {"finance_scope": "firm"}
+        files = {"file": ("acc.csv", csv, "text/csv")}
+        preview = await self.client.post(f"{API}/finance/incoming-payments/import", params=params, files=files, data={"bank_source": "boc"})
+        self.assertEqual(preview.json()["items"][0]["payer_account"], "6222 0000 1111")
+        await self.client.post(f"{API}/finance/incoming-payments/import", params=params, files=files,
+                               data={"bank_source": "boc", "confirmation_token": preview.json()["confirmation_token"]})
+        found = await self._lines(payer_account="0000 1111")
+        self.assertEqual([(item["payer_name"], item["payer_account"]) for item in found["items"]], [("丙公司", "6222 0000 1111")])
+        generated = await self.client.post(f"{API}/finance/bank-flows/generate", params=params, json={"ids": [found["items"][0]["id"]]})
+        self.assertEqual(generated.status_code, 200, generated.text)
+        async with self.sessions() as db:
+            payment = await db.scalar(select(IncomingPayment).where(IncomingPayment.bank_reference == "BF-9"))
+            self.assertIn("对方账号 6222 0000 1111", payment.remark)
+
+    def test_export_template_reads_account_by_header_name(self):
+        import io
+        from openpyxl import Workbook
+        from app.core.bank_statement_import import read_statement
+        book = Workbook()
+        sheet = book.active
+        header = [""] * 21
+        for index, label in {0: "账号", 3: "交易日", 7: "借方金额", 8: "贷方金额", 11: "流水号", 18: "收(付)方账号", 19: "收(付)方名称"}.items():
+            header[index] = label
+        sheet.append(["招商银行交易查询"])
+        sheet.append(header)
+        row = [""] * 21
+        row[0], row[3], row[7], row[8], row[11], row[18], row[19] = "本方1", "2026-10-30", "", "500", "CMB-1", "6214 8888", "丁公司"
+        sheet.append(row)
+        buffer = io.BytesIO()
+        book.save(buffer)
+        rows = read_statement(buffer.getvalue(), "cmb.xlsx", "cmb")
+        self.assertEqual([(item[2]["payer_name"], item[2]["payer_account"]) for item in rows], [("丁公司", "6214 8888")])
+
 
 if __name__ == "__main__":
     unittest.main()

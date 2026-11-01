@@ -371,7 +371,7 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
                 remark=cell_text(row.get("remark")),
             )
             if preview:
-                preview_items.append({'source': sheet_name, 'row': row_no, 'payer_name': payer, 'bank_reference': bank_reference,
+                preview_items.append({'source': sheet_name, 'row': row_no, 'payer_name': payer, 'payer_account': cell_text(row.get("payer_account"))[:128], 'bank_reference': bank_reference,
                     'received_date': str(received_date), 'amount': amount, 'remark': item_values['remark']})
             else:
                 db.add(BankStatementLine(

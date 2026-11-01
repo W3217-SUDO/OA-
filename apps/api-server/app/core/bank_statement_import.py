@@ -16,6 +16,9 @@ ALIASES = {
     'amount': ('到账金额', '贷方发生额', '贷方金额', '收入金额', '收入', '收款金额', '交易金额', '发生额', '金额', '回款金额', 'amount'),
     'direction': ('借贷标志', '借贷方向', '收付标志', '收付款标志', '交易方向'),
     'remark': ('摘要', '备注', '用途', '附言', 'remark'),
+    # 对方账号（财务认领时靠它对人）；只按表头精确匹配，不含本方“账号”“本方账号”。
+    'payer_account': ('对方账号', '对方帐号', '对方账户', '对方账户号', '对方单位账号', '付款人账号', '付款人帐号', '付款人账户',
+                      '付款账号', '付款方账号', '收(付)方账号', '收付方账号', '收(付)方帐号', 'payer_account'),
 }
 REQUIRED = ('payer_name', 'bank_reference', 'received_date', 'amount')
 
@@ -59,6 +62,7 @@ def read_export_template(raw, filename, bank_source):
     sheets = statement_sheets(raw, filename)
     result = []
     matched = False
+    account_index = None
     try:
         sheet_name, rows = next(sheets)
         for row_number, cells in enumerate(rows, 1):
@@ -72,6 +76,9 @@ def read_export_template(raw, filename, bank_source):
                             raise ValueError(f"文件是{BANK_TEMPLATES[candidate]['name']}导出模板，请在对应银行入口上传")
                         profile = definition
                         matched = True
+                        # 银行导出模板里对方账号的列位各家不同、样本也会变，按表头名找，找不到就留空。
+                        account_index = next((index for index, cell in enumerate(cells)
+                                              if _bank_header(cell) in _payer_account_keys()), None)
                         break
                 if not matched and row_number >= 100:
                     break
@@ -85,6 +92,8 @@ def read_export_template(raw, filename, bank_source):
                 continue
             value = lambda index: cells[index] if index < len(cells) else ''
             row = {field: value(index) for field, index in profile['columns'].items()}
+            if account_index is not None:
+                row['payer_account'] = value(account_index)
             try:
                 if 'signed_amount' in profile:
                     net = _decimal_cell(value(profile['signed_amount']))
@@ -117,6 +126,10 @@ def cell_text(value):
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
     return str(value).strip().lstrip("'\t")
+
+
+def _payer_account_keys():
+    return {header_key(alias) for alias in ALIASES['payer_account']}
 
 
 def header_key(value):

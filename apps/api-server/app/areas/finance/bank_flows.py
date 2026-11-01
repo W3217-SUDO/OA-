@@ -265,7 +265,10 @@ async def generate_incoming_from_bank_flows(body: BankFlowSelection, identity: d
             received_date=line.received_date, amount=line.amount, payer_name=line.payer_name,
             bank_reference=line.bank_reference or None, status="待认领",
             bank_source=LINE_BANK_NAMES.get(line.bank, ""), operator=identity["username"],
-            remark="；".join(part for part in [line.remark or "", f"由银行原始流水生成（{line.file_name or '上传文件'} 第{line.row_no}行）"] if part),
+            remark="；".join(part for part in [
+                line.remark or "", f"对方账号 {line.payer_account}" if line.payer_account else "",
+                f"由银行原始流水生成（{line.file_name or '上传文件'} 第{line.row_no}行）",
+            ] if part),
         )
         db.add(payment)
         await db.flush()

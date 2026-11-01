@@ -68,6 +68,7 @@ export function createFinanceWorkflowActions(context: FinanceWorkflowDependencie
                             columns={[
                                 {title: "来源页", dataIndex: "source", width: 180},
                                 {title: "付款方", dataIndex: "payer_name", width: 160},
+                                {title: "对方账号", dataIndex: "payer_account", width: 170, render: (value: string) => value || "—"},
                                 {title: "银行流水号", dataIndex: "bank_reference", width: 200},
                                 {title: "到账日期", dataIndex: "received_date", width: 110},
                                 {title: "到账金额", dataIndex: "amount", width: 110},
