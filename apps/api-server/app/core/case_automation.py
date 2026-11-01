@@ -517,6 +517,11 @@ async def _complete_matching_tasks(db: AsyncSession, sources: RuleSources, cases
             await _finish_legacy_auto_task(task, db, reason=reason)
 
 
+def is_migrated_case(case_record: BusinessRecord) -> bool:
+    """从旧系统迁移或同步来的案件（带旧系统案件编号）。"""
+    return bool((case_record.data or {}).get("legacy_case_id"))
+
+
 async def scan_confirmed_case_rules(db: AsyncSession, *, today: date | None = None) -> int:
     """逐案扫描确认规则；旧导出规则不参与生成。"""
     from app.core.automatic_task_lookup import automatic_task_lookup_scope
@@ -536,6 +541,9 @@ async def scan_confirmed_case_rules(db: AsyncSession, *, today: date | None = No
     async with automatic_task_personnel_scope(db), automatic_task_lookup_scope(db):
         for case_record in cases:
             if (case_record.data or {}).get("case_type") == "法律顾问":
+                continue
+            # 迁移案件（含同步写入的变化）不再由后台扫描生成自动任务，只有新系统新办的案件和人工修改会触发（陶国南 11-01 定）。
+            if is_migrated_case(case_record):
                 continue
             if has_reviews and await _automatic_case_conflict_blocked(case_record, db):
                 continue

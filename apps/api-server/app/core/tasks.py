@@ -516,6 +516,30 @@ async def _apply_task_auto_completion(db: AsyncSession) -> bool:
     return changed
 
 
+# 此前后台扫描给迁移案件批量生成的自动任务不计超期绩效（陶国南 11-01 定）；之后迁移案件不再由扫描生成。
+from datetime import timezone
+MIGRATED_AUTO_TASK_EXEMPT_BEFORE = datetime(2026, 11, 2, tzinfo=timezone.utc)
+
+
+async def _migrated_batch_auto_task_ids(tasks: list[BusinessRecord], db: AsyncSession) -> set[int]:
+    candidates = {}
+    for task in tasks:
+        data = task.data or {}
+        created = task.created_at if task.created_at is None or task.created_at.tzinfo else task.created_at.replace(tzinfo=timezone.utc)
+        if data.get("creation_mode") == "自动" and data.get("system_created_by") == "system" and created and created < MIGRATED_AUTO_TASK_EXEMPT_BEFORE:
+            try:
+                candidates[task.id] = int(data.get("case_id") or data.get("case_record_id") or 0)
+            except (TypeError, ValueError):
+                continue
+    case_ids = {case_id for case_id in candidates.values() if case_id}
+    if not case_ids:
+        return set()
+    from app.core.case_automation import is_migrated_case
+    migrated = {case.id for case in (await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(case_ids)))).all()
+                if is_migrated_case(case)}
+    return {task_id for task_id, case_id in candidates.items() if case_id in migrated}
+
+
 async def _apply_task_overdue_performance(db: AsyncSession) -> bool:
     """Persist overdue facts so performance reports do not depend on a page being open."""
     terminal = {"已完成", "待确认", "已验收", "已拒绝", "已撤回", "已停止", "已取消"}
@@ -524,8 +548,9 @@ async def _apply_task_overdue_performance(db: AsyncSession) -> bool:
         or_(BusinessRecord.status.is_(None), BusinessRecord.status.not_in(terminal)),
     ))).all())
     changed = False
+    exempt_ids = await _migrated_batch_auto_task_ids(tasks, db)
     for task in tasks:
-        if task.status in terminal:
+        if task.status in terminal or task.id in exempt_ids:
             continue
         data = task.data or {}
         try:
