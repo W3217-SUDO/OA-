@@ -396,7 +396,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
               if (event.clipboardData.files.length) { event.preventDefault(); void workspace.upload(Array.from(event.clipboardData.files)); }
             }}
             maxLength={8000}
-            autoSize={{ minRows: 1, maxRows: 5 }}
+            autoSize={{ minRows: 3, maxRows: 8 }}
             placeholder={intakeMode ? "粘贴法院送达短信或 zxfw.court.gov.cn 链接" : "告诉智能体你要完成的 OA 工作"}
             aria-label="给智能体的指令"
           />

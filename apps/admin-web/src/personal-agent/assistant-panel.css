@@ -99,6 +99,10 @@
 .assistant-composer-links .ant-btn{flex:none;height:30px;padding:0 10px;border-radius:999px;font-size:13px;color:var(--oa-text-2)}
 .assistant-composer textarea.ant-input{min-width:0;padding:8px 0;font-size:15px;line-height:1.6;resize:none}
 .assistant-composer textarea.ant-input.ant-input-borderless:focus-visible{outline:none}
+/* BUG20261101017（tgn 11-01）：打字的地方单独一块（边框+底色），跟周围工具按钮分开；提示文字淡一些。 */
+.assistant-composer-input{padding:4px 6px 4px 12px;border:1px solid var(--oa-border);border-radius:8px;background:var(--oa-surface)}
+.assistant-composer-input:focus-within{border-color:var(--oa-primary)}
+.assistant-composer textarea.ant-input::placeholder{color:var(--oa-text-3);opacity:.65}
 .assistant-context-tools{display:flex;align-items:center;flex-wrap:wrap;gap:4px;min-width:0}
 .assistant-skill-select{width:180px;max-width:100%}
 .assistant-case-select{max-width:220px}

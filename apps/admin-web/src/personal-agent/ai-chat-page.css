@@ -653,6 +653,12 @@
     order: 0;
     flex: none;
     align-items: flex-end;
+    background: var(--oa-fill);
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-composer-input:focus-within {
+    border-color: var(--workspace-accent);
+    background: var(--oa-surface);
   }
 
   .ai-chat-page.is-desktop-workspace .assistant-composer textarea.ant-input {
@@ -665,7 +671,8 @@
   }
 
   .ai-chat-page.is-desktop-workspace .assistant-composer textarea.ant-input::placeholder {
-    color: var(--workspace-muted);
+    color: var(--oa-text-3);
+    opacity: .65;
   }
 
   .ai-chat-page.is-desktop-workspace .assistant-composer > .assistant-context-items {
