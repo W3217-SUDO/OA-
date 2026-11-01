@@ -125,6 +125,15 @@ class SealApprovalPathTest(unittest.IsolatedAsyncioTestCase):
             expected = await db.scalar(select(func.count()).select_from(User).where(User.department == "诉讼一部", User.is_active.is_(True)))
         self.assertEqual((counts["诉讼一部"], counts["诉讼二部"]), (expected, 0))
 
+    async def test_deactivated_department_can_be_reactivated(self):
+        # 已停用部门页签里“重新启用”（思法汇成 11-01 10:09）
+        ss2 = next(item for item in (await self.client.get("/api/v1/hr/departments")).json()["items"] if item["name"] == "诉讼二部")
+        self.assertEqual((await self.client.delete(f"/api/v1/hr/departments/{ss2['id']}")).status_code, 204)
+        self.assertFalse(next(i for i in (await self.client.get("/api/v1/hr/departments")).json()["items"] if i["id"] == ss2["id"])["is_active"])
+        back = await self.client.patch(f"/api/v1/hr/departments/{ss2['id']}", json={"is_active": True})
+        self.assertEqual(back.status_code, 200, back.text)
+        self.assertTrue(back.json()["is_active"])
+
     async def test_standalone_seal_goes_through_each_step_then_to_stamp(self):
         await self._settings(firm_approver="firm")
         async with self.sessions() as db:

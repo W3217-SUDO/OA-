@@ -384,10 +384,12 @@ export default function OrganizationCenterPage({
   const canManageOrganization = organizationActionAccess(accessRole).canManageOrganization;
   // 组织树（思法汇成 11-01 确认，BUG20261031002）：按排序号、再按名称排；“全所”为根；每个部门显示 名称 · 负责人 · 在职人数。
   const departmentOrgTree = useMemo<OrgNode[]>(() => {
+    // 组织树只显示启用部门（思法汇成 11-01 10:09）
+    const activeDepartments = departments.filter((department) => department.is_active);
     const byParent = new Map<number | null, Department[]>();
-    for (const department of departments) {
+    for (const department of activeDepartments) {
       const parentId = department.parent_department_id && department.parent_department_id !== department.id
-        && departments.some((candidate) => candidate.id === department.parent_department_id)
+        && activeDepartments.some((candidate) => candidate.id === department.parent_department_id)
         ? department.parent_department_id
         : null;
       const siblings = byParent.get(parentId) || [];
@@ -404,7 +406,7 @@ export default function OrganizationCenterPage({
       });
     const roots = build(null);
     // 上下级填成环的部门找不到顶级，放到顶层，不丢。
-    const looped = ordered(departments.filter((department) => !placed.has(department.id)));
+    const looped = ordered(activeDepartments.filter((department) => !placed.has(department.id)));
     return [...roots, ...looped.filter((department) => !placed.has(department.id)).map((department) => {
       placed.add(department.id);
       return { department, children: build(department.id) };
@@ -553,6 +555,29 @@ export default function OrganizationCenterPage({
       message.error(error?.response?.data?.detail || "停用失败.");
     }
   };
+  const reactivateDepartment = async (row: Department) => {
+    if (!canManageOrganization) {
+      message.error("仅系统管理员可以重新启用部门");
+      return;
+    }
+    const parent = departments.find((candidate) => candidate.id === row.parent_department_id);
+    if (parent && !parent.is_active) {
+      message.error(`上级部门“${parent.name}”已停用，请先重新启用上级部门，或在“修改”里换一个上级部门`);
+      return;
+    }
+    try {
+      await api.patch(`/hr/departments/${row.id}`, { is_active: true });
+      message.success("已重新启用.");
+      void load();
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "重新启用失败.");
+    }
+  };
+  const [departmentStatusTab, setDepartmentStatusTab] = useState<"active" | "inactive">("active");
+  const listedDepartments = useMemo(
+    () => departments.filter((department) => department.is_active === (departmentStatusTab === "active")),
+    [departments, departmentStatusTab],
+  );
   const removeRole = async (row: JobRole) => {
     if (!canManageOrganization) {
       message.error("仅系统管理员可以删除角色");
@@ -679,7 +704,11 @@ export default function OrganizationCenterPage({
             >
               <Button type="link" danger>停用</Button>
             </Popconfirm>
-          ) : null}
+          ) : (
+            <Popconfirm title="确认重新启用该部门？" onConfirm={() => reactivateDepartment(row)}>
+              <Button type="link">启用</Button>
+            </Popconfirm>
+          )}
         </Space>
       ) : "—",
     },
@@ -783,6 +812,17 @@ export default function OrganizationCenterPage({
     <>
       <Card className="panel organization-panel" title={title}>
         <div className="organization-action">
+          {!rolesView && (
+            <Segmented
+              style={{ marginRight: "auto" }}
+              value={departmentStatusTab}
+              onChange={(value) => { setDepartmentStatusTab(value as "active" | "inactive"); setOrganizationPage(1); }}
+              options={[
+                { label: `启用部门（${departments.filter((department) => department.is_active).length}）`, value: "active" },
+                { label: `已停用部门（${departments.filter((department) => !department.is_active).length}）`, value: "inactive" },
+              ]}
+            />
+          )}
           {canManageOrganization && rolesView && <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -815,7 +855,7 @@ export default function OrganizationCenterPage({
             size="small"
             loading={loading}
             columns={departmentColumns}
-            dataSource={departments}
+            dataSource={listedDepartments}
             scroll={{ x: 960 }}
             locale={{ emptyText: emptyContent }}
             pagination={{
