@@ -26,7 +26,7 @@ function actions(kind, api, context) {
   const message = Object.fromEntries(["error", "warning", "info", "success"].map((key) => [key, (value) => notifications.push({ key, value })]));
   const exports = loadTs(`./services/${kind}Actions.tsx`, {
     "antd": { message, Modal: { warning() {}, info() {} } }, "../../api": { api },
-    "./financeCenterApi": loadTs("./services/financeCenterApi.ts", { "../../api": { api } }),
+    "./financeCenterApi": loadTs("./services/financeCenterApi.ts", { "../../api": { api }, "./financeBusinessType": loadTs("./services/financeBusinessType.ts") }),
     "../constants": constants, "../paymentLifecycle.mjs": lifecycle,
     "../invoiceDetails.mjs": invoiceDetails, "../financeErrors": financeErrors,
     "../../financeInvoiceHelpers.mjs": invoiceHelpers, "../../formSafety": { formatRequiredDate: (value) => value },

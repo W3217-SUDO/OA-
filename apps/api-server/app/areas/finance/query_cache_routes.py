@@ -172,6 +172,8 @@ def _wrap_query(endpoint, path):
             await query_prewarm.remember(arguments["db"], "finance", path, arguments["identity"], parameters)
         if "_finance_scope" in arguments["identity"]:
             parameters["finance_scope"] = arguments["identity"]["_finance_scope"]
+        if arguments["identity"].get("_business_type"):
+            parameters["business_type"] = arguments["identity"]["_business_type"]
         return await cached_query(
             arguments["db"], arguments["identity"], f"finance.{endpoint.__name__}",
             parameters, lambda: endpoint(**arguments),

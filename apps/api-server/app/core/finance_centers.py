@@ -3,7 +3,7 @@
 from typing import Literal
 
 from fastapi import Depends, HTTPException, Query, Request
-from sqlalchemy import Integer, String, and_, case, cast, exists, func, inspect, literal, or_, select, union_all
+from sqlalchemy import Integer, String, and_, case, cast, exists, false, func, inspect, literal, or_, select, union_all
 from sqlalchemy.orm import aliased, with_expression
 
 from app.database import get_db
@@ -13,6 +13,13 @@ from app.core.incoming_legacy_amounts import ASSIGNED_FIELDS, LEGACY_ASSIGNED_AM
 
 
 FinanceScope = Literal["firm", "platform", "unclassified"]
+# 501099（陶国南 11-02 定方案二）：财务数据按业务类型分诉讼/非诉（知识产权），和律所/平台两个中心交叉。
+# 不传或“全部”不筛；知识产权中心下的“非诉财务中心”固定传“非诉”。记录上没写业务类型的都是诉讼。
+BusinessTypeParam = Literal["诉讼", "非诉", "全部"]
+BUSINESS_TYPES = ("诉讼", "非诉")
+NONLITIGATION = "非诉"
+NONLITIGATION_MENU_ROOT = "ipr-finance"
+NONLITIGATION_VIEWER_MENUS = frozenset({"finance-receipts-manage", "platform-finance-overview-manage"})
 RECORD_CENTER_VALUES = {
     "finance_scope": {"firm": "firm", "platform": "platform"},
     "accounting_center": {"财务中心": "firm", "律所财务中心": "firm", "平台财务中心": "platform"},
@@ -170,6 +177,7 @@ async def refresh_incoming_payments(payments, db):
 async def finance_center_identity(
     request: Request,
     finance_scope: FinanceScope = Query(...),
+    business_type: BusinessTypeParam | None = Query(None),
     identity: dict = Depends(current_identity),
     db=Depends(get_db),
 ):
@@ -184,22 +192,36 @@ async def finance_center_identity(
     prefixes = ("finance", "platform-finance") if finance_scope == "unclassified" else (
         "platform-finance" if finance_scope == "platform" else "finance",
     )
-    if identity.get("role") != "admin" and not any(
-        key == prefix or key.startswith(prefix + "-") for prefix in prefixes for key in menus
-    ):
+
+    def granted(*roots):
+        return any(key == root or key.startswith(root + "-") for root in roots for key in menus)
+
+    business = business_type if business_type in BUSINESS_TYPES else None
+    # 页面访问会把有菜单的账号临时当管理员（current_identity），这里按账号真实角色和菜单判断。
+    actual_roles = set(identity.get("_actual_role_ids") or [identity.get("_actual_role") or identity.get("role")])
+    if "admin" not in actual_roles and not granted("finance", "platform-finance"):
+        # 只有非诉财务中心菜单的账号：只能在律所中心看、办非诉。
+        if not (finance_scope == "firm" and business == NONLITIGATION and granted(NONLITIGATION_MENU_ROOT)):
+            raise HTTPException(403, "当前账号没有该财务中心权限")
+    elif identity.get("role") != "admin" and not granted(*prefixes):
         raise HTTPException(403, "当前账号没有该财务中心权限")
-    return {**identity, "_finance_scope": finance_scope}
+    # 诉讼人员不看非诉：能看非诉的是管理员、审批人员、有回款管理页的财务，以及有非诉财务中心菜单的人。
+    if not (actual_roles & {"admin", "auditor"} or granted(NONLITIGATION_MENU_ROOT)
+            or menus & NONLITIGATION_VIEWER_MENUS):
+        business = "诉讼"
+    return {**identity, "_finance_scope": finance_scope, "_business_type": business}
 
 
 async def optional_finance_center_identity(
     request: Request,
     finance_scope: FinanceScope | None = Query(None),
+    business_type: BusinessTypeParam | None = Query(None),
     identity: dict = Depends(current_identity),
     db=Depends(get_db),
 ):
     if finance_scope is None:
         return identity
-    return await finance_center_identity(request, finance_scope, identity, db)
+    return await finance_center_identity(request, finance_scope, business_type, identity, db)
 
 
 def legacy_center_conditions(identity):
@@ -208,7 +230,11 @@ def legacy_center_conditions(identity):
         return []
     group = cast(LegacyFinanceRecord.source_payload["GroupId"].as_string(), String)
     center = case((group == "10", "firm"), (group == "20", "platform"))
-    return [center.is_(None) if scope == "unclassified" else center == scope]
+    conditions = [center.is_(None) if scope == "unclassified" else center == scope]
+    if identity.get("_business_type") == NONLITIGATION:
+        # 沪知老财务表都是诉讼；恒达知识产权老数据另行接入时再在这里认来源。
+        conditions.append(false())
+    return conditions
 
 
 def validate_legacy_receipt_allocations(header, allocations):
@@ -227,17 +253,45 @@ def validate_legacy_receipt_allocations(header, allocations):
             raise HTTPException(409, "历史结算明细的源库、原主键或父关联不一致，不能混合显示")
 
 
+def incoming_business_type(payment) -> str:
+    return payment.business_type or "诉讼"
+
+
+def incoming_business_conditions(identity):
+    business = identity.get("_business_type")
+    if business not in BUSINESS_TYPES:
+        return []
+    return [func.coalesce(IncomingPayment.business_type, "诉讼") == business]
+
+
 def incoming_center_conditions(identity):
     scope = identity.get("_finance_scope")
     if not scope:
         return []
-    return [INCOMING_CENTER.is_(None) if scope == "unclassified" else INCOMING_CENTER == scope]
+    return [INCOMING_CENTER.is_(None) if scope == "unclassified" else INCOMING_CENTER == scope,
+            *incoming_business_conditions(identity)]
 
 
 def require_incoming_center(payment, identity):
     scope = identity.get("_finance_scope")
     if payment is not None and scope and (payment_center(payment) or "unclassified") != scope:
         raise HTTPException(409, "回款不属于当前财务中心，或历史归属尚未确认")
+    business = identity.get("_business_type")
+    if payment is not None and business in BUSINESS_TYPES and incoming_business_type(payment) != business:
+        raise HTTPException(409, f"回款不属于当前业务类型（{business}）")
+
+
+def record_business_type(record) -> str:
+    return str((record.data or {}).get("business_type") or "诉讼")
+
+
+def record_business_conditions(identity, *, allow_shared_contract=True):
+    business = identity.get("_business_type")
+    if business not in BUSINESS_TYPES:
+        return []
+    condition = func.coalesce(BusinessRecord.data["business_type"].as_string(), "诉讼") == business
+    # 合同诉讼、非诉共用，不按业务类型挡。
+    return [or_(condition, BusinessRecord.module == "contract") if allow_shared_contract else condition]
 
 
 def settlement_center_conditions(identity):
@@ -256,7 +310,8 @@ def settlement_center_conditions(identity):
         (and_(present["firm"], ~present["platform"]), "firm"),
         (and_(present["platform"], ~present["firm"]), "platform"),
     )
-    return [expression.is_(None) if scope == "unclassified" else expression == scope]
+    return [expression.is_(None) if scope == "unclassified" else expression == scope,
+            *record_business_conditions(identity, allow_shared_contract=False)]
 
 
 async def unclassified_incoming_count(identity, db):
@@ -325,6 +380,9 @@ async def require_record_center(record, identity, db=None, *, allow_shared_contr
         return
     if scope and values != {scope}:
         raise HTTPException(409, "关联费用或合同的财务主体不一致或尚未确认")
+    business = identity.get("_business_type")
+    if business in BUSINESS_TYPES and record.module != "contract" and record_business_type(record) != business:
+        raise HTTPException(409, f"关联费用不属于当前业务类型（{business}）")
 
 
 def record_center_conditions(identity, *, allow_shared_contract=True):
@@ -336,13 +394,14 @@ def record_center_conditions(identity, *, allow_shared_contract=True):
         (and_(present["firm"], ~present["platform"]), "firm"),
         (and_(present["platform"], ~present["firm"]), "platform"),
     )
+    business = record_business_conditions(identity, allow_shared_contract=allow_shared_contract)
     if scope == "unclassified":
-        return [expression.is_(None)]
+        return [expression.is_(None), *business]
     if not allow_shared_contract:
-        return [expression == scope]
+        return [expression == scope, *business]
     return [or_(expression == scope, and_(
         BusinessRecord.module == "contract", ~present["firm"], ~present["platform"],
-    ))]
+    )), *business]
 
 
 def record_center_presence():

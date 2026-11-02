@@ -18,6 +18,8 @@ PLATFORM_RECEIPT_PAGES = {
     "platform-finance-overview-manage": "finance-receipts-manage", "platform-finance-overview-claim": "finance-receipts-claim",
     "platform-finance-overview-pending": "finance-receipts-pending", "platform-finance-overview-allocated": "finance-receipts-allocated",
 }
+# 501099：非诉财务中心“部门回款”是该中心的回款管理页，带回款管理同一组开关（只作用于非诉回款）。
+NONLITIGATION_RECEIPT_PAGES = {"ipr-finance-receipts-dept": "finance-receipts-manage"}
 # 回款领取、待分配回款、已分配回款各自的删除只管本页显示的回款（按状态）；回款管理的删除管全部。
 RECEIPT_PAGE_DELETE_BY_STATUS = {
     "待认领": "finance.receipt.claim.delete", "待分配": "finance.receipt.pending.delete",
@@ -31,7 +33,7 @@ def page_granted_finance_actions(menu_keys) -> list[str]:
     """账号可见的管理页面带来的财务动作（页面即 FINANCE_EDIT_DELETE_ACTIONS 的第二列）。"""
     menus = {str(key) for key in menu_keys or []}
     # BUG20261028012：平台财务中心的回款管理/领取/待分配/已分配和财务中心同名页面带同一组开关。
-    for platform, firm in PLATFORM_RECEIPT_PAGES.items():
+    for platform, firm in (*PLATFORM_RECEIPT_PAGES.items(), *NONLITIGATION_RECEIPT_PAGES.items()):
         if platform in menus:
             menus.add(firm)
     return [code for code, menu, _label in FINANCE_EDIT_DELETE_ACTIONS if menu in menus]

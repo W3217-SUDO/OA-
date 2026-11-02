@@ -2177,3 +2177,12 @@
   white-space: normal;
   line-height: 1.25;
 }
+
+/* 501099：财务中心业务类型（诉讼/非诉/全部）切换。 */
+.finance-business-type-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 13px;
+}

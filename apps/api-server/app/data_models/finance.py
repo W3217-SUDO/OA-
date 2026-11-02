@@ -101,6 +101,8 @@ class IncomingPayment(Base):
 
     source_kind: Mapped[str] = mapped_column(String(24), default="unknown")
     finance_scope: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    # 501099：业务类型，NULL 即诉讼；非诉（知识产权）回款写“非诉”。
+    business_type: Mapped[str | None] = mapped_column(String(8), nullable=True)
     legacy_finance_record_id: Mapped[int | None] = mapped_column(ForeignKey("legacy_finance_records.id", ondelete="RESTRICT"), nullable=True, index=True)
     payment_method: Mapped[str] = mapped_column(String(100), default="", server_default="")
     local_allocation_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)

@@ -26,6 +26,7 @@ InputNumber,
 message,
 Modal,
 Popover,
+Segmented,
 Select,
 Space,
 Tabs
@@ -38,6 +39,7 @@ consumeDashboardFeeQuery,
 preserveDashboardFeeQueryContext,
 } from "../dashboardFeeNavigation.mjs";
 import "../finance-center.css";
+import { FINANCE_BUSINESS_TYPES, canChooseFinanceBusinessType, financeBusinessType, setFinanceBusinessType, type FinanceBusinessType } from "./services/financeBusinessType";
 import {
 caseFeeRefundStatusLabel,
 createLatestRequestGuard,
@@ -164,17 +166,44 @@ type FinanceCenterPageProps = {
   initialView: string;
   platformMode?: boolean;
   dashboardQueue?: string;
+  /** 非诉财务中心复用同名页面时的页面标题。 */
+  titleOverride?: string;
+  /** 非诉“我的回款”只查看，不带回款管理的编辑、删除。 */
+  receiptReadOnly?: boolean;
   onNavigate?: (route: string) => void;
 };
 
 export default function FinanceCenterPage(props: FinanceCenterPageProps) {
-  return <FinanceCenterContent key={props.platformMode ? "platform" : "firm"} {...props} />;
+  // 501099：财务中心各页默认看诉讼，可切换非诉、全部；切换后整页按新类型重新读取。
+  const [businessType, setBusinessType] = useState<FinanceBusinessType | undefined>(() => financeBusinessType());
+  const choosable = !props.dashboardQueue && props.initialView !== "finance-receipts-new" && canChooseFinanceBusinessType();
+  return (
+    <>
+      {choosable && (
+        <div className="finance-business-type-bar">
+          <span>业务类型</span>
+          <Segmented
+            size="small"
+            options={FINANCE_BUSINESS_TYPES}
+            value={businessType}
+            onChange={(value) => {
+              setFinanceBusinessType(value as FinanceBusinessType);
+              setBusinessType(value as FinanceBusinessType);
+            }}
+          />
+        </div>
+      )}
+      <FinanceCenterContent key={`${props.platformMode ? "platform" : "firm"}-${businessType || ""}`} {...props} />
+    </>
+  );
 }
 
 function FinanceCenterContent({
   initialView,
   platformMode = false,
   dashboardQueue = "",
+  titleOverride,
+  receiptReadOnly = false,
   onNavigate,
 }: FinanceCenterPageProps) {
   const financeScope = platformMode ? "platform" : "firm";
@@ -1542,14 +1571,14 @@ function FinanceCenterContent({
   const internalReviewCanApprove = role === "admin" || actionKeys.has("*") || actionKeys.has(internalReviewApproveAction);
   const internalReviewCanReject = role === "admin" || actionKeys.has("*") || actionKeys.has(internalReviewRejectAction);
   const canManage = ["admin", "manager"].includes(role);
-  const canReceiptUpdate = financeActionAllowed(sessionUser, "finance.receipt.update");
+  const canReceiptUpdate = !receiptReadOnly && financeActionAllowed(sessionUser, "finance.receipt.update");
   // BUG20261028012：回款领取、待分配回款、已分配回款页面的删除各自单独设，回款管理用回款删除。
   const receiptDeletePage: Record<string, string> = {
     "finance-receipts-claim": "claim", "platform-finance-overview-claim": "claim",
     "finance-receipts-pending": "pending", "platform-finance-overview-pending": "pending",
     "finance-receipts-allocated": "allocated", "platform-finance-overview-allocated": "allocated",
   };
-  const canReceiptDelete = financeActionAllowed(sessionUser, receiptDeletePage[initialView]
+  const canReceiptDelete = !receiptReadOnly && financeActionAllowed(sessionUser, receiptDeletePage[initialView]
     ? `finance.receipt.${receiptDeletePage[initialView]}.delete` : "finance.receipt.delete");
   const canPaymentUpdate = financeActionAllowed(sessionUser, "finance.payment.update");
   const canPaymentDelete = financeActionAllowed(sessionUser, "finance.payment.delete");
@@ -1702,11 +1731,11 @@ function FinanceCenterContent({
       : ["finance-query", "finance-fee-query", "finance-refund"].includes(initialView)
         ? "fee-query"
         : "payment";
-  const displayedOriginalTitle =
-    ["official-fee-unpaid", "official-fee-audit"].includes(dashboardQueue) ? "待缴官费" : dashboardQueue === "refund-pending" ? "待退费" :
+  const displayedOriginalTitle = titleOverride ||
+    (["official-fee-unpaid", "official-fee-audit"].includes(dashboardQueue) ? "待缴官费" : dashboardQueue === "refund-pending" ? "待退费" :
     platformMode && initialView === "finance-payment-mine"
       ? "请款单列表"
-      : originalFinanceTitles[initialView] || "财务中心";
+      : originalFinanceTitles[initialView] || "财务中心");
   const paymentStatuses = paymentQueryLegacyStatusMatrix;
   const latestTransaction = (fee: Fee) =>
     transactions

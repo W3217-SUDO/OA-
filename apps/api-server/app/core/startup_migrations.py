@@ -218,6 +218,13 @@ def _apply_feedback_date_serial(connection: Connection, _upgrade_schema: Callabl
     upgrade_feedback_date_serial(connection)
 
 
+def _apply_incoming_business_type(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    """501099：回款业务类型列（NULL=诉讼，非诉=知识产权）；可空无默认值，加列不改写旧行。"""
+    from sqlalchemy import inspect
+    if "business_type" not in {item["name"] for item in inspect(connection).get_columns("incoming_payments")}:
+        connection.execute(text("ALTER TABLE incoming_payments ADD COLUMN business_type VARCHAR(8)"))
+
+
 def _run_versioned_schema_migrations(
     connection: Connection,
     upgrade_schema: Callable[[Connection], None],
@@ -259,6 +266,7 @@ def _run_versioned_schema_migrations(
         ("business_record_refund_candidate_indexes_v1", _apply_refund_candidate_indexes),
         # 应收合同按合同找案件的表达式索引（陶威 11-01：工作台慢）。
         ("business_record_contract_link_indexes_v1", _apply_contract_link_indexes),
+        ("incoming_payment_business_type_v1", _apply_incoming_business_type),
     )
     for revision, migration in revisions:
         if connection.execute(

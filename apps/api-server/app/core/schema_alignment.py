@@ -214,6 +214,7 @@ def align_integration_legacy_schema(connection: Connection) -> None:
         "contract_no": "VARCHAR(64) NOT NULL DEFAULT ''",
         "case_no": "VARCHAR(64) NOT NULL DEFAULT ''",
         "bank_source": "VARCHAR(64) NOT NULL DEFAULT ''",
+        "business_type": "VARCHAR(8)",
     }.items():
         if column not in incoming_columns:
             connection.execute(text(f"ALTER TABLE incoming_payments ADD COLUMN {column} {definition}"))

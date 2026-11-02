@@ -415,6 +415,21 @@ const menuItems: NavItem[] = [
       { key: "ipr-copywriter", label: "我是撰稿人" },
       { key: "ipr-officer", label: "我是处理人" },
       { key: "ipr-business-owner", label: "我是案件管理人" },
+      {
+        key: "ipr-finance",
+        label: "非诉财务中心",
+        children: [
+          {
+            key: "ipr-finance-receipts",
+            label: "回款管理",
+            children: [
+              { key: "ipr-finance-receipts-new", label: "新增回款" },
+              { key: "ipr-finance-receipts-mine", label: "我的回款" },
+              { key: "ipr-finance-receipts-dept", label: "部门回款" },
+            ],
+          },
+        ],
+      },
     ],
   },
   {
@@ -956,6 +971,13 @@ function financeRouteFromPlatform(route: string): string {
     .replace("platform-finance-settlement-", "finance-settlement-")
     .replace("platform-finance-archive-fee-", "finance-archive-fee-");
 }
+
+// 501099：非诉财务中心与财务中心同一套页面，页面按地址栏 page 固定只看非诉（financeBusinessType）。
+const nonlitigationFinanceRoutes: Record<string, { view: string; title: string }> = {
+  "ipr-finance-receipts-new": { view: "finance-receipts-new", title: "新增回款" },
+  "ipr-finance-receipts-mine": { view: "finance-receipts-manage", title: "我的回款" },
+  "ipr-finance-receipts-dept": { view: "finance-receipts-manage", title: "部门回款" },
+};
 
 const supportTools = [
   {
@@ -1920,6 +1942,14 @@ export default function App() {
       />
     ) : active.startsWith("investigation-task-") || route.startsWith("clue-") || route.startsWith("notary-") || ["investigation", "clue", "notary", "evidence"].includes(route) ? (
       <InvestigationCenterPage initialTab={active} onNavigate={navigate} />
+    ) : nonlitigationFinanceRoutes[active] ? (
+      <FinanceCenterPage
+        key={active}
+        initialView={nonlitigationFinanceRoutes[active].view}
+        titleOverride={`非诉财务中心 · ${nonlitigationFinanceRoutes[active].title}`}
+        receiptReadOnly={active === "ipr-finance-receipts-mine"}
+        onNavigate={navigate}
+      />
     ) : route === "ipr-office-files" ? (
       <IprOfficialFilePage />
     ) : route === "ipr-custom-file-import" ? (

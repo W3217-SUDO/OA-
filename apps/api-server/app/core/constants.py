@@ -125,6 +125,10 @@ DEFAULT_SYSTEM_MENUS = [
     ("ipr-custom-file-import", "ipr-case-files", "案件自定义文件导入", "", 1),
     ("ipr-patent", "ipr", "专利案件", "", 10), ("ipr-trademark", "ipr", "商标案件", "", 11), ("ipr-review", "ipr", "知识产权立案审核", "", 12), ("ipr-office-files", "ipr", "知识产权官文", "", 13),
     ("ipr-source-person", "ipr", "我是案源人", "", 14), ("ipr-procurator", "ipr", "我是代理人", "", 15), ("ipr-copywriter", "ipr", "我是撰稿人", "", 16), ("ipr-officer", "ipr", "我是处理人", "", 17), ("ipr-business-owner", "ipr", "我是案件管理人", "", 18),
+    # 501099（陶国南 11-02 定方案二）：非诉财务中心与财务中心同一套页面，只看非诉（知识产权）；分批上线，先上回款管理。
+    ("ipr-finance", "ipr", "非诉财务中心", "", 19), ("ipr-finance-receipts", "ipr-finance", "回款管理", "", 1),
+    ("ipr-finance-receipts-new", "ipr-finance-receipts", "新增回款", "", 1), ("ipr-finance-receipts-mine", "ipr-finance-receipts", "我的回款", "", 2),
+    ("ipr-finance-receipts-dept", "ipr-finance-receipts", "部门回款", "", 3),
     ("investigation", "", "调查大厅", "search", 70), ("clue", "investigation", "我的调查线索", "", 71), ("notary", "investigation", "公证管理", "", 72), ("evidence", "investigation", "证据管理", "", 73),
     ("documents", "", "收发文台", "file-text", 80), ("documents-official", "documents", "官文收文", "", 1), ("documents-outgoing", "documents", "正式发文", "", 2), ("documents-my", "documents", "我的收文", "", 3), ("documents-company", "documents", "公司收文", "", 4), ("documents-register", "documents", "收发文登记", "", 84), ("documents-files", "documents", "文件附件", "", 85), ("documents-template", "documents", "文书模板", "", 86), ("documents-agent", "documents", "AI 智能文档", "", 87), ("documents-archive", "documents", "归档材料", "", 88),
     ("finance", "", "财务中心", "file-text", 90),

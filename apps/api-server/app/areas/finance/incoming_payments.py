@@ -2,7 +2,7 @@
 
 import asyncio
 
-from typing import Annotated
+from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
 
 from app.core.dependencies import (
@@ -20,7 +20,7 @@ from fastapi import APIRouter
 from app.core.incoming_settlement import (_active_settlements_by_receipt, _revert_incoming_allocation)
 from app.core.finance_centers import (
     finance_center_identity as current_identity, incoming_center_conditions,
-    require_incoming_center, require_record_center, record_center_conditions,
+    require_incoming_center, require_record_center, record_center_conditions, NONLITIGATION, incoming_business_type,
     unclassified_incoming_count, incoming_source_for, refresh_incoming_payment,
     refresh_incoming_payments,
 )
@@ -89,6 +89,7 @@ async def list_incoming_payments(
     page_size: Annotated[int | None, Query(ge=1, le=200)] = None,
     view: str = "",
     filters: Annotated[str, Query(max_length=16384)] = "",
+    owner_scope: Literal["mine", "dept"] | None = None,
 ):
     from app.core.finance import (
         _incoming_payment_dict, _visible_incoming_payment_statement,
@@ -122,7 +123,9 @@ async def list_incoming_payments(
         and not bank_source and not payment_status
         and view not in {f"finance-receipts-{bank}" for bank in ("icbc", "citic", "boc", "cmb")}
     )
-    statement = await _visible_incoming_payment_statement(identity, db, include_amounts=not simple_page_query)
+    # 501099 非诉财务中心“我的回款/部门回款”：本人或本部门登记、认领的回款。
+    owner_conditions = await _incoming_owner_conditions(owner_scope, identity, db)
+    statement = (await _visible_incoming_payment_statement(identity, db, include_amounts=not simple_page_query)).where(*owner_conditions)
     if view in {"finance-receipts-claim", "finance-receipts-pending", "finance-receipts-allocated"}:
         from app.areas.finance.incoming_query import VIEW_STATUSES
         statement = statement.where(IncomingPayment.status.in_(VIEW_STATUSES[view]))
@@ -144,7 +147,7 @@ async def list_incoming_payments(
             statement, page or 1, page_size or 20, can_view_amount, db,
         )
         if result is None:
-            statement = await _visible_incoming_payment_statement(identity, db)
+            statement = (await _visible_incoming_payment_statement(identity, db)).where(*owner_conditions)
             result = await read_incoming_query(
                 statement, keyword, view, filter_values, page, page_size,
                 can_view_amount, users_by_username, db, use_statement_rows=True,
@@ -185,6 +188,29 @@ async def list_incoming_payments(
     return result
 
 
+async def _has_menu(identity, db, key: str) -> bool:
+    from app.core.permissions import _permission_payload_for_identity
+    return key in set((await _permission_payload_for_identity(identity, db)).get("menu_keys") or [])
+
+
+async def _nonlitigation_receipt_manager(identity, db) -> bool:
+    """非诉财务中心“部门回款”是该中心的回款管理页：有这个页面就能编辑、删除非诉回款。"""
+    return identity.get("_business_type") == NONLITIGATION and await _has_menu(identity, db, "ipr-finance-receipts-dept")
+
+
+async def _incoming_owner_conditions(owner_scope, identity, db) -> list:
+    if owner_scope is None:
+        return []
+    if owner_scope == "mine":
+        people = [identity["username"]]
+    else:
+        department = str(identity.get("department") or "").strip()
+        if not department:
+            return [IncomingPayment.id.is_(None)]
+        people = list((await db.scalars(select(User.username).where(User.department == department))).all())
+    return [or_(IncomingPayment.operator.in_(people), IncomingPayment.claimant.in_(people))]
+
+
 @router.get(f"{settings.api_prefix}/finance/customer-options")
 async def list_finance_customer_options(
     keyword: str = Query("", max_length=255),
@@ -222,7 +248,10 @@ async def create_incoming_payment(body: IncomingPaymentInput, identity: dict = D
     from app.core.permissions import (
         _record_scope_conditions,
     )
-    if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以登记银行到账")
+    nonlitigation = identity.get("_business_type") == NONLITIGATION
+    # 501099：非诉财务中心按“给页面＝功能全有”，有“新增回款”页面就能登记非诉回款。
+    if identity.get("role") not in {"admin", "manager"} and not (nonlitigation and await _has_menu(identity, db, "ipr-finance-receipts-new")):
+        raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以登记银行到账")
     bank_reference = body.bank_reference.strip()
     if bank_reference and await db.scalar(select(IncomingPayment.id).where(IncomingPayment.bank_reference == bank_reference)): raise HTTPException(status_code=409, detail="银行流水号已经登记")
     contract_no = body.contract_no.strip()
@@ -236,7 +265,7 @@ async def create_incoming_payment(body: IncomingPaymentInput, identity: dict = D
         customer = customer or contract.customer
     case_record = None
     if case_no:
-        case_record = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.serial_no == case_no, *(await _record_scope_conditions(identity, db))))
+        case_record = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == ("ipr_case" if nonlitigation else "case"), BusinessRecord.serial_no == case_no, *(await _record_scope_conditions(identity, db))))
         if not case_record: raise HTTPException(status_code=422, detail="关联案件不存在或无权查看")
         linked_contract_id = int((case_record.data or {}).get("contract_id") or 0)
         if contract:
@@ -250,6 +279,7 @@ async def create_incoming_payment(body: IncomingPaymentInput, identity: dict = D
         customer = customer or case_record.customer
     item = IncomingPayment(source_kind="manual", receipt_no=f"HK{datetime.now():%Y%m%d%H%M%S%f}", received_date=body.received_date, amount=_round_fee_amount(body.amount), payer_name=body.payer_name.strip(), bank_reference=bank_reference or None, status="待认领", contract_record_id=contract.id if contract else None, contract_no=contract.serial_no if contract else "", case_no=case_no, bank_source=body.bank_source.strip(), operator=identity["username"], remark=body.remark)
     item.finance_scope = identity["_finance_scope"]
+    item.business_type = NONLITIGATION if nonlitigation else None
     item.payment_method = body.payment_method.strip()
     if contract:
         await require_record_center(contract, identity, db)
@@ -964,11 +994,15 @@ async def allocate_incoming_payment(payment_id: int, body: IncomingPaymentAlloca
 @router.delete(f"{settings.api_prefix}/finance/incoming-payments/{{payment_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_incoming_payment(payment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.finance_action_permissions import require_receipt_delete
-    if identity.get("role") not in {"admin", "manager", "auditor"}:
+    nonlitigation_manager = await _nonlitigation_receipt_manager(identity, db)
+    if identity.get("role") not in {"admin", "manager", "auditor"} and not nonlitigation_manager:
         raise HTTPException(status_code=403, detail="仅管理者、财务端或财务审核端可删除银行到账")
     item = await db.scalar(incoming_source_for(db, IncomingPayment.id == payment_id))
     require_incoming_center(item, identity)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
+    if nonlitigation_manager and identity.get("role") not in {"admin", "manager", "auditor"} and not await db.scalar(
+            select(IncomingPayment.id).where(IncomingPayment.id == item.id, *(await _incoming_owner_conditions("dept", identity, db)))):
+        raise HTTPException(status_code=403, detail="部门回款页只能删除本部门的非诉回款")
     await require_receipt_delete(identity, db, item.status)
     if item.status not in {"待认领", "待分配"} or item.allocated_amount > 0 or item.allocations:
         raise HTTPException(status_code=409, detail="已到账、已领取、已分配、已开票、已结算或已归档的数据不能删除；如需调整请走财务审核流程")
@@ -993,15 +1027,20 @@ async def update_incoming_payment(payment_id: int, body: IncomingPaymentUpdateIn
     from app.core.system import (
         _allowed_field_keys,
     )
-    if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以编辑银行到账")
+    nonlitigation_manager = await _nonlitigation_receipt_manager(identity, db)
+    if identity.get("role") not in {"admin", "manager"} and not nonlitigation_manager: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以编辑银行到账")
     item = await db.scalar(incoming_source_for(db, IncomingPayment.id == payment_id).with_for_update(of=IncomingPayment))
     require_incoming_center(item, identity)
     if not item: raise HTTPException(status_code=404, detail="银行到账记录不存在")
-    if identity.get("role") != "admin" and item.operator != identity["username"] and item.claimant != identity["username"]:
+    if nonlitigation_manager and identity.get("role") not in {"admin", "manager"}:
+        # 部门回款页只管本部门登记或认领的非诉回款。
+        if not await db.scalar(select(IncomingPayment.id).where(IncomingPayment.id == item.id, *(await _incoming_owner_conditions("dept", identity, db)))):
+            raise HTTPException(status_code=403, detail="无权编辑该回款")
+    elif identity.get("role") != "admin" and item.operator != identity["username"] and item.claimant != identity["username"]:
         visible_customer = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.module == "customer", BusinessRecord.title == item.claimed_customer, *(await _record_scope_conditions(identity, db))))
         if not visible_customer:
             raise HTTPException(status_code=403, detail="无权编辑该回款")
-    if "finance.amount" not in await _allowed_field_keys(identity, db):
+    if not nonlitigation_manager and "finance.amount" not in await _allowed_field_keys(identity, db):
         raise HTTPException(status_code=403, detail="当前账号没有回款金额权限")
     if item.source_kind not in {"manual", "hz_crm_20260930"}:
         raise HTTPException(status_code=403, detail="仅手动新增或已核对来源的回款可以编辑")
@@ -1012,6 +1051,7 @@ async def update_incoming_payment(payment_id: int, body: IncomingPaymentUpdateIn
         raise HTTPException(status_code=409, detail="已分配回款不能更换客户、合同或案件")
     bank_reference = body.bank_reference.strip()
     if bank_reference and await db.scalar(select(IncomingPayment.id).where(IncomingPayment.bank_reference == bank_reference, IncomingPayment.id != payment_id)): raise HTTPException(status_code=409, detail="银行流水号已经登记")
+    nonlitigation = incoming_business_type(item) == NONLITIGATION
     contract_no = body.contract_no.strip(); case_no = body.case_no.strip(); customer = body.customer.strip(); contract = None
     if contract_no:
         contract = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "contract", BusinessRecord.serial_no == contract_no))
@@ -1019,7 +1059,7 @@ async def update_incoming_payment(payment_id: int, body: IncomingPaymentUpdateIn
         if customer and contract.customer != customer: raise HTTPException(status_code=422, detail="关联合同与所选客户不一致")
         customer = customer or contract.customer
     if case_no:
-        case_record = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.serial_no == case_no, *(await _record_scope_conditions(identity, db))))
+        case_record = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == ("ipr_case" if nonlitigation else "case"), BusinessRecord.serial_no == case_no, *(await _record_scope_conditions(identity, db))))
         if not case_record: raise HTTPException(status_code=422, detail="关联案件不存在或无权查看")
         linked_contract_id = int((case_record.data or {}).get("contract_id") or 0)
         if contract:

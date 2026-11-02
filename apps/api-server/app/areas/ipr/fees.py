@@ -288,7 +288,7 @@ async def create_ipr_case_fee(case_id: int, body: IprCaseFeeCreateInput, identit
             "amount": amount, "fee_type": body.fee_type,
             "expense_scope": body.expense_scope or "", "expense_subtype": body.expense_subtype or "",
             "is_refund": body.fee_type == "内部费用" and amount < 0,
-            "case_id": record.id, "case_no": record.serial_no,
+            "case_id": record.id, "case_no": record.serial_no, "business_type": "非诉",
             "case_kind": (record.data or {}).get("case_kind", ""),
             "fee_date": str(body.fee_date) if body.fee_date else str(date.today()),
             "handler": handler, "court": body.court.strip(), "document_no": body.document_no.strip(),
@@ -362,6 +362,7 @@ async def create_ipr_case_fee_invoice(case_id: int, fee_id: int, body: IprCaseFe
     data["case_fee_ids"] = [fee.id]
     data["case_id"] = record.id
     data["case_no"] = record.serial_no
+    data["business_type"] = "非诉"
     data["amount"] = _round_fee_amount(body.amount)
     data["extra_amount"] = _round_fee_amount(body.extra_amount)
     data["applicant"] = identity.get("display_name") or identity["username"]
@@ -424,7 +425,7 @@ async def create_ipr_case_fee_payment_application(case_id: int, fee_id: int, bod
         customer=record.customer, status="待审批", owner=fee.owner,
         department=record.department, description=body.remark.strip(),
         data={
-            "case_id": record.id, "case_no": record.serial_no,
+            "case_id": record.id, "case_no": record.serial_no, "business_type": "非诉",
             "fee_id": fee.id, "fee_no": fee.serial_no,
             "fee_type": fee_data.get("fee_type"), "amount": fee_data.get("amount"),
             "payment_type_id": payment_type.id, "payment_type_code": payment_type.code,
@@ -463,7 +464,7 @@ async def create_ipr_case_fee_arrival(case_id: int, fee_id: int, body: IprCaseFe
     amount = _round_fee_amount(body.amount)
     item = IncomingPayment(
         source_kind="system",
-        finance_scope=await require_source_center(fee, db),
+        finance_scope=await require_source_center(fee, db), business_type="非诉",
         receipt_no=f"HK{datetime.now():%Y%m%d%H%M%S%f}",
         received_date=body.received_date, amount=amount,
         payer_name=body.payer_name.strip(), bank_reference=body.bank_reference.strip(),
