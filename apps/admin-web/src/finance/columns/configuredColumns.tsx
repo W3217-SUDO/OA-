@@ -17,6 +17,14 @@ const feeQueryColumnWidths: Record<string, number> = {
     费用类型: 150,
 };
 
+// 待退费（501150）：原告/被告合一栏；操作列收窄靠右，进度时长放宽；法院显示全称后加宽。
+const refundColumnWidths: Record<string, number> = {
+    "原告/被告": 260,
+    法院名称: 210,
+    进度时长: 130,
+    操作: 72,
+};
+
 const internalColumnWidths: Record<string, number> = {
     案件名称: 240, 客户名称: 200, 案件编号: 160, 案号: 160, 请款单号: 180,
     申请人: 110, 收款人: 110, 案件阶段: 120,
@@ -95,10 +103,14 @@ export function createConfiguredColumns(context: {
         ...(context.isFeeQueryRoute && header in feeQueryColumnWidths
             ? { width: feeQueryColumnWidths[header] }
             : {}),
+        ...(context.isRefundCaseFeeRoute && header in refundColumnWidths
+            ? { width: refundColumnWidths[header] }
+            : {}),
+        ...(context.isRefundCaseFeeRoute && header === "操作" ? { align: "right" as const } : {}),
         ...(context.initialView.startsWith("finance-internal") && header in internalColumnWidths
             ? { width: internalColumnWidths[header] }
             : {}),
-        fixed: !context.isGeneralSettlementRoute && header === "操作" &&
+        fixed: context.isRefundCaseFeeRoute && header === "操作" ? ("right" as const) : !context.isGeneralSettlementRoute && header === "操作" &&
             ![
                 "finance-internal-refused",
                 "finance-internal-void",
@@ -110,7 +122,10 @@ export function createConfiguredColumns(context: {
             ].includes(context.initialView)
             ? ("left" as const)
             : undefined,
-        render: (_: unknown, row: any) => header === "" ? null : header === "操作" ? ([
+        render: (_: unknown, row: any) => header === "" ? null : header === "原告/被告" ? (<div className="finance-party-stack">
+          <span><i>原告</i>{context.cellValue(row, "原告") || "—"}</span>
+          <span><i>被告</i>{context.cellValue(row, "被告") || "—"}</span>
+        </div>) : header === "操作" ? ([
             "finance-internal-refused",
             "finance-internal-void",
             "finance-internal-query",
@@ -153,7 +168,7 @@ export function createConfiguredColumns(context: {
     })).map((column) => {
         if (context.isRefundCaseFeeRoute || context.isFeeQueryRoute) {
             const header = context.activeRouteConfig.headers[Number(column.key.split("-").pop())];
-            if (header === "操作") return column;
+            if (header === "操作" || header === "原告/被告") return column;
             const render = column.render;
             return {
                 ...column,

@@ -305,6 +305,19 @@
   background: var(--oa-fill) !important;
   box-shadow: 0 1px 0 #d8d8d8;
 }
+/* 待退费原告/被告合一栏（501150）：上原告下被告，名称完整换行显示。 */
+.finance-party-stack > span {
+  display: block;
+  white-space: normal;
+  line-height: 1.5;
+  text-align: left;
+}
+.finance-party-stack i {
+  margin-right: 6px;
+  color: var(--oa-text-3);
+  font-size: 11px;
+  font-style: normal;
+}
 .finance-stacked-header {
   display: inline-flex;
   flex-direction: column;

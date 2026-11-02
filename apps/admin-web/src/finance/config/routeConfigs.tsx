@@ -717,10 +717,10 @@ export function createRouteConfigs(context: {
             selectable: true,
             clear: true,
             export: true,
+            // 501150：原告、被告合成一栏，上原告下被告（同工作台“最新案件”）。
             headers: [
                 "案号",
-                "原告",
-                "被告",
+                "原告/被告",
                 "案件阶段",
                 "律师助理",
                 "开庭律师",
