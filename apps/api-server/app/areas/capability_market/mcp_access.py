@@ -76,3 +76,19 @@ async def runtime_connection_groups(identity, db):
              'scope': record.value['scope'], 'revision': record.value['revision'], 'status': record.value['status'],
              'can_manage': record.value['scope'] == 'personal' or can_manage_global}
             for record in await connection_records(identity, db, management=False)]
+
+
+async def runtime_connection_catalog(identity, db, *, limit=20):
+    """本轮可用的本人及全局共享MCP连接目录（名称、范围、已验证的工具名和简短说明），给模型知道有哪些外部服务；
+    只读已保存的工具摘要，不解密凭据、不连外部服务。"""
+    catalog = []
+    for record in (await connection_records(identity, db, management=False))[:limit]:
+        value = record.value or {}
+        tools = []
+        for server in value.get('servers') or []:
+            for tool in (server.get('tools') or [])[:10] if isinstance(server, dict) else []:
+                if isinstance(tool, dict) and tool.get('name'):
+                    tools.append({'name': str(tool['name'])[:80], 'description': str(tool.get('description') or '')[:80]})
+        catalog.append({'name': value.get('display_name') or value.get('item_id'), 'scope': value.get('scope'),
+                        'status': value.get('status'), 'tools': tools[:10]})
+    return catalog
