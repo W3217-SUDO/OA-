@@ -666,12 +666,13 @@ def clue_assistant_condition(username: str):
                 _person_list_contains(BusinessRecord.data["investigation_assistant"].as_string(), username))
 
 
-async def _case_mine_scope_condition(identity: dict, db: AsyncSession, *, projected_data=None):
-    """Limit the Mine list to concrete case participation, even for admins."""
+async def _case_mine_scope_condition(identity: dict, db: AsyncSession, *, projected_data=None, court_lawyer: bool = True):
+    """Limit the Mine list to concrete case participation, even for admins.
+
+    court_lawyer=False：不按出庭律师算（待退费的本人范围，陶国南 11-02 选 c-A，与旧系统一致）。"""
     from app.core.record_json_text_query import projected_record_condition, record_json_text_projection
 
     username = str(identity["username"]).strip()
-    exact_username_token = f'"{username}"'
     if projected_data is None:
         projection, data = record_json_text_projection(db, CASE_MINE_TEXT_FIELDS)
     else:
@@ -690,24 +691,20 @@ async def _case_mine_scope_condition(identity: dict, db: AsyncSession, *, projec
             func.coalesce(data["handling_lawyer_usernames"], "").in_({"", "[]"}),
             func.coalesce(data["legacy_participants"], "").in_({"", "[]"}),
         ),
-        data["case_team_usernames"].contains(exact_username_token),
-        data["handling_lawyer_usernames"].contains(exact_username_token),
-        data["legacy_participants"].contains(f'"staff_name":"{username}"'),
+        # 迁移数据里有大写账号（如 "SHQB"），旧系统比较不分大小写，这里也不分（分支2 按人对数发现）。
+        func.lower(func.coalesce(data["case_team_usernames"], "")).contains(f'"{username.lower()}"', autoescape=True),
+        func.lower(func.coalesce(data["handling_lawyer_usernames"], "")).contains(f'"{username.lower()}"', autoescape=True),
+        # 陶国南 11-02 选 b-A：迁移过来的“案件参与人”（legacy_participants）不再算我的案件，与旧系统一致。
         # 迁移案件的调查员姓名存在 investigator，账号在 investigator_username（旧系统 Investigator 也算我的案件）；
         # 出庭律师实际存在 court_lawyer / hearing_lawyer_username（旧系统 CourtLawyer 也算我的案件）。
         # 这些字段在迁移数据里可能是多人串，逐个比（旧系统按 LIKE 算我的；分支2 按人对数发现）。
         *(_person_list_contains(data[key], username) for key in (
             "investigator_username", "source_person_username", "source_person", "business_owner", "assistant_username",
-            "investigator", "court_lawyer_username", "court_lawyer", "hearing_lawyer_username",
+            "investigator", *(("court_lawyer_username", "court_lawyer", "hearing_lawyer_username") if court_lawyer else ()),
         )),
     ]
-    return or_(
-        projected_record_condition(projection, or_(*conditions)),
-        select(FileAttachment.id).where(
-            FileAttachment.record_id == BusinessRecord.id,
-            func.lower(FileAttachment.uploader) == username.lower(),
-        ).exists(),
-    )
+    # 陶国南 11-02 选 a-A：在案件里上传过文件不再算我的案件（旧系统没有这一条）。
+    return projected_record_condition(projection, or_(*conditions))
 
 
 def _coordinated_case_condition(username: str, dialect: str, relation: str = "any"):
@@ -721,7 +718,10 @@ def _coordinated_case_condition(username: str, dialect: str, relation: str = "an
     username = str(username).strip()
     token = f'"{username}"'
     managed = or_(customer.data["customer_managers"].as_string().contains(token), customer.owner == username)
-    coordinated = customer.data["coordinators"].as_string().contains(token)
+    # 客户账号（给客户开的登录账号）挂在客户的 contact_accounts 上（旧系统客户协作人 TypeId=2）。旧系统按 StaffName 匹配、不分大小写，
+    # 迁移数据存的是大写账号，所以不分大小写比（陶国南 11-02 选 1A：客户账号看自己公司的案件，与旧系统一致）。
+    contact_account = func.lower(func.coalesce(customer.data["contact_accounts"].as_string(), "")).contains(f'"{username.lower()}"')
+    coordinated = or_(customer.data["coordinators"].as_string().contains(token), contact_account)
     related = {"manager": managed, "coordinator": coordinated}.get(relation, or_(managed, coordinated))
     customers = and_(customer.module == "customer", related)
     reference = BusinessRecord.data["customer_record_id"]
@@ -761,9 +761,17 @@ async def mark_coordinated_cases(items: list[dict], identity: dict, db: AsyncSes
     participant = set((await db.scalars(select(BusinessRecord.id).where(
         BusinessRecord.id.in_(ids), await _case_mine_scope_condition(identity, db),
     ))).all())
+    # 客户账号（客户 contact_accounts）看到的是自己公司的案件，标“本客户”而不是“客户管理”（陶国南 11-02 选 1A）。
+    username = str(identity.get("username") or "").strip().lower()
+    own_customers = set((await db.scalars(select(BusinessRecord.id).where(
+        BusinessRecord.module == "customer",
+        func.lower(func.coalesce(BusinessRecord.data["contact_accounts"].as_string(), "")).contains(f'"{username}"', autoescape=True),
+    ))).all()) if username else set()
     for item in items:
         if item.get("id") in ids and item["id"] not in participant:
-            item["data"] = {**(item.get("data") or {}), "my_case_relation": "客户管理"}
+            customer_id = (item.get("data") or {}).get("customer_record_id")
+            relation = "本客户" if own_customers and str(customer_id) in {str(value) for value in own_customers} else "客户管理"
+            item["data"] = {**(item.get("data") or {}), "my_case_relation": relation}
     return items
 
 

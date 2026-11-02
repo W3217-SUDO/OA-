@@ -228,6 +228,9 @@ async def managed_customers_official_unreceived(db, username: str, *, company: b
             BusinessRecord.owner == username,
             data["customer_managers"].as_string().contains(token, autoescape=True),
             data["coordinators"].as_string().contains(token, autoescape=True),
+            # 客户账号挂在 contact_accounts（旧系统协作人 TypeId=2，不分大小写），也算本人的客户（陶国南 11-02 选 1A）。
+            func.lower(func.coalesce(data["contact_accounts"].as_string(), "")).contains(
+                json.dumps(username.lower(), ensure_ascii=False), autoescape=True),
         ))
     customers = (await db.execute(select(BusinessRecord.id, BusinessRecord.serial_no).where(*conditions))).all()
     balances = await customer_fee_balances(db, customers)

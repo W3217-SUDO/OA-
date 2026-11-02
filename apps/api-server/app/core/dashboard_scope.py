@@ -347,11 +347,11 @@ async def personal_refund_identity(scoped_identity, db, *, scope_data=None):
             BusinessRecord.module == "case", BusinessRecord.status.notin_(["已合并", "已删除", "已回收"]),
         ))).all()
     else:
-        # 旧系统本人条件只看案件角色和客户协作人，不含“本人名下合同的案件”。
+        # 旧系统本人条件只看案件角色和客户协作人，不含“本人名下合同的案件”；出庭律师不算（陶国南 11-02 选 c-A）。
         from app.core.permissions import _coordinated_case_condition
         cases = (await db.execute(select(BusinessRecord.id, BusinessRecord.serial_no).where(
             scalar_in_values(BusinessRecord.id, scoped_identity["_dashboard_case_ids"]),
-            or_(await _case_mine_scope_condition(scoped_identity, db),
+            or_(await _case_mine_scope_condition(scoped_identity, db, court_lawyer=False),
                 _coordinated_case_condition(scoped_identity["username"], db.get_bind().dialect.name)),
         ))).all()
     case_ids = {case.id for case in cases}
