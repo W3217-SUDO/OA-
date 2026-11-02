@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from app.core.dependencies import (AsyncSession, BusinessRecord, FileAttachment, FinanceTransaction,
-    WorkflowEvent, current_identity, get_db, select, settings, date, datetime, Path, uuid4)
+    WorkflowEvent, get_db, select, settings, date, datetime, Path, uuid4)
 from app.core.constants import PAYMENT_METHOD_OPTIONS, UPLOAD_ROOT
 from app.core.permissions import _ensure_record_visible, _record_dict_for_identity, _record_dicts_for_identity, _require_contract_action
 from app.core.finance_batch_parity import is_internal_fee

@@ -7,7 +7,6 @@ from app.core.dependencies import (
     HTTPException,
     User,
     WorkflowEvent,
-    current_identity,
     date,
     datetime,
     get_db,
