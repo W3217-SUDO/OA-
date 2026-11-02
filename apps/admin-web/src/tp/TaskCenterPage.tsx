@@ -744,6 +744,17 @@ export default function TaskCenterPage({
   };
 
   // ─── Case context / navigation ─────────────────────────────────────────
+  // BUG20261102013：案号打不开时问后端原因（已删除、无权查看、不存在），不再只说“未找到或无权查看”。
+  const linkedCaseUnavailableReason = async (row: TaskRow, caseNo: string) => {
+    try {
+      const { data } = await api.get(`/tasks/${row.id}/case-status`, { params: { case_no: caseNo } });
+      if (data?.state && data.state !== "visible" && data.message) return String(data.message);
+    } catch {
+      // 查原因失败时仍给原提示。
+    }
+    return "未找到关联案件或当前账号无权查看";
+  };
+
   const resolveLinkedCase = async (row: TaskRow, caseNo = row.case_no) => {
     if (!caseNo) {
       message.warning("当前任务未关联案件");
@@ -756,7 +767,7 @@ export default function TaskCenterPage({
       const record = (data.items as CaseRecord[]).find(
         (item) => item.serial_no === caseNo,
       );
-      if (!record) message.warning("未找到关联案件或当前账号无权查看");
+      if (!record) message.warning(await linkedCaseUnavailableReason(row, caseNo));
       return record || null;
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "关联案件加载失败");

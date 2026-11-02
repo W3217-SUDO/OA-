@@ -1570,3 +1570,28 @@ async def confirm_task(task_id: int, body: TaskActionInput, identity: dict = Dep
     await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="验收任务", from_status=previous, to_status="已验收", operator=identity["username"], comment=body.comment), db, content="任务已确认完成.")
     await _advance_case_from_fixed_task(task, db, operator=identity["username"])
     await db.commit(); await db.refresh(task); return _task_dict(task)
+
+
+@router.get(f"{settings.api_prefix}/tasks/{{task_id}}/case-status")
+async def task_case_status(task_id: int, case_no: str = Query(..., max_length=64), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """BUG20261102013：任务里的案号打不开时说清原因（案件已删除、无权查看还是不存在），只查本任务关联的案号。"""
+    from app.core.permissions import _ensure_record_visible
+    from app.core.tasks import _task_dict
+    task = await _ensure_record_visible(task_id, identity, db)
+    case_no = case_no.strip()
+    if task.module != "task" or case_no not in _task_dict(task)["case_nos"]:
+        raise HTTPException(404, "任务未关联该案号")
+    record = await db.scalar(select(BusinessRecord).where(
+        BusinessRecord.module.in_(("case", "ipr_case")), BusinessRecord.serial_no == case_no,
+    ).order_by(BusinessRecord.deleted_at.is_(None).desc(), BusinessRecord.id.desc()).execution_options(include_deleted=True))
+    if record is None:
+        return {"state": "missing", "message": f"案件 {case_no} 在系统里不存在"}
+    if record.deleted_at is not None:
+        legacy = record.deleted_by == "legacy-deleted-cleanup"
+        return {"state": "deleted", "message": f"案件 {case_no} 已删除（在回收站）" + ("，老系统里已删除该案件" if legacy else ""),
+                "deleted_at": record.deleted_at}
+    try:
+        await _ensure_record_visible(record.id, identity, db)
+    except HTTPException:
+        return {"state": "forbidden", "message": f"当前账号无权查看案件 {case_no}"}
+    return {"state": "visible", "id": record.id, "module": record.module}
