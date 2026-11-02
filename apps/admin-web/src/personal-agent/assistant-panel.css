@@ -210,3 +210,8 @@
 
 /* 501147：右上角“设置”（智能体设置、记忆管理、导入技能） */
 .assistant-settings-trigger { flex: none; }
+/* 501147：侧栏最近 5 条会话下的“全部历史会话”，及弹窗里的完整列表 */
+.assistant-history-all { align-self: flex-start; padding-inline: 8px; }
+.assistant-history-all-list { margin-top: 12px; max-height: 60vh; overflow-y: auto; }
+.assistant-history-all-list .assistant-conversation-row { display: flex; align-items: center; gap: 4px; }
+.assistant-history-all-list .assistant-conversation-select { flex: 1 1 auto; min-width: 0; }

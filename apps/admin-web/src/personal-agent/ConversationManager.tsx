@@ -41,6 +41,8 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
   onSelectCaseAgentConversation,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyKeyword, setHistoryKeyword] = useState("");
   const [renaming, setRenaming] = useState<WorkspaceConversation | null>(null);
   const [newTitle, setNewTitle] = useState("");
   const [savingTitle, setSavingTitle] = useState(false);
@@ -84,16 +86,32 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
     },
     });
   };
-  const list = <>
-      {!items.length && (loading ? <div className="assistant-conversation-loading" role="status" aria-live="polite" aria-label="正在加载对话"><Spin size="small" /><span>正在加载对话</span></div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无对话" />)}
-      <div className={listClassName}>{items.map((item) => <div className={`${rowClassName}${item.id === activeId ? " active" : ""}`} key={item.id}>
-        <button type="button" className={selectClassName} aria-current={item.id === activeId ? "true" : undefined} disabled={busy} onClick={() => void run(() => onSelect(item.id), presentation === "drawer")}>
+  const rowsOf = (rows: WorkspaceConversation[], afterSelect?: () => void) => <div className={listClassName}>{rows.map((item) => <div className={`${rowClassName}${item.id === activeId ? " active" : ""}`} key={item.id}>
+        <button type="button" className={selectClassName} aria-current={item.id === activeId ? "true" : undefined} disabled={busy} onClick={() => void run(async () => { await onSelect(item.id); afterSelect?.(); }, presentation === "drawer")}>
           {runningIds.includes(item.id) ? <LoadingOutlined /> : <MessageOutlined />}<span><b title={item.title}>{item.title}</b><small>{runningIds.includes(item.id) ? "正在回答" : `${item.updated_at ? new Date(item.updated_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) + " · " : ""}${item.message_count} 条消息`}</small></span>
         </button>
         {onRename && <Tooltip title="重命名"><Button type="text" icon={<EditOutlined />} aria-label={`重命名对话：${item.title}`} disabled={busy} onClick={() => startRename(item)} /></Tooltip>}
         <Tooltip title={runningIds.includes(item.id) ? "请先停止该对话的回答" : "删除对话"}><Button type="text" danger icon={<DeleteOutlined />} aria-label={`删除对话：${item.title}`} disabled={busy || runningIds.includes(item.id)} onClick={() => remove(item)} /></Tooltip>
-      </div>)}</div>
+      </div>)}</div>;
+  const list = <>
+      {!items.length && (loading ? <div className="assistant-conversation-loading" role="status" aria-live="polite" aria-label="正在加载对话"><Spin size="small" /><span>正在加载对话</span></div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无对话" />)}
+      {rowsOf(items)}
   </>;
+  // 501147：侧栏只显示最近 5 条，其余在“全部历史会话”里，可搜索、重命名、删除。
+  const recentLimit = 5;
+  const keyword = historyKeyword.trim().toLowerCase();
+  const filtered = keyword ? items.filter((item) => item.title.toLowerCase().includes(keyword)) : items;
+  const sidebarList = <>
+      {!items.length && (loading ? <div className="assistant-conversation-loading" role="status" aria-live="polite" aria-label="正在加载对话"><Spin size="small" /><span>正在加载对话</span></div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无对话" />)}
+      {rowsOf(items.slice(0, recentLimit))}
+      {items.length > 0 && <Button type="link" size="small" className="assistant-history-all" onClick={() => { setHistoryKeyword(""); setHistoryOpen(true); }}>全部历史会话（{items.length}）</Button>}
+  </>;
+  const historyModal = () => <Modal title="全部历史会话" width={POPUP_WIDTH.md} open={historyOpen} footer={null} onCancel={() => setHistoryOpen(false)} destroyOnHidden>
+    <Input.Search allowClear placeholder="按名称搜索" aria-label="搜索历史会话" value={historyKeyword} onChange={(event) => setHistoryKeyword(event.target.value)} />
+    <div className="assistant-history-all-list">
+      {!filtered.length ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={keyword ? "没有找到匹配的会话" : "暂无对话"} /> : rowsOf(filtered, () => setHistoryOpen(false))}
+    </div>
+  </Modal>;
   const renameModal = <Modal title="重命名对话" width={POPUP_WIDTH.sm} open={!!renaming} okText="保存" cancelText="取消" confirmLoading={savingTitle}
     onOk={() => void saveRename()} onCancel={() => { if (!savingTitle) setRenaming(null); }} destroyOnHidden>
     <Input value={newTitle} maxLength={40} showCount autoFocus placeholder="输入新的对话名称" aria-label="对话名称"
@@ -121,8 +139,9 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
     <section className="assistant-workspace-history" aria-label="历史会话" aria-busy={loading}>
       <div className="assistant-workspace-history-heading"><HistoryOutlined /><h2>历史会话</h2></div>
       {caseAgentList}
-      {list}
+      {sidebarList}
     </section>
+    {historyOpen && historyModal()}
   </>;
   return <>
     {contextHolder}

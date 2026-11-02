@@ -647,6 +647,35 @@ test("global skill management follows global permission even when overview is de
   await act(async () => { renderer.unmount(); });
 });
 
+test("sidebar shows the 5 latest conversations and opens the full searchable history (501147)", async () => {
+  const modal = { confirm() {} };
+  const { ConversationManager } = loadModule("../personal-agent/ConversationManager.tsx", {
+    antd: {
+      Button: "button", Drawer: "drawer", Empty: "empty", Tooltip: "tooltip", Spin: "spin",
+      Modal: Object.assign(({ children, ...props }) => React.createElement("modal", props, children), { useModal: () => [modal, null] }),
+      Input: Object.assign((props) => React.createElement("input", props), { Search: "search" }),
+      message: { error() {}, success() {}, warning() {} },
+    },
+    "./types": { errorText: (error, fallback) => error.message || fallback },
+  });
+  const items = Array.from({ length: 7 }, (_, index) => ({ id: `c${index}`, title: `会话${index}`, message_count: 1, updated_at: "" }));
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(ConversationManager, {
+    items, activeId: "c0", busy: false, runningIds: [], presentation: "sidebar",
+    onCreate: async () => {}, onSelect: async () => {}, onDelete: async () => {}, onRename: async () => {},
+  })); });
+  const titles = () => renderer.root.findAllByType("b").map((item) => item.props.children);
+  assert.deepEqual(titles(), ["会话0", "会话1", "会话2", "会话3", "会话4"], "侧栏只列最近 5 条");
+  const all = renderer.root.findAllByType("button").find((item) => item.props.className === "assistant-history-all");
+  assert.equal([].concat(all.props.children).join(""), "全部历史会话（7）");
+  await act(async () => { all.props.onClick(); });
+  assert.ok(renderer.root.findAllByType("modal").some((item) => item.props.title === "全部历史会话" && item.props.open));
+  assert.equal(titles().length, 12, "弹窗列出全部 7 条");
+  await act(async () => { renderer.root.findByType("search").props.onChange({ target: { value: "会话6" } }); });
+  assert.deepEqual(titles().slice(5), ["会话6"], "按名称搜索");
+  await act(async () => { renderer.unmount(); });
+});
+
 test("manual new conversation requires one confirmation, cancellation preserves state and failures keep the drawer", async () => {
   const confirmations = [], failures = [], created = [];
   let failCreate = false;
