@@ -493,11 +493,45 @@ async def finance_centers_for_ids(db, ids) -> dict[int, str | None]:
     return result
 
 
+async def business_types_for_ids(db, ids) -> dict[int, str]:
+    """按记录编号批量取业务类型（没写的都是诉讼）。"""
+    ids = sorted({int(item) for item in ids if item is not None})
+    result: dict[int, str] = {}
+    for offset in range(0, len(ids), 2000):
+        rows = (await db.execute(select(BusinessRecord.id, BusinessRecord.data["business_type"].as_string()).where(
+            BusinessRecord.id.in_(ids[offset:offset + 2000])))).all()
+        result.update({row[0]: row[1] or "诉讼" for row in rows})
+    return result
+
+
 async def filter_rows_by_center(rows, identity, db, *, id_of=lambda row: row.get("id")):
-    """当前财务中心只留本中心的行（未传中心时原样返回）。"""
+    """当前财务中心只留本中心的行（未传中心时原样返回）；带业务类型时只留该业务类型的行。"""
     scope = identity.get("_finance_scope")
-    if scope not in {"firm", "platform"}:
-        return list(rows)
     rows = list(rows)
+    business = identity.get("_business_type")
+    if business in BUSINESS_TYPES:
+        types = await business_types_for_ids(db, [id_of(row) for row in rows if str(id_of(row) or "").isdigit()])
+        # 没有记录编号的行（老系统直读）都是诉讼。
+        rows = [row for row in rows if (types.get(int(id_of(row)), "诉讼") if str(id_of(row) or "").isdigit() else "诉讼") == business]
+    if scope not in {"firm", "platform"}:
+        return rows
     centers = await finance_centers_for_ids(db, [id_of(row) for row in rows if str(id_of(row) or "").isdigit()])
     return [row for row in rows if not str(id_of(row) or "").isdigit() or centers.get(int(id_of(row)), "firm") == scope]
+
+
+async def has_nonlitigation_page(identity, db, *keys: str) -> bool:
+    """501099“给页面＝功能全有”：当前是非诉业务，且账号真实菜单里有这些非诉财务中心页面之一。
+    只有非诉菜单的账号写操作不会被页面访问临时提升，后端角色门槛要用它放行（只对非诉数据）。"""
+    if identity.get("_business_type") != NONLITIGATION:
+        return False
+    from app.core.permissions import _permission_payload_for_identity
+    menus = set((await _permission_payload_for_identity(identity, db)).get("menu_keys") or [])
+    return any(key in menus for key in keys)
+
+
+def nonlitigation_record_type(*records) -> str | None:
+    """由来源记录（费用等）推出新记录的业务类型：来源全是非诉才记非诉，否则不写（=诉讼）。"""
+    records = [record for record in records if record is not None]
+    if records and all(record_business_type(record) == NONLITIGATION for record in records):
+        return NONLITIGATION
+    return None

@@ -130,6 +130,8 @@ class FinanceBusinessTypeTests(unittest.IsolatedAsyncioTestCase):
             page_granted_finance_actions(["finance-receipts-manage"]),
         )
         self.assertEqual(page_granted_finance_actions(["ipr-finance-receipts-mine"]), [])
+        for page in ("payment-package-manage", "payment-audit", "invoice-pending", "internal-fee-audit"):
+            self.assertEqual(page_granted_finance_actions([f"ipr-finance-{page}"]), page_granted_finance_actions([f"finance-{page}"]))
 
 
 if __name__ == "__main__":
