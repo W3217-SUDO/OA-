@@ -647,6 +647,18 @@ test("global skill management follows global permission even when overview is de
   await act(async () => { renderer.unmount(); });
 });
 
+test("fixed task conversation sends one dated summary per day (501147)", () => {
+  const { AGENT_TASK_ENTRIES, hasDailyMarker, localDateText } = loadModule("../agentSkillRouting.ts", {});
+  const tasks = AGENT_TASK_ENTRIES.find((item) => item.key === "tasks");
+  assert.equal(tasks.fixed, true, "任务处理是固定会话");
+  assert.equal(localDateText(new Date(2026, 10, 3, 8, 0)), "2026-11-03");
+  const prompt = tasks.dailyPrompt("2026-11-03");
+  assert.ok(prompt.startsWith("—— 2026-11-03 ——"));
+  assert.equal(hasDailyMarker([{ role: "user", content: prompt }], "2026-11-03"), true, "当天已汇总过不再重复发");
+  assert.equal(hasDailyMarker([{ role: "user", content: tasks.dailyPrompt("2026-11-02") }], "2026-11-03"), false, "新的一天再汇总一次");
+  assert.equal(AGENT_TASK_ENTRIES.find((item) => item.key === "customer").fixed, undefined, "客户与合同仍每次新开");
+});
+
 test("sidebar shows the 5 latest conversations and opens the full searchable history (501147)", async () => {
   const modal = { confirm() {} };
   const { ConversationManager } = loadModule("../personal-agent/ConversationManager.tsx", {
