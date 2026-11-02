@@ -861,12 +861,16 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
         checked_schema({'type': 'object', '$defs': {'query': {'type': 'string'}}, 'properties': {'query': {'$ref': '#/$defs/query'}}})
         for schema in [
             {'type': 'object', '$schema': 'https://example.com/unknown-schema'},
-            {'type': 'object', 'properties': {'query': {'type': 'string', 'pattern': '^(a+)+$'}}},
-            {'type': 'object', 'patternProperties': {'^(a+)+$': {'type': 'string'}}},
             {'type': 'object', '$ref': '#'},
         ]:
             with self.assertRaises(HTTPException):
                 checked_schema(schema)
+        # 22:24 元典：第三方正则约束去掉后照常可用，本地不执行对方正则（灾难性回溯的表达式也不会拖住服务）。
+        regex_validator = checked_schema({'type': 'object', 'properties': {'query': {'type': 'string', 'pattern': '^(a+)+$', 'maxLength': 5}},
+                                          'patternProperties': {'^(a+)+$': {'type': 'integer'}}})
+        regex_validator.validate({'query': 'aaaa!', 'aaaa': 'not-an-integer'})
+        with self.assertRaises(Exception):
+            regex_validator.validate({'query': 'too-long'})
         state = await self.create()
         async with self.sessions() as db, AsyncExitStack() as stack:
             identity, context = stack.enter_context(self.sdk_transport())
@@ -944,10 +948,16 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
         original = deepcopy(schema)
         validate_arguments(schema, {'pattern': 'CODEX', 'patternProperties': '普通参数', '$id': '编号', '$ref': '引用名'})
         self.assertEqual(schema, original)
-        for restricted in [
+        # 正则约束去掉后照常可用（11-01 元典）；名叫 pattern 的参数仍保留、仍按其余约束校验。
+        for stripped in [
             {'type': 'object', 'pattern': '^(a+)+$'},
             {'type': 'object', '$defs': {'pattern': {'type': 'string', 'pattern': '^(a+)+$'}}},
-            {'type': 'object', 'properties': {'pattern': {'type': 'string', 'pattern': '^(a+)+$'}}},
+            {'type': 'object', 'properties': {'pattern': {'type': 'string', 'pattern': '^(a+)+$'}}, 'required': ['pattern']},
+        ]:
+            checked_schema(stripped).validate({'pattern': 'aaaa!'})
+        with self.assertRaises(Exception):
+            checked_schema({'type': 'object', 'properties': {'pattern': {'type': 'string', 'pattern': '^a$'}}, 'required': ['pattern']}).validate({})
+        for restricted in [
             {'type': 'object', '$defs': {'pattern': {'$id': 'https://example.com/schema'}}},
             {'type': 'object', 'properties': {'pattern': {'$ref': '#/custom'}}, 'custom': {'$ref': 'http://127.0.0.1/schema'}},
         ]:

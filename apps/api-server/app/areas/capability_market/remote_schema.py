@@ -19,6 +19,28 @@ def schema_fingerprint(schema):
     return sha256(json.dumps(schema, sort_keys=True, ensure_ascii=False, allow_nan=False).encode()).hexdigest()
 
 
+def _without_regex(value, *, schema_node=False, schema_map=False, schema_array=False):
+    """去掉第三方 schema 里的正则约束（pattern / patternProperties），其余约束原样保留。
+
+    本地从不执行第三方正则（防止恶意表达式拖住服务），参数格式由对方服务自己校验；
+    以前遇到正则就整份工具目录拒收，元典等服务的工具全都用不了（陶国南 11-01 22:24）。
+    映射里的业务名称（如名为 pattern 的参数）不是约束，不去掉。
+    """
+    if isinstance(value, dict):
+        result = {}
+        for key, child in value.items():
+            if schema_node and key in ('pattern', 'patternProperties'):
+                continue
+            result[key] = _without_regex(child,
+                                         schema_node=schema_map or (schema_node and key in _SCHEMA_VALUES),
+                                         schema_map=schema_node and key in _SCHEMA_MAPS,
+                                         schema_array=schema_node and (key in _SCHEMA_ARRAYS or key == 'items'))
+        return result
+    if isinstance(value, list):
+        return [_without_regex(child, schema_node=schema_array) for child in value]
+    return value
+
+
 def checked_schema(schema):
     if not isinstance(schema, dict) or schema.get('type') != 'object':
         raise HTTPException(422, '远程工具参数schema必须声明object类型')
@@ -27,6 +49,7 @@ def checked_schema(schema):
         if len(encoded.encode()) > 32768:
             raise HTTPException(422, '远程工具参数schema超过32KB限制')
         reject_credentials(schema)
+        schema = _without_regex(schema, schema_node=True)
 
         nodes = 0
         schema_nodes = set()
@@ -41,8 +64,6 @@ def checked_schema(schema):
                     schema_nodes.add(id(value))
                     if '$schema' in value and (not isinstance(value['$schema'], str) or validators.validator_for(value, default=None) is None):
                         raise HTTPException(422, '远程工具schema声明了不支持的规范版本')
-                    if 'pattern' in value or 'patternProperties' in value:
-                        raise HTTPException(422, '远程工具schema不支持正则约束，避免第三方表达式阻塞服务')
                     if '$ref' in value and (not isinstance(value['$ref'], str) or (value['$ref'] != '#' and not value['$ref'].startswith('#/'))):
                         raise HTTPException(422, '远程工具schema不允许外部引用')
                     if '$dynamicRef' in value or '$recursiveRef' in value or '$id' in value:
