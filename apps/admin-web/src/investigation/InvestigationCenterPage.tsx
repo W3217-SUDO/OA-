@@ -82,6 +82,7 @@ import TurnOnAuditModal from "./TurnOnAuditModal";
 import InvestigationDetailModal from "./InvestigationDetailModal";
 import ClueAuditSidePanel from "./ClueAuditSidePanel";
 import EditRecordModal from "./EditRecordModal";
+import ClueAssistantModal, { clueAssistantUsernames } from "./ClueAssistantModal";
 import AssignInvestigatorModal from "./AssignInvestigatorModal";
 import FeeApplicationModal from "./FeeApplicationModal";
 import { useMobileFilterToggle } from "../components/common/MobileFilterToggle";
@@ -203,6 +204,13 @@ export default function InvestigationCenterPage({
   } | null>(null);
   const [editTarget, setEditTarget] = useState<Row | null>(null);
   const [assignTarget, setAssignTarget] = useState<Row | null>(null);
+  const [assistantRows, setAssistantRows] = useState<Row[]>([]);
+  // 列表“调查员”一栏同时显示调查员和调查辅助员（BUG20261030017，同旧系统）。
+  const clueInvestigatorText = (r: Row) => {
+    const owner = r.owner_display_name || personDisplayName(r.owner);
+    const assistants = r.data?.investigation_assistant_display_name || clueAssistantUsernames(r).map((name) => personDisplayName(name)).join("、");
+    return [owner, assistants].filter(Boolean).join("、") || "—";
+  };
   const [feeTarget, setFeeTarget] = useState<Row | null>(null);
   const [investigationDetail, setInvestigationDetail] = useState<Row | null>(
     null,
@@ -2017,7 +2025,7 @@ export default function InvestigationCenterPage({
           width: 100,
           render: (_: unknown, r: Row) => r.data.right_type || "—",
         },
-          { title: "调查员", width: 100, render: (_: unknown, r: Row) => r.owner_display_name || personDisplayName(r.owner) },
+          { title: "调查员", width: 120, render: (_: unknown, r: Row) => clueInvestigatorText(r) },
         {
           title: "调查区域",
           width: 160,
@@ -2174,7 +2182,7 @@ export default function InvestigationCenterPage({
             );
           },
         },
-        { title: "调查员", width: 95, render: (_: unknown, r: Row) => r.owner_display_name || personDisplayName(r.owner) },
+        { title: "调查员", width: 120, render: (_: unknown, r: Row) => clueInvestigatorText(r) },
         {
           title: "调查时间",
           width: 110,
@@ -2686,14 +2694,14 @@ export default function InvestigationCenterPage({
     "clue-my-draft": ["查询", "修改", "提交", "批量提交", "新增文件", "批量删除"],
     "clue-my-pending": ["查询", "修改"],
     "clue-my-customer": ["查询", "修改"],
-    "clue-my-collect": ["查询", "修改", "新增调查员", "取证"],
+    "clue-my-collect": ["查询", "修改", "新增调查辅助员", "取证"],
     "clue-my-collected": [
       "查询",
       "修改",
       "建立公证",
       "建立证据目录",
       "申请费用",
-      "新增调查员",
+      "新增调查辅助员",
       "取证",
       "生成案件",
     ],
@@ -2714,7 +2722,7 @@ export default function InvestigationCenterPage({
     "新增线索": "investigation.record.create", "新增子任务": "investigation.record.create", "修改": "investigation.record.update",
     "提交": "investigation.clue.submit", "批量提交": "investigation.clue.submit", "取证": "investigation.clue.collect",
     "建立证据目录": "investigation.evidence.manage", "删除": "investigation.delete", "批量删除": "investigation.delete",
-    "新增调查员": "investigation.assign", "申请费用": "investigation.fee.apply", "关闭任务并生成报告": "investigation.close",
+    "新增调查员": "investigation.assign", "新增调查辅助员": "investigation.assign", "申请费用": "investigation.fee.apply", "关闭任务并生成报告": "investigation.close",
     "生成案件": "investigation.case.create", "建立公证": "investigation.notary.create", "上传调查资料": "investigation.record.update",
     "新增文件": "investigation.record.update",
   };
@@ -2842,6 +2850,7 @@ export default function InvestigationCenterPage({
     新增子任务: () =>
       requireSingleRow("新增子任务", (row) => void openTasks(row, true)),
     新增调查员: () => requireSingleRow("新增调查员", openAssign),
+    新增调查辅助员: () => { if (!selectedRows.length) { message.warning("请先勾选线索"); return; } setAssistantRows(selectedRows); },
     申请费用: () => requireSingleRow("申请费用", (row) => openFee(row)),
     关闭任务并生成报告: () =>
       requireSingleRow(
@@ -3600,6 +3609,8 @@ export default function InvestigationCenterPage({
           onSubmit: () => void saveEdit("submit"),
         } : undefined}
       />
+      <ClueAssistantModal rows={assistantRows} systemPersonOptions={systemPersonOptions}
+        onDone={() => { setAssistantRows([]); load(); }} onCancel={() => setAssistantRows([])} />
       <AssignInvestigatorModal
         open={Boolean(assignTarget)}
         assignTarget={assignTarget}

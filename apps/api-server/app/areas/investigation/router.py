@@ -15,11 +15,12 @@ from app.core.dependencies import (
 from app.models_shared import (
     BatchClueCaseInput, ClueBatchCollectionInput, ClueBatchSubmitInput, ClueCaseContractResolveInput, ClueCollectionInput,
     ClueReviewInput, ClueSourceContractBindingInput, ClueTurnOnAuditInput, EvidenceCreateInput, EvidenceUpdateInput,
-    InvestigationAssignmentInput, InvestigationBatchDeleteInput, InvestigationFeeInput, InvestigationPartyInput, InvestigationTaskInput,
+    ClueAssistantInput, InvestigationAssignmentInput, InvestigationBatchDeleteInput, InvestigationFeeInput, InvestigationPartyInput, InvestigationTaskInput,
     InvestigationRecordInput, InvestigationRecordUpdate, TaskActionInput,
 )
 from fastapi import APIRouter
 from app.areas.investigation.task_details import router as task_detail_router
+from app.core.permissions import clue_assistant_usernames
 from sqlalchemy import or_
 import json
 
@@ -1210,6 +1211,38 @@ async def assign_investigation_record(record_id: int, body: InvestigationAssignm
     return _record_dict(record) if record.module != "task" else _task_dict(record)
 
 
+@router.post(f"{settings.api_prefix}/investigations/clue-assistants")
+async def set_clue_assistants(body: ClueAssistantInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """新增调查辅助员（BUG20261030017，同旧系统）：给勾选的线索设一组辅助员，以本次名单为准，原调查员不变。"""
+    from app.core.permissions import _ensure_record_module, _require_record_owner_or_manager, _require_role_action, clue_assistant_usernames
+    from app.core.system import _record_dict
+    from app.core.tasks import _active_task_username
+    await _require_role_action(identity, db, "investigation.assign")
+    usernames = []
+    for value in body.assistants:
+        username = await _active_task_username(value, db, field_name="调查辅助员")
+        if username not in usernames:
+            usernames.append(username)
+    names = {user.username: user.display_name or user.username for user in (await db.scalars(select(User).where(User.username.in_(usernames)))).all()} if usernames else {}
+    clues = []
+    for clue_id in dict.fromkeys(body.clue_ids):
+        clue = await _ensure_record_module(clue_id, "clue", identity, db)
+        await _require_record_owner_or_manager(clue, identity, db)
+        clues.append(clue)
+    for clue in clues:
+        before = clue_assistant_usernames(clue.data)
+        kept = [name for name in usernames if name.lower() != str(clue.owner or "").lower()]
+        clue.data = {**(clue.data or {}), "investigation_assistant": ",".join(kept),
+                     "investigation_assistant_display_name": "、".join(names.get(name, name) for name in kept)}
+        db.add(WorkflowEvent(record_id=clue.id, action="设置调查辅助员", from_status=clue.status, to_status=clue.status,
+                             operator=identity["username"],
+                             comment=f"{'、'.join(before) or '无'} → {'、'.join(kept) or '无'}" + (f"。{body.comment}" if body.comment.strip() else "")))
+    await db.commit()
+    for clue in clues:
+        await db.refresh(clue)
+    return {"items": [_record_dict(clue) for clue in clues]}
+
+
 @router.post(f"{settings.api_prefix}/investigations/clues/{{record_id}}/fee-application", status_code=status.HTTP_201_CREATED)
 async def create_investigation_fee_application(record_id: int, body: InvestigationFeeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import _require_role_action
@@ -1740,7 +1773,7 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
             or str(clue_data.get("notary_institution") or "").strip() in {"时间戳", "权利卫士", "时间戳取证"}
         )
         case_data = _case_team_payload(
-            {"contract_id": contract.id, "contract_no": contract.serial_no, "external_contract_no": contract_data.get("external_contract_no", ""), "external_contract_numbers": contract_data.get("external_contract_numbers", []), "contract_title": contract.title, "clue_id": clue.id, "clue_record_id": clue.id, "investigation_clue_id": clue.id, "investigation_clue_ids": [clue.id], "clue_no": clue.serial_no, "investigation_clue": clue.serial_no, "investigation_clue_nos": [clue.serial_no], "source_evidence_method": clue_data.get("evidence_method", ""), "source_is_timestamp_evidence": timestamp_evidence, "source_notary_institution": clue_data.get("notary_institution", ""), "notary_id": clue_data.get("notary_record_id"), "case_type": body.case_type, "court": body.court, "client_position": body.client_position.strip() or clue_data.get("client_position", "原告"), "cause_or_charge": cause_or_charge, "cause_of_action": cause_or_charge, "investigator": clue_data.get("investigator") or clue.owner, "opponent": clue_data.get("opponent", ""), "product": clue_data.get("product", ""), "case_register_date": case_register_date, "filing_date": case_register_date, "batch_converted": True, "case_creation_step": "completed", "case_creation_approval_status": "自动通过", "case_creation_approved_by": "system"},
+            {"contract_id": contract.id, "contract_no": contract.serial_no, "external_contract_no": contract_data.get("external_contract_no", ""), "external_contract_numbers": contract_data.get("external_contract_numbers", []), "contract_title": contract.title, "clue_id": clue.id, "clue_record_id": clue.id, "investigation_clue_id": clue.id, "investigation_clue_ids": [clue.id], "clue_no": clue.serial_no, "investigation_clue": clue.serial_no, "investigation_clue_nos": [clue.serial_no], "source_evidence_method": clue_data.get("evidence_method", ""), "source_is_timestamp_evidence": timestamp_evidence, "source_notary_institution": clue_data.get("notary_institution", ""), "notary_id": clue_data.get("notary_record_id"), "case_type": body.case_type, "court": body.court, "client_position": body.client_position.strip() or clue_data.get("client_position", "原告"), "cause_or_charge": cause_or_charge, "cause_of_action": cause_or_charge, "investigator": ",".join(dict.fromkeys([clue_data.get("investigator") or clue.owner, *clue_assistant_usernames(clue_data)])), "opponent": clue_data.get("opponent", ""), "product": clue_data.get("product", ""), "case_register_date": case_register_date, "filing_date": case_register_date, "batch_converted": True, "case_creation_step": "completed", "case_creation_approval_status": "自动通过", "case_creation_approved_by": "system"},
             handling_lawyers,
             handling_usernames,
             assistant,

@@ -652,6 +652,20 @@ def _person_list_contains(value, username: str):
     return literal(",").concat(normalized).concat(",").contains(f",{username.lower()},", autoescape=True)
 
 
+def clue_assistant_usernames(data) -> list[str]:
+    """线索调查辅助员账号（BUG20261030017）：存在 investigation_assistant，逗号等分隔，可多人。"""
+    raw = str((data or {}).get("investigation_assistant") or "")
+    for separator in CASE_PERSON_SEPARATORS:
+        raw = raw.replace(separator, ",")
+    return list(dict.fromkeys(value.strip() for value in raw.split(",") if value.strip()))
+
+
+def clue_assistant_condition(username: str):
+    """调查辅助员能看到这条线索（按整个账号比，不做旧系统那种包含匹配）。"""
+    return and_(BusinessRecord.module == "clue",
+                _person_list_contains(BusinessRecord.data["investigation_assistant"].as_string(), username))
+
+
 async def _case_mine_scope_condition(identity: dict, db: AsyncSession, *, projected_data=None):
     """Limit the Mine list to concrete case participation, even for admins."""
     from app.core.record_json_text_query import projected_record_condition, record_json_text_projection
@@ -849,6 +863,8 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
         BusinessRecord.module == "clue",
         func.lower(func.coalesce(BusinessRecord.data["reviewer"].as_string(), "")) == user.username.lower(),
     )
+    # 调查辅助员和调查员一样能看到、修改、取证这条线索（BUG20261030017，同旧系统）。
+    assisted_clue = clue_assistant_condition(user.username)
     pending_contract_approval = and_(
         BusinessRecord.module == "contract",
         BusinessRecord.status == "审批中",
@@ -881,14 +897,14 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     if scope == "本部门数据":
         from app.core.department_visibility import visible_department_names
         department_names = await visible_department_names(user.username, user.department, db)
-        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.department.in_(department_names), public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, coordinated_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
+        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.department.in_(department_names), public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, coordinated_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, assisted_clue, pending_contract_approval))]
     if scope == "授权审批数据":
         # Approval range is not a blanket view of every pending record.  A
         # contract becomes visible here only for its current pending approver;
         # other modules retain their own owner/share/participant projections
         # until they expose an equally concrete candidate relation.
-        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, coordinated_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
-    return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, coordinated_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, pending_contract_approval))]
+        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, coordinated_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, assisted_clue, pending_contract_approval))]
+    return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, coordinated_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, assisted_clue, pending_contract_approval))]
 
 
 async def _visible_legacy_ipr_case_ids(identity: dict, db: AsyncSession) -> set[int]:
@@ -1099,6 +1115,8 @@ async def _require_record_owner_or_manager(record: BusinessRecord, identity: dic
         permission = await _permission_payload_for_identity(identity, db)
         if _record_module_menu_allowed("customer", identity, permission):
             return
+    if record.module == "clue" and identity["username"].lower() in {name.lower() for name in clue_assistant_usernames(record.data)}:
+        return
     if identity.get("role") == "admin" or record.owner == identity["username"] or (
         record.module == "customer" and identity["username"] in [
             *((record.data or {}).get("customer_managers") or []), *((record.data or {}).get("coordinators") or [])]

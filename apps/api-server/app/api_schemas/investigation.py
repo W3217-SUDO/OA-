@@ -100,6 +100,13 @@ class InvestigationAssignmentInput(BaseModel):
     comment: str = ""
 
 
+class ClueAssistantInput(BaseModel):
+    """BUG20261030017：给线索设置调查辅助员（可多人、可多条线索），原调查员不变。"""
+    clue_ids: list[int] = Field(min_length=1, max_length=200)
+    assistants: list[str] = Field(default_factory=list, max_length=10)
+    comment: str = Field(default="", max_length=500)
+
+
 class InvestigationBatchDeleteInput(BaseModel):
     record_ids: list[int] = Field(min_length=1, max_length=100)
     comment: str = ""

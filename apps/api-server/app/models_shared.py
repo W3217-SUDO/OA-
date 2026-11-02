@@ -143,6 +143,7 @@ from app.api_schemas.investigation import (
     ClueCaseContractResolveInput as ClueCaseContractResolveInput,
     ClueSourceContractBindingInput as ClueSourceContractBindingInput,
     InvestigationAssignmentInput as InvestigationAssignmentInput,
+    ClueAssistantInput as ClueAssistantInput,
     InvestigationBatchDeleteInput as InvestigationBatchDeleteInput,
     InvestigationFeeInput as InvestigationFeeInput,
     ClueBatchSubmitInput as ClueBatchSubmitInput,

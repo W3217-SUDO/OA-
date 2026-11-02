@@ -152,7 +152,10 @@ async def list_records(
         # "My investigation clues" is an actor projection for every role,
         # including administrators.  Elevated data access must not turn a
         # personal queue into the company-wide clue list.
-        conditions.append(func.lower(BusinessRecord.owner) == identity["username"].lower())
+        # 调查辅助员也在自己的“我的调查线索”里看到这条线索（BUG20261030017，同旧系统）。
+        from app.core.permissions import clue_assistant_condition
+        conditions.append(or_(func.lower(BusinessRecord.owner) == identity["username"].lower(),
+                              clue_assistant_condition(identity["username"])))
     if module in {"investigation", "task"} and investigation_view:
         publisher_expr = func.lower(func.coalesce(BusinessRecord.data["publisher"].as_string(), ""))
         legacy_publisher_missing = or_(
