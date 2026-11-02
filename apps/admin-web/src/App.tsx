@@ -2027,6 +2027,7 @@ export default function App() {
         initialView={nonlitigationFinanceRoutes[active].view}
         titleOverride={`非诉财务中心 · ${nonlitigationFinanceRoutes[active].title}`}
         receiptReadOnly={active === "ipr-finance-receipts-mine"}
+        nonlitigation
         onNavigate={navigate}
       />
     ) : route === "ipr-office-files" ? (

@@ -170,6 +170,8 @@ type FinanceCenterPageProps = {
   titleOverride?: string;
   /** 非诉“我的回款”只查看，不带回款管理的编辑、删除。 */
   receiptReadOnly?: boolean;
+  /** 非诉财务中心的页面：列表加非诉专有列（费用细类、年费年度、起止年度）。 */
+  nonlitigation?: boolean;
   onNavigate?: (route: string) => void;
 };
 
@@ -204,6 +206,7 @@ function FinanceCenterContent({
   dashboardQueue = "",
   titleOverride,
   receiptReadOnly = false,
+  nonlitigation = false,
   onNavigate,
 }: FinanceCenterPageProps) {
   const financeScope = platformMode ? "platform" : "firm";
@@ -4245,7 +4248,19 @@ function FinanceCenterContent({
       }
     />
   );
-  const originalColumns = activeRouteConfig
+  // 501099：非诉页面的费用类列表加非诉专有列（恒达老费用和知识产权费用的 expense_subtype、annual_*）。
+  const nonlitigationColumns = nonlitigation && !initialView.startsWith("finance-receipts") ? [
+    { title: "费用细类", key: "nonlitigation-expense-subtype", width: 140,
+      render: (_: unknown, row: OriginalFinanceRow) => row?.data?.expense_subtype || "—" },
+    { title: "年费年度", key: "nonlitigation-annual-year", width: 90,
+      render: (_: unknown, row: OriginalFinanceRow) => row?.data?.annual_year ?? "—" },
+    { title: "起止年度", key: "nonlitigation-annual-range", width: 120,
+      render: (_: unknown, row: OriginalFinanceRow) => {
+        const from = row?.data?.annual_from, end = row?.data?.annual_end;
+        return from || end ? `${from ?? ""}–${end ?? ""}` : "—";
+      } },
+  ] : [];
+  const originalColumns = [...(activeRouteConfig
     ? configuredColumns
     : originalKind === "internal"
       ? internalOriginalColumns
@@ -4253,7 +4268,7 @@ function FinanceCenterContent({
         ? feeQueryOriginalColumns
         : initialView === "finance-payment-audit"
           ? paymentAuditOriginalColumns
-          : paymentOriginalColumns;
+          : paymentOriginalColumns), ...nonlitigationColumns];
   const isInternalHistoryList = [
     "finance-internal-refused",
     "finance-internal-void",
