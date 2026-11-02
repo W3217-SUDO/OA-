@@ -380,7 +380,7 @@
 }
 /* 8.12-row2-scroll-layout */
 .page-workbench:has(.case-original-layout) { overflow: hidden; }
-.page-workbench > .case-original-layout { height: 100%; min-height: 0; }
+.page-workbench > .workspace-page > .case-original-layout { height: 100%; min-height: 0; }
 .case-original-layout > .case-original-panel { display: flex; min-height: 0; flex-direction: column; }
 .case-original-layout > .case-original-panel > .ant-card-body { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; }
 .case-original-layout .case-original-table { min-height: 0; }
@@ -390,7 +390,7 @@
 /* 归档队列固定筛选和操作区，只有桌面表体使用剩余高度；窄屏保留整页滚动。 */
 @media(min-width:768px){
   .page-workbench:has(>.case-archive-page){overflow:hidden}
-  .page-workbench>.case-archive-page{height:100%;min-height:0}
+  .page-workbench > .workspace-page > .case-archive-page{height:100%;min-height:0}
   .case-archive-page>.case-archive-panel{display:flex;height:100%;min-height:0;flex-direction:column;overflow:hidden}
   .case-archive-panel>.ant-card-head{flex:0 0 auto}
   .case-archive-panel>.ant-card-body{display:flex;min-height:0;flex:1 1 auto;flex-direction:column;overflow:auto}
@@ -406,7 +406,7 @@
 
 /* 8.12 row 2 rework: keep detail controls and summaries fixed; scroll records only. */
 .page-workbench:has(.case-detail-static-root){overflow:hidden}
-.page-workbench > .case-center-page:has(.case-detail-static-root){height:100%;min-height:0}
+.page-workbench > .workspace-page > .case-center-page:has(.case-detail-static-root){height:100%;min-height:0}
 .case-detail-static-root{position:absolute!important;inset:0!important;width:100%;height:100%!important;min-height:0;overflow:hidden}
 .case-detail-static-root .ant-drawer-content-wrapper{height:100%!important}
 .case-detail-static-root .ant-drawer-content{display:flex;height:100%;min-height:0;flex-direction:column}
@@ -463,7 +463,7 @@
 /* 手机案件列表保留同一份筛选和表格，仅切换排布与滚动容器。 */
 @media(max-width:767px){
   .page-workbench:has(.case-original-layout){overflow:auto;scrollbar-gutter:auto}
-  .page-workbench>.case-center-page:has(.case-original-layout){height:auto;min-height:0}
+  .page-workbench > .workspace-page > .case-center-page:has(.case-original-layout){height:auto;min-height:0}
   .case-original-layout,
   .case-original-layout.case-phase-collapsed{grid-template-columns:minmax(0,1fr);width:100%;max-width:100%;height:auto;min-height:0;gap:8px}
   .case-original-layout>.case-original-panel,

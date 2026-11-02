@@ -12,7 +12,7 @@ const MAX_PAGES = 30;
 // 页面打开期间读出页面上的按钮和标签页名称，反馈时勾选哪个页面就能点选那个页面的“哪个按钮有问题”。
 // 分页按钮跳过；名称里的统计数字（“(2021)”“433件”“595”）会变，去掉。
 function collectPageControls(): string[] {
-  const root = document.querySelector("main.page-workbench");
+  const root = document.querySelector("main.page-workbench > .workspace-page:not(.is-cached)") || document.querySelector("main.page-workbench");
   if (!root) return [];
   const names: string[] = [];
   root.querySelectorAll<HTMLElement>("button, [role=tab], .ant-tabs-tab-btn, .ant-segmented-item-label").forEach((element) => {

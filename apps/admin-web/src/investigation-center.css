@@ -8,7 +8,7 @@
 .page-workbench:has(.investigation-original) {
   overflow: hidden;
 }
-.page-workbench > .investigation-original {
+.page-workbench > .workspace-page > .investigation-original {
   display: flex;
   width: 100%;
   max-width: 100%;
@@ -17,7 +17,7 @@
   min-height: 0;
   flex-direction: column;
 }
-.page-workbench > .investigation-original > .ant-card-body {
+.page-workbench > .workspace-page > .investigation-original > .ant-card-body {
   display: flex;
   width: 100%;
   max-width: 100%;
@@ -31,7 +31,7 @@
   min-width: 0;
   min-height: 0;
 }
-.page-workbench > .ant-card.investigation-original > .ant-card-body > .ant-table-wrapper {
+.page-workbench > .workspace-page > .ant-card.investigation-original > .ant-card-body > .ant-table-wrapper {
   display: flex;
   width: 100%;
   max-width: 100%;

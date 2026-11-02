@@ -255,8 +255,8 @@
 }
 /* 8.12-row2-scroll-layout */
 .page-workbench:has(.contract-original-panel) { overflow: hidden; }
-.page-workbench > .contract-original-panel { display: flex; height: 100%; min-height: 0; flex-direction: column; }
-.page-workbench > .contract-original-panel > .ant-card-body { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; }
+.page-workbench > .workspace-page > .contract-original-panel { display: flex; height: 100%; min-height: 0; flex-direction: column; }
+.page-workbench > .workspace-page > .contract-original-panel > .ant-card-body { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; }
 .contract-original-panel .ant-table-wrapper { min-width: 0; min-height: 0; overflow: auto; }
 .contract-finance-page { width: 100%; min-width: 0; padding: 12px; background: var(--oa-surface); }
 .contract-finance-page > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--oa-border); margin-bottom: 20px; padding-bottom: 10px; }

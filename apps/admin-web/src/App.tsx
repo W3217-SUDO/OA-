@@ -5,8 +5,11 @@ import {
   Component,
   lazy,
   Suspense,
+  useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ComponentType,
   type ReactNode,
@@ -16,6 +19,7 @@ import {
   Badge,
   Button,
   Card,
+  ConfigProvider,
   Dropdown,
   Form,
   Input,
@@ -794,6 +798,30 @@ function filterMenuByGrantedKeys(items: NavItem[], grantedKeys: Set<string>, inc
 type RenderableMenuItem = Omit<NavItem, "label" | "children"> & { label: ReactNode; children?: RenderableMenuItem[] };
 
 // Legacy sidebar double-click reloads the workspace page bound to the menu leaf.
+const KEEP_ALIVE_PAGES = 8;
+
+/** 页签页面容器：不在前台的页面隐藏但不销毁，弹窗、抽屉、下拉也放在本页里，跟着一起隐藏；
+ * 切回时恢复离开前的页面滚动位置（BUG20261102003）。 */
+function CachedWorkspacePage({ active, children }: { active: boolean; children: ReactNode }) {
+  const root = useRef<HTMLDivElement>(null);
+  const savedScroll = useRef<{ element: Element | null; top: number }>({ element: null, top: 0 });
+  useLayoutEffect(() => {
+    const scroller = document.scrollingElement;
+    const content = root.current?.closest(".content") || null;
+    if (!active) return;
+    const saved = savedScroll.current;
+    if (saved.element) saved.element.scrollTop = saved.top;
+    return () => {
+      const element = content && content.scrollHeight > content.clientHeight ? content : scroller;
+      savedScroll.current = { element, top: element ? element.scrollTop : 0 };
+    };
+  }, [active]);
+  const popupContainer = useCallback(() => root.current || document.body, []);
+  return <div ref={root} className={active ? "workspace-page" : "workspace-page is-cached"} aria-hidden={active ? undefined : true}>
+    <ConfigProvider getPopupContainer={popupContainer}>{children}</ConfigProvider>
+  </div>;
+}
+
 function menuItemsWithDoubleClickReload(
   items: NavItem[],
   onReload: (item: NavItem) => void,
@@ -1405,6 +1433,10 @@ export default function App() {
   const [contractDetailTarget, setContractDetailTarget] = useState<ContractDetailNavigationContext | null>(null);
   const [openPages, setOpenPages] = useState<OpenPage[]>(() => readOpenPages(routeFromLocation()));
   const [workspaceReloadKey, setWorkspaceReloadKey] = useState(0);
+  const freshPageRoutes = useRef(new Set<string>());
+  const alivePagesRef = useRef<{ route: string; key: number }[]>([]);
+  const pageGeneration = useRef(0);
+  const reloadSeen = useRef(0);
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false);
   const [isNarrowViewport, setIsNarrowViewport] = useState(() => window.matchMedia("screen and (max-width: 991.98px)").matches);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -1669,8 +1701,10 @@ export default function App() {
     const pageTitle = resolveWorkspacePageLabel(active, effectiveMenuItems, personalAgentName);
     document.title = siteBrand.code === "huzhi" ? `${pageTitle} · ${siteBrand.name}` : pageTitle;
   }, [active, effectiveMenuItems, loggedIn, siteBrand, personalAgentName]);
-  const navigate = (route: string) => {
+  // reuse=true（点顶部页签、点侧栏菜单）：已打开的页面原样切回；其他入口（链接、待办带目标）按目标重新打开（BUG20261102003）。
+  const navigate = (route: string, options?: { reuse?: boolean }) => {
     const normalizedRoute = resolveGrantedMenuRoute(normalizeWorkspaceRoute(route), effectiveMenuItems, grantedMenuKeys, permissionAdministrator);
+    if (!options?.reuse) freshPageRoutes.current.add(normalizedRoute);
     setMobileSidebarOpen(false);
     setSidebarHoverExpanded(false);
     if (normalizedRoute === "contract-new") {
@@ -1787,6 +1821,8 @@ export default function App() {
     setWorkspaceReloadKey((value) => value + 1);
   });
   const accountProfileRoute = grantedMenuKeys.has("user-account") ? "user-account" : "user-center";
+  // 每个已打开页签各自渲染一份，切回来时界面原样（BUG20261102003）。
+  const renderWorkspacePage = (active: string) => {
   const route = canonicalRoute(active);
   const dashboardTarget = dashboardWorkspace(active);
   const requestedPage =
@@ -1935,7 +1971,23 @@ export default function App() {
         <UnknownPageMessage route={active} />
       </Card>
     );
-  const currentPage = requestedPage;
+  return requestedPage;
+  };
+  // 最近打开的页签页面留在内存里（最多 KEEP_ALIVE_PAGES 个），切换页签不重建；
+  // 带目标进入、刷新、双击侧栏菜单时重新打开；关掉页签就释放（BUG20261102003）。
+  const openPageKeys = new Set([active, ...visibleOpenPages.map((item) => item.key)]);
+  let alivePages = alivePagesRef.current.filter((entry) => openPageKeys.has(entry.route));
+  const activeEntry = alivePages.find((entry) => entry.route === active);
+  if (!activeEntry || freshPageRoutes.current.has(active) || reloadSeen.current !== workspaceReloadKey) {
+    pageGeneration.current += 1;
+    alivePages = [{ route: active, key: pageGeneration.current }, ...alivePages.filter((entry) => entry.route !== active)];
+  } else {
+    alivePages = [activeEntry, ...alivePages.filter((entry) => entry.route !== active)];
+  }
+  freshPageRoutes.current.delete(active);
+  reloadSeen.current = workspaceReloadKey;
+  alivePages = alivePages.slice(0, KEEP_ALIVE_PAGES);
+  alivePagesRef.current = alivePages;
   const refreshCurrentPage = () => {
     setWorkspaceReloadKey((value) => value + 1);
     window.dispatchEvent(new CustomEvent("sunhold:route-reselect", { detail: active }));
@@ -1991,7 +2043,7 @@ export default function App() {
           hideAdd
           size="small"
           activeKey={active}
-          onChange={navigate}
+          onChange={(key) => navigate(key, { reuse: true })}
           onEdit={(target, action) => action === "remove" && closeOpenPage(String(target))}
           items={visibleOpenPages.map((item) => ({
             key: item.key,
@@ -2216,7 +2268,7 @@ export default function App() {
                 if (isNarrowViewport) setMobileSidebarOpen(false);
                 return;
               }
-              navigate(key);
+              navigate(key, { reuse: true });
               if (isNarrowViewport) setMobileSidebarOpen(false);
             }}
           />
@@ -2261,11 +2313,15 @@ export default function App() {
           </div>}
           <main className="page-workbench">
             <PersonalWorkspaceProvider key={sessionUser?.username || ""}>
-              <PageLoadBoundary key={`${active}:${workspaceReloadKey}`}>
-                <Suspense fallback={<div className="loading">正在加载页面...</div>}>
-                  {currentPage}
-                </Suspense>
-              </PageLoadBoundary>
+              {alivePages.map((entry) => (
+                <CachedWorkspacePage key={entry.route} active={entry.route === active}>
+                  <PageLoadBoundary key={`${entry.route}:${entry.key}`}>
+                    <Suspense fallback={<div className="loading">正在加载页面...</div>}>
+                      {renderWorkspacePage(entry.route)}
+                    </Suspense>
+                  </PageLoadBoundary>
+                </CachedWorkspacePage>
+              ))}
             </PersonalWorkspaceProvider>
           </main>
         </Content>

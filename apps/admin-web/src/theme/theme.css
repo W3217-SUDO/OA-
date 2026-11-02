@@ -595,14 +595,14 @@ body {
 }
 
 /* 页面主卡片：标题区更透气，列表区与按钮区留出统一间距。 */
-.page-workbench > .ant-card > .ant-card-head {
+.page-workbench > .workspace-page > .ant-card > .ant-card-head {
   min-height: 48px;
   padding-inline: 16px;
 }
-.page-workbench > .ant-card > .ant-card-head .ant-card-head-title {
+.page-workbench > .workspace-page > .ant-card > .ant-card-head .ant-card-head-title {
   font-size: 15px;
 }
-.page-workbench > .ant-card > .ant-card-body {
+.page-workbench > .workspace-page > .ant-card > .ant-card-body {
   padding: 14px 16px;
 }
 :root :is(.case-bottom-actions, .contract-bottom-actions, .task-bottom-actions, .customer-footer-actions) {
@@ -630,7 +630,8 @@ body {
 }
 
 /* 弹窗：表单更紧凑，内容超过一屏时在弹窗内部滚动，标题和按钮始终可见。 */
-body > div > .ant-modal-root .ant-modal:not(.ant-modal-confirm) .ant-modal-body {
+body > div > .ant-modal-root .ant-modal:not(.ant-modal-confirm) .ant-modal-body,
+.workspace-page > div > .ant-modal-root .ant-modal:not(.ant-modal-confirm) .ant-modal-body {
   max-height: calc(100dvh - 240px);
   overflow-x: hidden;
   overflow-y: auto;
@@ -698,7 +699,7 @@ body > div > .ant-modal-root .ant-modal:not(.ant-modal-confirm) .ant-modal-body 
   row-gap: 8px;
   justify-content: flex-end;
 }
-.page-workbench > .ant-card > .ant-card-head:has(.ant-card-extra) {
+.page-workbench > .workspace-page > .ant-card > .ant-card-head:has(.ant-card-extra) {
   padding-block: 8px;
 }
 
@@ -710,7 +711,7 @@ body > div > .ant-modal-root .ant-modal:not(.ant-modal-confirm) .ant-modal-body 
 :root .page-workbench:has(> .investigation-original) > * {
   flex: 0 0 auto;
 }
-:root .page-workbench > .investigation-original {
+:root .page-workbench > .workspace-page > .investigation-original {
   flex: 1 1 auto;
   height: auto;
   min-height: 0;
