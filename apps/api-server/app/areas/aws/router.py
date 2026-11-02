@@ -762,3 +762,6 @@ router.include_router(receipt_sources_router)
 router.include_router(court_service_router)
 router.include_router(court_intake_router)
 router.include_router(legacy_seals_router)
+# 501147：今日收文（与本人有关的案件），放在最后，不改变前面路由切片的序号。
+from app.areas.aws.my_today_receipts import router as my_today_receipts_router  # noqa: E402
+router.include_router(my_today_receipts_router)

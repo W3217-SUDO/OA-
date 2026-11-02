@@ -1095,6 +1095,14 @@ async def _my_tasks(run: Run, args: dict) -> dict:
             "groups": {name: items for name, items in groups.items() if items}}
 
 
+@business_tool("biz_my_today_receipts", "今日收文",
+               "查与我有关的案件（我是负责人、经办律师、开庭律师或律师助理）今天收到的法院文书，不含全公司其他案件；"
+               "可传 day 查别的日期。用户点“查询今日收文”时用它。",
+               {"day": _desc(DATE, "日期，默认今天")}, write=False, uses=("oa_list_my_today_receipts_get",))
+async def _my_today_receipts(run: Run, args: dict) -> dict:
+    return await run.read("oa_list_my_today_receipts_get", {"query": _drop_empty({"day": args.get("day")})}, "与我有关案件的今日收文")
+
+
 @business_tool("biz_task_postpone", "任务延期",
                "延期我负责的未完成任务：改截止日期，不需要发起人同意（陶国南 11-02）。新截止日期不能早于今天、不能超过今天起 30 天；"
                "可一次延期多条，都改到同一天。",

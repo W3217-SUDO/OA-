@@ -372,6 +372,8 @@ export function usePersonalWorkspace() {
       return next;
     },
     renameConversation: (target: string, title: string) => conversations.rename(target, title),
+    // 501147（tgn 22:27）：进入智能体默认是新对话框；第一次发送时才真正建会话，不留空会话。
+    startBlank: () => runtime.activate({ conversation_id: null, messages: [], pending_actions: [], dismissed_action_ids: [], workspace: PERSONAL_CONVERSATION_WORKSPACE }),
     openCourtIntake: (target: string) => changeConversation(async () => {
       const next = target === state.conversation_id ? state : await conversations.select(target);
       updateDraft(conversationDraftKey(target, conversations.capture().workspace), "skillId", COURT_INTAKE_SKILL);

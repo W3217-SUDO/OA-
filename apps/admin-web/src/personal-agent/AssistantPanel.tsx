@@ -20,7 +20,7 @@ import { McpConnectionTurn } from "./McpConnectionTurn";
 import { agentOperationMessage, responseErrorMessage, userFacingAgentText } from "../AgentOperationPreview";
 import { errorText, mentionedCaseSerial, workspaceDocumentSaveTarget, type CaseAgentConversationSummary, type ConfirmationDetail, type PendingAction, type WorkspaceMessage, type WorkspaceState } from "./types";
 import type { usePersonalWorkspace } from "./usePersonalWorkspace";
-import { COURT_INTAKE_SKILL, taskEntryForSkill } from "../agentSkillRouting";
+import { COURT_INTAKE_SKILL, NEW_CONVERSATION_COMMANDS, taskEntryForSkill } from "../agentSkillRouting";
 import "./assistant-panel.css";
 
 export type { AssistantSuggestion };
@@ -89,6 +89,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
     mcp.close(); setCaseSession(null); void workspace.startTaskEntry(skillId).catch((error: Error) => message.warning(error.message));
   };
   const activeTaskEntry = taskEntryForSkill(workspace.skillId);
+  const userName = workspace.status?.identity?.display_name || "";
   const openIntake = (id: string) => { mcp.close(); setCaseSession(null); void workspace.openCourtIntake(id).catch((error: Error) => message.warning(error.message)); };
   const lastMessage = state.messages[state.messages.length - 1];
   const displayedState = caseSession?.state || state;
@@ -296,6 +297,9 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         {intakeMode ? <div className="assistant-workspace-greeting"><h1>收文助手</h1><p>把法院送达短信或链接粘贴到下面，我会自动下载文书、匹配案件、收文入库并回填法院案号和开庭；缴费通知会先问你再提交缴纳。</p></div>
           : activeTaskEntry ? <div className="assistant-workspace-greeting"><h1>{activeTaskEntry.label}</h1><p>{activeTaskEntry.greeting}</p></div>
           : desktopWorkspace ? <div className="assistant-workspace-greeting"><h1>今天想处理什么？</h1>
+            <div className="assistant-new-commands" role="group" aria-label="固定指令">
+              {NEW_CONVERSATION_COMMANDS.map((command) => <Button key={command.label} type="primary" ghost disabled={sendBlocked} onClick={() => submit(command.prompt)}>{command.label}</Button>)}
+            </div>
             <TaskEntryCards entries={workspace.taskEntries || []} disabled={sending} onStart={startTask} /></div>
           : <AssistantStart suggestions={suggestions} disabled={sending} onPick={submit} taskEntries={workspace.taskEntries || []} onStartTask={startTask} />}
         {!desktopWorkspace && !intakeMode && !activeTaskEntry && <div className="assistant-mobile-empty">
@@ -328,12 +332,13 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
               const documentTarget = workspaceDocumentSaveTarget(item);
               return (
                 <div key={`${item.created_at || "message"}-${index}`} className={`assistant-message is-${item.role}`}>
+                  {item.role === "user" && desktopWorkspace && <div className="assistant-message-avatar is-user" role="img" aria-label={userName || "我"}>{(userName || "我").slice(-2)}</div>}
                   {item.role === "assistant" && <div className="assistant-message-avatar" role="img" aria-label={name || "AI助手"}>
                     {logoSrc ? <img src={logoSrc} alt="" width={32} height={32} /> : <AgentAvatar size={32} />}
                   </div>}
                   <div className={`assistant-bubble${item.failed ? " is-failed" : ""}${thinking ? " is-thinking" : ""}`}>
                     {/* 501147（tgn 22:29）：像聊天一样显示说话人，双方颜色不同。 */}
-                    {desktopWorkspace && <div className="assistant-message-name">{item.role === "user" ? "我" : (name || "AI助手")}</div>}
+                    {desktopWorkspace && <div className="assistant-message-name">{item.role === "user" ? (userName || "我") : (name || "AI助手")}</div>}
                     {item.content
                       ? <MessageText content={item.content} />
                       : (thinking ? <span className="assistant-thinking" role="status" title={progressText}><span>{progressText}</span></span> : "")}

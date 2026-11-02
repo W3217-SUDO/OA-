@@ -17,7 +17,8 @@ export default function AiChatPage({ onReturnWorkbench, focusRequested, onFocusH
   const workspace = usePersonalWorkspaceContext();
   useEffect(() => {
     if (!desktop) return;
-    void workspace.setProjectMode(true);
+    // 501147（tgn 22:27）：每次进入智能体默认打开新对话框，不进上次的会话。
+    void workspace.setProjectMode(true).then(() => workspace.startBlank?.());
     return () => { void workspace.setProjectMode(false); };
   }, [desktop]);
   return (
