@@ -17,6 +17,14 @@ _CASE_DATES = (
 
 # 键同时绑定方法、路径及处理函数，避免同名函数或路由别名套用业务说明。
 _GUIDANCE = {
+    ("POST", "/cases/{case_id}/ai-space/online-filing-prep", "prepare_online_filing"): {
+        "title": "网上立案材料准备（立案信息表、立案材料清单）",
+        "purpose": "按“人民法院在线服务”网上立案的填写顺序，从本案数据整理立案信息表和立案材料清单，生成 Word 存到案件 AI 空间；不生成起诉状，不登录、不提交。",
+        "usage": ["body.instance 填“一审”或“二审”；先不带 confirm 预览，把待补充栏目和缺的材料告诉律师。",
+                  "预览里证件号、信用代码、手机号只显示“已有”，原文只写进 Word。",
+                  "律师同意后带 body.confirm=true 再调用，会生成确认卡片，律师确认后保存 Word。"],
+        "prerequisites": ["先确认是哪个案件（path.case_id）以及一审还是二审。"],
+    },
     ("GET", "/agent/system-skills/{skill_id}/resources", "read_system_skill_resource"): {
         "title": "读取系统技能参考资料",
         "purpose": "按当前选中系统技能的资料目录，读取固定上游版本的完整原文参考资料，不执行脚本。",

@@ -38,7 +38,7 @@ from app.core.dependencies import (
 from app.models_shared import (
     AttachmentBatchInput,
     CaseAiDraftCreateInput,
-    CaseAiDraftFromPersonalInput,
+    CaseAiDraftFromPersonalInput, CaseOnlineFilingPrepInput,
     CaseAiDraftPromoteInput,
     CaseAiDraftUpdateInput,
     CaseAttachmentMoveInput,
@@ -214,6 +214,49 @@ async def create_case_ai_draft(
     )
     item = result["attachment"]
     return {**_attachment_dict(item, record), "content_editable": True}
+
+
+@router.post(f"{settings.api_prefix}/cases/{{case_id}}/ai-space/online-filing-prep", status_code=status.HTTP_201_CREATED)
+async def prepare_online_filing(
+    case_id: int, body: CaseOnlineFilingPrepInput,
+    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    """网上立案材料准备：按“人民法院在线服务”网上立案的填写顺序，生成“立案信息表 + 立案材料清单”Word 存到案件 AI 空间。
+
+    不带 confirm 只预览（证件号、信用代码、手机号只说已有/待补充，不返回原文）；用户确认后带 confirm=true 才生成 Word。
+    只准备材料，不登录法院平台、不代为提交，由律师本人在平台上提交（陶国南 11-01 定）。
+    """
+    from app.core.cases import _case_ai_draft_name
+    from app.core.generated_file_storage import save_generated_file
+    from app.core.online_filing_prep import build_sheet, masked_rows, render_docx
+    from app.core.permissions import _ensure_record_module, _require_case_attachment_upload_access
+    from app.core.storage import _attachment_dict
+
+    record = await _ensure_record_module(case_id, "case", identity, db)
+    sheet = await build_sheet(record, body.instance, db)
+    missing = sum(1 for _label, value, _source in sheet.rows if value == "【待补充】")
+    absent = [label for label, state, _note in sheet.materials if state == "缺"]
+    preview = {"case_no": record.serial_no, "instance": body.instance, "rows": masked_rows(sheet),
+               "materials": [{"材料": label, "状态": state, "说明": note} for label, state, note in sheet.materials],
+               "summary": f"立案信息表 {len(sheet.rows)} 项，其中待补充 {missing} 项；材料 {len(sheet.materials)} 项，缺 {len(absent)} 项"}
+    if not body.confirm:
+        return {**preview, "status": "预览",
+                "next_step": "把待补充的栏目和缺的材料告诉律师；律师同意后带 confirm=true 再调用，生成 Word 存到案件 AI 空间。"}
+    await _require_case_attachment_upload_access(record, identity, db)
+    name = _case_ai_draft_name(f"{record.serial_no}_网上立案材料准备_{body.instance}.docx")
+
+    async def on_available(session, item):
+        item.remark = "网上立案材料准备（立案信息表、立案材料清单），由律师本人登录法院平台提交"
+        session.add(WorkflowEvent(
+            record_id=record.id, action="生成网上立案材料准备", from_status=record.status,
+            to_status=record.status, operator=identity["username"], comment=name,
+        ))
+
+    result = await save_generated_file(
+        db, identity, name=name, content=render_docx(record, sheet), content_type=WORD_DOCUMENT_CONTENT_TYPE,
+        source_kind="case_draft", case_record=record, on_available=on_available,
+    )
+    return {**preview, "status": "已生成", "file": _attachment_dict(result["attachment"], record)}
 
 
 @router.post(f"{settings.api_prefix}/cases/{{case_id}}/ai-space/files/from-personal", status_code=status.HTTP_201_CREATED)

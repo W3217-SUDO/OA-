@@ -139,12 +139,34 @@ CASE_FEE_INVOICE_SKILL = AgentSkill(
 )
 
 
+ONLINE_FILING_PREP_SKILL = AgentSkill(
+    id="online-filing-prep",
+    name="网上立案材料准备",
+    category="诉讼",
+    description="按“人民法院在线服务”网上立案的填写顺序，生成立案信息表和立案材料清单（Word），由律师本人登录平台提交",
+    source="system:online-filing-prep",
+    available=True,
+    unavailable_reason="",
+    instruction=(
+        "你在帮律师准备网上立案材料（陶国南 11-01 定）。只准备材料：不登录“人民法院在线服务”、不替律师提交、不生成起诉状或上诉状。"
+        "先支持知识产权侵权民事案件的一审（起诉）和二审（上诉），不清楚是哪一审就问律师。"
+        "用 oa_search_tools 搜“网上立案材料准备”，调用 POST /cases/{case_id}/ai-space/online-filing-prep："
+        "第一次不带 confirm，只传 instance（一审/二审），拿到预览后把“待补充”的栏目和“缺”的材料简短列给律师，"
+        "预览里证件号、信用代码、手机号只显示“已有”，不要追问原文；律师同意后用相同参数加 confirm=true 再调用，"
+        "系统会弹确认卡片，律师点确认后 Word 存到案件 AI 空间。Word 只有两部分：立案信息表（管辖建议是表里一行）和立案材料清单。"
+        "最后提醒律师：按 Word 在平台上逐项复制粘贴、上传材料，起诉状/上诉状须当事人签字盖章后扫描上传，栏目以提交时平台页面为准。"
+    ),
+    quick_prompts=("准备一审网上立案材料", "准备二审上诉网上立案材料"),
+)
+
+
 AGENT_SKILLS: tuple[AgentSkill, ...] = (
     GENERAL_SKILL,
     TRIAL_PREP_SKILL,
     COURT_DOC_INTAKE_SKILL,
     CUSTOMER_CONTRACT_CASE_SKILL,
     CASE_FEE_INVOICE_SKILL,
+    ONLINE_FILING_PREP_SKILL,
     AgentSkill(
         id="legal-document-drafting",
         name="法律文书起草",

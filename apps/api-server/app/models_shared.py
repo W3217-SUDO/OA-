@@ -192,6 +192,7 @@ from app.api_schemas.case_documents import (
     CaseAttachmentMoveInput as CaseAttachmentMoveInput,
     CaseAiDraftCreateInput as CaseAiDraftCreateInput,
     CaseAiDraftFromPersonalInput as CaseAiDraftFromPersonalInput,
+    CaseOnlineFilingPrepInput as CaseOnlineFilingPrepInput,
     CaseAiDraftUpdateInput as CaseAiDraftUpdateInput,
     CaseAiDraftPromoteInput as CaseAiDraftPromoteInput,
     WordEditorTextBlockInput as WordEditorTextBlockInput,
