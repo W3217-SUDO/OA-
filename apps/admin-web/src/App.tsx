@@ -92,6 +92,7 @@ import AiChatPage from "./personal-agent/AiChatPage";
 import { PersonalWorkspaceProvider } from "./personal-agent/PersonalWorkspaceProvider";
 import "./personal-agent/mobile-chat-layout.css";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
+import { ROUTE_RESET_EVENT } from "./routeReset";
 
 function reloadAppShell() {
   const url = new URL(window.location.href);
@@ -799,7 +800,7 @@ function filterMenuByGrantedKeys(items: NavItem[], grantedKeys: Set<string>, inc
 type RenderableMenuItem = Omit<NavItem, "label" | "children"> & { label: ReactNode; children?: RenderableMenuItem[] };
 
 // Legacy sidebar double-click reloads the workspace page bound to the menu leaf.
-const KEEP_ALIVE_PAGES = 8;
+const KEEP_ALIVE_PAGES = 15;
 
 /** 页签页面容器：不在前台的页面隐藏但不销毁，弹窗、抽屉、下拉也放在本页里，跟着一起隐藏；
  * 切回时恢复离开前的页面滚动位置（BUG20261102003）。 */
@@ -1436,6 +1437,15 @@ export default function App() {
   const [openPages, setOpenPages] = useState<OpenPage[]>(() => readOpenPages(routeFromLocation()));
   const [workspaceReloadKey, setWorkspaceReloadKey] = useState(0);
   const freshPageRoutes = useRef(new Set<string>());
+  // 页面要求下次打开时重建（如新建案件保存后，新建页不留着已填的内容）。
+  useEffect(() => {
+    const resetRoute = (event: Event) => {
+      const route = String((event as CustomEvent).detail || "");
+      if (route) freshPageRoutes.current.add(route);
+    };
+    window.addEventListener(ROUTE_RESET_EVENT, resetRoute);
+    return () => window.removeEventListener(ROUTE_RESET_EVENT, resetRoute);
+  }, []);
   const alivePagesRef = useRef<{ route: string; key: number }[]>([]);
   const pageGeneration = useRef(0);
   const reloadSeen = useRef(0);
@@ -1915,9 +1925,9 @@ export default function App() {
     ) : route === "ipr-custom-file-import" ? (
       <IprCustomFileImportPage />
     ) : route === "ipr-case-reboot" ? (
-      <IprCaseRebootPage />
+      <IprCaseRebootPage onNavigate={navigate} />
     ) : route === "ipr-patent-annual-fee" ? (
-      <IprAnnualFeePage />
+      <IprAnnualFeePage onNavigate={navigate} />
     ) : route.startsWith(IPR_CASE_TAB_PREFIX) ? (
       <IprCenterPage key={active} initialView={parseIprCaseDetailRoute(active)?.kind === "商标" ? "ipr-trademark" : "ipr-patent"}
         detailCaseId={parseIprCaseDetailRoute(active)?.id} onNavigate={(target) => navigate(target, { reuse: true })} />

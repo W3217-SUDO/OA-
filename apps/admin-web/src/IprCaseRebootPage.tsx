@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Alert, Button, Card, Descriptions, Form, Input, Space, Steps, message } from "antd";
 import { api } from "./api";
+import { iprCaseDetailRoute } from "./ipr/iprCaseTabs";
 
 // BUG20261030004：知识产权中心“案件重提”单独菜单，照老系统 输入原案号 → 确认案件信息 → 重提。
 type RebootLookup = {
@@ -20,7 +21,7 @@ type RebootLookup = {
 
 const errorDetail = (error: any, fallback: string) => error?.response?.data?.detail || fallback;
 
-export default function IprCaseRebootPage() {
+export default function IprCaseRebootPage({ onNavigate }: { onNavigate?: (route: string) => void }) {
   const [caseNo, setCaseNo] = useState("");
   const [lookup, setLookup] = useState<RebootLookup | null>(null);
   const [created, setCreated] = useState<{ id: number; serial_no: string; case_kind: string } | null>(null);
@@ -69,10 +70,7 @@ export default function IprCaseRebootPage() {
 
   const openCreated = () => {
     if (!created) return;
-    const params = new URLSearchParams(window.location.search);
-    params.set("page", created.case_kind === "商标" ? "ipr-trademark" : "ipr-patent");
-    params.set("record_id", String(created.id));
-    window.location.search = params.toString();
+    onNavigate?.(iprCaseDetailRoute({ id: created.id, serial_no: created.serial_no, data: { case_kind: created.case_kind } }));
   };
 
   const step = created ? 2 : lookup ? 1 : 0;

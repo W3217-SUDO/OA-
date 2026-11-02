@@ -3,6 +3,7 @@ import dayjs, { type Dayjs } from "dayjs";
 import { Button, Card, DatePicker, Empty, Form, Input, Modal, Select, Space, message } from "antd";
 import Table from "./components/ResizableTable";
 import { api } from "./api";
+import { iprCaseDetailRoute } from "./ipr/iprCaseTabs";
 
 // BUG20261030004：知识产权中心“专利年费”，照老系统中间一栏 年费清单 / 年费监控，每项带数量，点一项右边出案件。
 // 高勤兰 10-30：不手动登记已缴，按年费官费是否上传缴费凭证判断；列和筛选照老系统。
@@ -64,7 +65,7 @@ const queryParams = (values: FilterValues) => {
   return params;
 };
 
-export default function IprAnnualFeePage() {
+export default function IprAnnualFeePage({ onNavigate }: { onNavigate?: (route: string) => void }) {
   const [summary, setSummary] = useState<SummaryItem[]>([]);
   const [view, setView] = useState(initialView);
   const [rows, setRows] = useState<FeeRow[]>([]);
@@ -114,12 +115,9 @@ export default function IprAnnualFeePage() {
     void loadRows(view, form.getFieldsValue());
   }, [view, loadRows, form]);
 
+  // 在单独的案件标签里打开，不重新加载网页，年费页和其他标签都保持原样（BUG20261102003/002）。
   const openCase = (row: FeeRow) => {
-    const params = new URLSearchParams(window.location.search);
-    params.set("page", "ipr-patent");
-    params.delete(VIEW_PARAM);
-    params.set("record_id", String(row.case_id));
-    window.location.search = params.toString();
+    onNavigate?.(iprCaseDetailRoute({ id: row.case_id, serial_no: row.serial_no, data: { case_kind: "专利" } }));
   };
 
   // 生成年费清单：勾选了导出勾选的，没勾导出当前列表全部（带上当前筛选）。

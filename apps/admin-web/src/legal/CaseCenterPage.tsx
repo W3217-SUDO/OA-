@@ -27,6 +27,7 @@ UpOutlined,
 UploadOutlined
 } from "@ant-design/icons";
 import type { TableColumnsType, UploadFile } from "antd";
+import { ROUTE_RESET_EVENT } from "../routeReset";
 import {
 Alert,
 Button,
@@ -1199,10 +1200,10 @@ export default function CaseCenterPage({
     onNavigate?.(route);
   };
 
+  // 保存后在标签里切到列表，不重新加载网页；新建页下次打开时重建，不留已填内容（BUG20261102002）。
   const redirectAfterCreate = () => {
-    const params = new URLSearchParams(window.location.search);
-    params.set("page", createRedirectPage);
-    window.location.search = params.toString();
+    window.dispatchEvent(new CustomEvent(ROUTE_RESET_EVENT, { detail: initialView }));
+    onNavigate?.(createRedirectPage);
   };
 
   const deleteHearing = (row: Hearing) => {
