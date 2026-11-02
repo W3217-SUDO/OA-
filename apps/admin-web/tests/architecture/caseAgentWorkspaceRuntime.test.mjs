@@ -665,6 +665,7 @@ test("fixed task conversation sends one dated summary per day (501147)", () => {
     assert.ok(entry.inputHint, `${key} 有输入提示`);
   }
   assert.ok(AGENT_TASK_ENTRIES.find((item) => item.key === "intake").inputHint.includes("请粘贴法院短信或送达链接"));
+  assert.deepEqual(AGENT_TASK_ENTRIES.find((item) => item.key === "intake").quickCommands.map((item) => item.label).join(), "查询今日收文", "收文助手有固定指令（tgn 22:27）");
 });
 
 test("sidebar shows the 5 latest conversations and opens the full searchable history (501147)", async () => {

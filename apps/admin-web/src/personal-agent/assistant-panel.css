@@ -221,4 +221,4 @@
 .assistant-history-all { align-self: flex-start; font-weight: 500; }
 .assistant-settings-trigger { font-weight: 500; }
 /* 501147：固定会话的输入提示 */
-.assistant-task-hint { margin: 0 0 6px; padding: 6px 10px; border-radius: 6px; background: var(--ant-color-info-bg, #e6f4ff); color: var(--ant-color-text-secondary, #555); font-size: 13px; }
+.assistant-task-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 6px; padding: 6px 10px; border-radius: 6px; background: var(--ant-color-info-bg, #e6f4ff); color: var(--ant-color-text-secondary, #555); font-size: 13px; }

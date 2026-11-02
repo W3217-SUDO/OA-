@@ -21,7 +21,9 @@ export type AgentTaskEntry = { key: string; label: string; hint: string; skillId
   /** 点入口就自动发的问题（只有“任务处理”，tgn 11-02 22:22）；其他入口只打开会话并提示。 */
   autoPrompt?: string;
   /** 打开固定会话后，输入框上方的提示。 */
-  inputHint?: string };
+  inputHint?: string;
+  /** 固定会话里的固定指令按钮（tgn 11-02 22:27：收文助手加“查询今日收文”）。 */
+  quickCommands?: { label: string; prompt: string }[] };
 /** 本地日期 YYYY-MM-DD（按电脑所在时区）。 */
 export const localDateText = (now = new Date()) => `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 /** 固定任务会话里当天是否已经发过带日期的汇总。 */
@@ -34,6 +36,7 @@ export const AGENT_TASK_ENTRIES: AgentTaskEntry[] = [
   // 收文处理沿用原来的“收文助手”（tgn 11-02 20:27 确认）。
   { key: "intake", label: "收文助手", hint: "粘贴法院送达短信，自动收文入库", skillId: COURT_INTAKE_SKILL, prompt: "",
     fixed: true, inputHint: "请粘贴法院短信或送达链接，也可以问收文相关的问题。",
+    quickCommands: [{ label: "查询今日收文", prompt: "查询今日收文（只看与我有关的案件，不看全公司）" }],
     greeting: "把法院送达短信或链接粘贴到下面，我会自动下载文书、匹配案件、收文入库并回填法院案号和开庭；缴费通知会先问你再提交缴纳。" },
   { key: "customer", label: "客户与合同", hint: "新建客户、合同、案件、费用，申请开票", skillId: "customer-contract-case", prompt: "",
     fixed: true, inputHint: "可以新建客户、合同、案件或费用等，直接告诉我要办的事（也可以发来合同扫描件）。",

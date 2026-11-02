@@ -406,7 +406,10 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
       >
         <AssistantWorkspaceTools key={workspace.draftKey} ref={workspaceToolsRef} workspace={workspace} desktopWorkspace={desktopWorkspace} onOpenPersonalAiSpace={() => setPersonalSpaceOpen(true)} onOpenMemory={() => setMemoryOpen(true)} />
         {/* 501147：收文助手、客户与合同打开固定会话后，在输入框上方提示该做什么。 */}
-        {activeTaskEntry?.inputHint && !caseSession && <div className="assistant-task-hint" role="note">{activeTaskEntry.inputHint}</div>}
+        {activeTaskEntry?.inputHint && !caseSession && <div className="assistant-task-hint" role="note">
+          <span>{activeTaskEntry.inputHint}</span>
+          {(activeTaskEntry.quickCommands || []).map((command) => <Button key={command.label} size="small" type="primary" ghost disabled={sendBlocked} onClick={() => submit(command.prompt)}>{command.label}</Button>)}
+        </div>}
         <form className="assistant-composer-input" onSubmit={(event) => { event.preventDefault(); submit(); }}>
           <Input.TextArea
             ref={inputRef}
