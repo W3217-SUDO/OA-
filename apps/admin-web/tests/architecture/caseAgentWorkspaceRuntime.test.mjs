@@ -650,7 +650,7 @@ test("global skill management follows global permission even when overview is de
 test("fixed task conversation sends one dated summary per day (501147)", () => {
   const { AGENT_TASK_ENTRIES, NEW_CONVERSATION_COMMANDS, hasDailyMarker, localDateText } = loadModule("../agentSkillRouting.ts", {});
   assert.equal(AGENT_TASK_ENTRIES.find((item) => item.key === "customer").inputHint, "可以新建客户、合同、案件或费用等指令", "按 tgn 22:24 原话");
-  assert.equal(NEW_CONVERSATION_COMMANDS[0].label, "查询今日收文", "新对话框的固定指令（tgn 22:27）");
+  assert.equal(NEW_CONVERSATION_COMMANDS[0].label, "查询我的今日收文", "新对话框的常规指令（tgn 22:27、22:50）");
   const tasks = AGENT_TASK_ENTRIES.find((item) => item.key === "tasks");
   assert.equal(tasks.fixed, true, "任务处理是固定会话");
   assert.equal(localDateText(new Date(2026, 10, 3, 8, 0)), "2026-11-03");

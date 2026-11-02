@@ -1097,7 +1097,7 @@ async def _my_tasks(run: Run, args: dict) -> dict:
 
 @business_tool("biz_my_today_receipts", "今日收文",
                "查与我有关的案件（我是负责人、经办律师、开庭律师或律师助理）今天收到的法院文书，不含全公司其他案件；"
-               "可传 day 查别的日期。用户点“查询今日收文”时用它。",
+               "可传 day 查别的日期。用户点“查询我的今日收文”或问今天收了哪些文书时用它。",
                {"day": _desc(DATE, "日期，默认今天")}, write=False, uses=("oa_list_my_today_receipts_get",))
 async def _my_today_receipts(run: Run, args: dict) -> dict:
     return await run.read("oa_list_my_today_receipts_get", {"query": _drop_empty({"day": args.get("day")})}, "与我有关案件的今日收文")

@@ -17,13 +17,13 @@ type Props = {
   onReturnWorkbench?: () => void;
   onOpenCaseAgentConversation?: (item: CaseAgentConversationSummary) => void;
   onStartIntake: () => void;
-  onOpenIntake: (id: string) => void;
+  onOpenIntake?: (id: string) => void;
   onStartTask?: (skillId: string) => void;
 };
 
 const TASK_ICONS: Record<string, ReactNode> = { tasks: <ScheduleOutlined />, intake: <InboxOutlined />, customer: <SolutionOutlined /> };
 
-export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPersonalSpace, onReopenConfirmation, onReturnWorkbench, onOpenCaseAgentConversation, onStartIntake, onOpenIntake, onStartTask }: Props) {
+export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPersonalSpace, onReopenConfirmation, onReturnWorkbench, onOpenCaseAgentConversation, onStartIntake, onStartTask }: Props) {
   // 501147：历史会话标题写明属于哪个空间。
   const current = workspace.currentWorkspace;
   const caseProject = current?.kind === "case" ? workspace.workspaceProjects.find((item) => item.kind === "case" && item.case_id === current.case_id) : undefined;
@@ -57,11 +57,7 @@ export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPers
           {(workspace.taskEntries || []).map((entry) => <Button key={entry.key} type="text" icon={TASK_ICONS[entry.key]} title={entry.hint} disabled={busy}
             onClick={() => onStartTask ? onStartTask(entry.skillId) : onStartIntake()}>{entry.label}</Button>)}
         </div>
-        {!!workspace.courtIntakeConversations?.length && <div className="assistant-intake-history" aria-label="收文历史">
-          {workspace.courtIntakeConversations.slice(0, 8).map((item) => <Button key={item.id} type="text" size="small" disabled={busy}
-            className={item.id === workspace.state.conversation_id ? "is-active" : undefined}
-            title={item.title} onClick={() => onOpenIntake(item.id)}>{item.title}</Button>)}
-        </div>}
+        {/* 501147（tgn 22:50）：收文已是固定会话，左侧不再另列收文历史，避免出现两个“收文助手”。 */}
         <Button type="text" className="assistant-workspace-generated-entry" icon={<FolderOpenOutlined />} onClick={onOpenPersonalSpace}>AI生成文件夹</Button>
         <ConfirmationHistory onReopen={onReopenConfirmation} busy={busy || !!workspace.dismissalId} />
         <ConversationWorkspaceNavigation workspace={workspace} history={history} />

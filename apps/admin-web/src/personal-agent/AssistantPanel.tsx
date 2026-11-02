@@ -297,10 +297,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         {intakeMode ? <div className="assistant-workspace-greeting"><h1>收文助手</h1><p>把法院送达短信或链接粘贴到下面，我会自动下载文书、匹配案件、收文入库并回填法院案号和开庭；缴费通知会先问你再提交缴纳。</p></div>
           : activeTaskEntry ? <div className="assistant-workspace-greeting"><h1>{activeTaskEntry.label}</h1><p>{activeTaskEntry.greeting}</p></div>
           : desktopWorkspace ? <div className="assistant-workspace-greeting"><h1>今天想处理什么？</h1>
-            <div className="assistant-new-commands" role="group" aria-label="固定指令">
-              {NEW_CONVERSATION_COMMANDS.map((command) => <Button key={command.label} type="primary" ghost disabled={sendBlocked} onClick={() => submit(command.prompt)}>{command.label}</Button>)}
-            </div>
-            <TaskEntryCards entries={workspace.taskEntries || []} disabled={sending} onStart={startTask} /></div>
+            <TaskEntryCards entries={workspace.taskEntries || []} disabled={sending || sendBlocked} onStart={startTask} commands={NEW_CONVERSATION_COMMANDS} onCommand={submit} /></div>
           : <AssistantStart suggestions={suggestions} disabled={sending} onPick={submit} taskEntries={workspace.taskEntries || []} onStartTask={startTask} />}
         {!desktopWorkspace && !intakeMode && !activeTaskEntry && <div className="assistant-mobile-empty">
           <h2>今天想处理什么？</h2>
