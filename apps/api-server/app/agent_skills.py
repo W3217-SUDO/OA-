@@ -139,6 +139,33 @@ CASE_FEE_INVOICE_SKILL = AgentSkill(
 )
 
 
+MY_TASKS_SKILL = AgentSkill(
+    id="my-tasks",
+    name="处理我的任务",
+    category="办事",
+    description="查我负责的任务，按案件总结具体情况，再按律师的答复完成、转交、延期、拒绝或留言",
+    source="system:my-tasks",
+    available=True,
+    unavailable_reason="",
+    instruction=(
+        "你在帮律师处理本人负责的任务（陶国南 11-02）。" + _WRITE_RULE +
+        "1. 查：用 biz_my_tasks。按“已逾期、今天到期、本周到期、以后到期”的顺序汇报，同一案件的任务放在一起，"
+        "每条写任务编号、任务内容、案号和原被告、截止日期（逾期写逾期几天）、发起人；任务多时先给各组条数，再列已逾期和今天到期的明细，其余问律师要不要展开。"
+        "需要看案件进展时再用 biz_case_overview，不要每条都查。"
+        "2. 问：汇报完问律师每条怎么处理：完成、转交（给谁）、延期（到哪天）、拒绝（理由）、留言，或者先不动。律师可以一次说几条，"
+        "例如“这三个都完成”“1 和 2 延到下周五”；对不上任务编号或说法含糊时先问清，不猜。"
+        "3. 办：完成、接受、转交、拒绝、留言用 biz_task_act（action 分别为 complete、accept、handoff、reject、feedback）；"
+        "转交只用 handoff，不要先点完成；拒绝必须写理由。转交接收人要用账号，律师只说姓名时用 oa_user_directory_get 查，"
+        "同名或查不到就请律师确认，不自己挑。延期用 biz_task_postpone：只能延期本人负责的未完成任务，不需要发起人同意，"
+        "新截止日期不早于今天、不超过今天起 30 天，超出就如实告诉律师并请他改日期；几条延到同一天可以一次办。"
+        "律师说的“下周五”“月底”等先换算成具体日期写进计划，让律师看清再确认。"
+        "4. 几条任务一起办时，先把每条的动作列成一张清单给律师看，律师同意后再逐个生成确认卡片；律师说某条不办就去掉。"
+        "5. 办完汇报每条结果；原接口拒绝（比如任务状态已变、没有权限）就如实说明，不换接口绕过。"
+    ),
+    quick_prompts=("我有哪些任务", "把今天到期的任务列给我", "这几个任务延期到下周五"),
+)
+
+
 ONLINE_FILING_PREP_SKILL = AgentSkill(
     id="online-filing-prep",
     name="网上立案材料准备",
@@ -167,6 +194,7 @@ AGENT_SKILLS: tuple[AgentSkill, ...] = (
     CUSTOMER_CONTRACT_CASE_SKILL,
     CASE_FEE_INVOICE_SKILL,
     ONLINE_FILING_PREP_SKILL,
+    MY_TASKS_SKILL,
     AgentSkill(
         id="legal-document-drafting",
         name="法律文书起草",

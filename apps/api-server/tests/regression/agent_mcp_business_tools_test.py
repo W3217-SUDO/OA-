@@ -113,6 +113,52 @@ class BusinessToolRunTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("oa_incoming_payment_allocation_candidates_get", calls)
         self.assertIn("认领后才能列出可分配费用", str(result))
 
+    async def test_my_tasks_groups_open_tasks_by_due_date(self):
+        # 陶国南 11-02：律师问“我有哪些任务”，按逾期/今天/本周/以后分组汇总。
+        queries = []
+
+        async def fake_call(name, arguments):
+            queries.append((name, arguments["query"]))
+            return {"items": [{"id": 1, "title": "补证据", "days_remaining": -2, "case_no": "HZMS1", "owner": "u"},
+                              {"id": 2, "title": "开庭", "days_remaining": 0}, {"id": 3, "title": "写诉状", "days_remaining": 5},
+                              {"id": 4, "title": "归档", "days_remaining": 20}, {"id": 5, "title": "回访", "days_remaining": None}]}
+
+        with patch.object(business_tools, "get_auth_context", return_value=_context(readonly=False)):
+            result = await business_tools.run_business_tool("biz_my_tasks", {}, call=fake_call)
+        self.assertFalse(result.get("isError"), result)
+        self.assertEqual(queries[0][0], "oa_list_tasks_get")
+        self.assertEqual((queries[0][1]["scope"], queries[0][1]["relation"]), ("mine", "owned"))
+        text = str(result)
+        for group in ("已逾期", "今天到期", "本周到期", "以后到期", "无截止日期"):
+            self.assertIn(group, text)
+        self.assertNotIn("'owner'", text)
+
+    async def test_postpone_plans_batch_update_only_for_my_open_tasks(self):
+        from datetime import date, timedelta
+        calls = []
+
+        async def fake_call(name, arguments):
+            calls.append(name)
+            return {"items": [{"id": 7, "serial_no": "RW1", "title": "补证据", "deadline": "2026-11-01", "days_remaining": -1}]}
+
+        target = str(date.today() + timedelta(days=10))
+        with patch.object(business_tools, "get_auth_context", return_value=_context(readonly=False)):
+            planned = await business_tools.run_business_tool("biz_task_postpone", {"task_ids": [7], "deadline": target}, call=fake_call)
+            refused = {}
+            for label, ids, deadline in (("others", [7, 8], target), ("too_far", [7], str(date.today() + timedelta(days=31))),
+                                         ("past", [7], str(date.today() - timedelta(days=1)))):
+                with self.assertRaises(HTTPException) as caught:
+                    await business_tools.run_business_tool("biz_task_postpone", {"task_ids": ids, "deadline": deadline}, call=fake_call)
+                refused[label] = caught.exception.detail
+        self.assertEqual(planned["mode"], "计划")
+        write = [step for step in planned["steps"] if step["kind"] == "写"]
+        self.assertEqual((write[0]["tool"], write[0]["status"]), ("oa_batch_update_tasks_post", "待执行"))
+        self.assertEqual(write[0]["arguments"]["body"], {"task_ids": [7], "deadline": target})
+        self.assertNotIn("oa_batch_update_tasks_post", calls)
+        self.assertIn("不是：[8]", refused["others"])
+        self.assertIn("30 天", refused["too_far"])
+        self.assertIn("早于今天", refused["past"])
+
     async def test_read_only_token_cannot_see_or_run_write_tools(self):
         with patch.object(business_tools, "get_auth_context", return_value=_context()):
             visible = {tool.name for tool in business_tools.visible_tools(get_catalog(app))}

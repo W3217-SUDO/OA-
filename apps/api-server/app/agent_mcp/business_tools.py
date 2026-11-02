@@ -998,6 +998,67 @@ async def _task_act(run: Run, args: dict) -> dict:
     return {}
 
 
+OPEN_TASK_STATUSES = "待接收,待处理,处理中,进行中,已逾期"
+TASK_FIELDS = ("id", "serial_no", "title", "status", "deadline", "days_remaining", "priority", "initiator", "source",
+               "case_no", "plaintiff", "defendant", "case_stage", "reminder_text", "rejected_reason")
+
+
+async def _my_open_tasks(run: Run) -> list[dict]:
+    result = await run.read("oa_list_tasks_get", {"query": {"scope": "mine", "relation": "owned", "statuses": OPEN_TASK_STATUSES,
+                                                            "sort_by": "deadline", "sort_order": "asc", "page_size": 200}}, "我负责的未完成任务")
+    return [_brief(row, *TASK_FIELDS) for row in _items(result)]
+
+
+def _due_group(task: dict) -> str:
+    days = task.get("days_remaining")
+    if not isinstance(days, int):
+        return "无截止日期"
+    return "已逾期" if days < 0 else "今天到期" if days == 0 else "本周到期" if days <= 7 else "以后到期"
+
+
+@business_tool("biz_my_tasks", "我的任务汇总",
+               "查我负责的未完成任务（待接收、待处理、处理中、已逾期），按已逾期/今天到期/本周到期/以后到期/无截止日期分组，"
+               "带案号、原被告、案件阶段、发起人、截止日期，供按案件总结后问律师怎么处理。",
+               {}, write=False, uses=("oa_list_tasks_get",))
+async def _my_tasks(run: Run, args: dict) -> dict:
+    tasks = await _my_open_tasks(run)
+    groups: dict[str, list[dict]] = {name: [] for name in ("已逾期", "今天到期", "本周到期", "以后到期", "无截止日期")}
+    for task in tasks:
+        groups[_due_group(task)].append(task)
+    if len(tasks) >= 200:
+        run.notes.append("未完成任务超过 200 条，只列出截止日期最早的 200 条")
+    return {"total": len(tasks), "counts": {name: len(items) for name, items in groups.items()},
+            "groups": {name: items for name, items in groups.items() if items}}
+
+
+@business_tool("biz_task_postpone", "任务延期",
+               "延期我负责的未完成任务：改截止日期，不需要发起人同意（陶国南 11-02）。新截止日期不能早于今天、不能超过今天起 30 天；"
+               "可一次延期多条，都改到同一天。",
+               {"task_ids": {"type": "array", "items": INT, "minItems": 1, "maxItems": 20, "description": "要延期的任务 ID（见 biz_my_tasks）"},
+                "deadline": _desc(DATE, "新的截止日期"), "comment": _desc(S, "延期原因")},
+               ("task_ids", "deadline"), write=True, uses=("oa_list_tasks_get", "oa_batch_update_tasks_post"))
+async def _task_postpone(run: Run, args: dict) -> dict:
+    from datetime import date
+    try:
+        deadline = date.fromisoformat(args["deadline"])
+    except ValueError as exc:
+        raise HTTPException(422, "截止日期格式应为 YYYY-MM-DD") from exc
+    days = (deadline - date.today()).days
+    if days < 0:
+        raise HTTPException(422, "新的截止日期不能早于今天")
+    if days > 30:
+        raise HTTPException(422, "新的截止日期不能超过今天起 30 天")
+    owned = {task["id"]: task for task in await _my_open_tasks(run)}
+    ids = list(dict.fromkeys(args["task_ids"]))
+    others = [task_id for task_id in ids if task_id not in owned]
+    if others:
+        raise HTTPException(409, f"只能延期自己负责的未完成任务，这些任务不是：{others}")
+    await run.write("oa_batch_update_tasks_post", {"body": _drop_empty({"task_ids": ids, "deadline": args["deadline"],
+                                                                        "comment": args.get("comment")})}, "改截止日期")
+    return {"tasks": [{"id": task_id, "serial_no": owned[task_id].get("serial_no"), "title": owned[task_id].get("title"),
+                       "deadline": f"{owned[task_id].get('deadline') or '无'} → {args['deadline']}"} for task_id in ids]}
+
+
 # ---------- 05 控制台 ----------
 
 @business_tool("biz_dashboard_todo", "控制台待办",
