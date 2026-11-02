@@ -181,6 +181,7 @@ function loadModule(name, dependencies, globals = {}) {
       if (specifier === "./financeCenterApi" || specifier === "../services/financeCenterApi") return loadModule("services/financeCenterApi.ts", dependencies);
       if (specifier === "../financialValueDisplay") return loadModule("../financialValueDisplay.ts", dependencies);
       if (specifier === "../settlementIdentity") return loadModule("settlementIdentity.ts", dependencies);
+      if (specifier === "../bankReceiptScope") return loadModule("bankReceiptScope.ts", dependencies);
       if (specifier.endsWith("components/common/popupSize")) return popupSize;
       return require(specifier);
     },

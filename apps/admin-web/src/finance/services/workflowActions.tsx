@@ -2,6 +2,7 @@ import { message, Modal, Alert } from "antd";
 import Table from "../../components/ResizableTable";
 import { api } from "../../api";
 import { financeCenterApi } from "./financeCenterApi";
+import { BANK_FLOW_UPLOADED_EVENT } from "../bankReceiptScope";
 import type { FinanceScope } from "../types";
 import type { Fee, FinanceFlow } from "../types";
 
@@ -61,7 +62,7 @@ export function createFinanceWorkflowActions(context: FinanceWorkflowDependencie
                     title: "核对银行流水，确认后上传", width: 1080, okText: "确认上传", cancelText: "取消",
                     okButtonProps: { disabled: !data.valid_count },
                     content: <div>
-                        <Alert type="warning" showIcon message="尚未写入。确认后先进“银行原始流水”，再勾选生成到账单。请逐笔核对付款方、日期、金额和银行流水号；识别有误请取消并调整原文件。" />
+                        <Alert type="warning" showIcon message="尚未写入。确认后先留在本页、入库状态为“未导入”，勾选后点“导入”才进回款管理。请逐笔核对付款方、日期、金额和银行流水号；识别有误请取消并调整原文件。" />
                         <p>{file.name}：可导入 {data.valid_count} 笔，合计 {(data.items || []).reduce((sum: number, item: any) => sum + Number(item.amount || 0), 0).toFixed(2)} 元；跳过支出 {data.skipped} 笔，{data.errors?.length || 0} 笔校验未通过（含已登记过的重复流水）。</p>
                         <Table size="small" rowKey={(_, index) => String(index)} dataSource={data.items}
                             pagination={{pageSize: 10}} scroll={{x: 900, y: 300}}
@@ -87,10 +88,11 @@ export function createFinanceWorkflowActions(context: FinanceWorkflowDependencie
                         confirmed.append("confirmation_token", data.confirmation_token);
                         try {
                             const response = await api.post("/finance/incoming-payments/import", confirmed);
-                            if (response.data.created > 0) message.success(response.data.target === "bank_flows" ? `已上传 ${response.data.created} 笔银行流水，请到“回款管理 → 银行原始流水”勾选后生成到账单` : `已导入 ${response.data.created} 笔回款`, 6);
+                            if (response.data.created > 0) message.success(response.data.target === "bank_flows" ? `已上传 ${response.data.created} 笔银行流水，在本页“未导入”里勾选后点“导入”进回款管理` : `已导入 ${response.data.created} 笔回款`, 6);
                             else message.warning("没有新增流水，请查看校验结果");
                             if (response.data.errors?.length) Modal.warning({title: "部分流水未导入", content:
                                 <div style={{maxHeight: 300, overflow: "auto"}}>{response.data.errors.map((item: any, index: number) => <div key={index}>{item.sheet} 第{item.row}行：{item.error}</div>)}</div>});
+                            if (response.data.target === "bank_flows") window.dispatchEvent(new Event(BANK_FLOW_UPLOADED_EVENT));
                             await load();
                         } catch (error: any) {
                             message.error(error?.response?.data?.detail || "确认导入失败，请刷新列表核对结果后再操作");

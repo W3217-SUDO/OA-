@@ -56,6 +56,10 @@ def create_token(username: str, role: str, expires_minutes: int | None = None) -
     return jwt.encode({"sub": username, "role": role, "exp": expires}, settings.secret_key, algorithm="HS256")
 
 
+_BANK_FLOW_LINE_MENUS = (
+    "finance-receipts-bank-flow", "platform-finance-overview-bank-flow",
+    *(f"{area}-{bank}" for area in ("finance-receipts", "platform-finance-overview") for bank in ("icbc", "citic", "boc", "cmb")),
+)
 _PAGE_MENU_PREFIXES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("/system/menus/navigation", ()),
     ("/system/users", ("@root:hr",)),
@@ -111,6 +115,8 @@ _PAGE_MENU_PREFIXES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("/tasks", ("@root:task",)),
     ("/vip-tasks", ("@root:task",)),
     ("/affairs-records", ("@root:task",)),
+    # 新上传流水在“银行原始流水”和回款(工行/中信/中行/招商)四个页面都能看、导入、删除（279951）。
+    *((path, _BANK_FLOW_LINE_MENUS) for path in ("/finance/bank-flows/lines", "/finance/bank-flows/generate", "/finance/bank-flows/delete")),
     ("/finance/bank-flows", ("finance-receipts-bank-flow", "finance-receipts-gdicbc", "platform-finance-overview-gdicbc", "platform-finance-overview-bank-flow")),
     ("/finance", ("@root:finance", "@root:platform-finance")),
     ("/platform-finance", ("@root:platform-finance",)),

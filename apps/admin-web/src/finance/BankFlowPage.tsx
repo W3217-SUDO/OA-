@@ -2,12 +2,15 @@ import { useCallback, useEffect, useState } from "react";
 import { Alert, Button, Card, Checkbox, DatePicker, Form, Input, Modal, Select, Space, Tabs, message } from "antd";
 import type { TableColumnsType } from "antd";
 import type { Dayjs } from "dayjs";
+import { UploadOutlined } from "@ant-design/icons";
 import Table from "../components/ResizableTable";
 import { api } from "../api";
+import { BANK_FLOW_UPLOADED_EVENT } from "./bankReceiptScope";
 
 // 财务中心 › 回款管理 › 银行原始流水：按旧系统 回款(工行/招行/中行/国定工行) 的流水列表，只读镜像表。
 // 回款(国定工行) 菜单在旧系统就是国定工行的流水列表，这里固定显示国定工行（fixedBank）。
 // 新上传的流水（陶国南 11-01 定两步）：在 回款(工行/中信/中行/招商) 上传后先进“新上传流水”，勾选后“生成到账单”。
+// 279951：回款(工行/中信/中行/招商) 四个页面本页就列“未导入”流水，旁边“导入”“删除”，和这里同一张表、同一套接口。
 type FinanceScope = "firm" | "platform";
 type BankKey = "icbc" | "cmb" | "boc" | "gdicbc";
 type BankFlowRow = Record<string, string | number> & { id: number };
@@ -50,11 +53,21 @@ type LineFilters = { bank?: string; payer_name?: string; payer_account?: string;
 const lineBanks = [
   { value: "icbc", label: "工行" }, { value: "citic", label: "中信" }, { value: "boc", label: "中行" }, { value: "cmb", label: "招商" },
 ];
+export type BankPageFlowStatus = "未导入" | "已导入" | "已删除";
 const money = (value: number) => value.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-function NewFlowLines({ financeScope }: { financeScope: FinanceScope }) {
+type NewFlowLinesProps = {
+  financeScope: FinanceScope;
+  /** 回款(工行/中信/中行/招商) 页面：固定银行，按钮叫“导入”，选“已导入”切回本页到账列表。 */
+  fixedBank?: string;
+  initialStatus?: BankPageFlowStatus;
+  onUpload?: () => void;
+  onShowImported?: () => void;
+};
+
+export function NewFlowLines({ financeScope, fixedBank, initialStatus = "未导入", onUpload, onShowImported }: NewFlowLinesProps) {
   const [form] = Form.useForm<LineFilters>();
-  const [filters, setFilters] = useState<LineFilters>({ status: "未导入" });
+  const [filters, setFilters] = useState<LineFilters>({ status: initialStatus });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [data, setData] = useState<{ items: FlowLine[]; total: number; amount: number } | null>(null);
@@ -69,7 +82,7 @@ function NewFlowLines({ financeScope }: { financeScope: FinanceScope }) {
       const { data: result } = await api.get("/finance/bank-flows/lines", {
         params: {
           finance_scope: financeScope, page, page_size: pageSize, status: filters.status || "",
-          ...(filters.bank ? { bank: filters.bank } : {}),
+          ...(fixedBank || filters.bank ? { bank: fixedBank || filters.bank } : {}),
           ...(filters.payer_name?.trim() ? { payer_name: filters.payer_name.trim() } : {}),
           ...(filters.payer_account?.trim() ? { payer_account: filters.payer_account.trim() } : {}),
           ...(from ? { date_from: from.format("YYYY-MM-DD") } : {}),
@@ -83,35 +96,48 @@ function NewFlowLines({ financeScope }: { financeScope: FinanceScope }) {
     } finally {
       setLoading(false);
     }
-  }, [financeScope, filters, page, pageSize]);
+  }, [financeScope, filters, page, pageSize, fixedBank]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const uploaded = () => {
+      form.setFieldValue("status", "未导入");
+      setFilters({ ...form.getFieldsValue(), status: "未导入" });
+      setPage(1);
+    };
+    window.addEventListener(BANK_FLOW_UPLOADED_EVENT, uploaded);
+    return () => window.removeEventListener(BANK_FLOW_UPLOADED_EVENT, uploaded);
+  }, [form]);
+
   const selectedRows = (data?.items || []).filter((item) => selected.includes(item.id));
   const selectedAmount = selectedRows.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const generateLabel = fixedBank ? "导入" : "生成到账单";
   const act = (kind: "generate" | "delete") => {
     if (!selected.length) {
       message.warning("请先勾选流水");
       return;
     }
     Modal.confirm({
-      title: kind === "generate" ? "生成到账单" : "删除流水",
+      title: kind === "generate" ? (fixedBank ? "导入回款管理" : "生成到账单") : "删除流水",
       content: kind === "generate"
-        ? `将勾选的 ${selected.length} 条流水（合计 ${money(selectedAmount)} 元）生成到账单，生成后在“回款管理”里认领。确认生成？`
+        ? `将勾选的 ${selected.length} 条流水（合计 ${money(selectedAmount)} 元）${fixedBank ? "导入回款管理" : "生成到账单"}，之后在“回款管理”里认领。确认${generateLabel}？`
         : `删除勾选的 ${selected.length} 条未导入流水？删除后可在状态“已删除”里查到。`,
-      okText: kind === "generate" ? "生成" : "删除",
+      okText: kind === "generate" ? (fixedBank ? "导入" : "生成") : "删除",
       okButtonProps: kind === "delete" ? { danger: true } : undefined,
       cancelText: "取消",
       onOk: async () => {
         setWorking(true);
         try {
           const { data: result } = await api.post(`/finance/bank-flows/${kind}`, { ids: selected }, { params: { finance_scope: financeScope } });
-          message.success(kind === "generate" ? `已生成 ${result.created} 张到账单` : `已删除 ${result.deleted} 条流水`);
+          message.success(kind === "generate"
+            ? (fixedBank ? `已导入 ${result.created} 笔，到“回款管理”认领` : `已生成 ${result.created} 张到账单`)
+            : `已删除 ${result.deleted} 条流水`);
           await load();
         } catch (error: any) {
-          message.error(error?.response?.data?.detail || (kind === "generate" ? "生成到账单失败" : "删除失败"));
+          message.error(error?.response?.data?.detail || (kind === "generate" ? `${generateLabel}失败` : "删除失败"));
         } finally {
           setWorking(false);
         }
@@ -120,14 +146,14 @@ function NewFlowLines({ financeScope }: { financeScope: FinanceScope }) {
   };
 
   const columns: TableColumnsType<FlowLine> = [
-    { title: "银行", dataIndex: "bank_label", width: 70 },
+    ...(fixedBank ? [] : [{ title: "银行", dataIndex: "bank_label", width: 70 }]),
     { title: "到账日期", dataIndex: "received_date", width: 110 },
     { title: "对方户名", dataIndex: "payer_name", width: 200 },
     { title: "对方账号", dataIndex: "payer_account", width: 180, render: (value: string) => value || "—" },
     { title: "金额", dataIndex: "amount", width: 120, align: "right", render: (value: number) => money(Number(value || 0)) },
     { title: "银行流水号", dataIndex: "bank_reference", width: 200, render: (value: string) => value || "—" },
     { title: "摘要/备注", dataIndex: "remark", width: 200, render: (value: string) => value || "—" },
-    { title: "状态", dataIndex: "status", width: 80 },
+    { title: fixedBank ? "入库状态" : "状态", dataIndex: "status", width: 80 },
     { title: "到账单号", dataIndex: "receipt_no", width: 190, render: (value: string) => value || "—" },
     { title: "所属", dataIndex: "group", width: 70, render: (value: string) => value || "—" },
     { title: "来源文件", dataIndex: "file_name", width: 180, render: (value: string, row) => value ? `${value}（第${row.row_no}行）` : "—" },
@@ -142,21 +168,23 @@ function NewFlowLines({ financeScope }: { financeScope: FinanceScope }) {
         type="info"
         showIcon
         style={{ marginBottom: 12 }}
-        message="在“回款(工行/中信/中行/招商)”上传的银行流水先到这里；勾选“未导入”的流水点“生成到账单”，生成后到“回款管理”认领。"
+        message={fixedBank
+          ? "上传的银行流水先留在本页、入库状态为“未导入”；勾选后点“导入”才进回款管理（待认领）。已导入的流水不能在这里删除；入库状态选“已导入”查看已进回款管理的流水。"
+          : "在“回款(工行/中信/中行/招商)”上传的银行流水先到这里；勾选“未导入”的流水点“生成到账单”，生成后到“回款管理”认领。"}
       />
       <Form
         form={form}
         layout="inline"
-        initialValues={{ status: "未导入" }}
+        initialValues={{ status: initialStatus }}
         style={{ rowGap: 8, marginBottom: 12 }}
         onFinish={(values) => {
           setFilters(values);
           setPage(1);
         }}
       >
-        <Form.Item name="bank" label="银行">
+        {!fixedBank && <Form.Item name="bank" label="银行">
           <Select allowClear placeholder="全部" style={{ width: 100 }} options={lineBanks} />
-        </Form.Item>
+        </Form.Item>}
         <Form.Item name="payer_name" label="对方户名">
           <Input allowClear style={{ width: 180 }} />
         </Form.Item>
@@ -166,20 +194,35 @@ function NewFlowLines({ financeScope }: { financeScope: FinanceScope }) {
         <Form.Item name="dates" label="到账日期">
           <DatePicker.RangePicker />
         </Form.Item>
-        <Form.Item name="status" label="状态">
+        <Form.Item name="status" label={fixedBank ? "入库状态" : "状态"}>
           <Select
             style={{ width: 110 }}
+            onChange={(value: string) => {
+              if (!fixedBank) return;
+              if (value === "已导入") onShowImported?.();
+              else {
+                setFilters({ ...form.getFieldsValue(), status: value });
+                setPage(1);
+              }
+            }}
             options={[
               { value: "未导入", label: "未导入" },
               { value: "已导入", label: "已导入" },
               { value: "已删除", label: "已删除" },
-              { value: "", label: "全部（未删除）" },
+              ...(fixedBank ? [] : [{ value: "", label: "全部（未删除）" }]),
             ]}
           />
         </Form.Item>
         <Form.Item>
           <Space>
             <Button type="primary" htmlType="submit">查询</Button>
+            {onUpload && <Button icon={<UploadOutlined />} onClick={onUpload}>上传</Button>}
+            <Button type={fixedBank ? "default" : "primary"} disabled={!pending || !selected.length} loading={working} onClick={() => act("generate")}>
+              {generateLabel}
+            </Button>
+            <Button danger disabled={!pending || !selected.length} loading={working} onClick={() => act("delete")}>
+              删除
+            </Button>
             <Button
               onClick={() => {
                 form.resetFields();
@@ -192,15 +235,7 @@ function NewFlowLines({ financeScope }: { financeScope: FinanceScope }) {
           </Space>
         </Form.Item>
       </Form>
-      <Space style={{ marginBottom: 8 }} wrap>
-        <Button type="primary" disabled={!pending || !selected.length} loading={working} onClick={() => act("generate")}>
-          生成到账单
-        </Button>
-        <Button danger disabled={!pending || !selected.length} loading={working} onClick={() => act("delete")}>
-          删除
-        </Button>
-        {selected.length > 0 && <span>已选 {selected.length} 条，合计 {money(selectedAmount)} 元</span>}
-      </Space>
+      {selected.length > 0 && <div style={{ marginBottom: 8 }}>已选 {selected.length} 条，合计 {money(selectedAmount)} 元</div>}
       <Table<FlowLine>
         rowKey="id"
         size="small"

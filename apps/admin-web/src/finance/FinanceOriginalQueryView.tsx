@@ -21,13 +21,15 @@ export interface FinanceOriginalQueryViewProps {
   paymentPackageMeta: { page: number; pageSize: number };
   onLoadPaymentPackages: (query: Record<string, unknown>, page: number, pageSize: number) => Promise<unknown>;
   onOpenPaymentPackageEditor: () => void;
+  /** 回款(工行/中信/中行/招商) 已导入列表里切回“未导入”的入库状态选择（279951）。 */
+  extraActions?: ReactNode;
 }
 
 export function FinanceOriginalQueryView({
   initialView, originalKind, title, sourceNotice, fields, routeConfig,
   contractPaymentSource, bankUploadRef, onImportBankStatement, onSubmit, onClear,
   onRefresh, originalQuery, paymentPackageMeta, onLoadPaymentPackages,
-  onOpenPaymentPackageEditor,
+  onOpenPaymentPackageEditor, extraActions,
 }: FinanceOriginalQueryViewProps) {
   const mobileFilter = useMobileFilterToggle();
   const refreshRoutes = [
@@ -81,6 +83,7 @@ export function FinanceOriginalQueryView({
             上传
           </Button>
         )}
+        {extraActions}
         {(originalKind === "fee-query" || routeConfig?.clear || clearRoutes.includes(initialView)) && (
           <Button onClick={onClear}>清空</Button>
         )}

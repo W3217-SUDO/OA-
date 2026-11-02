@@ -162,14 +162,18 @@ class BankFlowSelection(BaseModel):
     ids: list[int] = Field(min_length=1, max_length=500)
 
 
-async def _require_flow_menu(identity: dict, db: AsyncSession) -> None:
-    """生成到账单、删除流水要有本中心“银行原始流水”页面（给了页面 = 功能全有）。"""
+async def _require_flow_menu(identity: dict, db: AsyncSession, lines: list[BankStatementLine]) -> None:
+    """生成到账单、删除流水要有本中心“银行原始流水”页面，或这些流水所属银行的回款页面（给了页面 = 功能全有；279951）。"""
     if identity.get("role") == "admin":
         return
     from app.core.permissions import _permission_payload_for_identity
     menus = set((await _permission_payload_for_identity(identity, db)).get("menu_keys") or [])
-    if FLOW_MENU.get(identity["_finance_scope"]) not in menus:
-        raise HTTPException(status_code=403, detail="当前账号没有“银行原始流水”页面权限")
+    scope = identity["_finance_scope"]
+    if FLOW_MENU.get(scope) in menus:
+        return
+    bank_page = "platform-finance-overview" if scope == "platform" else "finance-receipts"
+    if not all(f"{bank_page}-{line.bank}" in menus for line in lines):
+        raise HTTPException(status_code=403, detail="当前账号没有“银行原始流水”或对应银行回款页面的权限")
 
 
 def _line_dict(line: BankStatementLine) -> dict:
@@ -244,8 +248,8 @@ async def _selected_lines(body: BankFlowSelection, identity: dict, db: AsyncSess
 @router.post(f"{settings.api_prefix}/finance/bank-flows/generate")
 async def generate_incoming_from_bank_flows(body: BankFlowSelection, identity: dict = Depends(finance_center_identity), db: AsyncSession = Depends(get_db)):
     """勾选的未导入流水逐条生成到账单（待认领），整批一起成功或一起失败；流水改为已导入并记到账单号。"""
-    await _require_flow_menu(identity, db)
     lines = await _selected_lines(body, identity, db)
+    await _require_flow_menu(identity, db, lines)
     references = {line.bank_reference for line in lines if line.bank_reference}
     if references:
         taken = set((await db.scalars(select(IncomingPayment.bank_reference).where(IncomingPayment.bank_reference.in_(references)))).all())
@@ -282,8 +286,8 @@ async def generate_incoming_from_bank_flows(body: BankFlowSelection, identity: d
 @router.post(f"{settings.api_prefix}/finance/bank-flows/delete")
 async def delete_bank_flows(body: BankFlowSelection, identity: dict = Depends(finance_center_identity), db: AsyncSession = Depends(get_db)):
     """只删未导入的流水，逻辑删除（可在“已删除”里查到）。"""
-    await _require_flow_menu(identity, db)
     lines = await _selected_lines(body, identity, db)
+    await _require_flow_menu(identity, db, lines)
     for line in lines:
         await db.delete(line)
     await db.commit()

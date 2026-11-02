@@ -17,7 +17,8 @@ import { RefundBatchFeeDrawer, type RefundBatchFeeDrawerProps } from "./RefundBa
 import { PaymentPackageEditorModal, PaymentPackageWriteoffModal, type PaymentPackageEditorModalProps, type PaymentPackageWriteoffModalProps } from "./PaymentPackageEditorModal";
 import { RecordFilesModal, VoucherModal, type RecordFilesModalProps, type VoucherModalProps } from "./FinanceDocumentModals";
 import { TransactionModal, ReconciliationModal, type TransactionModalProps, type ReconciliationModalProps } from "./FinanceLedgerModals";
-import { FinanceOriginalRoutesView, type FinanceOriginalRoutesViewProps } from "./FinanceOriginalRoutesView";
+import type { FinanceOriginalRoutesViewProps } from "./FinanceOriginalRoutesView";
+import { BankReceiptFlowRoute } from "./BankReceiptFlowRoute";
 import { FinanceStandardTabsView, type FinanceStandardTabsViewProps } from "./FinanceStandardTabsView";
 import { SettlementBatchModal, type SettlementBatchModalProps } from "./SettlementBatchModal";
 import { IncomingRegistrationModal, IncomingClaimModal, type IncomingRegistrationModalProps, type IncomingClaimModalProps } from "./FinanceIncomingModals";
@@ -232,7 +233,7 @@ export function FinanceCenterView(props: FinanceCenterViewProps) {
         paymentPackagePrintPage ||
         internalPaymentDetail ||
         (originalMode ? (
-          <FinanceOriginalRoutesView {...originalRoutesView} />
+          <BankReceiptFlowRoute routesView={originalRoutesView} financeScope={props.financeScope} />
         ) : (
           <FinanceStandardTabsView {...standardTabsView} />
         ))}

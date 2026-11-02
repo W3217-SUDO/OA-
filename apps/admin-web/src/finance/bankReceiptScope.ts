@@ -14,3 +14,6 @@ export function matchesReceiptBank(source: string | null | undefined, code: stri
   const value = (source || "").trim().toLowerCase();
   return value === code || (bankNames[code] || []).some((name) => value.includes(name));
 }
+
+/** 回款四个银行页上传确认后通知本页“未导入”列表刷新（279951）。 */
+export const BANK_FLOW_UPLOADED_EVENT = "bank-flow-lines-uploaded";
