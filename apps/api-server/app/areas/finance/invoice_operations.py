@@ -26,8 +26,23 @@ from app.models_shared import (
     InvoiceVoidInput,
 )
 from fastapi import APIRouter
+from app.core.finance_centers import nonlitigation_record_type, optional_finance_center_identity
 
 router = APIRouter()
+
+# 501099：非诉开票三页（我的开票 / 待处理开票 / 公司开票）对应的页面。
+INVOICE_APPLY_PAGES = ("ipr-finance-invoice-mine",)
+INVOICE_HANDLE_PAGES = ("ipr-finance-invoice-pending",)
+INVOICE_MANAGE_PAGES = ("ipr-finance-invoice-company", "ipr-finance-invoice-pending")
+
+
+async def _invoice_identity(invoice_id: int, identity: dict, db: AsyncSession, *pages: str) -> dict:
+    """核对发票的业务类型；只有非诉页面的账号办非诉发票时按“给页面＝功能全有”放行。"""
+    from app.core.finance import nonlitigation_write_identity
+    item = await db.get(BusinessRecord, invoice_id)
+    if item is None or item.module != "invoice":
+        return identity
+    return await nonlitigation_write_identity([item], identity, db, *pages)
 
 async def _invoice_source_metadata(case_fees: list[BusinessRecord], db: AsyncSession) -> tuple[list[BusinessRecord], list[int], list[str], list[int], list[str]]:
     contract_ids: list[int] = []
@@ -72,7 +87,7 @@ def _invoice_current_external_number(contracts: list[BusinessRecord]) -> str:
 
 
 @router.post(f"{settings.api_prefix}/finance/invoices", status_code=status.HTTP_201_CREATED)
-async def create_invoice_application(body: InvoiceApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def create_invoice_application(body: InvoiceApplicationInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.contracts import _contract_allows_finance_application
     from app.core.finance import (
         _round_fee_amount, _validate_invoice_source_links,
@@ -80,9 +95,15 @@ async def create_invoice_application(body: InvoiceApplicationInput, identity: di
     from app.core.permissions import (
         _record_dict_for_identity,
     )
+    from app.core.finance import nonlitigation_write_identity
+    fee_ids = {int(row["fee_id"]) for row in body.case_fee_allocations if isinstance(row, dict) and str(row.get("fee_id") or "").isdigit()}
+    fee_ids |= {int(fee_id) for fee_id in body.case_fee_ids if fee_id}
+    requested_fees = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(sorted(fee_ids)))))) if fee_ids else []
+    identity = await nonlitigation_write_identity(requested_fees, identity, db, *INVOICE_APPLY_PAGES)
     case_record, contract_record, case_fees, allocations = await _validate_invoice_source_links(
         body, identity, db, require_source=True,
     )
+    await nonlitigation_write_identity(case_fees, identity, db)
     source_contracts, contract_ids, contract_nos, case_ids, case_nos = await _invoice_source_metadata(case_fees, db)
     blocked_contracts = [item.serial_no for item in source_contracts if not _contract_allows_finance_application(item)]
     if blocked_contracts:
@@ -110,6 +131,8 @@ async def create_invoice_application(body: InvoiceApplicationInput, identity: di
     if contract_record: data["contract_no"] = contract_record.serial_no
     elif len(contract_nos) == 1: data["contract_no"] = contract_nos[0]
     data["external_contract_no"] = _invoice_current_external_number(source_contracts)
+    if nonlitigation_record_type(*case_fees):
+        data["business_type"] = nonlitigation_record_type(*case_fees)
     item = BusinessRecord(module="invoice", serial_no=serial, title=f"{body.customer}发票申请", customer=body.customer.strip(), status="草稿", owner=identity["username"], department=user.department, description=body.remark, data=data)
     db.add(item); await db.flush()
     db.add(WorkflowEvent(record_id=item.id, action="创建发票申请", to_status=item.status, operator=identity["username"], comment=f"{body.invoice_type}：{data['amount']:.2f} 元"))
@@ -119,13 +142,14 @@ async def create_invoice_application(body: InvoiceApplicationInput, identity: di
 
 @router.put(f"{settings.api_prefix}/finance/invoices/{{invoice_id}}")
 @router.patch(f"{settings.api_prefix}/finance/invoices/{{invoice_id}}")
-async def update_invoice_application(invoice_id: int, body: InvoiceApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def update_invoice_application(invoice_id: int, body: InvoiceApplicationInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.finance import (
         _editable_invoice_application, _round_fee_amount, _validate_invoice_source_links,
     )
     from app.core.permissions import (
         _record_dict_for_identity,
     )
+    identity = await _invoice_identity(invoice_id, identity, db, *INVOICE_APPLY_PAGES)
     try:
         item = await _editable_invoice_application(invoice_id, identity, db)
         from pydantic import ValidationError
@@ -211,10 +235,11 @@ async def update_invoice_application(invoice_id: int, body: InvoiceApplicationIn
 
 
 @router.post(f"{settings.api_prefix}/finance/invoices/{{invoice_id}}/submit")
-async def submit_invoice_application(invoice_id: int, body: FinanceActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def submit_invoice_application(invoice_id: int, body: FinanceActionInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity, _require_record_owner_or_manager,
     )
+    identity = await _invoice_identity(invoice_id, identity, db, *INVOICE_APPLY_PAGES)
     item = await _ensure_record_module(invoice_id, "invoice", identity, db); await _require_record_owner_or_manager(item, identity, db)
     if item.status not in {"草稿", "已驳回"}: raise HTTPException(status_code=409, detail="当前发票申请不能提交")
     from app.core.invoice_sources import invoice_source_fees, validate_invoice_fee_policy
@@ -234,10 +259,11 @@ async def submit_invoice_application(invoice_id: int, body: FinanceActionInput, 
 
 
 @router.post(f"{settings.api_prefix}/finance/invoices/{{invoice_id}}/withdraw")
-async def withdraw_invoice_application(invoice_id: int, body: FinanceActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def withdraw_invoice_application(invoice_id: int, body: FinanceActionInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity, _require_record_owner_or_manager,
     )
+    identity = await _invoice_identity(invoice_id, identity, db, *INVOICE_APPLY_PAGES)
     item = await _ensure_record_module(invoice_id, "invoice", identity, db)
     await _require_record_owner_or_manager(item, identity, db)
     if item.status not in {"草稿", "待审批", "待开票", "已驳回"}:
@@ -251,13 +277,15 @@ async def withdraw_invoice_application(invoice_id: int, body: FinanceActionInput
 
 
 @router.post(f"{settings.api_prefix}/finance/invoices/{{invoice_id}}/review")
-async def review_invoice_application(invoice_id: int, body: FinanceReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def review_invoice_application(invoice_id: int, body: FinanceReviewInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity,
     )
+    identity = await _invoice_identity(invoice_id, identity, db, *INVOICE_HANDLE_PAGES)
     item = await _ensure_record_module(invoice_id, "invoice", identity, db)
     from app.core.invoice_permissions import require_invoice_action
-    await require_invoice_action(item, "review", identity, db)
+    if not identity.get("_nonlitigation_page_grant"):
+        await require_invoice_action(item, "review", identity, db)
     if item.status != "待审批": raise HTTPException(status_code=409, detail="只有待审批发票申请可以审核")
     item.status = "待开票" if body.approved else "已驳回"
     item.data = {**(item.data or {}), "reviewer": identity["username"], "reviewed_at": datetime.now().isoformat(timespec="seconds"), "review_comment": body.comment}
@@ -266,16 +294,18 @@ async def review_invoice_application(invoice_id: int, body: FinanceReviewInput, 
 
 
 @router.post(f"{settings.api_prefix}/finance/invoices/{{invoice_id}}/issue")
-async def issue_invoice(invoice_id: int, body: InvoiceIssueInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def issue_invoice(invoice_id: int, body: InvoiceIssueInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.finance import (
         _round_fee_amount,
     )
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity,
     )
+    identity = await _invoice_identity(invoice_id, identity, db, *INVOICE_HANDLE_PAGES)
     item = await _ensure_record_module(invoice_id, "invoice", identity, db)
     from app.core.invoice_permissions import require_invoice_action
-    await require_invoice_action(item, "issue", identity, db)
+    if not identity.get("_nonlitigation_page_grant"):
+        await require_invoice_action(item, "issue", identity, db)
     if item.status != "待开票": raise HTTPException(status_code=409, detail="发票审批通过后才能登记开票")
     if await db.scalar(select(FinanceTransaction.id).where(FinanceTransaction.transaction_type == "开票", FinanceTransaction.voucher_no == body.invoice_no)): raise HTTPException(status_code=409, detail="发票号码已经登记")
     data = item.data or {}; tx = FinanceTransaction(finance_record_id=item.id, transaction_type="开票", amount=float(data.get("amount", 0)), transaction_date=body.invoice_date, voucher_no=body.invoice_no.strip(), counterparty=item.customer, operator=identity["username"], remark=f"发票申请 {item.serial_no}；{body.comment}")
@@ -286,17 +316,19 @@ async def issue_invoice(invoice_id: int, body: InvoiceIssueInput, identity: dict
 
 
 @router.post(f"{settings.api_prefix}/finance/invoices/{{invoice_id}}/reject-issue")
-async def reject_invoice_issue(invoice_id: int, body: FinanceActionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def reject_invoice_issue(invoice_id: int, body: FinanceActionInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity,
     )
 
+    identity = await _invoice_identity(invoice_id, identity, db, *INVOICE_HANDLE_PAGES)
     reason = body.comment.strip()
     if not reason:
         raise HTTPException(status_code=422, detail="请输入驳回原因")
     item = await _ensure_record_module(invoice_id, "invoice", identity, db)
     from app.core.invoice_permissions import require_invoice_action
-    await require_invoice_action(item, "issue", identity, db)
+    if not identity.get("_nonlitigation_page_grant"):
+        await require_invoice_action(item, "issue", identity, db)
     if item.status != "待开票":
         raise HTTPException(status_code=409, detail="只有待开票申请可以驳回")
     item.status = "已驳回"
@@ -307,10 +339,11 @@ async def reject_invoice_issue(invoice_id: int, body: FinanceActionInput, identi
 
 
 @router.post(f"{settings.api_prefix}/finance/invoices/{{invoice_id}}/void")
-async def void_invoice(invoice_id: int, body: InvoiceVoidInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def void_invoice(invoice_id: int, body: InvoiceVoidInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity,
     )
+    identity = await _invoice_identity(invoice_id, identity, db, *INVOICE_MANAGE_PAGES)
     if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以作废发票")
     item = await _ensure_record_module(invoice_id, "invoice", identity, db)
     if item.status != "已开票": raise HTTPException(status_code=409, detail="只有已开票记录可以作废")
@@ -322,10 +355,11 @@ async def void_invoice(invoice_id: int, body: InvoiceVoidInput, identity: dict =
 
 
 @router.post(f"{settings.api_prefix}/finance/invoices/{{invoice_id}}/change-number")
-async def change_invoice_number(invoice_id: int, body: InvoiceNumberChangeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def change_invoice_number(invoice_id: int, body: InvoiceNumberChangeInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity,
     )
+    identity = await _invoice_identity(invoice_id, identity, db, *INVOICE_MANAGE_PAGES)
     if identity.get("role") not in {"admin", "manager"}:
         raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以修改发票号码")
     invoice_no = body.invoice_no.strip()
@@ -359,10 +393,11 @@ async def change_invoice_number(invoice_id: int, body: InvoiceNumberChangeInput,
 
 
 @router.post(f"{settings.api_prefix}/finance/invoices/{{invoice_id}}/change-date")
-async def change_invoice_date(invoice_id: int, body: InvoiceDateChangeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def change_invoice_date(invoice_id: int, body: InvoiceDateChangeInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity,
     )
+    identity = await _invoice_identity(invoice_id, identity, db, *INVOICE_MANAGE_PAGES)
     if identity.get("role") not in {"admin", "manager"}:
         raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以修改发票日期")
     item = await _ensure_record_module(invoice_id, "invoice", identity, db)

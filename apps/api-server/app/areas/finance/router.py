@@ -17,6 +17,7 @@ from app.models_shared import (
 from fastapi import APIRouter
 from app.core.finance_centers import (
     filter_rows_by_center, legacy_center_conditions, optional_finance_center_identity, validate_legacy_receipt_allocations,
+    has_nonlitigation_page, record_business_conditions,
 )
 
 router = APIRouter()
@@ -118,17 +119,20 @@ async def delete_finance_fee(fee_id: int, identity: dict = Depends(current_ident
 
 
 @router.post(f"{settings.api_prefix}/finance/internal-fees", status_code=status.HTTP_201_CREATED)
-async def create_internal_fee(body: FinanceFeeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def create_internal_fee(body: FinanceFeeInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     """Create an internal-fee draft through the internal settlement workbench."""
     from app.core.permissions import (
         _require_internal_fee_payload,
     )
     _require_internal_fee_payload(body)
+    if identity.get("_business_type") == "非诉":
+        # 这个入口只挂诉讼案件；知识产权案件的内部费用在知识产权案件费用里新建，已自动记为非诉。
+        raise HTTPException(status_code=409, detail="非诉内部费用请在知识产权案件的费用里新建")
     return await create_finance_fee(body, identity, db)
 
 
 @router.put(f"{settings.api_prefix}/finance/internal-fees/{{fee_id}}")
-async def update_internal_fee(fee_id: int, body: FinanceFeeUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def update_internal_fee(fee_id: int, body: FinanceFeeUpdateInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     """Edit only a visible, mutable internal-fee draft using the shared fee rules."""
     from app.core.finance import (
         _internal_fee_mutation_target,
@@ -136,17 +140,21 @@ async def update_internal_fee(fee_id: int, body: FinanceFeeUpdateInput, identity
     from app.core.permissions import (
         _require_internal_fee_payload,
     )
+    from app.core.finance import nonlitigation_write_identity
+    identity = await nonlitigation_write_identity([await db.get(BusinessRecord, fee_id)], identity, db, *INTERNAL_APPLY_PAGES)
     await _internal_fee_mutation_target(fee_id, identity, db)
     _require_internal_fee_payload(body)
     return await update_finance_fee(fee_id, body, identity, db)
 
 
 @router.delete(f"{settings.api_prefix}/finance/internal-fees/{{fee_id}}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_internal_fee(fee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def delete_internal_fee(fee_id: int, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     """Delete only a visible, mutable internal-fee draft with its workflow audit."""
     from app.core.finance import (
         _editable_finance_fee, _internal_fee_mutation_target,
     )
+    from app.core.finance import nonlitigation_write_identity
+    identity = await nonlitigation_write_identity([await db.get(BusinessRecord, fee_id)], identity, db, *INTERNAL_APPLY_PAGES)
     await _internal_fee_mutation_target(fee_id, identity, db)
     item = await _editable_finance_fee(fee_id, identity, db, action="delete")
     from app.core.finance_action_permissions import require_fee_action
@@ -305,7 +313,8 @@ async def list_invoice_applications(
     if scope == "pending":
         from app.core.invoice_permissions import invoice_permissions
         grants = await invoice_permissions(identity, db)
-        if not any(grants[scope_name][action] for scope_name in ("firm", "platform") for action in ("review", "issue")):
+        if not any(grants[scope_name][action] for scope_name in ("firm", "platform") for action in ("review", "issue")) \
+                and not await has_nonlitigation_page(identity, db, "ipr-finance-invoice-pending"):
             raise HTTPException(status_code=403, detail="当前账号没有待处理开票权限")
     rows = await _invoice_list_rows(identity, db, scope=scope, customer=customer, application_no=application_no, invoice_type=invoice_type, invoice_title=invoice_title, invoice_no=invoice_no, invoice_status=invoice_status, invoiced_from=invoiced_from, invoiced_to=invoiced_to, case_no=case_no, applicant_filter=applicant)
     # 财务中心/平台财务中心按老系统发票 GroupId 分开（陶威 2026-10-30）。
@@ -313,7 +322,8 @@ async def list_invoice_applications(
     total_amount = round(sum(float((row.get("data") or {}).get("amount", 0) or 0) for row in rows if row.get("status") not in {"已撤回", "已作废"}), 2)
     total_extra_amount = round(sum(float((row.get("data") or {}).get("extra_amount", 0) or 0) for row in rows if row.get("status") not in {"已撤回", "已作废"}), 2)
     start = (page - 1) * page_size
-    return {"items": rows[start:start + page_size], "total": len(rows), "total_amount": total_amount, "total_extra_amount": total_extra_amount, "page": page, "page_size": page_size}
+    from app.core.finance import with_invoice_fee_items
+    return {"items": await with_invoice_fee_items(rows[start:start + page_size], db), "total": len(rows), "total_amount": total_amount, "total_extra_amount": total_extra_amount, "page": page, "page_size": page_size}
 
 
 @router.get(f"{settings.api_prefix}/finance/invoices/export")
@@ -322,7 +332,7 @@ async def export_invoice_applications(
     customer: str = "", application_no: str = "", invoice_type: str = Query("", pattern="^(|普票|专票)$"),
     invoice_title: str = "", invoice_no: str = "", invoice_status: str = "",
     invoiced_from: date | None = None, invoiced_to: date | None = None, case_no: str = "", applicant: str = "",
-    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.finance import (
         _invoice_list_rows,
@@ -334,9 +344,11 @@ async def export_invoice_applications(
     if scope == "pending":
         from app.core.invoice_permissions import invoice_permissions
         grants = await invoice_permissions(identity, db)
-        if not any(grants[scope_name][action] for scope_name in ("firm", "platform") for action in ("review", "issue")):
+        if not any(grants[scope_name][action] for scope_name in ("firm", "platform") for action in ("review", "issue")) \
+                and not await has_nonlitigation_page(identity, db, "ipr-finance-invoice-pending"):
             raise HTTPException(status_code=403, detail="当前账号没有待处理开票权限")
     rows = await _invoice_list_rows(identity, db, scope=scope, customer=customer, application_no=application_no, invoice_type=invoice_type, invoice_title=invoice_title, invoice_no=invoice_no, invoice_status=invoice_status, invoiced_from=invoiced_from, invoiced_to=invoiced_to, case_no=case_no, applicant_filter=applicant, ids=selected_ids)
+    rows = await filter_rows_by_center(rows, identity, db)
     if selected_ids is not None and not rows:
         raise HTTPException(status_code=422, detail="请选择需要导出的发票")
     if scope == "mine":
@@ -410,7 +422,8 @@ async def list_invoice_case_fees(
         "paid_amount": round(sum(float((row.get("data") or {}).get("paid_amount") or 0) for row in rows), 2),
     }
     start = (page - 1) * page_size
-    return {"items": rows[start:start + page_size], "total": len(rows), "totals": totals, "page": page, "page_size": page_size}
+    from app.core.finance import with_nonlitigation_fee_fields
+    return {"items": with_nonlitigation_fee_fields(rows[start:start + page_size]), "total": len(rows), "totals": totals, "page": page, "page_size": page_size}
 
 
 @router.get(f"{settings.api_prefix}/finance/case-fees/invoice-status/export")
@@ -425,7 +438,7 @@ async def export_invoice_case_fees(
     paid_from: date | None = None, paid_to: date | None = None,
     fee_types: str = "律师代理费", payer_name: str = "",
     cashed_from: date | None = None, cashed_to: date | None = None,
-    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.finance import (
         _invoice_case_fee_rows,
@@ -445,6 +458,7 @@ async def export_invoice_case_fees(
         fee_types=fee_types, payer_name=payer_name, cashed_from=cashed_from,
         cashed_to=cashed_to, ids=selected_ids,
     )
+    rows = await filter_rows_by_center(rows, identity, db)
     if selected_ids is not None and not rows:
         raise HTTPException(status_code=422, detail="请选择需要导出的费用.")
     if scope == "mine":
@@ -788,7 +802,8 @@ async def query_finance_fees(
     rows = [page_by_id[int(row["id"])] for row in page_summary if int(row["id"]) in page_by_id]
     from app.core.dashboard_scope import dashboard_fee_cases
     related = await dashboard_fee_cases(rows, identity, db) if dashboard_queue else {}
-    return {**related, "items": rows, "total": len(summary_rows), "totals": totals, "page": page, "page_size": page_size}
+    from app.core.finance import with_nonlitigation_fee_fields
+    return {**related, "items": with_nonlitigation_fee_fields(rows), "total": len(summary_rows), "totals": totals, "page": page, "page_size": page_size}
 
 
 @router.get(f"{settings.api_prefix}/finance/fees/query/export")
@@ -886,6 +901,11 @@ router.include_router(refund_operations_router)
 
 from app.core.internal_finance_query import InternalApplicationFilters
 
+# 501099：非诉内部费用页面。申请人页（我的、结算）办撤回；审核、付款页办审核和回滚。
+INTERNAL_APPLY_PAGES = ("ipr-finance-internal-mine", "ipr-finance-internal-settle")
+INTERNAL_REVIEW_PAGES = ("ipr-finance-internal-audit", "ipr-finance-internal-fee-audit", "ipr-finance-internal-refund-audit",
+                         "ipr-finance-internal-payment")
+
 
 @router.get(f"{settings.api_prefix}/finance/internal-fees")
 async def list_internal_fees(
@@ -898,7 +918,7 @@ async def list_internal_fees(
     application_from: date | None = None, application_to: date | None = None,
     audit_from: date | None = None, audit_to: date | None = None,
     request_status: str = "",
-    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.finance import (
         _internal_fee_rows,
@@ -919,11 +939,13 @@ async def list_internal_fees(
             payee=payee, case_stages=case_stages, fee_types=fee_types,
             **extra_filters,
         )
+        rows = await filter_rows_by_center(rows, identity, db)
         return internal_page(rows, page, page_size, amount_visible=amount_visible)
     rows = await _internal_fee_rows(identity, db, scope=scope, case_no=case_no, handling_lawyer=handling_lawyer, assistant=assistant, source_person=source_person, customer=customer, customer_manager=customer_manager, investigator=investigator, payment_status=payment_status, paid_from=paid_from, paid_to=paid_to, payee=payee, case_stages=case_stages, fee_types=fee_types)
     if audit_from or audit_to:
         await enrich_internal_audit_dates(rows, identity, db)
     rows = filter_internal_rows(rows, **extra_filters)
+    rows = await filter_rows_by_center(rows, identity, db)
     return internal_page(rows, page, page_size, amount_visible=amount_visible)
 
 
@@ -937,15 +959,18 @@ async def list_internal_review_requests(
     application_from: date | None = None, application_to: date | None = None,
     audit_from: date | None = None, audit_to: date | None = None,
     request_status: str = "",
-    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.internal_requests import internal_review_rows
     from app.core.internal_finance_query import enrich_internal_audit_dates, filter_internal_rows, internal_page
     from app.core.system import _allowed_field_keys
 
     if identity.get("role") not in {"admin", "manager", "auditor"}:
-        raise HTTPException(403, "当前角色没有内部请款审批权限")
+        if not await has_nonlitigation_page(identity, db, *INTERNAL_REVIEW_PAGES):
+            raise HTTPException(403, "当前角色没有内部请款审批权限")
+        identity = {**identity, "role": "admin", "role_ids": ["admin", *(identity.get("role_ids") or [])], "action_keys": ["*"]}
     rows = await internal_review_rows(identity, db, kind)
+    rows = await filter_rows_by_center(rows, identity, db)
     if audit_from or audit_to:
         await enrich_internal_audit_dates(rows, identity, db)
     rows = filter_internal_rows(rows, case_no=case_no, customer=customer, case_stages=case_stages,
@@ -959,12 +984,15 @@ async def list_internal_review_requests(
 @router.post(f"{settings.api_prefix}/finance/internal-applications/{{fee_id}}/{{action}}")
 async def change_internal_payment_application(
     fee_id: int, action: str, body: FinancePaymentCancelInput,
-    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.internal_requests import change_internal_application
 
     if action not in {"withdraw", "rollback"}:
         raise HTTPException(404, "请款单操作不存在")
+    from app.core.finance import nonlitigation_write_identity
+    identity = await nonlitigation_write_identity([await db.get(BusinessRecord, fee_id)], identity, db,
+                                                  *(INTERNAL_APPLY_PAGES if action == "withdraw" else INTERNAL_REVIEW_PAGES))
     return await change_internal_application(fee_id, action, body.reason, identity, db)
 
 
@@ -972,10 +1000,13 @@ async def change_internal_payment_application(
 async def batch_review_internal_applications(
     body: FinanceFeeBatchReviewInput,
     kind: str = Query(pattern="^(commission|other|refund)$"),
-    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.internal_requests import review_internal_applications
 
+    from app.core.finance import nonlitigation_write_identity
+    fees = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(sorted(set(body.fee_ids)))))).all())
+    identity = await nonlitigation_write_identity(fees, identity, db, *INTERNAL_REVIEW_PAGES)
     return await review_internal_applications(body.fee_ids, kind, body.approved, body.comment, identity, db)
 
 
@@ -985,7 +1016,7 @@ async def export_internal_fees(
     case_no: str = "", handling_lawyer: str = "", assistant: str = "", source_person: str = "",
     customer: str = "", customer_manager: str = "", investigator: str = "", payment_status: str = Query("", pattern="^(|已付|未付)$"),
     paid_from: date | None = None, paid_to: date | None = None, payee: str = "", case_stages: str = "", fee_types: str = "",
-    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.finance import (
         _internal_fee_rows,
@@ -995,6 +1026,7 @@ async def export_internal_fees(
     )
     selected_ids = set(_export_ids(ids)) if ids.strip() else None
     rows = await _internal_fee_rows(identity, db, scope=scope, case_no=case_no, handling_lawyer=handling_lawyer, assistant=assistant, source_person=source_person, customer=customer, customer_manager=customer_manager, investigator=investigator, payment_status=payment_status, paid_from=paid_from, paid_to=paid_to, payee=payee, case_stages=case_stages, fee_types=fee_types, ids=selected_ids)
+    rows = await filter_rows_by_center(rows, identity, db)
     if selected_ids is not None and not rows:
         raise HTTPException(status_code=422, detail="请选择需要导出的费用")
     from app.areas.finance.excel_templates import render_rows
@@ -1803,12 +1835,15 @@ async def delete_receivable(plan_id: int, identity: dict = Depends(current_ident
 
 
 @router.get(f"{settings.api_prefix}/finance/invoices/{{invoice_id}}")
-async def get_invoice_application(invoice_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def get_invoice_application(invoice_id: int, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.finance import _invoice_detail_record
     from app.core.permissions import _ensure_record_module
 
     item = await _ensure_record_module(invoice_id, "invoice", identity, db)
-    return await _invoice_detail_record(item, identity, db)
+    from app.core.finance import nonlitigation_write_identity, with_invoice_fee_items
+    await nonlitigation_write_identity([item], identity, db)
+    result = await _invoice_detail_record(item, identity, db)
+    return (await with_invoice_fee_items([result], db))[0] if isinstance(result, dict) else result
 
 
 @router.get(f"{settings.api_prefix}/finance/invoice-context")
@@ -1816,7 +1851,7 @@ async def invoice_application_context(
     customer: str = "", customer_no: str = "", customer_id: int | None = None,
     contract_ids: str = "", invoice_id: int | None = None, keyword: str = "", selected_fee_ids: str | None = None,
     page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=100),
-    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.contracts import _contract_allows_finance_application
     from app.core.finance import (
@@ -1886,7 +1921,8 @@ async def invoice_application_context(
     if not customer.strip():
         raise HTTPException(status_code=422, detail="请先指定客户、合同或编辑发票")
     conditions = [BusinessRecord.module == "finance", BusinessRecord.customer == customer.strip(),
-                  *(await _record_scope_conditions(identity, db))]
+                  *(await _record_scope_conditions(identity, db)),
+                  *record_business_conditions(identity, allow_shared_contract=False)]
     if requested_ids:
         conditions.append(or_(
             BusinessRecord.data["contract_id"].as_integer().in_(requested_ids),
@@ -1926,8 +1962,9 @@ async def invoice_application_context(
             if start <= total < start + page_size:
                 items.append(row)
             total += 1
+    from app.core.finance import with_nonlitigation_fee_fields
     return {
-        "items": items, "total": total, "page": page, "page_size": page_size,
+        "items": with_nonlitigation_fee_fields(items), "total": total, "page": page, "page_size": page_size,
         "selected_items": selected, "customer_record": customer_result,
         "customer_defaults": _invoice_customer_defaults(customer_result, customer),
         "customer_missing_or_forbidden": bool(customer and customer_result is None),

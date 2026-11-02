@@ -1337,6 +1337,9 @@ async def _invoice_list_rows(
     }
     from app.core.invoice_permissions import invoice_permissions, invoice_finance_scope
     invoice_capabilities = await invoice_permissions(identity, db)
+    # 501099：非诉“待处理开票”页的人按“给页面＝功能全有”处理非诉发票。
+    from app.core.finance_centers import has_nonlitigation_page, record_business_type
+    nonlitigation_pending = scope == "pending" and await has_nonlitigation_page(identity, db, "ipr-finance-invoice-pending")
 
     def contains(value: object, needle: str) -> bool:
         return not needle.strip() or needle.strip().casefold() in str(value or "").casefold()
@@ -1352,7 +1355,8 @@ async def _invoice_list_rows(
         if scope == "pending":
             if item.status not in {"待审批", "待开票"}:
                 continue
-            if not capabilities["review" if item.status == "待审批" else "issue"]:
+            if not capabilities["review" if item.status == "待审批" else "issue"] and not (
+                    nonlitigation_pending and record_business_type(item) == "非诉"):
                 continue
         if not contains(applicant, applicant_filter):
             continue
@@ -4085,3 +4089,76 @@ async def _sync_ipr_annual_fee_reminder(row: IprCaseAnnualFee, case_record: Busi
     reminder.deadline = row.due_date
     reminder.content = _ipr_annual_fee_reminder_content(row)
     return reminder
+
+
+# ---------- 501099 非诉财务中心：开票、结算、内部费用的业务类型与非诉专有字段 ----------
+
+# 和前端、恒达老费用演练统一的 data 键名（分支2 11-02 定）。
+NONLITIGATION_FEE_FIELDS = ("expense_subtype", "annual_year", "annual_from", "annual_end", "is_first_year")
+_NONLITIGATION_FEE_SOURCES = {
+    "expense_subtype": ("expense_subtype", "fee_type_name", "fee_type_path", "CaseFeeTypeName"),
+    "annual_year": ("annual_year", "AnnualYear"),
+    "annual_from": ("annual_from", "AnnualFrom"),
+    "annual_end": ("annual_end", "AnnualEnd"),
+    "is_first_year": ("is_first_year", "IsFirstYear"),
+}
+
+
+async def nonlitigation_write_identity(records, identity: dict, db: AsyncSession, *page_keys: str) -> dict:
+    """写操作前核对单据业务类型和当前业务类型一致（不带业务类型时不挡）；
+    只有非诉页面的账号办非诉单时，按“给页面＝功能全有”把本次写操作当管理员办（只对全部是非诉的单据）。"""
+    from app.core.finance_centers import BUSINESS_TYPES, NONLITIGATION, has_nonlitigation_page, record_business_type
+    records = [record for record in records if record is not None]
+    business = identity.get("_business_type")
+    if business in BUSINESS_TYPES:
+        wrong = [str(record.serial_no or record.id) for record in records if record_business_type(record) != business]
+        if wrong:
+            raise HTTPException(status_code=409, detail=f"单据不属于当前业务类型（{business}）：" + "、".join(wrong))
+    if (records and business == NONLITIGATION and identity.get("role") != "admin"
+            and await has_nonlitigation_page(identity, db, *page_keys)):
+        return {**identity, "role": "admin", "role_ids": ["admin", *(identity.get("role_ids") or [])], "action_keys": ["*"],
+                "_nonlitigation_page_grant": True}
+    return identity
+
+
+def nonlitigation_fee_fields(data: dict | None) -> dict:
+    """非诉费用的费用类型细名和年费年度：新系统字段优先，迁移费用取老表 FAM_AR_CaseFee 原值（是否首年保留 T/F 原样）；没有的返回空。"""
+    data = data or {}
+    legacy = data.get("legacy_record") if isinstance(data.get("legacy_record"), dict) else {}
+    result = {}
+    for field, keys in _NONLITIGATION_FEE_SOURCES.items():
+        values = [data.get(key) for key in keys] + [legacy.get(key) for key in keys]
+        result[field] = next((value for value in values if value not in (None, "")), None)
+    result["expense_subtype"] = result["expense_subtype"] or ""
+    return result
+
+
+def with_nonlitigation_fee_fields(rows: list[dict]) -> list[dict]:
+    """只给非诉费用行的 data 补齐专有字段，诉讼行原样不动。"""
+    for row in rows:
+        data = row.get("data")
+        if isinstance(data, dict) and str(data.get("business_type") or "") == "非诉":
+            data.update(nonlitigation_fee_fields(data))
+    return rows
+
+
+async def with_invoice_fee_items(rows: list[dict], db: AsyncSession) -> list[dict]:
+    """非诉发票带出来源费用的类型细名和年费年度（fee_items），诉讼发票原样不动。"""
+    wanted = {int(fee_id) for row in rows if str((row.get("data") or {}).get("business_type") or "") == "非诉"
+              for fee_id in (row.get("data") or {}).get("case_fee_ids") or [] if str(fee_id).isdigit()}
+    if not wanted:
+        return rows
+    fees = {fee.id: fee for fee in (await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(sorted(wanted))))).all()}
+    for row in rows:
+        data = row.get("data") or {}
+        if str(data.get("business_type") or "") != "非诉":
+            continue
+        row["fee_items"] = [{"id": fee.id, "serial_no": fee.serial_no, "amount": (fee.data or {}).get("amount"),
+                             **nonlitigation_fee_fields(fee.data)}
+                            for fee_id in data.get("case_fee_ids") or [] if (fee := fees.get(int(fee_id))) is not None]
+        # 列表列直接读 data：一张发票多笔费用时不同的值用“、”连起来。
+        for field in NONLITIGATION_FEE_FIELDS:
+            values = list(dict.fromkeys(item[field] for item in row["fee_items"] if item[field] not in (None, "")))
+            if field not in data or data.get(field) in (None, ""):
+                data[field] = values[0] if len(values) == 1 else ("、".join(str(value) for value in values) if values else None)
+    return rows

@@ -16,7 +16,7 @@ from app.core.incoming_allocation_projection import normalize_settlement_allocat
 from app.core.finance_centers import (
     finance_center_identity as current_identity, settlement_center_conditions,
     require_incoming_center, incoming_source_for,
-    legacy_incoming_status_counts,
+    legacy_incoming_status_counts, has_nonlitigation_page, business_types_for_ids, NONLITIGATION,
 )
 from app.core.imported_settlement_projection import read_imported_settlement_page
 from app.areas.finance.settlement_legacy_adoption import (
@@ -27,6 +27,27 @@ from app.areas.finance.imported_settlement_exports import (
 )
 
 router = APIRouter()
+
+SETTLEMENT_ROLES = {"admin", "manager", "auditor"}
+# 501099：非诉结算管理页面（待结算 / 结算审核 / 结算付款 / 已付款 / 已拒绝）。
+SETTLEMENT_AUDIT_PAGES = ("ipr-finance-settlement-audit",)
+SETTLEMENT_PAYMENT_PAGES = ("ipr-finance-settlement-payment",)
+SETTLEMENT_PAID_PAGES = ("ipr-finance-settlement-paid",)
+SETTLEMENT_REFUSED_PAGES = ("ipr-finance-settlement-refused",)
+
+
+def _nonlitigation_tag(data: dict, source_types: dict[int, str]) -> dict:
+    application_id = str(data.get("application_id") or "")
+    if data.get("business_type") == NONLITIGATION or (application_id.isdigit() and source_types.get(int(application_id)) == NONLITIGATION):
+        return {"business_type": NONLITIGATION}
+    return {}
+
+
+async def _settlement_role_identity(identity: dict, db: AsyncSession, *pages: str) -> dict:
+    """角色够的照旧；只有非诉页面的账号按“给页面＝功能全有”放行，查询条件已限定只办非诉单。"""
+    if identity.get("role") in SETTLEMENT_ROLES or not await has_nonlitigation_page(identity, db, *pages):
+        return identity
+    return {**identity, "role": "admin", "role_ids": ["admin", *(identity.get("role_ids") or [])], "action_keys": ["*"]}
 
 
 @router.get(f"{settings.api_prefix}/finance/general-settlements/pending")
@@ -78,6 +99,8 @@ async def apply_general_settlements(body: FinanceSettlementApplyInput, identity:
         raise HTTPException(status_code=409, detail="部分回款已有有效结算申请：" + "、".join(blocked))
     rows = await _general_settlement_rows(identity, db, receipt_ids=set(receipt_ids))
     rows_by_id = {int(row["id"]): row for row in rows}
+    # 501099：非诉回款生成的结算申请记为非诉。
+    receipt_types = {receipt.id: receipt.business_type for receipt in locked_receipts}
     missing = [str(receipt_id) for receipt_id in receipt_ids if receipt_id not in rows_by_id]
     if missing:
         raise HTTPException(status_code=409, detail="部分回款尚未完整分配或无权办理：" + "、".join(missing))
@@ -95,7 +118,8 @@ async def apply_general_settlements(body: FinanceSettlementApplyInput, identity:
             owner=identity["username"],
             department=str(identity.get("department") or "上海分所"),
             description=body.comment.strip(),
-            data={**row_data, "applied_by": identity["username"], "applied_at": datetime.now().isoformat(timespec="seconds")},
+            data={**row_data, "applied_by": identity["username"], "applied_at": datetime.now().isoformat(timespec="seconds"),
+                  **({"business_type": NONLITIGATION} if receipt_types.get(receipt_id) == NONLITIGATION else {})},
         )
         db.add(application)
         await db.flush()
@@ -202,6 +226,7 @@ async def review_archive_settlement_payments(
     from app.core.permissions import (
         _settlement_application_scope,
     )
+    identity = await _settlement_role_identity(identity, db, *SETTLEMENT_PAYMENT_PAGES)
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="当前角色没有归档费支付审核权限")
     settlement_ids = list(dict.fromkeys(item.strip() for item in body.settlement_ids if item.strip()))
@@ -221,6 +246,8 @@ async def review_archive_settlement_payments(
     legacy_rows = await legacy_archive_rows(legacy_ids, "payment", identity, db)
     rows += [{**row, "data": archive_decision_data(row, identity, decided_at)} for row in legacy_rows]
     row_map = {row["id"]: row for row in rows}
+    source_types = await business_types_for_ids(db, [(row.get("data") or {}).get("application_id") for row in rows
+                                                     if str((row.get("data") or {}).get("application_id") or "").isdigit()])
     reusable = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "finance_archive_settlement",
         BusinessRecord.status == "已回滚",
@@ -250,6 +277,7 @@ async def review_archive_settlement_payments(
                 "archive_payment_reviewer": identity["username"],
                 "archive_payment_reviewed_at": decided_at,
                 "archive_payment_comment": body.comment.strip(),
+                **_nonlitigation_tag(data, source_types),
             }
         else:
             previous_status = "待支付"
@@ -270,6 +298,7 @@ async def review_archive_settlement_payments(
                     "archive_payment_reviewer": identity["username"],
                     "archive_payment_reviewed_at": decided_at,
                     "archive_payment_comment": body.comment.strip(),
+                    **_nonlitigation_tag(data, source_types),
                 },
             )
         db.add(decision)
@@ -350,6 +379,7 @@ async def rollback_paid_archive_settlements(
     from app.core.permissions import (
         _settlement_application_scope,
     )
+    identity = await _settlement_role_identity(identity, db, *SETTLEMENT_PAID_PAGES)
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="当前角色没有归档费支付回滚权限")
     if not body.comment.strip():
@@ -453,6 +483,7 @@ async def rollback_rejected_archive_settlements(
     from app.core.finance import (
         _rejected_archive_settlement_records,
     )
+    identity = await _settlement_role_identity(identity, db, *SETTLEMENT_REFUSED_PAGES)
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="当前角色没有归档费拒绝回滚权限")
     if not body.comment.strip():
@@ -485,6 +516,7 @@ async def reapply_rejected_archive_settlements(
     from app.core.finance import (
         _rejected_archive_settlement_records,
     )
+    identity = await _settlement_role_identity(identity, db, *SETTLEMENT_REFUSED_PAGES)
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="当前角色没有归档费重新申请权限")
     records = await _rejected_archive_settlement_records(
@@ -734,6 +766,7 @@ async def review_general_settlement_applications(body: FinanceSettlementReviewIn
     from app.core.permissions import (
         _settlement_application_scope,
     )
+    identity = await _settlement_role_identity(identity, db, *SETTLEMENT_AUDIT_PAGES)
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="当前角色没有结算审批权限")
     application_ids = list(dict.fromkeys(body.application_ids)) + await adopt_legacy_settlements(body.projection_ids, identity, db)
@@ -802,6 +835,7 @@ async def pay_or_rollback_general_settlement_applications(body: FinanceSettlemen
     from app.core.permissions import (
         _settlement_application_scope,
     )
+    identity = await _settlement_role_identity(identity, db, *(*SETTLEMENT_PAYMENT_PAGES, *SETTLEMENT_PAID_PAGES))
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="当前角色没有结算付款权限")
     application_ids = list(dict.fromkeys(body.application_ids)) + await adopt_legacy_settlements(body.projection_ids, identity, db)
@@ -897,6 +931,7 @@ async def withdraw_general_settlement_applications(body: FinanceSettlementWithdr
     """回滚：按原系统把结算申请退回待结算（回款回到待提交），可从待审核、待付款、已付款、已拒绝办理。"""
     from app.core.finance import _sync_case_commissions_for_links
     from app.core.permissions import _settlement_application_scope
+    identity = await _settlement_role_identity(identity, db, *(*SETTLEMENT_AUDIT_PAGES, *SETTLEMENT_PAYMENT_PAGES, *SETTLEMENT_PAID_PAGES))
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="当前角色没有结算回滚权限")
     comment = body.comment.strip()
