@@ -1572,6 +1572,10 @@ async def _delete_company_cases(case_ids: list[int], identity: dict, db: AsyncSe
             raise HTTPException(status_code=404, detail="选中的案件不存在或无权访问，整批未删除")
         if any(record.status in {"已归档", "已合并"} for record in records):
             raise HTTPException(status_code=409, detail="包含已归档或已合并案件，整批未删除")
+        # BUG20261102013（陶国南 11-02 定）：案件里还有费用或未完成任务时不能删除。
+        from app.core.case_task_members import require_case_deletable
+        for record in records:
+            await require_case_deletable(record, db)
         for record in records:
             attachment_paths.extend(await _delete_case_owned_records(record, db))
         await db.commit()

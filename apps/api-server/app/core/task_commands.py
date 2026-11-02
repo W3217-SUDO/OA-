@@ -96,6 +96,10 @@ async def create_task_record(body: TaskInput, identity: dict, db: AsyncSession):
         collaborator = await _active_task_username(value, db, field_name="协作人")
         if collaborator != owner and collaborator not in collaborators:
             collaborators.append(collaborator)
+    if case_records:
+        # BUG20261102013：案件任务只能发给本案人员，非本案人员请发事务性任务。
+        from app.core.case_task_members import require_case_task_members
+        await require_case_task_members([owner, *collaborators], db, case_records=case_records)
     initial_status = "待处理" if source == "案件任务" else "待接收"
     clue_task_data = {}
     creation_comment = f"负责人：{owner}；截止日期：{body.deadline}"

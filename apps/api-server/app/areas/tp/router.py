@@ -799,6 +799,10 @@ async def batch_update_tasks(body: TaskBatchUpdateInput, identity: dict = Depend
             raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 的人工维护仅允许变更负责人和期限")
         if task.status not in {"待接收", "待处理", "处理中"}:
             raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 已进入不可批量修改的状态")
+        if normalized_owner is not None:
+            # BUG20261102013：案件任务只能交给本案人员。
+            from app.core.case_task_members import require_case_task_members
+            await require_case_task_members([normalized_owner], db, task_data=task.data or {})
     for task in tasks:
         changes: list[str] = []
         if normalized_owner is not None:
@@ -858,6 +862,9 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
     # selection never creates a partial lifecycle result.
     for task in ordered_tasks:
         data = task.data or {}
+        if body.action == "handoff":
+            from app.core.case_task_members import require_case_task_members
+            await require_case_task_members([recipient], db, task_data=data)
         if body.action == "accept":
             if identity.get("role") != "admin" and task.owner != identity["username"]:
                 raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅负责人可接收")
@@ -1060,6 +1067,8 @@ async def resend_task(task_id: int, body: TaskHandoffInput, identity: dict = Dep
     if task.status != "已拒绝": raise HTTPException(status_code=409, detail="只有已拒绝任务可以重新派发")
     previous_owner = task.owner
     recipient = await _active_task_username(body.recipient, db, field_name="新负责人")
+    from app.core.case_task_members import require_case_task_members
+    await require_case_task_members([recipient], db, task_data=data)
     task.owner = recipient; task.status = "待接收"
     task.data = {**data, "rejected_reason": "", "resent_at": datetime.now().isoformat(timespec="seconds"), "handoff_from": previous_owner, "handoff_recipient": recipient, "handed_off_at": str(date.today()), "handoff_auto_complete_at": "", "handoff_restarted": False}
     await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="重新派发任务", from_status="已拒绝", to_status="待接收", operator=identity["username"], comment=f"{previous_owner} → {recipient}。{body.comment}"), db, content="任务已重新派发.")
@@ -1382,6 +1391,8 @@ async def handoff_task(task_id: int, body: TaskHandoffInput, identity: dict = De
     if recipient == previous_owner:
         raise HTTPException(status_code=422, detail="任务不能转交给当前负责人")
     data = task.data or {}
+    from app.core.case_task_members import require_case_task_members
+    await require_case_task_members([recipient], db, task_data=data)
     now = datetime.now()
 
     def _task_datetime(value):
