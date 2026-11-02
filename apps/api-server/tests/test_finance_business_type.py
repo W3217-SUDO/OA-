@@ -14,7 +14,8 @@ from app.areas.finance.incoming_payments import _incoming_owner_conditions
 from app.core.finance import _visible_incoming_payment_statement
 from app.core.finance_action_permissions import page_granted_finance_actions
 from app.core.finance_centers import (
-    finance_center_identity, record_business_conditions, require_incoming_center, require_record_center,
+    finance_center_identity, optional_finance_center_identity, record_business_conditions, require_incoming_center,
+    require_record_center,
 )
 from app.database import Base
 from app.models import BusinessRecord, IncomingPayment, User
@@ -123,6 +124,18 @@ class FinanceBusinessTypeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone((await resolve(finance, "firm", None))["_business_type"])
         self.assertEqual((await resolve(finance, "firm", "非诉"))["_business_type"], "非诉")
         self.assertEqual((await resolve([], "platform", "诉讼", role="admin"))["_business_type"], "诉讼")
+
+    async def test_optional_identity_forces_nonlitigation_only_accounts(self):
+        async def resolve(menus, finance_scope=None, business_type=None):
+            identity = {"username": "u", "role": "admin", "_actual_role": "user", "_actual_role_ids": ["user"]}
+            with patch("app.core.permissions._permission_payload_for_identity", return_value={"menu_keys": menus}):
+                return await optional_finance_center_identity(_request(), finance_scope, business_type, identity, None)
+
+        forced = await resolve(["ipr", "ipr-finance", "ipr-finance-payment-mine"])
+        self.assertEqual((forced["_finance_scope"], forced["_business_type"]), ("firm", "非诉"))
+        # 有财务中心菜单的人不带中心时照旧不筛。
+        plain = await resolve(["finance", "finance-payment-mine", "ipr-finance-payment-mine"])
+        self.assertNotIn("_business_type", plain)
 
     def test_department_receipt_page_carries_receipt_management_switches(self):
         self.assertEqual(

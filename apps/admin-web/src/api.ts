@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { handleConflictReviewError, handleConflictReviewResponse } from './conflict-review/httpFeedback'
+import { isNonlitigationFinancePage } from './finance/services/financeBusinessType'
 
 export const AUTH_EXPIRED_EVENT = 'sunhold:auth-expired'
 export const api = axios.create({baseURL:'/api/v1'})
@@ -9,6 +10,10 @@ api.interceptors.request.use(config => {
   // 带上当前页面：后端按“账号持有这个页面”放行该页发出的读取，页面顺带读取别的中心数据时不再报没有菜单权限。
   const page = typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('page') || ''
   if (page && !config.headers['X-OA-Page']) config.headers['X-OA-Page'] = encodeURIComponent(page).slice(0, 200)
+  // 501099：非诉财务中心各页发出的财务请求一律带“律所中心 + 非诉”，后端只出非诉数据、只办非诉的单。
+  if (isNonlitigationFinancePage(page) && /^\/(finance|contract-payment-applications|receivables)(\/|$|\?)/.test(String(config.url || ''))) {
+    config.params = { finance_scope: 'firm', ...config.params, business_type: '非诉' }
+  }
   return config
 })
 

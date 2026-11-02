@@ -219,9 +219,21 @@ async def optional_finance_center_identity(
     identity: dict = Depends(current_identity),
     db=Depends(get_db),
 ):
-    if finance_scope is None:
-        return identity
-    return await finance_center_identity(request, finance_scope, business_type, identity, db)
+    if finance_scope is None and business_type is None:
+        # 只有非诉财务中心菜单的账号不带中心也只能看、办非诉（页面访问会把它临时当管理员）。
+        if not await _nonlitigation_only(identity, db):
+            return identity
+        business_type = NONLITIGATION
+    return await finance_center_identity(request, finance_scope or "firm", business_type, identity, db)
+
+
+async def _nonlitigation_only(identity, db) -> bool:
+    if "admin" in set(identity.get("_actual_role_ids") or [identity.get("_actual_role") or identity.get("role")]):
+        return False
+    from app.core.permissions import _permission_payload_for_identity
+    menus = set((await _permission_payload_for_identity(identity, db)).get("menu_keys") or [])
+    granted = lambda root: any(key == root or key.startswith(root + "-") for key in menus)
+    return granted(NONLITIGATION_MENU_ROOT) and not granted("finance") and not granted("platform-finance")
 
 
 def legacy_center_conditions(identity):
