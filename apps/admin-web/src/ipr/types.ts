@@ -45,6 +45,8 @@ export type IprFileType = {
   is_official: boolean;
   requires_transmission: boolean;
   allow_repeat: boolean;
+  /** 老系统上传时的分组：官文 / 非官文 / 转文 */
+  group?: string;
 };
 export type AssistedFee = {
   id: number;

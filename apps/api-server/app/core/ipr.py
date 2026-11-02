@@ -458,15 +458,64 @@ def _ipr_case_file_type_dict(item: SystemParameter) -> dict:
         "requires_transmission": bool(extra.get("requires_transmission")), "allow_repeat": bool(extra.get("allow_repeat", True)),
         "hedging_file_type_codes": list(extra.get("hedging_file_type_codes") or []),
         "hedging_fee_type_codes": list(extra.get("hedging_fee_type_codes") or []),
+        "case_type_code": str(extra.get("case_type_code") or ""), "group": ipr_file_type_group(item),
     }
 
 
-async def _active_ipr_case_file_type(record: BusinessRecord, name: str, db: AsyncSession) -> SystemParameter:
-    item = await db.scalar(select(SystemParameter).where(
+# 老系统上传文档时按案件类型取名单（BUG20261102005）：发明、实用新型、外观、PCT 等专利案件共用“国内发明专利”(1) 那份，
+# 其他案件类型用自己的；再分“官文 / 非官文 / 转文”三组。新系统自带的两个通用类型老系统没有，按案件上传时不给。
+PATENT_FILE_TYPE_CASE_TYPES = {"1", "2", "3", "14", "15", "16", "17"}
+KIND_FILE_TYPE_CASE_TYPES = {"专利": "1", "商标": "4"}
+GENERIC_IPR_FILE_TYPE_CODES = {"IPR-OTHER", "IPR-TRANSFER"}
+
+
+def ipr_file_type_group(item: SystemParameter) -> str:
+    extra = item.extra or {}
+    if extra.get("is_official"):
+        return "官文"
+    legacy = extra.get("legacy_record") or {}
+    transformed = extra.get("is_transformed")
+    if transformed is None:
+        transformed = legacy.get("IsTransformed") == "T" if legacy else bool(extra.get("requires_transmission"))
+    return "转文" if transformed else "非官文"
+
+
+def ipr_record_file_type_case_type(record: BusinessRecord) -> str:
+    data = record.data or {}
+    code = str(data.get("case_type_id") or data.get("case_type_code") or "").strip()
+    if not code:
+        code = KIND_FILE_TYPE_CASE_TYPES.get(str(data.get("case_kind") or ""), "")
+    return "1" if code in PATENT_FILE_TYPE_CASE_TYPES else code
+
+
+def ipr_file_type_applies(item: SystemParameter, record: BusinessRecord) -> bool:
+    extra = item.extra or {}
+    case_type_code = str(extra.get("case_type_code") or "").strip()
+    if case_type_code:
+        return case_type_code == ipr_record_file_type_case_type(record)
+    if item.code in GENERIC_IPR_FILE_TYPE_CODES:
+        return False
+    case_kinds = list(extra.get("case_kinds") or [])
+    return not case_kinds or str((record.data or {}).get("case_kind") or "") in case_kinds
+
+
+async def _active_ipr_case_file_type(record: BusinessRecord, name: str, db: AsyncSession, code: str = "") -> SystemParameter:
+    if code:
+        # 同一名单里有同名类型（如三个“驳回决定”），按编号取，并且必须是本案件类型的名单。
+        item = await db.scalar(select(SystemParameter).where(
+            SystemParameter.category == "ipr_case_file_type", SystemParameter.code == code, SystemParameter.is_active.is_(True),
+        ).order_by(SystemParameter.id))
+        if not item:
+            raise HTTPException(status_code=422, detail="案件文档类型不存在或已停用")
+        if not ipr_file_type_applies(item, record):
+            raise HTTPException(status_code=422, detail="该文档类型不适用于当前知识产权案件类型")
+        return item
+    items = list((await db.scalars(select(SystemParameter).where(
         SystemParameter.category == "ipr_case_file_type", SystemParameter.name == name, SystemParameter.is_active.is_(True),
-    ))
-    if not item:
+    ).order_by(SystemParameter.sort_order, SystemParameter.id))).all())
+    if not items:
         raise HTTPException(status_code=422, detail="案件文档类型不存在或已停用")
+    item = next((row for row in items if ipr_file_type_applies(row, record)), items[0])
     case_kinds = list((item.extra or {}).get("case_kinds") or [])
     if case_kinds and str((record.data or {}).get("case_kind") or "") not in case_kinds:
         raise HTTPException(status_code=422, detail="该文档类型不适用于当前知识产权案件类型")

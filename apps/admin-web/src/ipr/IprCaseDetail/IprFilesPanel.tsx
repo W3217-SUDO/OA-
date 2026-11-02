@@ -1,9 +1,11 @@
 import { roleActionAllowed } from "../../roleActions";
-import { Alert,Button,DatePicker,Form,Input,Modal,Select,Space,Tag } from "antd";
+import { Alert,Button,DatePicker,Form,Input,Modal,Radio,Select,Space,Tag } from "antd";
 import Table from "../../components/ResizableTable";
 import { AttachmentFileInput } from "../../components/common/AttachmentContent";
 import type { Attachment,IprDetailPageState,IprFileType,IprRecord } from "../types";
 import { IprRowContextMenu } from "./IprRowContextMenu";
+
+const IPR_FILE_TYPE_GROUPS = ["官文", "非官文", "转文"];
 
 interface IprFilesPanelProps {
   detail: IprRecord;
@@ -172,18 +174,34 @@ export function IprFilesPanel({
         okText="上传"
       >
         <Form form={iprFileForm} layout="vertical">
-          <Form.Item
-            name="category"
-            label="文档类型"
-            rules={[{ required: true, message: "请选择文档类型" }]}
-          >
-            <Select
-              placeholder="请选择管理员配置且适用于本案件的文档类型"
-              options={iprFileTypes.map((item) => ({
-                value: item.name,
-                label: `${item.name}${item.requires_transmission ? "（待转文）" : ""}`,
-              }))}
+          {/* 和老系统右键上传一致（BUG20261102005）：先选官文 / 非官文 / 转文，再从本案件类型那份名单里选，显示“编号+名称”。 */}
+          <Form.Item name="file_type_group" label="文档类型" style={{ marginBottom: 8 }}>
+            <Radio.Group
+              optionType="button"
+              size="small"
+              options={IPR_FILE_TYPE_GROUPS}
+              onChange={() => iprFileForm.setFieldValue("file_type_code", undefined)}
             />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev: any, next: any) => prev.file_type_group !== next.file_type_group}>
+            {({ getFieldValue }: any) => (
+              <Form.Item
+                name="file_type_code"
+                rules={[{ required: true, message: "请选择文档类型" }]}
+              >
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="从下列文档类型中选择，可输入编号或名称搜索"
+                  options={iprFileTypes
+                    .filter((item) => (item.group || "非官文") === getFieldValue("file_type_group"))
+                    .map((item) => ({
+                      value: item.code,
+                      label: `${/^\d+$/.test(item.code) ? item.code : ""}${item.name}`,
+                    }))}
+                />
+              </Form.Item>
+            )}
           </Form.Item>
           <Form.Item
             name="document_date"

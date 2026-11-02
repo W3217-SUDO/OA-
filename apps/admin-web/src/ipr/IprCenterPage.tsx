@@ -379,14 +379,9 @@ export default function IprCenterPage({
     }
   }, [batchAvailableFileTypes, batchSelectedKinds, iprBatchForm]);
   useEffect(() => {
-    const selectedType = iprFileForm.getFieldValue("category");
-    const compatibleType = getIprCompatibleFileCategory({
-      category: selectedType,
-      caseKinds: [String(detail?.data?.case_kind || "")],
-      fileTypes: iprFileTypes,
-    });
-    if (selectedType && !compatibleType) {
-      iprFileForm.setFieldValue("category", undefined);
+    const selectedCode = iprFileForm.getFieldValue("file_type_code");
+    if (selectedCode && !iprFileTypes.some((item) => item.code === selectedCode)) {
+      iprFileForm.setFieldValue("file_type_code", undefined);
     }
   }, [detail, iprFileForm, iprFileTypes]);
   const clearIprSectionError = (
@@ -990,6 +985,7 @@ export default function IprCenterPage({
     get openDetail() { return openDetail; },
     get detail() { return detail; },
     get iprFileForm() { return iprFileForm; },
+    get iprFileTypes() { return iprFileTypes; },
     get iprUploadFile() { return iprUploadFile; },
     get setIprFileOpen() { return setIprFileOpen; },
     get setIprUploadFile() { return setIprUploadFile; },
@@ -1290,9 +1286,9 @@ export default function IprCenterPage({
 
   const openUploadFile = () => {
     iprFileForm.resetFields();
-    iprFileForm.setFieldsValue({ document_date: dayjs() });
+    iprFileForm.setFieldsValue({ document_date: dayjs(), file_type_group: "官文" });
     setIprUploadFile(null);
-    void loadIprFileTypes(String(detail?.data?.case_kind || ""));
+    void loadIprFileTypes(String(detail?.data?.case_kind || ""), detail?.id);
     setIprFileOpen(true);
   };
 

@@ -3,6 +3,7 @@ from app.core.storage import attachment_local_path
 from fastapi import APIRouter
 from app.core.soft_delete import keep_deleted_file
 from app.core.constants import IPR_CASE_KINDS, UPLOAD_ROOT
+from sqlalchemy import and_
 from app.core.dependencies import AsyncSession, BusinessRecord, CPC_APPLICATION_CATEGORY, Depends, File, FileAttachment, Form, HTTPException, IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate, Path, Query, Response, SystemParameter, UploadFile, User, WorkflowEvent, current_identity, date, datetime, func, get_db, io, is_cpc_application_attachment, json, or_, select, settings, status, uuid4, zipfile
 from app.models_shared import IprCaseFileBatchTransmitInput, IprCaseFileCustomCandidateConfirmInput, IprCaseFileCustomCandidateCorrectInput, IprCaseFileCustomCandidateMatchInput, IprCaseFileTransmitInput
 
@@ -85,9 +86,9 @@ async def list_ipr_case_files(
     }
 
 @router.get(f"{settings.api_prefix}/ipr/case-file-types")
-async def list_ipr_case_file_types(case_kind: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def list_ipr_case_file_types(case_kind: str = "", case_id: int | None = None, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.ipr import (
-        _ipr_case_file_type_dict,
+        _ipr_case_file_type_dict, ipr_file_type_applies,
     )
     from app.core.permissions import (
         _require_record_module_menu,
@@ -98,14 +99,19 @@ async def list_ipr_case_file_types(case_kind: str = "", identity: dict = Depends
     rows = list((await db.scalars(select(SystemParameter).where(
         SystemParameter.category == "ipr_case_file_type", SystemParameter.is_active.is_(True),
     ).order_by(SystemParameter.sort_order, SystemParameter.id))).all())
-    if case_kind:
+    if case_id is not None:
+        # 案件里上传：和老系统一样只给本案件类型那份名单（BUG20261102005）。
+        from app.core.permissions import _ensure_record_module
+        record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+        rows = [item for item in rows if ipr_file_type_applies(item, record)]
+    elif case_kind:
         rows = [item for item in rows if not (item.extra or {}).get("case_kinds") or case_kind in (item.extra or {}).get("case_kinds", [])]
     return {"items": [_ipr_case_file_type_dict(item) for item in rows]}
 
 @router.post(f"{settings.api_prefix}/ipr/cases/{{case_id}}/files", status_code=status.HTTP_201_CREATED)
 async def upload_ipr_case_file(
     case_id: int, file: UploadFile = File(...), category: str = Form(...), document_date: date = Form(...),
-    requires_transmission: bool = Form(False), remark: str = Form(""),
+    requires_transmission: bool = Form(False), remark: str = Form(""), file_type_code: str = Form(""),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     """上传带业务日期和移交要求的知识产权案件文件。"""
@@ -128,7 +134,8 @@ async def upload_ipr_case_file(
         raise HTTPException(status_code=422, detail="CPC申报历史只能由专用生成入口创建")
     if len(remark.strip()) > 1000:
         raise HTTPException(status_code=422, detail="文档说明不能超过 1000 个字符")
-    file_type = await _active_ipr_case_file_type(record, normalized_category, db)
+    file_type = await _active_ipr_case_file_type(record, normalized_category, db, file_type_code.strip()[:64])
+    normalized_category = file_type.name
     type_extra = file_type.extra or {}
     requires_transmission = bool(type_extra.get("requires_transmission"))
     suffix = Path(file.filename or "").suffix.lower()
@@ -142,7 +149,9 @@ async def upload_ipr_case_file(
         raise HTTPException(status_code=413, detail="单个案件文档不能超过 20MB")
     original_name = Path(file.filename or "document").name
     if not bool(type_extra.get("allow_repeat", True)):
-        duplicate = await db.scalar(select(FileAttachment.id).where(FileAttachment.record_id == record.id, FileAttachment.category == normalized_category))
+        duplicate = await db.scalar(select(FileAttachment.id).where(FileAttachment.record_id == record.id, or_(
+            FileAttachment.file_type_code == file_type.code,
+            and_(FileAttachment.category == normalized_category, FileAttachment.file_type_code.is_(None)))))
         if duplicate:
             raise HTTPException(status_code=409, detail="该案件已存在同类型文档，当前文件类型不允许重复上传")
     stored_name = f"{uuid4().hex}{suffix}"

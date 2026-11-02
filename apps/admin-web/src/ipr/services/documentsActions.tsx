@@ -23,6 +23,7 @@ export interface IprDocumentsDependencies {
     readonly openDetail: (record: IprRecord) => Promise<void>;
     readonly detail: IprRecord | null;
     readonly iprFileForm: FormInstance<any>;
+    readonly iprFileTypes: IprFileType[];
     readonly iprUploadFile: File | null;
     readonly setIprFileOpen: React.Dispatch<React.SetStateAction<boolean>>;
     readonly setIprUploadFile: React.Dispatch<React.SetStateAction<File | null>>;
@@ -127,12 +128,12 @@ export function createIprDocumentsActions(context: IprDocumentsDependencies) {
             message.error(errorMessage);
         }
     };
-    const loadIprFileTypes = async (caseKind: string) => {
+    const loadIprFileTypes = async (caseKind: string, caseId?: number) => {
         const { setIprFileTypes } = context;
         try {
             const { data } = await api.get<{
                 items: IprFileType[];
-            }>("/ipr/case-file-types", { params: { case_kind: caseKind } });
+            }>("/ipr/case-file-types", { params: caseId ? { case_id: caseId } : { case_kind: caseKind } });
             setIprFileTypes(data.items || []);
         }
         catch (e: any) {
@@ -200,7 +201,7 @@ export function createIprDocumentsActions(context: IprDocumentsDependencies) {
         }
     };
     const uploadIprFile = async () => {
-        const { detail, iprFileForm, iprUploadFile, setIprFileOpen, setIprUploadFile } = context;
+        const { detail, iprFileForm, iprFileTypes, iprUploadFile, setIprFileOpen, setIprUploadFile } = context;
         if (!detail)
             return;
         try {
@@ -209,9 +210,15 @@ export function createIprDocumentsActions(context: IprDocumentsDependencies) {
                 message.warning("请选择案件文档");
                 return;
             }
+            const fileType = iprFileTypes.find((item: IprFileType) => item.code === values.file_type_code);
+            if (!fileType) {
+                message.warning("请选择文档类型");
+                return;
+            }
             const payload = new FormData();
             payload.append("file", iprUploadFile);
-            payload.append("category", values.category);
+            payload.append("category", fileType.name);
+            payload.append("file_type_code", fileType.code);
             payload.append("document_date", formatRequiredDate(values.document_date, "文档日期"));
             payload.append("remark", values.remark || "");
             const uploadResponse = await api.post(`/ipr/cases/${detail.id}/files`, payload);
