@@ -318,11 +318,11 @@ test("settlement downloads decode JSON Blob details without changing the selecte
   for (const kind of ["case", "settlement"]) {
     await actions.exportGeneralSettlement(kind, [17]);
     assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1))), {
-      path: "/finance/general-settlements/export", options: { params: { kind, ids: "17", finance_scope: "platform" }, responseType: "blob" },
+      path: "/finance/general-settlements/export", options: { params: { kind, ids: "17", finance_scope: "platform" }, responseType: "blob", ...(kind === "settlement" ? { timeout: 300000 } : {}) },
     });
   }
   assert.match(downloads[0], /^案件清单-.*\.xls$/);
-  assert.match(downloads[1], /^结算清单-.*\.xls$/);
+  assert.match(downloads[1], /^结算单-.*\.zip$/);
   context.isGeneralSettlementPendingRoute = false;
   await actions.exportGeneralSettlement("case", [71]);
   assert.deepEqual(JSON.parse(JSON.stringify(requests.at(-1).options.params)), { kind: "case", application_ids: "71", finance_scope: "platform" });

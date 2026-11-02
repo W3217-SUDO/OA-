@@ -1,6 +1,8 @@
 """有限 ID 的财务查询在数据库筛选，并保持既有结果与顺序。"""
 
+import io
 import os
+import zipfile
 import unittest
 from datetime import date, datetime, timezone
 from uuid import uuid4
@@ -237,7 +239,7 @@ class SQLiteSelectedQueryTest(SelectedQueryAssertions, unittest.IsolatedAsyncioT
                         voucher = await db.get(BusinessRecord, voucher_id)
                         voucher.data = {**voucher.data, "extra_amount": voucher_extra}
                         await db.commit()
-                for kind in ("case", "settlement", "receipt"):
+                for kind in ("case", "receipt"):
                     with self.subTest(kind=kind, voucher_extra=voucher_extra):
                         response = await client.get("/api/v1/finance/general-settlements/export", params={"kind": kind, "ids": payment_id})
                         self.assertEqual(response.status_code, 200, response.text if response.status_code != 200 else "")
@@ -253,7 +255,7 @@ class SQLiteSelectedQueryTest(SelectedQueryAssertions, unittest.IsolatedAsyncioT
                 issued = await db.get(BusinessRecord, issued_id)
                 issued.data = {key: value for key, value in invoice_data.items() if key != "extra_amount"}
                 await db.commit()
-            for kind, name in (("case", "案件明细清单"), ("settlement", "结算列表")):
+            for kind, name in (("case", "案件明细清单"),):
                 response = await client.get("/api/v1/finance/general-settlements/export", params={"kind": kind, "ids": payment_id})
                 self.assertEqual(response.status_code, 200, response.text if response.status_code != 200 else "")
                 self.assertTrue(response.content.startswith(bytes.fromhex("d0cf11e0a1b11ae1")))
@@ -311,7 +313,20 @@ class SQLiteSelectedQueryTest(SelectedQueryAssertions, unittest.IsolatedAsyncioT
             transport=httpx.ASGITransport(app=application), base_url="http://row4.test",
             params={"finance_scope": "firm"},
         ) as client:
-            for kind, name in (("case", "案件明细清单"), ("settlement", "结算列表")):
+            # 结算单（kind=settlement）是压缩包：每个案件一个文件夹，里面是按原件格式填好的个案结算表（BUG20261102001）
+            response = await client.get("/api/v1/finance/general-settlements/export", params={"kind": "settlement", "ids": payment_id})
+            self.assertEqual(response.status_code, 200, response.text if response.status_code != 200 else "")
+            self.assertEqual(response.headers["content-type"], "application/zip")
+            with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+                self.assertEqual(archive.namelist(), ["CODEX-ROW4-CASE/CODEX-ROW4-CASE_个案结算表.xls"])
+                sheet = xlrd.open_workbook(file_contents=archive.read(archive.namelist()[0])).sheet_by_index(0)
+            self.assertEqual(sheet.name, "个案结算表")
+            self.assertEqual((sheet.cell_value(1, 0), sheet.cell_value(1, 1)), ("客户", "CODEX-ROW4-CUSTOMER"))
+            self.assertEqual((sheet.cell_value(2, 1), sheet.cell_value(7, 1)), ("CODEX-ROW4-CASE", "CODEX-ROW4-PAYER"))
+            self.assertEqual((sheet.cell_value(8, 1), sheet.cell_value(8, 3)), (25, 25))
+            self.assertEqual((sheet.cell_value(9, 1), sheet.cell_value(9, 2), sheet.cell_value(9, 5)), ("诉讼费总额", 5, 5))
+            self.assertEqual((sheet.cell_value(20, 0), sheet.cell_value(20, 1)), ("律所律师费", 20))
+            for kind, name in (("case", "案件明细清单"),):
                 with self.subTest(kind=kind):
                     response = await client.get("/api/v1/finance/general-settlements/export", params={"kind": kind, "ids": payment_id})
                     self.assertEqual(response.status_code, 200, response.text if response.status_code != 200 else "")
@@ -350,6 +365,11 @@ class SQLiteSelectedQueryTest(SelectedQueryAssertions, unittest.IsolatedAsyncioT
                         "kind": kind, "application_ids": application_id,
                     })
                     self.assertEqual(response.status_code, 200, response.text if response.status_code != 200 else "")
+                    if kind == "settlement":
+                        # 待审核、待付款、已付款、已拒绝等菜单的结算单同样是压缩包
+                        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+                            self.assertEqual(archive.namelist(), ["CODEX-ROW4-CASE/CODEX-ROW4-CASE_个案结算表.xls"])
+                        continue
                     sheet = xlrd.open_workbook(file_contents=response.content).sheet_by_index(0)
                     case_rows = [sheet.row_values(index) for index in range(sheet.nrows)
                                  if sheet.cell_value(index, 0) == "CODEX-ROW4-CASE"]

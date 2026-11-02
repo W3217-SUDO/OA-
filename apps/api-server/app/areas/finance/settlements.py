@@ -1004,6 +1004,16 @@ async def export_general_settlements(
     if not rows:
         raise HTTPException(status_code=422, detail="没有可导出的待结算记录")
     rows = await enrich_general_export_rows(rows, identity, db, kind)
+    if kind == "settlement":
+        # 结算单：每个案件一个文件夹（个案结算表 + 法院文书 + 本次票据）打成压缩包（BUG20261102001）
+        import os
+        from starlette.background import BackgroundTask
+        from starlette.responses import FileResponse
+        from app.areas.finance.settlement_package import build_settlement_package
+        path, filename = await build_settlement_package(rows, identity, db, date.today())
+        disposition = f"attachment; filename=settlement-package.zip; filename*=UTF-8''{quote(filename)}"
+        return FileResponse(path, media_type="application/zip", headers={"Content-Disposition": disposition},
+                            background=BackgroundTask(os.remove, path))
     workbook, filename, _sheet_name = render_general_settlement_export(kind, rows, date.today())
     disposition = f"attachment; filename=settlement-export.xls; filename*=UTF-8''{quote(filename)}"
     return Response(content=workbook, media_type="application/vnd.ms-excel", headers={"Content-Disposition": disposition})

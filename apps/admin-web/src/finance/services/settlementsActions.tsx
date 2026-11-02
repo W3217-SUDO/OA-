@@ -367,16 +367,18 @@ export function createFinanceSettlementsActions(context: FinanceSettlementsDepen
                     ? { kind, ...settlementExportIds(selectedIds, isGeneralSettlementPendingRoute ? "ids" : "application_ids") }
                     : { ...context.generalSettlementParams(context.originalQuery), kind },
                 responseType: "blob",
+                // 结算单压缩包要从 OSS 取法院文书和票据，比 Excel 慢
+                ...(kind === "settlement" ? { timeout: 300000 } : {}),
             });
             const names = {
-                settlement: "结算清单",
+                settlement: "结算单",
                 receipt: "到账清单",
                 case: "案件清单",
             };
             const url = URL.createObjectURL(response.data);
             const anchor = document.createElement("a");
             anchor.href = url;
-            anchor.download = `${names[kind]}-${dayjs().format("YYYY-MM-DD")}.xls`;
+            anchor.download = `${names[kind]}-${dayjs().format("YYYY-MM-DD")}.${kind === "settlement" ? "zip" : "xls"}`;
             anchor.click();
             URL.revokeObjectURL(url);
             message.success("导出成功.");
