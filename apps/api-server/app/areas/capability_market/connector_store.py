@@ -43,10 +43,39 @@ def cipher():
     return Fernet(base64.urlsafe_b64encode(key))
 
 
+_SHARED = '__oa_shared_secrets__'
+
+
+def seal(config):
+    """整组多个服务共用同一个Key时只加密保存一份：重复的凭据值换成引用，解密时还原。"""
+    values = [path_value(config, path) for path in secret_paths(config)]
+    repeated = {value for value in values if isinstance(value, str) and configured_secret(value) and values.count(value) > 1}
+    payload = config
+    if repeated:
+        shared = sorted(repeated)
+        payload = deepcopy(config)
+        for path in secret_paths(payload):
+            if path_value(payload, path) in repeated:
+                set_path(payload, path, {_SHARED: shared.index(path_value(payload, path))})
+        payload = {_SHARED: shared, 'configuration': payload}
+    return cipher().encrypt(json.dumps(payload, ensure_ascii=False).encode()).decode()
+
+
+def _unseal(payload):
+    if not (isinstance(payload, dict) and set(payload) == {_SHARED, 'configuration'}):
+        return payload
+    shared, config = payload[_SHARED], payload['configuration']
+    for path in secret_paths(config):
+        reference = path_value(config, path)
+        if isinstance(reference, dict):
+            set_path(config, path, shared[reference[_SHARED]])
+    return config
+
+
 def decrypt(record):
     try:
-        return json.loads(cipher().decrypt(record.value['encrypted'].encode()))
-    except (InvalidToken, ValueError, KeyError) as exc:
+        return _unseal(json.loads(cipher().decrypt(record.value['encrypted'].encode())))
+    except (InvalidToken, ValueError, KeyError, IndexError, TypeError) as exc:
         raise HTTPException(409, '连接配置解密失败，请由管理员核对系统密钥和原配置') from exc
 
 
@@ -124,9 +153,12 @@ async def save_configuration(item, scope, identity, db, configuration, keep_cred
             raise HTTPException(422, '个人MCP名称或公开配置不能包含已配置的凭据')
     value = {'schema_version': 1, 'scope': scope, 'owner': owner_for(scope, identity), 'item_id': item['id'],
              'source': item['source'], 'revision': uuid4().hex, 'status': 'configured', 'servers': [], 'error': '',
-             'last_checked': None, 'encrypted': cipher().encrypt(json.dumps(config, ensure_ascii=False).encode()).decode()}
+             'last_checked': None, 'encrypted': seal(config)}
     if item['source'] == 'personal-mcp':
         value['display_name'] = item['name']
+        # 服务名不是凭据（上面已校验公开配置不含Key），明文记录供列表和智能体目录展示整组服务；启停状态改配置后保留。
+        value['service_names'] = list(config['mcp.json']['mcpServers'])
+        value['enabled'] = record.value.get('enabled', True) is not False if record else True
     return await persist(record, item, scope, identity, db, value, '保存连接器配置')
 
 
@@ -136,6 +168,14 @@ async def save_verification(item, scope, identity, db, revision, result):
         raise HTTPException(409, '连接验证期间配置已改变，请对当前版本重新测试')
     value = {**record.value, **result, 'last_checked': datetime.now(timezone.utc).isoformat()}
     return await persist(record, item, scope, identity, db, value, '验证连接器')
+
+
+async def save_enabled(item, scope, identity, db, revision, enabled):
+    record = await stored(item['id'], scope, identity, db, lock=True)
+    if record is None or record.value['revision'] != revision:
+        raise HTTPException(409, '连接配置已被修改，请刷新后再启用或停用')
+    value = {**record.value, 'enabled': bool(enabled)}
+    return await persist(record, item, scope, identity, db, value, '启用连接器' if enabled else '停用连接器')
 
 
 async def connection_states(scope, identity, db):

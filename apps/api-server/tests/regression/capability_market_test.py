@@ -400,6 +400,85 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(own_legacy.json()['scope'], 'personal')
         self.assertEqual(own_legacy.json()['revision'], personal['revision'])
 
+    async def test_multi_service_group_is_one_connection_with_one_shared_key(self):
+        """整段 mcpServers（企查查式：多个远程服务共用一个 Key，外加一个 npx 本机服务）保存为一个分组连接。"""
+        from fastapi import HTTPException
+        from app.areas.capability_market.connector_store import cipher
+        from app.areas.capability_market.mcp_access import require_runtime_connection, runtime_connection_catalog, runtime_connection_groups
+        names = ['qcc-company', 'qcc-risk', 'qcc-ipr']
+        headers = {'Authorization': 'Bearer ' + self.secret}
+        servers = {name: {'type': 'streamableHttp', 'url': f'https://agent.example.com/mcp/{name[4:]}/stream', 'headers': dict(headers)} for name in names}
+        servers['local-tool'] = {'command': 'npx', 'args': ['-y', 'some-local-mcp']}
+        created = await self.client.post(self.base, json={'name': '企查查', 'configuration': {'mcpServers': servers}})
+        self.assertEqual(created.status_code, 200, created.text)
+        state = created.json()
+        self.assertNotIn(self.secret, created.text)
+        self.assertEqual([service['name'] for service in state['services']], names, '本机命令型服务被跳过，不报错')
+        self.assertTrue(state['enabled'])
+        async with self.sessions() as db:
+            row = (await db.scalars(select(SystemConfig))).one()
+            self.assertNotIn(self.secret, json.dumps(row.value))
+            raw = cipher().decrypt(row.value['encrypted'].encode()).decode()
+            self.assertEqual(raw.count(self.secret), 1, '同一个 Key 只加密保存一份')
+            restored = decrypt(row)
+            self.assertEqual(list(restored['mcp.json']['mcpServers']), names)
+            self.assertTrue(all(server['headers'] == headers for server in restored['mcp.json']['mcpServers'].values()))
+        url = self.base + '/' + state['id']
+        result = {'status': 'failed', 'error': '1/3 个服务检测失败：qcc-ipr：服务返回HTTP401', 'servers': [
+            {'name': 'qcc-company', 'tool_count': 2, 'tools': [{'name': 'get_company', 'description': '工商'}, {'name': 'search', 'description': ''}]},
+            {'name': 'qcc-risk', 'tool_count': 1, 'tools': [{'name': 'get_risk', 'description': '风险'}]},
+            {'name': 'qcc-ipr', 'tool_count': 0, 'tools': [], 'error': '服务返回HTTP401'}]}
+        with patch('app.areas.capability_market.personal_mcp_routes.verify_configuration', new=AsyncMock(return_value=result)):
+            verified = (await self.client.post(url + '/verify', json={'revision': state['revision']})).json()
+        self.assertEqual(verified['configuration']['error_code'], 'upstream_auth_failed')
+        services = {service['name']: service for service in verified['configuration']['services']}
+        self.assertEqual(services['qcc-company']['tools'], ['get_company', 'search'])
+        self.assertEqual(services['qcc-ipr']['error'], '服务返回HTTP401')
+        # 整组改 Key：留空保留原 Key（三个服务的请求头一起保留），填新 Key 三个服务一起换。
+        blank = {name: {**server, 'headers': {'Authorization': ''}} for name, server in servers.items() if name != 'local-tool'}
+        keep = [['mcp.json', 'mcpServers', name, 'headers', 'Authorization'] for name in names]
+        kept = await self.client.put(url, json={'name': '企查查（改名）', 'configuration': {'mcpServers': blank}, 'revision': state['revision'], 'keep_credentials': keep})
+        self.assertEqual(kept.status_code, 200, kept.text)
+        replaced_key = 'CODEX-MCP-fake-new-key'
+        renewed = {name: {**server, 'headers': {'Authorization': 'Bearer ' + replaced_key}} for name, server in blank.items()}
+        changed = await self.client.put(url, json={'name': '企查查', 'configuration': {'mcpServers': renewed}, 'revision': kept.json()['revision']})
+        self.assertEqual(changed.status_code, 200, changed.text)
+        async with self.sessions() as db:
+            row = (await db.scalars(select(SystemConfig))).one()
+            self.assertTrue(all(server['headers']['Authorization'] == 'Bearer ' + replaced_key for server in decrypt(row)['mcp.json']['mcpServers'].values()))
+            self.assertNotIn(self.secret, cipher().decrypt(row.value['encrypted'].encode()).decode())
+        # 整组停用：管理列表仍在并标记停用，智能体发现、目录和调用都不再使用；启用后恢复。
+        revision = changed.json()['revision']
+        disabled = await self.client.patch(url + '/enabled', json={'revision': revision, 'enabled': False})
+        self.assertEqual(disabled.status_code, 200, disabled.text)
+        self.assertFalse(disabled.json()['enabled'])
+        self.assertEqual(disabled.json()['revision'], revision, '启停不改变配置版本')
+        listing = (await self.client.get(self.base)).json()
+        self.assertFalse(listing['available_connections'][0]['enabled'])
+        identity = self.identities['CODEX-MCP-OWNER']
+        async with self.sessions() as db:
+            self.assertEqual(await runtime_connection_groups(identity, db), [])
+            self.assertEqual(await runtime_connection_catalog(identity, db), [])
+            with self.assertRaises(HTTPException) as blocked:
+                await require_runtime_connection(state['id'], 'personal', identity, db)
+            self.assertEqual(blocked.exception.status_code, 409)
+        stale = await self.client.patch(url + '/enabled', json={'revision': 'f' * 32, 'enabled': True})
+        self.assertEqual(stale.status_code, 409)
+        enabled = await self.client.patch(url + '/enabled', json={'revision': revision, 'enabled': True})
+        self.assertTrue(enabled.json()['enabled'])
+        async with self.sessions() as db:
+            groups = await runtime_connection_groups(identity, db)
+            self.assertEqual([service['name'] for service in groups[0]['services']], names)
+        # 修改配置后启停状态保留。
+        await self.client.patch(url + '/enabled', json={'revision': revision, 'enabled': False})
+        resaved = await self.client.put(url, json={'name': '企查查', 'configuration': {'mcpServers': renewed}, 'revision': revision})
+        self.assertFalse(resaved.json()['enabled'])
+        removed = await self.client.delete(url, params={'revision': resaved.json()['revision']})
+        self.assertTrue(removed.json()['deleted'], '整组一起删除')
+        only_local = await self.client.post(self.base, json={'name': '本机', 'configuration': {'mcpServers': {'local-tool': servers['local-tool']}}})
+        self.assertEqual(only_local.status_code, 422)
+        self.assertIn('服务器不支持本机命令型 MCP', only_local.text)
+
     async def test_no_settings_permissions_personal_crud_verify_and_global_config_denied(self):
         from app.areas.capability_market.connector_store import owner_for
         from fastapi import HTTPException
@@ -413,7 +492,8 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(listing['items'], [])
         self.assertFalse(listing['can_manage_global'])
         summary = listing['available_connections'][0]
-        self.assertEqual(set(summary), {'id', 'name', 'scope', 'revision', 'status', 'can_manage'})
+        self.assertEqual(set(summary), {'id', 'name', 'scope', 'revision', 'status', 'can_manage', 'enabled', 'services'})
+        self.assertEqual(summary['services'], [{'name': 'default', 'tool_count': None, 'tools': [], 'error': ''}])
         self.assertEqual(summary['scope'], 'global')
         self.assertFalse(summary['can_manage'])
         self.assertNotIn(self.secret, json.dumps(listing))
@@ -645,7 +725,7 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
         reject_mcp_chat_credentials('https://example.com/search?keyword=合同&monkey=value')
         reject_mcp_chat_credentials('解释一下 {"headers":{"Accept":"application/json"},"env":{"MODE":"dev"}}')
         routes = [route for route in self.app.routes if isinstance(route, APIRoute) and self.base in route.path]
-        self.assertEqual(len(routes), 6)
+        self.assertEqual(len(routes), 7)
         self.assertTrue(all(exclusion_reasons(route) for route in routes))
         for content in ['连接MCP token=' + self.secret,
                         'https://example.com/mcp?api_key=' + self.secret]:
@@ -732,6 +812,47 @@ class PersonalMcpTest(unittest.IsolatedAsyncioTestCase):
             records = (await db.scalars(select(SystemConfig))).all()
             self.assertEqual(len(records), 2)
             self.assertFalse(any(other in json.dumps(record.value) or self.secret in json.dumps(record.value) for record in records))
+
+    async def test_chat_paste_with_one_shared_key_becomes_one_group_and_agent_sees_every_service(self):
+        """陶威 11-02：企查查式整段配置在对话里粘贴，也合成一个 MCP 分组；npx 本机服务跳过；智能体能发现分组下全部服务的工具。"""
+        from app.areas.personal_agent.mcp_chat_input import extract_chat_connection
+        from app.areas.personal_agent.mcp_chat_connection import configure_chat_submission
+        from app.areas.personal_agent.mcp_tools import PersonalMcpToolSession
+        from app.areas.capability_market.connector_store import cipher
+        names = ['qcc-company', 'qcc-risk', 'qcc-ipr']
+        pasted = {'mcpServers': {**{name: {'type': 'streamableHttp', 'url': f'https://agent.example.com/mcp/{name[4:]}/stream',
+                                           'headers': {'Authorization': 'Bearer ' + self.secret}} for name in names},
+                                 'qcc-local': {'command': 'npx', 'args': ['-y', 'local-mcp'], 'env': {'KEY': self.secret}}}}
+        batch = extract_chat_connection(json.dumps(pasted))
+        state = {'conversation_id': 'CODEX-CONNECT-GROUP', 'messages': [], 'pending_actions': []}
+        snapshots = []
+
+        async def capture(owner, value):
+            snapshots.append(deepcopy(value))
+
+        async with self.sessions() as db, AsyncExitStack() as stack:
+            identity, context = stack.enter_context(self.sdk_transport())
+            delta = AsyncMock()
+            with patch('app.areas.personal_agent.mcp_chat_connection.authenticated_identity', AsyncMock(return_value=identity)), \
+                 patch('app.areas.personal_agent.service._save_state', side_effect=capture):
+                result = await configure_chat_submission(batch, identity, db, state, delta, AsyncMock())
+            response = result['response']
+            self.assertIn('已把 3 个服务合成一个 MCP 分组「qcc」', response)
+            self.assertIn('「qcc-local」：服务器不支持本机命令型 MCP，已跳过', response)
+            self.assertIn('分组整体验证通过，共 3 个工具', response)
+            self.assertNotIn(self.secret, json.dumps(snapshots) + response)
+            record = (await db.scalars(select(SystemConfig))).one()
+            self.assertEqual(record.value['status'], 'verified')
+            self.assertEqual(record.value['service_names'], names)
+            self.assertEqual(cipher().decrypt(record.value['encrypted'].encode()).decode().count(self.secret), 1)
+            tools = PersonalMcpToolSession(identity, db, conversation_id='CODEX-CONNECT-GROUP')
+            groups = await tools.execute('personal_mcp_list_groups', {})
+            self.assertEqual(groups['groups'][0]['services'], names)
+            found = await tools.execute('personal_mcp_search_tools', {'group_id': groups['groups'][0]['group_id'], 'query': 'qcc-risk'})
+            self.assertEqual([tool['server_name'] for tool in found['tools']], ['qcc-risk'], '按服务名也能搜到工具')
+            everything = await tools.execute('personal_mcp_search_tools', {'group_id': groups['groups'][0]['group_id']})
+            self.assertEqual(sorted(tool['server_name'] for tool in everything['tools']), sorted(names))
+            self.assertNotIn(self.secret, json.dumps(everything))
 
     async def test_sdk_tools_call_only_after_confirmation_and_result_visible_in_current_dialog(self):
         from app.areas.personal_agent.mcp_tools import PersonalMcpToolSession

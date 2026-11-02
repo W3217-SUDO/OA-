@@ -45,6 +45,7 @@ def normalize_configuration(value):
         raise HTTPException(422, 'MCP配置必须为JSON对象')
     if set(value) == {'mcpServers'}:
         value = {'mcp.json': value}
+    value = without_local_services(value)
     template = item_for('', '')
     config = validate_configuration(value, template)
     declaration = config['mcp.json']
@@ -64,6 +65,34 @@ def normalize_configuration(value):
         except ValueError:
             raise HTTPException(422, '服务地址格式无效') from None
     return config
+
+
+def local_service(server):
+    return isinstance(server, dict) and 'url' not in server and bool(server.keys() & {'command', 'args', 'env'})
+
+
+def without_local_services(value):
+    """整段粘贴里的本机命令型服务（command / npx）服务器无法运行，跳过；全是本机服务时明确提示。"""
+    servers = value.get('mcp.json', {}).get('mcpServers') if isinstance(value.get('mcp.json'), dict) else None
+    if not isinstance(servers, dict) or not any(local_service(server) for server in servers.values()):
+        return value
+    remote = {name: server for name, server in servers.items() if not local_service(server)}
+    if not remote:
+        raise HTTPException(422, '服务器不支持本机命令型 MCP，已跳过；请改用服务方提供的远程地址（https 开头）')
+    return {**value, 'mcp.json': {**value['mcp.json'], 'mcpServers': remote}}
+
+
+def service_summaries(value, *, tool_limit=50):
+    """整组服务的公开摘要：服务名、工具数、工具名和检测错误（来自已保存的验证结果，不解密配置）。"""
+    checked = {server.get('name'): server for server in value.get('servers') or [] if isinstance(server, dict)}
+    names = value.get('service_names') or list(checked)
+    result = []
+    for name in names:
+        server = checked.get(name) or {}
+        tools = [str(tool.get('name'))[:80] for tool in server.get('tools') or [] if isinstance(tool, dict) and tool.get('name')]
+        result.append({'name': str(name), 'tool_count': server.get('tool_count') if 'tool_count' in server else None,
+                       'tools': tools[:tool_limit], 'error': str(server.get('error') or '')[:200]})
+    return result
 
 
 def redact_verification(result, configuration):
@@ -112,4 +141,5 @@ def personal_state(record):
     else:
         state['error_code'] = ''
     return {**state, 'id': item['id'], 'name': item['name'], 'scope': record.value['scope'], 'can_manage': True,
+            'enabled': record.value.get('enabled', True) is not False, 'services': service_summaries(record.value),
             'capabilities': dict(CAPABILITIES), 'verification_kind': VERIFICATION_KIND}

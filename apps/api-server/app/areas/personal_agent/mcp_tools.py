@@ -96,7 +96,8 @@ class PersonalMcpToolSession(ModelToolSession):
             listing = await runtime_connection_groups(actual, self.db)
             self.remote_groups = {item['scope'] + ':' + item['id']: item for item in listing}
             return {'groups': [{'group_id': group_id, 'connection_id': item['id'], 'scope': item['scope'],
-                                'name': item['name'], 'revision': item['revision'], 'status': item['status']}
+                                'name': item['name'], 'revision': item['revision'], 'status': item['status'],
+                                'services': [service['name'] for service in item.get('services') or []]}
                                for group_id, item in self.remote_groups.items()], 'all_calls_require_confirmation': True}
         if name == 'personal_mcp_search_tools':
             if set(arguments) - {'group_id', 'query'} or not isinstance(arguments.get('group_id'), str):
@@ -109,7 +110,7 @@ class PersonalMcpToolSession(ModelToolSession):
                 raise HTTPException(422, '搜索词必须是不超过100字的字符串')
             connection = self.remote_groups[group]
             tools = await discover_tools(connection['id'], connection['revision'], actual, self.db, scope=connection['scope'])
-            matches = [tool for tool in tools if not query or query.casefold() in (tool['name'] + ' ' + tool['description']).casefold()]
+            matches = [tool for tool in tools if not query or query.casefold() in (tool['server_name'] + ' ' + tool['name'] + ' ' + tool['description']).casefold()]
             selected = matches[:12]
             self.remote_discovered.update({tool['tool_id']: tool for tool in selected})
             return {'tools': selected, 'matching_count': len(matches), 'returned_count': len(selected),

@@ -113,15 +113,28 @@ async def session_tools(session):
 
 
 async def verify_personal_configuration(configuration):
-    try:
-        servers = []
-        async with asyncio.timeout(25):
-            for name, server in configuration['mcp.json']['mcpServers'].items():
+    # 分组内各服务并行检测，每个服务单独记结果；有一个失败整组记失败并写明哪些服务失败，成功的服务照样列出工具。
+    async def check(name, server):
+        try:
+            async with asyncio.timeout(20):
                 async with remote_session(server) as (session, initialized):
                     tools = await session_tools(session)
-                    servers.append({'name': name, 'server_name': initialized.server_info.name,
-                                    'server_version': initialized.server_info.version, 'tool_count': len(tools),
-                                    'tools': [{'name': tool.name, 'description': (tool.description or '')[:1000]} for tool in tools]})
-        return {'status': 'verified', 'servers': servers, 'error': ''}
-    except (HTTPException, TimeoutError) as exc:
+            return {'name': name, 'server_name': initialized.server_info.name,
+                    'server_version': initialized.server_info.version, 'tool_count': len(tools),
+                    'tools': [{'name': tool.name, 'description': (tool.description or '')[:1000]} for tool in tools]}
+        except (HTTPException, TimeoutError) as exc:
+            return {'name': name, 'tool_count': 0, 'tools': [], 'error': verification_error(exc)}
+
+    servers = configuration['mcp.json']['mcpServers']
+    try:
+        async with asyncio.timeout(25):
+            results = await asyncio.gather(*(check(name, server) for name, server in servers.items()))
+    except TimeoutError as exc:
         return {'status': 'failed', 'servers': [], 'error': verification_error(exc)}
+    failed = [result for result in results if result.get('error')]
+    if not failed:
+        return {'status': 'verified', 'servers': list(results), 'error': ''}
+    if len(results) == 1:
+        return {'status': 'failed', 'servers': [], 'error': failed[0]['error']}
+    error = f'{len(failed)}/{len(results)} 个服务检测失败：' + '；'.join(f"{item['name']}：{item['error']}" for item in failed[:5])
+    return {'status': 'failed', 'servers': list(results), 'error': error[:2000]}

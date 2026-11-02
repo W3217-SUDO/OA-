@@ -1529,7 +1529,7 @@ test("chat MCP scope labels and global management controls use per-connection pe
   const component = name => ({ children, ...props }) => React.createElement(name, props, children);
   const Form = component("form"); Form.Item = component("form-item");
   const Input = component("input"); Input.Password = component("password");
-  const { PersonalMcpConnectionCard } = loadModule("../personal-agent/PersonalMcpConnectionCard.tsx", { antd: { Alert: component("alert"), Button: component("button"), Form, Input, Popconfirm: component("popconfirm"), Select: component("select"), Spin: component("spin"), Tag: component("tag"), Tooltip: component("tooltip") } });
+  const { PersonalMcpConnectionCard } = loadModule("../personal-agent/PersonalMcpConnectionCard.tsx", { antd: { Alert: component("alert"), Button: component("button"), Form, Input, Popconfirm: component("popconfirm"), Select: component("select"), Spin: component("spin"), Switch: component("switch"), Tag: component("tag"), Tooltip: component("tooltip") } });
   const mcp = { draft: { name: "", server_url: "", transport: "streamable_http", auth_type: "none", credential: "", api_key_header: "X-API-Key" }, scope: "global", defaultScope: "global", items: [{ id: "shared", name: "全局服务", scope: "global", status: "verified", can_manage: false }], editing: false, busy: false, listing: false, error: "", listError: "", connection: null, credentialSaved: false, close() {}, update() {}, newConnection() {}, refresh() {}, importConfig() {}, saveAndConnect() {} };
   let renderer;
   await act(async () => { renderer = create(React.createElement(PersonalMcpConnectionCard, { connection: mcp })); });
@@ -1561,9 +1561,9 @@ test("global MCP drawer blocks a writable form when delegated admin cannot load 
     retryTest() {}, remove() {}, newConnection() {},
   };
   const { GlobalMcpWorkspace } = loadModule("../capability-market/GlobalMcpWorkspace.tsx", {
-    antd: { Alert: "alert", Button: "button", Drawer: ({ open, children }) => open ? React.createElement("drawer", null, children) : null, Empty: "empty", Modal: { confirm() {} }, Tag: "tag", Tooltip: "tooltip" },
+    antd: { Alert: "alert", Button: "button", Drawer: ({ open, children }) => open ? React.createElement("drawer", null, children) : null, Empty: "empty", Modal: { confirm() {} }, Switch: "switch", Tag: "tag", Tooltip: "tooltip" },
     "./ConnectorConfigPanel": { connectionLabel: () => "已验证" },
-    "../personal-agent/PersonalMcpConnectionCard": { PersonalMcpConnectionCard: "editable-card" },
+    "../personal-agent/PersonalMcpConnectionCard": { PersonalMcpConnectionCard: "editable-card", McpServiceList: "service-list" },
     "../personal-agent/usePersonalMcpConnection": { usePersonalMcpConnection: () => model },
   });
   let renderer;
@@ -1586,6 +1586,7 @@ test("global MCP drawer blocks a writable form when delegated admin cannot load 
   await act(async () => { renderer = create(React.createElement(GlobalMcpWorkspace, { active: true, canManage: true })); });
   await act(async () => { button("新增全局 MCP").props.onClick(); });
   assert.ok(renderer.root.findByType("editable-card"), "实际管理员仍可新建全局连接");
+  assert.equal(renderer.root.findByType("editable-card").props.allowConfigImport, true, "新增全局 MCP 可整段粘贴配置（多服务合成一个分组）");
   await act(async () => { renderer.unmount(); });
 });
 

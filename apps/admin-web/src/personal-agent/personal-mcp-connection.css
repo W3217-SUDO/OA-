@@ -25,6 +25,13 @@
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-list>li span{color:var(--oa-text-2);font-size:12px}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-list>li>.personal-mcp-row-actions{display:flex;flex:none;flex-direction:row;gap:4px}
 :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-card .ant-alert{min-width:0;overflow-wrap:anywhere}
+:is(.assistant, .global-mcp-workspace-drawer, .global-mcp-workspace) .personal-mcp-services{min-width:0;font-size:12px}
+:is(.assistant, .global-mcp-workspace-drawer, .global-mcp-workspace) .personal-mcp-services>summary{cursor:pointer;color:var(--oa-text-2)}
+:is(.assistant, .global-mcp-workspace-drawer, .global-mcp-workspace) .personal-mcp-services ul,:is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-group-services ul{display:flex;flex-direction:column;gap:4px;margin:4px 0 0;padding:0 0 0 12px;list-style:none}
+:is(.assistant, .global-mcp-workspace-drawer, .global-mcp-workspace) .personal-mcp-services li,:is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-group-services li{display:flex;flex-wrap:wrap;gap:2px 8px;min-width:0;overflow-wrap:anywhere}
+:is(.assistant, .global-mcp-workspace-drawer, .global-mcp-workspace) .personal-mcp-services small{flex-basis:100%;color:var(--oa-text-2)}
+:is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-group-services{grid-column:1 / -1;margin-bottom:12px;font-size:13px}
+:is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-group-services small{color:var(--oa-text-2)}
 @media(max-width:767px){
   :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-card{max-height:60%;min-height:100px}
   :is(.assistant, .global-mcp-workspace-drawer) .personal-mcp-fields{grid-template-columns:minmax(0,1fr)}

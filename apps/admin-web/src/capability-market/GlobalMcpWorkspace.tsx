@@ -1,8 +1,8 @@
 import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useEffect, useState } from "react";
-import { Alert, Button, Drawer, Empty, Modal, Tag, Tooltip } from "antd";
+import { Alert, Button, Drawer, Empty, Modal, Switch, Tag, Tooltip } from "antd";
 import { ApiOutlined, DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
-import { PersonalMcpConnectionCard } from "../personal-agent/PersonalMcpConnectionCard";
+import { McpServiceList, PersonalMcpConnectionCard } from "../personal-agent/PersonalMcpConnectionCard";
 import { usePersonalMcpConnection } from "../personal-agent/usePersonalMcpConnection";
 import { connectionLabel } from "./ConnectorConfigPanel";
 import "./global-mcp-workspace.css";
@@ -45,7 +45,7 @@ export function GlobalMcpWorkspace({ active, canManage }: Props) {
   };
   const remove = (item: typeof globals[number]) => Modal.confirm({
     title: `删除全局 MCP“${item.name}”？`,
-    content: "删除后全所账号将无法再使用此连接；请确认没有业务流程依赖它。",
+    content: `${(item.services?.length ?? 0) > 1 ? `整组 ${(item.services?.length ?? 0)} 个服务一起删除。` : ""}删除后全所账号将无法再使用此连接；请确认没有业务流程依赖它。`,
     okText: "确认删除", cancelText: "取消", okButtonProps: { danger: true },
     onOk: () => mcp.remove(item),
   });
@@ -65,12 +65,16 @@ export function GlobalMcpWorkspace({ active, canManage }: Props) {
     {!mcp.listing && !mcp.listError && !globals.length && <Empty description="尚无全局 MCP 连接" />}
     <div className="global-mcp-workspace-list">
       {globals.map(item => <article key={item.id}>
-        <div className="global-mcp-workspace-summary">
+        <div className="global-mcp-workspace-main"><div className="global-mcp-workspace-summary">
           <strong>{item.name}</strong>
           <Tag color={item.status === "verified" ? "success" : item.status === "failed" ? "error" : "default"}>{connectionLabel(item.status)}</Tag>
+          {(item.services?.length ?? 0) > 1 && <Tag color="purple">分组 · {(item.services?.length ?? 0)} 个服务</Tag>}
+          {item.enabled === false && <Tag>已停用</Tag>}
           <span>全局共享</span>
         </div>
+        <McpServiceList services={item.services ?? []} /></div>
         {canManage && item.can_manage && <div className="global-mcp-workspace-row-actions">
+          <Tooltip title={item.enabled !== false ? "停用后智能体不再使用，配置保留" : "启用连接"}><Switch checked={item.enabled !== false} aria-label={`${item.enabled !== false ? "停用" : "启用"}连接：${item.name}`} disabled={mcp.busy} onChange={checked => void mcp.setEnabled(item, checked)} /></Tooltip>
           <Tooltip title="验证连接"><Button icon={<ApiOutlined />} aria-label={`验证连接：${item.name}`} disabled={mcp.busy} onClick={() => openVerify(item)} /></Tooltip>
           <Tooltip title="修改配置"><Button icon={<EditOutlined />} aria-label={`修改配置：${item.name}`} disabled={mcp.busy} onClick={() => openEdit(item)} /></Tooltip>
           <Tooltip title="删除连接"><Button danger icon={<DeleteOutlined />} aria-label={`删除连接：${item.name}`} disabled={mcp.busy} onClick={() => remove(item)} /></Tooltip>
@@ -79,7 +83,7 @@ export function GlobalMcpWorkspace({ active, canManage }: Props) {
     </div>
     <Drawer title="全局 MCP 配置" open={mcp.open && canManage} onClose={close} size={POPUP_WIDTH.md} destroyOnHidden maskClosable={!mcp.busy} closable={!mcp.busy} rootClassName="global-mcp-workspace-drawer">
       {mcp.open && (canUseCard
-        ? <PersonalMcpConnectionCard connection={{ ...mcp, close, items: globals }} allowNewConnection={false} allowConfigImport={false} />
+        ? <PersonalMcpConnectionCard connection={{ ...mcp, close, items: globals }} allowNewConnection={false} allowConfigImport={!mcp.editing} />
         : <div className="global-mcp-workspace-blocked">
           {mcp.busy || mcp.listing ? <p role="status">正在确认全局连接范围…</p> : <Alert type="error" showIcon title={mcp.error || mcp.listError || "无法确认全局连接范围，已阻止保存。"} />}
           <div className="global-mcp-workspace-row-actions"><Button onClick={close}>关闭</Button><Button disabled={mcp.busy || mcp.listing} onClick={retry}>重试</Button></div>

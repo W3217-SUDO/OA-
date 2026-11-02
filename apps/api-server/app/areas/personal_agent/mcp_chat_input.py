@@ -29,6 +29,7 @@ class ChatConnection:
 
 IGNORED_FIELDS = {'description', 'timeout', 'disabled', 'enabled', 'autoApprove', 'alwaysAllow', 'note', 'notes',
                   'title', 'icon', 'category', 'tags', 'readTimeout', 'connectTimeout', 'sse_read_timeout'}
+LOCAL_SKIPPED = '服务器不支持本机命令型 MCP，已跳过'
 MAX_BATCH_SERVERS = 20  # 北大法宝整份 mcp.json 有 14 个服务（陶国南 11-01）
 # 每个服务握手和工具目录验证最多 25 秒，批量时本轮时限按服务数放宽，逐个配好逐个返回结果。
 BATCH_SECONDS_PER_SERVER = 30
@@ -54,6 +55,9 @@ def _batch(servers):
         raise HTTPException(422, f'一次最多配置 {MAX_BATCH_SERVERS} 个 MCP 服务，这次粘贴了 {len(servers)} 个，请分几条消息发送。')
     items = []
     for name, value in servers.items():
+        if isinstance(value, dict) and value.keys() & {'command', 'args', 'env'} and 'url' not in value:
+            items.append((str(name), None, LOCAL_SKIPPED))
+            continue
         try:
             items.append((str(name), _declaration({'mcpServers': {name: value}}), ''))
         except HTTPException as exc:

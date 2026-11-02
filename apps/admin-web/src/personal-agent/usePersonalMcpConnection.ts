@@ -6,11 +6,14 @@ import type { ConnectorConfiguration, ConnectorSecretField } from "../capability
 
 const BASE = "/capability-market/personal-mcp";
 type Scope = "personal" | "global";
+export type ServiceSummary = { name: string; tool_count: number | null; tools: string[]; error: string };
 type ConnectionSummary = {
   id: string; name: string; revision: string; status: string; scope: Scope; can_manage: boolean;
+  // 一个连接可含多个服务（整段 mcpServers 粘贴的分组）；停用后智能体不再使用，配置保留。
+  enabled: boolean; services: ServiceSummary[];
 };
 type Connection = ConnectionSummary & {
-  servers: { tool_count: number }[];
+  servers: { name: string; tool_count: number; error: string }[];
   capabilities: { discovery: boolean; tool_call: boolean };
 };
 type StoredConnection = Connection & { configuration: ConnectorConfiguration; secret_fields: ConnectorSecretField[]; error_code?: string };
@@ -20,13 +23,17 @@ type Edit = { connection: Connection; auth: PersonalMcpDraft["auth_type"]; heade
 function summary(data: Connection): Connection {
   const available = availableSummary(data);
   if (!available.can_manage) throw new Error("connection_management_not_authorized");
-  return { ...available, servers: data.servers.map(server => ({ tool_count: server.tool_count })), capabilities: { discovery: data.capabilities.discovery, tool_call: data.capabilities.tool_call } };
+  return { ...available, servers: data.servers.map(server => ({ name: String(server.name || ""), tool_count: Number(server.tool_count) || 0, error: typeof server.error === "string" ? server.error : "" })), capabilities: { discovery: data.capabilities.discovery, tool_call: data.capabilities.tool_call } };
 }
 
 function availableSummary(data: ConnectionSummary): ConnectionSummary {
   if (data.scope !== "personal" && data.scope !== "global") throw new Error("invalid_connection_scope");
   if (typeof data.can_manage !== "boolean") throw new Error("invalid_connection_permission");
-  return { id: data.id, name: data.name, revision: data.revision, status: data.status, scope: data.scope, can_manage: data.can_manage };
+  const services = Array.isArray(data.services) ? data.services.map(service => ({
+    name: String(service.name || ""), tool_count: typeof service.tool_count === "number" ? service.tool_count : null,
+    tools: Array.isArray(service.tools) ? service.tools.map(String) : [], error: typeof service.error === "string" ? service.error : "",
+  })) : [];
+  return { id: data.id, name: data.name, revision: data.revision, status: data.status, scope: data.scope, can_manage: data.can_manage, enabled: data.enabled !== false, services };
 }
 
 const sameConnection = (left: ConnectionSummary, right: ConnectionSummary) => left.id === right.id && left.scope === right.scope;
@@ -99,7 +106,9 @@ export function usePersonalMcpConnection(sessionKey: string) {
   const saveAndConnect = async () => {
     if (lock.current || connection) return;
     if (!editing && !defaultScope) { setError("请先刷新连接列表，确认新建连接的可见范围后再保存"); return; }
-    const preserveCredential = !!editing && editing.auth === draft.auth_type && editing.header === draft.api_key_header && !draft.credential && editing.keep.length > 0;
+    const names = new Set(draft.services.length > 1 ? draft.services.map(service => service.server_name) : [draft.server_name]);
+    const keep = editing ? editing.keep.filter(path => names.has(path[2])) : [];
+    const preserveCredential = !!editing && editing.auth === draft.auth_type && editing.header === draft.api_key_header && !draft.credential && keep.length > 0;
     const validation = validatePersonalMcpDraft(draft, preserveCredential);
     if (validation) { setError(validation); return; }
     lock.current = true; setBusy(true); setError("");
@@ -109,7 +118,7 @@ export function usePersonalMcpConnection(sessionKey: string) {
     try {
       const payload = { name: draft.name.trim(), configuration: personalMcpConfiguration(draft) };
       const { data } = editing
-        ? await api.put<Connection>(`${BASE}/${encodeURIComponent(editing.connection.id)}`, { ...payload, revision: editing.connection.revision, keep_credentials: preserveCredential ? editing.keep : [] }, { params: { scope: editing.connection.scope }, signal })
+        ? await api.put<Connection>(`${BASE}/${encodeURIComponent(editing.connection.id)}`, { ...payload, revision: editing.connection.revision, keep_credentials: preserveCredential ? keep : [] }, { params: { scope: editing.connection.scope }, signal })
         : await api.post<Connection>(BASE, payload, { signal });
       if (signal.aborted) return;
       saved = summary(data);
@@ -155,7 +164,7 @@ export function usePersonalMcpConnection(sessionKey: string) {
         parent[field.path.at(-1)!] = "";
       }
       const next = parsePersonalMcpConfig(JSON.stringify(config));
-      next.name = data.name; next.credential = "";
+      next.name = data.name; next.credential = ""; next.skipped = [];
       setDraft(next); setConnection(null);
       setEditing({ connection: managed, auth: next.auth_type, header: next.api_key_header, keep: data.secret_fields.filter(field => field.configured).map(field => field.path) });
     } catch (failure) { if (!signal.aborted) setError(personalMcpError(failure, "载入连接配置")); }
@@ -176,8 +185,23 @@ export function usePersonalMcpConnection(sessionKey: string) {
     } catch (failure) { if (!signal.aborted) setError(personalMcpError(failure, "删除连接")); }
     finally { if (!signal.aborted) { lock.current = false; setBusy(false); } }
   };
+  const setEnabled = async (target: ConnectionSummary, enabled: boolean) => {
+    if (lock.current) return;
+    if (!target.can_manage) { setError(enabled ? "没有启用此连接的权限" : "没有停用此连接的权限"); return; }
+    lock.current = true; setBusy(true); setError("");
+    ++listVersion.current; setListing(false);
+    const signal = lifecycle.current.signal;
+    try {
+      const { data } = await api.patch<ConnectionSummary>(`${BASE}/${encodeURIComponent(target.id)}/enabled`, { revision: target.revision, enabled }, { params: { scope: target.scope }, signal });
+      if (signal.aborted) return;
+      const changed = availableSummary(data);
+      if (!sameConnection(changed, target) || changed.enabled !== enabled) throw new Error("enabled_not_confirmed");
+      setItems(current => current.map(item => sameConnection(item, changed) ? changed : item));
+    } catch (failure) { if (!signal.aborted) setError(personalMcpError(failure, enabled ? "启用连接" : "停用连接")); }
+    finally { if (!signal.aborted) { lock.current = false; setBusy(false); } }
+  };
   const newConnection = () => { if (!lock.current) { setEditing(null); update(emptyMcpDraft()); } };
   const credentialSaved = !!editing && editing.auth === draft.auth_type && editing.header === draft.api_key_header && editing.keep.length > 0;
   const scope = editing?.connection.scope || connection?.scope || defaultScope;
-  return { open, draft, error, connection, items, listError, listing, busy, scope, defaultScope, editing: !!editing, credentialSaved, importConfig, update, close: reset, saveAndConnect, retryTest, show, refresh, edit, remove, newConnection };
+  return { open, draft, error, connection, items, listError, listing, busy, scope, defaultScope, editing: !!editing, credentialSaved, importConfig, update, close: reset, saveAndConnect, retryTest, show, refresh, edit, remove, setEnabled, newConnection };
 }

@@ -32,23 +32,35 @@ async def discover_tools(identifier, revision, identity, db, *, scope):
     connection_name, configuration = await current_configuration(identifier, revision, identity, db, scope=scope)
     await db.rollback()
     descriptors = []
-    async with asyncio.timeout(25):
-        for server_name, server in configuration['mcp.json']['mcpServers'].items():
+
+    async def server_tools(server_name, server):
+        async with asyncio.timeout(20):
             async with remote_session(server) as (session, initialized):
-                tools = await session_tools(session)
-                for tool in tools:
-                    schema = tool.input_schema
-                    if redact_verification(schema, configuration) != schema:
-                        raise HTTPException(502, '外部工具schema包含连接凭据回声，不能向模型提供或执行')
-                    checked_schema(schema)
-                    descriptor = {'scope': scope, 'connection_id': identifier, 'revision': revision, 'server_name': server_name,
-                                  'connection_name': connection_name,
-                                  'name': tool.name, 'description': (tool.description or '')[:1000],
-                                  'inputSchema': schema, 'schema_fingerprint': schema_fingerprint(schema)}
-                    descriptor['tool_id'] = sha256(json.dumps([scope, identifier, server_name, tool.name]).encode()).hexdigest()[:32]
-                    descriptors.append(safe_remote(descriptor, configuration))
-                    if len(descriptors) > 1000:
-                        raise HTTPException(502, 'MCP连接的工具总数超过1000项限制')
+                return await session_tools(session)
+
+    servers = configuration['mcp.json']['mcpServers']
+    # 分组内多个服务并行发现；个别服务不可用时跳过它，其余服务的工具照常可用，全部失败才报错。
+    async with asyncio.timeout(25):
+        results = await asyncio.gather(*(server_tools(name, server) for name, server in servers.items()), return_exceptions=True)
+    failures = [result for result in results if isinstance(result, BaseException)]
+    if failures and (len(failures) == len(results) or any(not isinstance(item, (HTTPException, TimeoutError)) for item in failures)):
+        raise failures[0]
+    for server_name, tools in zip(servers, results):
+        if isinstance(tools, BaseException):
+            continue
+        for tool in tools:
+            schema = tool.input_schema
+            if redact_verification(schema, configuration) != schema:
+                raise HTTPException(502, '外部工具schema包含连接凭据回声，不能向模型提供或执行')
+            checked_schema(schema)
+            descriptor = {'scope': scope, 'connection_id': identifier, 'revision': revision, 'server_name': server_name,
+                          'connection_name': connection_name,
+                          'name': tool.name, 'description': (tool.description or '')[:1000],
+                          'inputSchema': schema, 'schema_fingerprint': schema_fingerprint(schema)}
+            descriptor['tool_id'] = sha256(json.dumps([scope, identifier, server_name, tool.name]).encode()).hexdigest()[:32]
+            descriptors.append(safe_remote(descriptor, configuration))
+            if len(descriptors) > 1000:
+                raise HTTPException(502, 'MCP连接的工具总数超过1000项限制')
     # 发现期间被修改的配置不能进入本轮可调用目录。
     await current_configuration(identifier, revision, identity, db, scope=scope)
     return descriptors

@@ -10,7 +10,7 @@ from app.database import get_db
 from app.security import current_identity
 from app.agent_permissions import can_manage_agent_settings
 from .remote_session import verify_personal_configuration as verify_configuration
-from .connector_store import decrypt, save_configuration, save_verification
+from .connector_store import decrypt, save_configuration, save_enabled, save_verification
 from .personal_mcp import ID_PATTERN, item_for, normalize_configuration, personal_state, redact_verification
 from .mcp_access import connection_records, default_connection_scope, require_managed_connection, runtime_connection_groups
 
@@ -35,10 +35,14 @@ class RevisionInput(BaseModel):
     revision: str = Field(pattern=r'^[a-f0-9]{32}$')
 
 
+class EnabledInput(RevisionInput):
+    enabled: bool
+
+
 @router.get('')
 async def list_connections(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     return {'items': [personal_state(record) for record in await connection_records(identity, db, management=True)],
-            'available_connections': await runtime_connection_groups(identity, db),
+            'available_connections': await runtime_connection_groups(identity, db, include_disabled=True),
             'default_scope': default_connection_scope(identity), 'can_manage_global': can_manage_agent_settings(identity)}
 
 
@@ -76,6 +80,14 @@ async def verify_connection(identifier: Identifier, body: RevisionInput, scope: 
     result = redact_verification(await verify_configuration(configuration), configuration)
     record = await save_verification(item, scope, identity, db, body.revision, result)
     return {'ok': result['status'] == 'verified', 'configuration': personal_state(record)}
+
+
+@router.patch('/{identifier}/enabled')
+async def set_connection_enabled(identifier: Identifier, body: EnabledInput, scope: Scope = 'personal', identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    # 整组启用或停用：停用后智能体不再发现和调用，配置和Key保留。
+    record = await require_managed_connection(identifier, scope, identity, db, lock=True)
+    record = await save_enabled(item_for(identifier, record.value['display_name']), scope, identity, db, body.revision, body.enabled)
+    return personal_state(record)
 
 
 @router.delete('/{identifier}')

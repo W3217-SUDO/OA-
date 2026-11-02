@@ -17,3 +17,4 @@
   .global-mcp-workspace-actions { width: 100%; }
   .global-mcp-workspace-drawer .ant-drawer-content-wrapper { width: 100% !important; max-width: 100vw; }
 }
+.global-mcp-workspace-main { display: flex; flex-direction: column; gap: 6px; min-width: 0; }

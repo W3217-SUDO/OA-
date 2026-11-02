@@ -8,9 +8,18 @@ export type PersonalMcpDraft = {
   auth_type: "none" | "bearer" | "api_key";
   credential: string;
   api_key_header: string;
+  // 整段粘贴多个服务时合成一个分组：共用一个认证方式和 Key，单个服务时为空，仍用上面的地址字段。
+  services: PersonalMcpService[];
+  // 本机命令型服务（command / npx）无法在服务器运行，载入时跳过，只记名称用于提示。
+  skipped: string[];
 };
 
-export const emptyMcpDraft = (): PersonalMcpDraft => ({ server_name: "default", name: "", server_url: "", transport: "streamable_http", auth_type: "none", credential: "", api_key_header: "X-API-Key" });
+export type PersonalMcpService = { server_name: string; server_url: string; transport: "streamable_http" | "sse" };
+
+export const LOCAL_COMMAND_SKIPPED = "服务器不支持本机命令型 MCP，已跳过";
+export const MAX_GROUP_SERVICES = 12;
+
+export const emptyMcpDraft = (): PersonalMcpDraft => ({ server_name: "default", name: "", server_url: "", transport: "streamable_http", auth_type: "none", credential: "", api_key_header: "X-API-Key", services: [], skipped: [] });
 
 const SENSITIVE_QUERY = /^(?:key|(?:api|access|secret|private|client|x[-_]?api)[_-]?key(?:[_-]?id)?|credentials?|signature|(?:(?:access|refresh|id|auth)[_-]?)?token|secret|client[_-]?secret|password|authorization|passwd|sig|auth|ossaccesskeyid|x[-_]amz[-_](?:signature|credential|security[-_]token))$/i;
 
@@ -56,25 +65,17 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-export function parsePersonalMcpConfig(raw: string): PersonalMcpDraft {
-  const text = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  const draft = emptyMcpDraft();
-  if (/^https?:\/\/\S+$/i.test(text)) {
-    if (!personalMcpUrl(text)) throw new Error("仅支持 HTTPS 443 地址，不能包含账号、密码或密钥参数；凭据请在独立 Key 输入框填写");
-    return { ...draft, server_url: text };
-  }
-  let parsed: unknown;
-  try { parsed = JSON.parse(text); }
-  catch { throw new Error("配置不是有效 JSON，请重新粘贴完整配置，或分别填写地址和 Key"); }
-  let server = object(parsed);
-  if (server["mcp.json"] !== undefined) server = object(server["mcp.json"]);
-  if (server.mcpServers !== undefined) {
-    const servers = Object.entries(object(server.mcpServers));
-    if (servers.length !== 1) throw new Error("每次只能连接一个 MCP，请只粘贴本次需要连接的服务配置");
-    draft.name = servers[0][0];
-    draft.server_name = servers[0][0];
-    server = object(servers[0][1]);
-  }
+// 各家配置示例常带说明、超时、开关等字段，与连接无关，载入时忽略。
+const IGNORED_FIELDS = new Set(["description", "timeout", "disabled", "enabled", "autoApprove", "alwaysAllow", "note", "notes", "title", "icon", "category", "tags", "readTimeout", "connectTimeout", "sse_read_timeout"]);
+const KNOWN_PROVIDERS: [RegExp, string][] = [[/(^|\.)qcc\.com$/i, "企查查"], [/(^|\.)tianyancha\.com$/i, "天眼查"], [/(^|\.)pkulaw\.(com|cn)$/i, "北大法宝"], [/(^|\.)baidu\.com$/i, "百度"]];
+
+type ParsedServer = Omit<PersonalMcpDraft, "services" | "skipped">;
+
+const isLocalCommand = (server: Record<string, unknown>) => server.command !== undefined || server.args !== undefined || (server.env !== undefined && server.url === undefined && server.server_url === undefined);
+
+function parseServer(input: Record<string, unknown>, serverName: string): ParsedServer {
+  const draft: ParsedServer = { ...emptyMcpDraft(), server_name: serverName, name: serverName === "default" ? "" : serverName };
+  const server = Object.fromEntries(Object.entries(input).filter(([key]) => !IGNORED_FIELDS.has(key)));
   if (server.command || server.args || server.env) throw new Error("当前仅支持远程 HTTP / SSE MCP，不支持本机命令或环境变量配置");
   const allowed = new Set(["name", "url", "server_url", "type", "transport", "headers", "auth_type", "credential", "api_key_header"]);
   if (Object.keys(server).some(key => !allowed.has(key))) throw new Error("配置含暂不支持的字段，请仅保留远程地址、名称、传输方式和认证字段");
@@ -117,9 +118,61 @@ export function parsePersonalMcpConfig(raw: string): PersonalMcpDraft {
   return draft;
 }
 
+// 分组名默认取已知服务商名称，其次取服务名共同前缀，最后取域名主体，用户可改。
+export function defaultGroupName(services: PersonalMcpService[]) {
+  const hosts = [...new Set(services.map(service => new URL(service.server_url).hostname.toLowerCase()))];
+  for (const [pattern, label] of KNOWN_PROVIDERS) if (hosts.every(host => pattern.test(host))) return label;
+  const names = services.map(service => service.server_name);
+  let prefix = names[0] || "";
+  for (const name of names.slice(1)) while (prefix && !name.startsWith(prefix)) prefix = prefix.slice(0, -1);
+  prefix = prefix.replace(/[\s._\-/:]+$/, "");
+  if (prefix.length >= 2) return prefix;
+  const domains = [...new Set(hosts.map(host => { const parts = host.split("."); return parts.length > 1 ? parts.at(-2)! : host; }))];
+  return domains.length === 1 ? domains[0] : "MCP 分组";
+}
+
+export function parsePersonalMcpConfig(raw: string): PersonalMcpDraft {
+  const text = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  const draft = emptyMcpDraft();
+  if (/^https?:\/\/\S+$/i.test(text)) {
+    if (!personalMcpUrl(text)) throw new Error("仅支持 HTTPS 443 地址，不能包含账号、密码或密钥参数；凭据请在独立 Key 输入框填写");
+    return { ...draft, server_url: text };
+  }
+  let parsed: unknown;
+  try { parsed = JSON.parse(text); }
+  catch { throw new Error("配置不是有效 JSON，请重新粘贴完整配置，或分别填写地址和 Key"); }
+  let server = object(parsed);
+  if (server["mcp.json"] !== undefined) server = object(server["mcp.json"]);
+  if (server.mcpServers === undefined) return { ...draft, ...parseServer(server, "default") };
+  const entries = Object.entries(object(server.mcpServers)).map(([name, value]) => [name, object(value)] as const);
+  if (!entries.length) throw new Error("没有找到要配置的 MCP 服务，请粘贴完整配置");
+  const skipped = entries.filter(([, value]) => isLocalCommand(value)).map(([name]) => name);
+  const remote = entries.filter(([, value]) => !isLocalCommand(value));
+  if (!remote.length) throw new Error(`${LOCAL_COMMAND_SKIPPED}：${skipped.join("、")}。请改用服务方提供的远程地址（https 开头）`);
+  if (remote.length > MAX_GROUP_SERVICES) throw new Error(`一个 MCP 分组最多 ${MAX_GROUP_SERVICES} 个远程服务，这次有 ${remote.length} 个，请分组粘贴`);
+  const servers = remote.map(([name, value]) => {
+    if (!name.trim() || name.length > 80) throw new Error("服务名称须为 1 至 80 个字符");
+    try { return parseServer(value, name); }
+    catch (failure) { throw new Error(`服务「${name}」：${failure instanceof Error ? failure.message : "配置无效"}`); }
+  });
+  if (servers.length === 1) return { ...draft, ...servers[0], name: servers[0].name || servers[0].server_name, skipped };
+  const [first] = servers;
+  // 同一分组共用一个认证方式和 Key，只保存一份；各服务 Key 不同就不能合成一组。
+  if (servers.some(item => item.auth_type !== first.auth_type || item.credential !== first.credential || (item.auth_type === "api_key" && item.api_key_header !== first.api_key_header)))
+    throw new Error("这些服务的认证方式或 Key 不一致，不能合成一个分组；请把使用同一个 Key 的服务放在一起粘贴");
+  const services = servers.map(item => ({ server_name: item.server_name, server_url: item.server_url, transport: item.transport }));
+  return { ...draft, auth_type: first.auth_type, credential: first.credential, api_key_header: first.api_key_header,
+    server_name: first.server_name, server_url: first.server_url, transport: first.transport,
+    name: defaultGroupName(services), services, skipped };
+}
+
 export function validatePersonalMcpDraft(draft: PersonalMcpDraft, credentialSaved = false) {
   if (!draft.name.trim()) return "请填写连接名称";
-  if (!personalMcpUrl(draft.server_url.trim())) return "请填写不含账号、密码或密钥参数的 HTTPS 443 MCP 地址";
+  if (draft.services.length > 1) {
+    if (draft.services.length > MAX_GROUP_SERVICES) return `一个 MCP 分组最多 ${MAX_GROUP_SERVICES} 个服务`;
+    const bad = draft.services.find(service => !personalMcpUrl(service.server_url.trim()));
+    if (bad) return `服务「${bad.server_name}」的地址须为不含账号、密码或密钥参数的 HTTPS 443 地址`;
+  } else if (!personalMcpUrl(draft.server_url.trim())) return "请填写不含账号、密码或密钥参数的 HTTPS 443 MCP 地址";
   if (draft.auth_type !== "none" && !draft.credential.trim() && !credentialSaved) return "请填写 Key / Token";
   if (/\$\{|\*{3,}|^<.*>$/.test(draft.credential)) return "请填写真实 Key，不能使用占位符或脱敏值";
   if (draft.auth_type === "api_key" && !validApiKeyHeader(draft.api_key_header.trim())) return "请填写合法的 API Key 请求头名称";
@@ -130,5 +183,7 @@ export function personalMcpConfiguration(draft: PersonalMcpDraft) {
   const headers: Record<string, string> = {};
   if (draft.auth_type === "bearer") headers.Authorization = draft.credential ? `Bearer ${draft.credential}` : "";
   if (draft.auth_type === "api_key") headers[draft.api_key_header.trim()] = draft.credential;
-  return { "mcp.json": { mcpServers: { [draft.server_name]: { url: draft.server_url.trim(), type: draft.transport === "sse" ? "sse" : "streamableHttp", ...(Object.keys(headers).length ? { headers } : {}) } } } };
+  const services = draft.services.length > 1 ? draft.services : [{ server_name: draft.server_name, server_url: draft.server_url, transport: draft.transport }];
+  // 分组内每个服务带同一个认证头；服务端把重复的 Key 合成一份加密保存。
+  return { "mcp.json": { mcpServers: Object.fromEntries(services.map(service => [service.server_name, { url: service.server_url.trim(), type: service.transport === "sse" ? "sse" : "streamableHttp", ...(Object.keys(headers).length ? { headers: { ...headers } } : {}) }])) } };
 }
