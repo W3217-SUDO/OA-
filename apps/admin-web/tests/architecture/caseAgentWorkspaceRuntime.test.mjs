@@ -1219,7 +1219,7 @@ test("homepage pending summary is shown once and direct cancellation retains fai
     "./PersonalAiSpace": { PersonalAiSpace: component("personal-ai-space") },
     "./CaseWorkspaceSelector": { CaseWorkspaceSelector: component("case-workspace-selector") },
     "./ActionConfirmation": { ActionConfirmation: component("action-confirmation") },
-    "./LocalAgentAccess": { LocalAgentAccess: () => null },
+    "./LocalAgentAccess": { LocalAgentAccess: ({ onAvailable }) => { React.useEffect(() => { onAvailable?.(true); }, []); return null; } },
   };
   const { default: AssistantPanel } = loadModule("../personal-agent/AssistantPanel.tsx", dependencies);
   const action = { id: "a1", type: "mcp.call", summary: "为2个案件新增期限提醒", status: "pending" };
@@ -1314,7 +1314,10 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   assert.deepEqual(navigationOrder, ["AI生成文件夹", "历史确认记录", "个人空间", "案件空间", "添加案件", "案件项目", "案件项目"], "个人空间、案件标题、添加按钮及全部项目整体保留，不隐藏或拆散项目");
   const settingsItems = () => renderer.root.findAllByType("dropdown").flatMap((item) => item.props.menu.items);
   assert.equal(renderer.root.findByType("history-slot").props.title, "个人空间 · 最近会话", "最近会话紧贴所选空间，标题写明归属");
-  assert.deepEqual(settingsItems().map((item) => item.label), ["智能体设置", "记忆管理", "导入技能"], "右上角“设置”收纳三项设置");
+  // 陶国南 11-03 07:22：配置类都收进“设置”，“连接 MCP”“管理连接”合成“MCP 连接”，电脑连接 OA 只给能用个人令牌的人。
+  assert.deepEqual(settingsItems().map((item) => item.label), ["智能体设置", "记忆管理", "导入技能", "MCP 连接", "电脑连接 OA"], "右上角“设置”收纳全部配置项");
+  assert.equal(renderer.root.findAll((item) => item.props?.className === "assistant-composer-links").length, 0, "对话框下方不再有配置类按钮");
+  assert.equal(renderer.root.findAllByType("button").some((item) => ["连接 MCP", "管理连接", "电脑连接 OA"].includes(item.props.children)), false);
   assert.deepEqual(projectModes, [true], "PC进入真实默认个人项目模式");
   assert.equal(selectCaseSpace().props.disabled, false);
   assert.equal(projects()[0].props.disabled, false);

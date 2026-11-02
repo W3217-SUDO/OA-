@@ -1,7 +1,7 @@
 import { ToolOutput } from "./ToolOutput";
 import { forwardRef, useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
 import { Alert, Button, Dropdown, Input, List, Tag, Tooltip, message } from "antd";
-import { ApiOutlined, ArrowLeftOutlined, LinkOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, ExperimentOutlined, FileWordOutlined, FolderOpenOutlined, ReloadOutlined, RobotOutlined, SettingOutlined } from "@ant-design/icons";
+import { ApiOutlined, ArrowLeftOutlined, LaptopOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, ExperimentOutlined, FileWordOutlined, FolderOpenOutlined, ReloadOutlined, RobotOutlined, SettingOutlined } from "@ant-design/icons";
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
 import { TaskEntryCards } from "./TaskEntryCards";
 import AgentAvatar from "./AgentAvatar";
@@ -81,6 +81,9 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   const [personalSpaceOpen, setPersonalSpaceOpen] = useState(false);
   const [caseAgentFolderOpen, setCaseAgentFolderOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
+  // 陶国南 11-03 07:22：电脑连接 OA 收进右上角“设置”，只有能用个人令牌的人才显示。
+  const [localAccessOpen, setLocalAccessOpen] = useState(false);
+  const [localAccessAvailable, setLocalAccessAvailable] = useState(false);
   const [caseSession, setCaseSession] = useState<{ item: CaseAgentConversationSummary; state: WorkspaceState; loading: boolean; sending: boolean } | null>(null);
   // 进入收文助手时关掉案件智能体会话视图，否则主区域仍显示原案件会话。
   const startIntake = workspace.courtIntakeAvailable ? () => { mcp.close(); setCaseSession(null); void workspace.startCourtIntake().catch((error: Error) => message.warning(error.message)); } : undefined;
@@ -254,11 +257,14 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           </span> : conversationTitle}
         </span>
         {desktopWorkspace && currentCaseProject && <><Tooltip title="案件智能体"><Button className="workspace-case-link" size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体" title="案件智能体" onClick={() => onOpenCaseAgent?.(currentCaseProject.case_id!, currentCaseProject.serial_no!)}>案件智能体</Button></Tooltip><Button size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体文件夹" onClick={() => setCaseAgentFolderOpen(true)}>案件智能体文件夹</Button></>}
-        {/* 501147：智能体设置、记忆管理、导入技能收进右上角“设置”，左侧只留会话和固定任务。 */}
+        {/* 501147：智能体设置、记忆管理、导入技能收进右上角“设置”，左侧只留会话和固定任务。
+            陶国南 11-03 07:22：配置类都在这里，“连接 MCP”“管理连接”合成“MCP 连接”，电脑连接 OA 也收进来；对话框下方只留本轮对话用的。 */}
         {desktopWorkspace && <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items: [
           ...(onOpenAgentCenter ? [{ key: "agent", icon: <RobotOutlined />, label: "智能体设置", onClick: onOpenAgentCenter }] : []),
           { key: "memory", icon: <SettingOutlined />, label: "记忆管理", onClick: () => setMemoryOpen(true) },
           { key: "skills", icon: <ExperimentOutlined />, label: "导入技能", disabled: loading || workspace.conversationBusy || workspace.uploading, onClick: () => workspaceToolsRef.current?.importSkills() },
+          { key: "mcp", icon: <ApiOutlined />, label: "MCP 连接", onClick: mcp.show },
+          ...(localAccessAvailable ? [{ key: "local", icon: <LaptopOutlined />, label: "电脑连接 OA", onClick: () => setLocalAccessOpen(true) }] : []),
         ] }}><Button className="assistant-settings-trigger" icon={<SettingOutlined />} aria-label="设置">设置</Button></Dropdown>}
         {!desktopWorkspace && <div className="assistant-bar-actions">
           <Tooltip title="个人 AI 空间"><Button className="personal-ai-space-trigger" type="text" icon={<FolderOpenOutlined />} aria-label="个人 AI 空间" onClick={() => setPersonalSpaceOpen(true)}><span className="personal-ai-space-label">个人 AI 空间</span></Button></Tooltip>
@@ -415,7 +421,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           void workspace.upload(Array.from(event.dataTransfer.files));
         }}
       >
-        <AssistantWorkspaceTools key={workspace.draftKey} ref={workspaceToolsRef} workspace={workspace} desktopWorkspace={desktopWorkspace} onOpenPersonalAiSpace={() => setPersonalSpaceOpen(true)} onOpenMemory={() => setMemoryOpen(true)} />
+        <AssistantWorkspaceTools key={workspace.draftKey} ref={workspaceToolsRef} workspace={workspace} desktopWorkspace={desktopWorkspace} onOpenPersonalAiSpace={() => setPersonalSpaceOpen(true)} onOpenMemory={() => setMemoryOpen(true)} onOpenMcp={mcp.show} />
         {/* 501147：收文助手、客户与合同打开固定会话后，在输入框上方提示该做什么。 */}
         {activeTaskEntry?.inputHint && !caseSession && <div className="assistant-task-hint" role="note">
           <span>{activeTaskEntry.inputHint}</span>
@@ -459,12 +465,6 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
             </Tooltip>}
           </div>
         </form>
-        {/* 输入框下方一排（用户 2026-10-27：输入区附近的功能按钮排成一排，不竖着堆）；放不下时横向滚动。 */}
-        <div className="assistant-composer-links">
-          <Tooltip title="让智能体帮我连接一个 MCP 服务"><Button type="text" icon={<ApiOutlined />} disabled={sendBlocked} onClick={() => submit("帮我连接一个 MCP 服务")}>连接 MCP</Button></Tooltip>
-          <Tooltip title="管理已有的 MCP 连接"><Button type="text" icon={<LinkOutlined />} onClick={mcp.show}>管理连接</Button></Tooltip>
-          <LocalAgentAccess />
-        </div>
       </div>
       {!desktopWorkspace && <div className="assistant-chips">
         {suggestions.map((item) => (
@@ -496,6 +496,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
       {desktopWorkspace ? <div className="assistant-workspace-main">{content}</div> : content}
       {caseAgentFolderOpen && currentCaseProject?.case_id && <CaseAgentFileFolderModal open caseId={currentCaseProject.case_id} serialNo={currentCaseProject.serial_no} onClose={() => setCaseAgentFolderOpen(false)} />}
       {memoryOpen && <MemoryControlPanel open onClose={() => setMemoryOpen(false)} />}
+      {desktopWorkspace && <LocalAgentAccess open={localAccessOpen} onClose={() => setLocalAccessOpen(false)} onAvailable={setLocalAccessAvailable} />}
     </section>
   );
 });

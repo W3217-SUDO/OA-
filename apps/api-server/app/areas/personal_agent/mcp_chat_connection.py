@@ -109,7 +109,7 @@ async def configure_chat_group(batch, valid, identity, db, state, on_delta, on_p
         if submission is None:
             lines.append(f'「{skipped}」：{LOCAL_SKIPPED}。' if error == LOCAL_SKIPPED else f'「{skipped}」未加入分组：{error}')
     lines.append('分组整体验证通过，共 %d 个工具；调用外部工具时仍会请你确认。' % tool_count if status == 'verified'
-                 else '分组已保存但有服务没连上，可在“管理连接”里整组重新检测或修改 Key，不用重新粘贴。')
+                 else '分组已保存但有服务没连上，可在“MCP 连接”里整组重新检测或修改 Key，不用重新粘贴。')
     response = '\n'.join(lines)
     await on_delta(response)
     connection_result = {'id': item['id'], 'name': name, 'scope': scope, 'status': status, 'tool_count': tool_count,
@@ -162,10 +162,10 @@ async def configure_chat_connections(batch, identity, db, state, on_delta, on_pr
         except Exception:
             # 不把异常原文写进回复，避免带出请求里的凭据。
             await db.rollback()
-            await report(f'{index}. 「{name}」配置没有完成，请稍后在“管理连接”里重试。')
+            await report(f'{index}. 「{name}」配置没有完成，请稍后在“MCP 连接”里重试。')
             continue
         await report(_batch_line(index, name, state['messages'][-1].get('connection_result') or {}))
-    footer = '没配好的可以在“管理连接”里修改或重试，不用重新粘贴已连接的服务。'
+    footer = '没配好的可以在“MCP 连接”里修改或重试，不用重新粘贴已连接的服务。'
     await on_delta(footer)
     response = header + '\n'.join(lines) + '\n' + footer
     now = datetime.now(timezone.utc).isoformat()

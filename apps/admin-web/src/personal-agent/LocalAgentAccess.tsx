@@ -1,7 +1,7 @@
 import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Button, Checkbox, Input, Modal, Popconfirm, Select, Tag, Typography, message } from "antd";
-import { CopyOutlined, LaptopOutlined } from "@ant-design/icons";
+import { CopyOutlined } from "@ant-design/icons";
 import { api } from "../api";
 import Table from "../components/ResizableTable";
 
@@ -18,10 +18,10 @@ const STATUS: Record<AccessToken["status"], { text: string; color: string }> = {
 };
 const when = (value: string | null) => (value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "—");
 
-/** 管理员专属：生成只读访问令牌，让自己电脑上的本地 agent 通过 MCP 读取 OA。非管理员看不到入口。 */
-export function LocalAgentAccess() {
+/** 管理员专属：生成只读访问令牌，让自己电脑上的本地 agent 通过 MCP 读取 OA。非管理员看不到入口。
+ * 入口在右上角“设置 › 电脑连接 OA”（陶国南 11-03 07:22），这里只负责弹窗；onAvailable 告诉上层是否显示菜单项。 */
+export function LocalAgentAccess({ open, onClose, onAvailable }: { open: boolean; onClose: () => void; onAvailable?: (available: boolean) => void }) {
   const [listing, setListing] = useState<Listing | null>(null);
-  const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [days, setDays] = useState(30);
   const [busy, setBusy] = useState(false);
@@ -31,11 +31,12 @@ export function LocalAgentAccess() {
   const load = useCallback(async () => {
     try {
       const { data } = await api.get<Listing>("/agent-tools/access-tokens");
-      setListing(Array.isArray(data?.items) ? data : null);
+      const next = Array.isArray(data?.items) ? data : null;
+      setListing(next); onAvailable?.(!!next);
     } catch {
-      setListing(null); // 403：不是系统管理员，不显示入口
+      setListing(null); onAvailable?.(false); // 403：不是系统管理员，不显示入口
     }
-  }, []);
+  }, [onAvailable]);
   useEffect(() => { void load(); }, [load]);
   if (!listing) return null;
 
@@ -69,8 +70,7 @@ export function LocalAgentAccess() {
   };
 
   return <>
-    <Button type="text" icon={<LaptopOutlined />} onClick={() => setOpen(true)}>电脑连接 OA</Button>
-    <Modal title={listing.can_write ? "让我电脑上的 agent 连接 OA（可读写）" : "让我电脑上的 agent 连接 OA（只读）"} open={open} width={POPUP_WIDTH.lg} footer={null} onCancel={() => { setOpen(false); setFresh(""); }} destroyOnHidden>
+    <Modal title={listing.can_write ? "让我电脑上的 agent 连接 OA（可读写）" : "让我电脑上的 agent 连接 OA（只读）"} open={open} width={POPUP_WIDTH.lg} footer={null} onCancel={() => { onClose(); setFresh(""); }} destroyOnHidden>
       {listing.can_write
         ? <Alert type="error" showIcon style={{ marginBottom: 12 }}
           title="这把令牌可以新增、修改、删除 OA 数据，权限和你的账号一致。每次写入都只生成待确认请求，须你在 OA 网页的智能体中心确认后才执行；本地 agent 里也请保持“每次调用前询问”。OA 数据会进入你电脑上的 agent（及其所用的模型），请确认符合律所保密要求。令牌等同密码，不要发给他人，不用时请撤销。" />

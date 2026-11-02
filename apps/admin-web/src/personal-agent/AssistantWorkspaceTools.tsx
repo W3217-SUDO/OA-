@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from "react";
 import { Button, Popover, Segmented, Select, Tooltip, message } from "antd";
-import { CloseOutlined, ExperimentOutlined, FileOutlined, FileWordOutlined, FolderOpenOutlined, FolderOutlined, LoadingOutlined, PaperClipOutlined, PlusOutlined, SettingOutlined } from "@ant-design/icons";
+import { ApiOutlined, CloseOutlined, ExperimentOutlined, FileOutlined, FileWordOutlined, FolderOpenOutlined, FolderOutlined, LoadingOutlined, PaperClipOutlined, PlusOutlined, SettingOutlined } from "@ant-design/icons";
 import { CaseMaterialsPicker } from "./CaseMaterialsPicker";
 import { MaterialPreview } from "./MaterialPreview";
 import { SkillManager } from "./SkillManager";
@@ -12,9 +12,9 @@ import { api } from "../api";
 import "./assistant-workspace-tools.css";
 
 export type AssistantWorkspaceToolsHandle = { importSkills: () => void };
-type Props = { workspace: ReturnType<typeof usePersonalWorkspace>; onOpenPersonalAiSpace: () => void; onOpenMemory?: () => void; desktopWorkspace?: boolean };
+type Props = { workspace: ReturnType<typeof usePersonalWorkspace>; onOpenPersonalAiSpace: () => void; onOpenMemory?: () => void; onOpenMcp?: () => void; desktopWorkspace?: boolean };
 
-export const AssistantWorkspaceTools = forwardRef<AssistantWorkspaceToolsHandle, Props>(function AssistantWorkspaceTools({ workspace, onOpenPersonalAiSpace, onOpenMemory, desktopWorkspace = false }, ref) {
+export const AssistantWorkspaceTools = forwardRef<AssistantWorkspaceToolsHandle, Props>(function AssistantWorkspaceTools({ workspace, onOpenPersonalAiSpace, onOpenMemory, onOpenMcp, desktopWorkspace = false }, ref) {
   const [mobile, setMobile] = useState(() => window.matchMedia("(max-width: 991px)").matches);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [pickerMode, setPickerMode] = useState<"case" | "materials" | null>(null);
@@ -89,7 +89,9 @@ export const AssistantWorkspaceTools = forwardRef<AssistantWorkspaceToolsHandle,
       {!desktopWorkspace && <Tooltip title="导入技能">
         <Button type="text" htmlType="button" className="assistant-skills-manage" icon={<ExperimentOutlined />} disabled={busy} aria-label="导入技能" onClick={() => void openSkills()}>技能</Button>
       </Tooltip>}
-      {onOpenMemory && <Button type="text" htmlType="button" icon={<SettingOutlined />} aria-label="记忆管理" onClick={() => { setToolsOpen(false); onOpenMemory(); }}>记忆管理</Button>}
+      {/* 陶国南 11-03 07:22：电脑端记忆管理、MCP 连接在右上角“设置”里，对话框下方只留本轮对话用的；没有“设置”的窄屏仍放这里。 */}
+      {!desktopWorkspace && onOpenMemory && <Button type="text" htmlType="button" icon={<SettingOutlined />} aria-label="记忆管理" onClick={() => { setToolsOpen(false); onOpenMemory(); }}>记忆管理</Button>}
+      {!desktopWorkspace && onOpenMcp && <Button type="text" htmlType="button" icon={<ApiOutlined />} aria-label="MCP 连接" onClick={() => { setToolsOpen(false); onOpenMcp(); }}>MCP 连接</Button>}
     </div>;
 
   // 手机“＋”面板（用户 2026-10-27，参考钉钉“＋”面板）：顶部一行技能下拉和快速/深度，下面每行 4 个图标宫格，图标在上、文字在下。
@@ -125,6 +127,7 @@ export const AssistantWorkspaceTools = forwardRef<AssistantWorkspaceToolsHandle,
       {tile("upload", <PaperClipOutlined />, "附件", () => { setToolsOpen(false); fileRef.current?.click(); }, busy, workspace.uploading)}
       {tile("skills", <ExperimentOutlined />, "技能", () => void openSkills(), busy)}
       {onOpenMemory && tile("memory", <SettingOutlined />, "记忆管理", () => { setToolsOpen(false); onOpenMemory(); })}
+      {onOpenMcp && tile("mcp", <ApiOutlined />, "MCP 连接", () => { setToolsOpen(false); onOpenMcp(); })}
       {tile("space", <FolderOutlined />, "个人 AI 空间", () => { setToolsOpen(false); onOpenPersonalAiSpace(); })}
     </div>
   </div>;
