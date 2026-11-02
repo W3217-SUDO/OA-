@@ -23,6 +23,8 @@ from app.models_shared import (
     ContractSubmitInput, ContractWholeDeleteInput, FinancePaymentTypeCreateInput,
 )
 from fastapi import APIRouter
+from app.core.finance_centers import optional_finance_center_identity
+from app.areas.finance.payment_business import filter_payment_business, payment_actor, require_payment_business, tag_nonlitigation
 
 router = APIRouter()
 
@@ -1104,7 +1106,7 @@ async def close_contract_archive_subjects(contract_id: int, body: ContractArchiv
 
 
 @router.get(f"{settings.api_prefix}/contracts/{{contract_id}}/payment-candidates")
-async def contract_payment_candidates(contract_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def contract_payment_candidates(contract_id: int, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.finance import (
         _active_payment_type_rows,
     )
@@ -1125,7 +1127,9 @@ async def contract_payment_candidates(contract_id: int, identity: dict = Depends
             for item in payment_types
         ],
         # 第2行(10.22)：已申请满、待付为 0 的费用不再进入合同付款候选。
-        "items": await visible_payment_candidates(contract, identity, db),
+        # 带业务类型时只出该类型的费用（501099）；合同标的行没有费用，算诉讼。
+        "items": await filter_payment_business(await visible_payment_candidates(contract, identity, db), identity, db,
+                                               id_of=lambda row: row.get("case_fee_id")),
     }
 
 
@@ -1145,7 +1149,7 @@ async def create_contract_payment_type(contract_id: int, body: FinancePaymentTyp
 
 
 @router.get(f"{settings.api_prefix}/contracts/{{contract_id}}/payment-applications")
-async def list_contract_payment_applications(contract_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def list_contract_payment_applications(contract_id: int, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity, _record_scope_conditions,
     )
@@ -1165,6 +1169,7 @@ async def list_contract_payment_applications(contract_id: int, identity: dict = 
         ),
         *(await _record_scope_conditions(identity, db)),
     ).order_by(BusinessRecord.id.desc()))).all()
+    items = await filter_payment_business(items, identity, db)
     # 每个申请的明细仍按 ID 排序，读取次数不再随申请逐条增长。
     lines_by_payment: dict[int, list[ContractPaymentLine]] = {}
     for line in await _scalars_in_batches(
@@ -1200,21 +1205,30 @@ async def list_contract_payment_applications(contract_id: int, identity: dict = 
 
 
 @router.post(f"{settings.api_prefix}/contracts/{{contract_id}}/payment-applications", status_code=status.HTTP_201_CREATED)
-async def create_contract_payment_application(contract_id: int, body: ContractPaymentApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def create_contract_payment_application(contract_id: int, body: ContractPaymentApplicationInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.contract_payment_lifecycle import lock_contract, normalized_payment, replace_payment_details, payment_event
     from app.core.permissions import (
         _record_dict_for_identity, _require_contract_action, _require_record_owner_or_manager,
     )
+    identity = await payment_actor(identity, db, "mine")
     await _require_contract_action(identity, db, "contract.payment.create", "发起付款申请")
     contract = await lock_contract(contract_id, identity, db)
     await _require_record_owner_or_manager(contract, identity, db)
     validated = await normalized_payment(body, contract, identity, db)
+    fee_ids = sorted({line.case_fee_id for line in body.lines if line.case_fee_id})
+    source_fees = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(fee_ids)))).all()) if fee_ids else []
+    # 请款费用要和当前业务类型一致；合同标的行没有费用，按诉讼算（501099）。
+    for fee in source_fees:
+        require_payment_business(fee, identity)
+    if len(source_fees) != len(body.lines):
+        require_payment_business(BusinessRecord(module="contract_payment", data={}), identity)
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if not user: raise HTTPException(status_code=401, detail="当前用户不存在")
     total = validated["amount"]
     serial = f"CP{datetime.now():%Y%m%d%H%M%S%f}"
     accounting_center = "平台财务中心" if str((contract.data or {}).get("contract_body") or "").strip() == "平台" else "财务中心"
     payment = BusinessRecord(module="contract_payment", serial_no=serial, title=f"{contract.serial_no}合同付款申请", customer=contract.customer, status="待审批", owner=contract.owner, department=user.department, description=body.remark.strip(), data={"contract_id": contract.id, "contract_no": contract.serial_no, "contract_body": (contract.data or {}).get("contract_body"), "accounting_center": accounting_center, "finance_scope": "platform" if accounting_center == "平台财务中心" else "firm", "applicant": identity["username"], "audit_round": 1})
+    payment.data = tag_nonlitigation(payment.data, *source_fees) if len(source_fees) == len(body.lines) else payment.data
     db.add(payment); await db.flush()
     await replace_payment_details(payment, validated, db)
     db.add(payment_event(payment, "提交合同付款申请", "", identity, body.remark.strip()))
@@ -1224,13 +1238,15 @@ async def create_contract_payment_application(contract_id: int, body: ContractPa
 
 
 @router.post(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}/review")
-async def review_contract_payment_application(payment_id: int, body: ContractPaymentReviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def review_contract_payment_application(payment_id: int, body: ContractPaymentReviewInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.contract_payment_lifecycle import locked_payment, ensure_unsettled, payment_event
     from app.core.permissions import (
         _record_dict_for_identity, _require_contract_action,
     )
+    identity = await payment_actor(identity, db, "audit")
     await _require_contract_action(identity, db, "contract.payment.approve", "审批付款申请")
     payment, _ = await locked_payment(payment_id, identity, db)
+    require_payment_business(payment, identity)
     await ensure_unsettled(payment, db)
     if payment.status != "待审批": raise HTTPException(status_code=409, detail="仅待审批合同付款可以审核")
     target = "待付款" if body.approved else "已驳回"
@@ -1241,7 +1257,7 @@ async def review_contract_payment_application(payment_id: int, body: ContractPay
 
 
 @router.post(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}/pay")
-async def pay_contract_payment_application(payment_id: int, body: ContractPaymentPayInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def pay_contract_payment_application(payment_id: int, body: ContractPaymentPayInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.contract_payment_lifecycle import locked_payment, ensure_unsettled, payment_event
     from app.core.finance import (
         _round_fee_amount,
@@ -1249,8 +1265,10 @@ async def pay_contract_payment_application(payment_id: int, body: ContractPaymen
     from app.core.permissions import (
         _record_dict_for_identity, _require_contract_action,
     )
+    identity = await payment_actor(identity, db, "print", "writeoff")
     await _require_contract_action(identity, db, "contract.payment.pay", "办理付款")
     payment, _ = await locked_payment(payment_id, identity, db)
+    require_payment_business(payment, identity)
     if payment.status != "待付款": raise HTTPException(status_code=409, detail="仅待付款合同付款申请可以标记付款")
     await ensure_unsettled(payment, db)
     data = dict(payment.data or {}); total = _round_fee_amount(float(data.get("amount") or 0))
@@ -1261,13 +1279,15 @@ async def pay_contract_payment_application(payment_id: int, body: ContractPaymen
 
 
 @router.post(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}/writeoff")
-async def writeoff_contract_payment_application(payment_id: int, body: ContractPaymentWriteoffInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def writeoff_contract_payment_application(payment_id: int, body: ContractPaymentWriteoffInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.contract_payment_lifecycle import locked_payment, payment_event
     from app.core.permissions import (
         _record_dict_for_identity, _require_contract_action,
     )
+    identity = await payment_actor(identity, db, "writeoff")
     await _require_contract_action(identity, db, "contract.payment.writeoff", "核销付款")
     payment, _ = await locked_payment(payment_id, identity, db)
+    require_payment_business(payment, identity)
     data = dict(payment.data or {})
     if data.get("writeoff_status") == "已核销" or payment.status == "已核销":
         raise HTTPException(status_code=409, detail="合同付款已经核销")
@@ -1474,12 +1494,14 @@ from app.models_shared import FinancePaymentCancelInput, FinancePaymentRollbackI
 
 
 @router.get(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}/edit-context")
-async def contract_payment_edit_context(payment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def contract_payment_edit_context(payment_id: int, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.contract_payment_lifecycle import locked_payment, ensure_unsettled, ensure_editable, visible_payment_candidates
     from app.core.finance import _active_payment_type_rows
     from app.core.permissions import _record_dict_for_identity, _require_contract_action, _require_record_owner_or_manager
+    identity = await payment_actor(identity, db, "mine")
     await _require_contract_action(identity, db, "contract.payment.create", "编辑合同付款")
     payment, contract = await locked_payment(payment_id, identity, db, lock=False)
+    require_payment_business(payment, identity)
     await _require_record_owner_or_manager(payment, identity, db)
     await ensure_unsettled(payment, db)
     ensure_editable(payment)
@@ -1487,15 +1509,21 @@ async def contract_payment_edit_context(payment_id: int, identity: dict = Depend
             "contract": await _record_dict_for_identity(contract, identity, db),
             "payment_types": [{**item, "value": item["id"], "label": "｜".join([item["payee"], item["account_bank"], item["account"]])}
                               for item in await _active_payment_type_rows(db, include_incomplete_accounts=True)],
-            "items": await visible_payment_candidates(contract, identity, db, payment)}
+            "items": await filter_payment_business(await visible_payment_candidates(contract, identity, db, payment), identity, db,
+                                                   id_of=lambda row: row.get("case_fee_id"))}
 
 
 @router.put(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}")
-async def update_contract_payment_application(payment_id: int, body: ContractPaymentApplicationInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def update_contract_payment_application(payment_id: int, body: ContractPaymentApplicationInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.contract_payment_lifecycle import locked_payment, ensure_unsettled, ensure_editable, normalized_payment, replace_payment_details, payment_event
     from app.core.permissions import _record_dict_for_identity, _require_contract_action, _require_record_owner_or_manager
+    identity = await payment_actor(identity, db, "mine")
     await _require_contract_action(identity, db, "contract.payment.create", "编辑合同付款")
     payment, contract = await locked_payment(payment_id, identity, db)
+    require_payment_business(payment, identity)
+    fee_ids = sorted({line.case_fee_id for line in body.lines if line.case_fee_id})
+    for fee in ((await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(fee_ids)))).all() if fee_ids else []):
+        require_payment_business(fee, identity)
     await _require_record_owner_or_manager(payment, identity, db)
     await ensure_unsettled(payment, db)
     ensure_editable(payment)
@@ -1511,7 +1539,9 @@ async def update_contract_payment_application(payment_id: int, body: ContractPay
 
 
 @router.post(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}/submit")
-async def submit_contract_payment_application(payment_id: int, body: FinancePaymentRollbackInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def submit_contract_payment_application(payment_id: int, body: FinancePaymentRollbackInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
+    identity = await payment_actor(identity, db, "mine")
+    require_payment_business(await db.get(BusinessRecord, payment_id), identity)
     from app.core.permissions import _require_role_action
     await _require_role_action(identity, db, "contract.payment.create")
     from app.core.contract_payment_lifecycle import change_payment_state
@@ -1519,7 +1549,9 @@ async def submit_contract_payment_application(payment_id: int, body: FinancePaym
 
 
 @router.post(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}/cancel")
-async def cancel_contract_payment_application(payment_id: int, body: FinancePaymentCancelInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def cancel_contract_payment_application(payment_id: int, body: FinancePaymentCancelInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
+    identity = await payment_actor(identity, db, "mine")
+    require_payment_business(await db.get(BusinessRecord, payment_id), identity)
     from app.core.permissions import _require_role_action
     await _require_role_action(identity, db, "contract.payment.create")
     from app.core.contract_payment_lifecycle import change_payment_state
@@ -1527,7 +1559,9 @@ async def cancel_contract_payment_application(payment_id: int, body: FinancePaym
 
 
 @router.post(f"{settings.api_prefix}/contract-payment-applications/{{payment_id}}/rollback")
-async def rollback_contract_payment_application(payment_id: int, body: FinancePaymentRollbackInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def rollback_contract_payment_application(payment_id: int, body: FinancePaymentRollbackInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
+    identity = await payment_actor(identity, db, "query", "audit", "mine")
+    require_payment_business(await db.get(BusinessRecord, payment_id), identity)
     from app.core.contract_payment_lifecycle import change_payment_state
     return await change_payment_state(payment_id, "rollback", body.comment, identity, db)
 
@@ -1543,7 +1577,7 @@ async def query_payment_applications(
     payment_date_start: str = "", payment_date_end: str = "",
     deadline_start: str = "", deadline_end: str = "", audit_date_start: str = "", audit_date_end: str = "",
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=500),
-    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.contract_payment_lifecycle import query_payments
     filters = {key: value for key, value in locals().items() if key not in {"identity", "db", "query_payments"}}

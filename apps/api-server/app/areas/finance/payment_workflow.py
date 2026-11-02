@@ -7,6 +7,7 @@ from app.core.constants import PAYMENT_METHOD_OPTIONS, UPLOAD_ROOT
 from app.core.permissions import _ensure_record_visible, _record_dict_for_identity, _record_dicts_for_identity, _require_contract_action
 from app.core.finance_batch_parity import is_internal_fee
 from app.core.finance_centers import filter_rows_by_center, optional_finance_center_identity
+from .payment_business import payment_actor, require_payment_business, tag_nonlitigation
 
 router = APIRouter()
 
@@ -58,9 +59,11 @@ async def list_workflow_payments(stage: str, identity: dict = Depends(optional_f
 
 
 @router.get(f'{settings.api_prefix}/finance/payment-workflow/{{record_id}}/document')
-async def get_payment_document(record_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def get_payment_document(record_id: int, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from .payment_document import payment_document
+    identity = await payment_actor(identity, db, "print", "writeoff", "query")
     row = await _ensure_record_visible(record_id, identity, db)
+    require_payment_business(row, identity)
     if row.module not in {'finance', 'contract_payment', 'finance_package'} or is_internal_fee(row.data or {}):
         raise HTTPException(422, '请选择普通付款申请')
     result = await payment_document(row, identity, db)
@@ -73,7 +76,8 @@ class PaymentBatchInput(BaseModel):
 
 
 @router.post(f'{settings.api_prefix}/finance/payment-workflow/submit-batch')
-async def submit_payment_batch(body: PaymentBatchInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def submit_payment_batch(body: PaymentBatchInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
+    identity = await payment_actor(identity, db, "print", "package")
     rows = [await payment_record(record_id, identity, db) for record_id in sorted(set(body.record_ids))]
     if any(row.status not in {'已审批', '待付款', '部分付款'} or (row.data or {}).get('writeoff_status') in {'待核销', '已核销'} for row in rows):
         raise HTTPException(409, '只能合并待付款申请')
@@ -94,7 +98,7 @@ async def submit_payment_batch(body: PaymentBatchInput, identity: dict = Depends
     number = f'P{datetime.now():%y%m%d}-{uuid4().hex[:8]}'
     package = BusinessRecord(module='finance_package', serial_no=number, title='付款申请单', customer=rows[0].customer,
         owner=identity['username'], department=rows[0].department, status='待核销',
-        data={**(rows[0].data or {}), 'fee_ids':[row.id for row in rows], 'items':details, 'amount':total,
+        data={**tag_nonlitigation({key: value for key, value in (rows[0].data or {}).items() if key != 'business_type'}, *rows), 'fee_ids':[row.id for row in rows], 'items':details, 'amount':total,
               'total_amount':total, 'fee_type':'普通付款包', 'payment_status':'待核销', 'payment_package_no':number})
     db.add(package); await db.flush()
     for row in rows:
@@ -107,6 +111,7 @@ async def submit_payment_batch(body: PaymentBatchInput, identity: dict = Depends
 
 async def payment_record(record_id, identity, db, allow_package=False):
     row = await _ensure_record_visible(record_id, identity, db)
+    require_payment_business(row, identity)
     if not (allow_package and row.module == 'finance_package') and (row.module not in {'finance', 'contract_payment'} or is_internal_fee(row.data or {})):
         raise HTTPException(422, '请选择普通费用或合同付款申请')
     if not await payment_action_allowed(identity, db, 'writeoff' if allow_package else 'submit'):
@@ -125,7 +130,7 @@ async def payment_record(record_id, identity, db, allow_package=False):
 
 
 @router.post(f'{settings.api_prefix}/finance/payment-workflow/{{record_id}}/submit')
-async def submit_payment(record_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def submit_payment(record_id: int, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     # Single and merged submissions share one authoritative package lifecycle.
     return await submit_payment_batch(PaymentBatchInput(record_ids=[record_id]), identity, db)
 
@@ -133,7 +138,8 @@ async def submit_payment(record_id: int, identity: dict = Depends(current_identi
 @router.post(f'{settings.api_prefix}/finance/payment-workflow/{{record_id}}/writeoff')
 async def writeoff_payment(record_id: int, paid_date: date = Form(...), amount: float = Form(...),
     payment_method: str = Form(...), invoice_no: str = Form(...), remark: str = Form(''),
-    files: list[UploadFile] = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    files: list[UploadFile] = File(...), identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
+    identity = await payment_actor(identity, db, "writeoff")
     row = await payment_record(record_id, identity, db, allow_package=True)
     if row.module != 'finance_package' and (row.data or {}).get('payment_package_id'):
         row = await payment_record(int(row.data['payment_package_id']), identity, db, allow_package=True)
@@ -159,6 +165,7 @@ async def writeoff_payment(record_id: int, paid_date: date = Form(...), amount: 
     if row.module == 'finance_package':
         for fee_id in data.get('fee_ids', []):
             fee = await _ensure_record_visible(int(fee_id), identity, db)
+            require_payment_business(fee, identity)
             if fee.module not in {'finance', 'contract_payment'} or fee.status != '待核销' or int((fee.data or {}).get('payment_package_id') or 0) != row.id:
                 raise HTTPException(409, '付款包费用关联不一致')
             if fee.module == 'contract_payment':
@@ -252,12 +259,13 @@ async def writeoff_payment(record_id: int, paid_date: date = Form(...), amount: 
 
 
 @router.get(f'{settings.api_prefix}/finance/payment-workflow/{{record_id}}/print-word')
-async def export_payment_print_word(record_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def export_payment_print_word(record_id: int, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     """“提交并打印”/“打印”导出的付款申请单 Word，单独打开打印，不在系统页面上弹打印窗口。"""
     from urllib.parse import quote
     from fastapi import Response
     from .payment_document import payment_document
     from .payment_print_word import payment_package_word
+    identity = await payment_actor(identity, db, "print")
     if not (await payment_action_allowed(identity, db, 'submit') or await payment_action_allowed(identity, db, 'writeoff')):
         raise HTTPException(403, '当前角色没有付款单打印权限')
     row = await _ensure_record_visible(record_id, identity, db)
@@ -266,6 +274,7 @@ async def export_payment_print_word(record_id: int, identity: dict = Depends(cur
         if not package_id.isdigit():
             raise HTTPException(409, '请先提交付款单，生成打包流水号后再打印')
         row = await _ensure_record_visible(int(package_id), identity, db)
+    require_payment_business(row, identity)
     if row.module != 'finance_package' or (row.data or {}).get('fee_type') != '普通付款包':
         raise HTTPException(422, '请选择普通付款包')
     if row.status not in {'待核销', '已付款'}:

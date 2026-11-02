@@ -5,7 +5,8 @@ from app.core.dependencies import AsyncSession, BusinessRecord, Depends, HTTPExc
 from app.models_shared import FinancePaymentPackageCreateInput, FinancePaymentPackagePreviewInput, FinancePaymentPackageUpdateInput, FinancePaymentPackageWriteoffInput, FinancePaymentRollbackInput, FinanceSettlementMarkInput
 from app.core.constants import PAYMENT_METHOD_OPTIONS
 from app.core.finance_person_projection import apply_finance_person_displays
-from app.core.finance_centers import finance_center_identity, require_record_center
+from app.core.finance_centers import finance_center_identity, optional_finance_center_identity, record_business_conditions, require_record_center
+from .payment_business import filter_payment_business, payment_actor, require_payment_business, tag_nonlitigation
 
 router = APIRouter()
 
@@ -23,6 +24,8 @@ async def list_pending_finance_settlements(
     from app.core.system import _allowed_field_keys
 
     rows = await pending_case_fee_settlements(identity, db)
+    # 带业务类型时只出该类型的费用（501099）。
+    rows = await filter_payment_business(rows, identity, db, id_of=lambda row: row.get("id"))
     rows = filter_internal_rows(rows, case_no=case_no, customer=customer, case_stages=case_stages,
                                 court_case_no=court_case_no, certificate_no=certificate_no,
                                 hearing_lawyer=hearing_lawyer, assistant=assistant,
@@ -36,6 +39,7 @@ async def mark_finance_settlements_commission_paid(body: FinanceSettlementMarkIn
     from app.core.permissions import (
         _record_scope_conditions,
     )
+    identity = await payment_actor(identity, db, "ipr-finance-settlement-pending", "ipr-finance-settlement-payment")
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="当前角色没有标识提成发放权限")
     fee_ids = list(dict.fromkeys(body.fee_ids))
@@ -48,6 +52,7 @@ async def mark_finance_settlements_commission_paid(body: FinanceSettlementMarkIn
         raise HTTPException(status_code=404, detail="部分案件费用不存在或无权访问")
     for fee in fees:
         await require_record_center(fee, identity, db)
+        require_payment_business(fee, identity)
     invalid = [item.serial_no for item in fees if
                (item.data or {}).get("fee_type") != "代理费"
                or (item.data or {}).get("refund_fee")
@@ -102,9 +107,10 @@ async def list_internal_refund_review_candidates(identity: dict = Depends(curren
 async def export_payment_package_word(
     package_no: str,
     scope: str = Query("internal_fee"),
-    identity: dict = Depends(current_identity),
+    identity: dict = Depends(optional_finance_center_identity),
     db: AsyncSession = Depends(get_db),
 ):
+    identity = await payment_actor(identity, db, "package", "print", "ipr-finance-internal-payment", "ipr-finance-internal-writeoff")
     from app.core.finance import (
         _payment_package_for_word,
     )
@@ -112,6 +118,7 @@ async def export_payment_package_word(
         _payment_package_docx_bytes,
     )
     package, fees, normalized_scope = await _payment_package_for_word(package_no, scope, identity, db)
+    require_payment_business(package, identity)
     filename, content = _payment_package_docx_bytes(package, fees, scope=normalized_scope)
     disposition = f"attachment; filename=payment-package.docx; filename*=UTF-8''{quote(filename)}"
     return Response(
@@ -178,7 +185,7 @@ async def list_internal_payment_packages(
     payee: str = Query(""),
     payment_date_from: date | None = Query(None),
     payment_date_to: date | None = Query(None),
-    identity: dict = Depends(current_identity),
+    identity: dict = Depends(optional_finance_center_identity),
     db: AsyncSession = Depends(get_db),
 ):
     from app.core.permissions import (
@@ -193,6 +200,8 @@ async def list_internal_payment_packages(
     conditions = [
         BusinessRecord.module == "finance_package",
         *(await _record_scope_conditions(identity, db)),
+        # 带业务类型时只出该类型的付款包（501099）。
+        *record_business_conditions(identity, allow_shared_contract=False),
     ]
     if package_scope == "ordinary":
         conditions.append(BusinessRecord.data["fee_type"].as_string() == "普通付款包")
@@ -245,9 +254,10 @@ async def list_internal_payment_packages(
 @router.get(f"{settings.api_prefix}/finance/payment-packages/candidates")
 async def list_internal_payment_package_candidates(
     package_id: int | None = Query(None),
-    identity: dict = Depends(current_identity),
+    identity: dict = Depends(optional_finance_center_identity),
     db: AsyncSession = Depends(get_db),
 ):
+    identity = await payment_actor(identity, db, "package", "ipr-finance-internal-payment")
     from app.core.permissions import (
         _record_dicts_for_identity, _record_scope_conditions,
     )
@@ -263,14 +273,18 @@ async def list_internal_payment_package_candidates(
              or (row.data or {}).get("relation_status") == "已关联")
         and (row.status == "已审批" or (package_id is not None and row.status == "待核销" and int((row.data or {}).get("payment_package_id") or 0) == package_id))
     ]
+    items = await filter_payment_business(items, identity, db)
     return {"items": await apply_finance_person_displays(await _record_dicts_for_identity(items, identity, db), db), "total": len(items)}
 
 @router.post(f"{settings.api_prefix}/finance/payment-packages/preview")
-async def preview_internal_payment_package(body: FinancePaymentPackagePreviewInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def preview_internal_payment_package(body: FinancePaymentPackagePreviewInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
+    identity = await payment_actor(identity, db, "package", "ipr-finance-internal-payment")
     from app.core.finance import (
         _new_internal_payment_package_no, _prepare_internal_payment_package,
     )
     _fees, details, payee, total_amount = await _prepare_internal_payment_package(body.fee_ids, identity, db)
+    for fee in _fees:
+        require_payment_business(fee, identity)
     result = {
         "package_no": _new_internal_payment_package_no(),
         "print_date": str(date.today()),
@@ -282,7 +296,8 @@ async def preview_internal_payment_package(body: FinancePaymentPackagePreviewInp
     return result
 
 @router.post(f"{settings.api_prefix}/finance/payment-packages", status_code=status.HTTP_201_CREATED)
-async def create_internal_payment_package(body: FinancePaymentPackageCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def create_internal_payment_package(body: FinancePaymentPackageCreateInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
+    identity = await payment_actor(identity, db, "package", "ipr-finance-internal-payment")
     from app.core.finance import (
         _prepare_internal_payment_package, _round_fee_amount,
     )
@@ -290,6 +305,8 @@ async def create_internal_payment_package(body: FinancePaymentPackageCreateInput
         _record_dict_for_identity,
     )
     fees, details, payee, total_amount = await _prepare_internal_payment_package(body.fee_ids, identity, db)
+    for fee in fees:
+        require_payment_business(fee, identity)
     if await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == body.package_no)):
         raise HTTPException(status_code=409, detail="付款包号码已经存在")
     user = await db.scalar(select(User).where(User.username == identity["username"]))
@@ -304,7 +321,7 @@ async def create_internal_payment_package(body: FinancePaymentPackageCreateInput
         owner=identity["username"],
         department=user.department if user else "上海分所",
         description=body.comment.strip(),
-        data={
+        data=tag_nonlitigation({
             "fee_ids": [item.id for item in fees],
             "payee": payee,
             "amount": total_amount,
@@ -316,7 +333,7 @@ async def create_internal_payment_package(body: FinancePaymentPackageCreateInput
             "submitted_at": paid_at,
             "submitted_by": identity["username"],
             "comment": body.comment.strip(),
-        },
+        }, *fees),
     )
     db.add(package)
     await db.flush()
@@ -341,17 +358,20 @@ async def create_internal_payment_package(body: FinancePaymentPackageCreateInput
     return await _record_dict_for_identity(package, identity, db)
 
 @router.get(f"{settings.api_prefix}/finance/payment-packages/{{package_id}}")
-async def get_internal_payment_package(package_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def get_internal_payment_package(package_id: int, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
+    identity = await payment_actor(identity, db, "package", "query", "ipr-finance-internal-payment", "ipr-finance-internal-writeoff")
     from app.core.permissions import (
         _ensure_record_module, _record_dict_for_identity,
     )
     package = await _ensure_record_module(package_id, "finance_package", identity, db)
+    require_payment_business(package, identity)
     result = await _record_dict_for_identity(package, identity, db)
     await apply_finance_person_displays([result], db)
     return result
 
 @router.put(f"{settings.api_prefix}/finance/payment-packages/{{package_id}}")
-async def update_internal_payment_package(package_id: int, body: FinancePaymentPackageUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def update_internal_payment_package(package_id: int, body: FinancePaymentPackageUpdateInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
+    identity = await payment_actor(identity, db, "package", "ipr-finance-internal-payment")
     from app.core.finance_action_permissions import require_finance_action
     await require_finance_action(identity, db, "finance.payment.update")
     from app.core.finance import (
@@ -363,6 +383,7 @@ async def update_internal_payment_package(package_id: int, body: FinancePaymentP
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="当前角色没有编辑付款包权限")
     package = await _ensure_record_module(package_id, "finance_package", identity, db)
+    require_payment_business(package, identity)
     if package.status != "待核销":
         raise HTTPException(status_code=409, detail="仅待核销付款包可以编辑费用构成")
     previous_data = package.data or {}
@@ -373,6 +394,8 @@ async def update_internal_payment_package(package_id: int, body: FinancePaymentP
     fees, details, payee, total_amount = await _prepare_internal_payment_package(
         body.fee_ids, identity, db, editable_package_id=package.id,
     )
+    for fee in fees:
+        require_payment_business(fee, identity)
     next_ids = [item.id for item in fees]
     current_fees = (await db.scalars(select(BusinessRecord).where(
         BusinessRecord.id.in_(previous_ids), BusinessRecord.module == "finance"
@@ -426,7 +449,8 @@ async def update_internal_payment_package(package_id: int, body: FinancePaymentP
     return await _record_dict_for_identity(package, identity, db)
 
 @router.post(f"{settings.api_prefix}/finance/payment-packages/{{package_id}}/writeoff")
-async def writeoff_internal_payment_package(package_id: int, body: FinancePaymentPackageWriteoffInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def writeoff_internal_payment_package(package_id: int, body: FinancePaymentPackageWriteoffInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
+    identity = await payment_actor(identity, db, "package", "writeoff", "ipr-finance-internal-writeoff")
     from app.core.imported_internal_finance import adjust_imported_internal_paid
     from app.core.finance import (
         _round_fee_amount,
@@ -437,6 +461,7 @@ async def writeoff_internal_payment_package(package_id: int, body: FinancePaymen
     if identity.get("role") not in {"admin", "manager", "auditor"}:
         raise HTTPException(status_code=403, detail="当前角色没有付款核销权限")
     package = await _ensure_record_module(package_id, "finance_package", identity, db)
+    require_payment_business(package, identity)
     if package.status != "待核销":
         raise HTTPException(status_code=409, detail="仅待核销付款包可以核销")
     if body.payment_method not in PAYMENT_METHOD_OPTIONS:
@@ -502,7 +527,8 @@ async def writeoff_internal_payment_package(package_id: int, body: FinancePaymen
     return await _record_dict_for_identity(package, identity, db)
 
 @router.delete(f"{settings.api_prefix}/finance/payment-packages/{{package_id}}", status_code=status.HTTP_204_NO_CONTENT)
-async def cancel_internal_payment_package(package_id: int, reverse_paid: bool = Query(False), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def cancel_internal_payment_package(package_id: int, reverse_paid: bool = Query(False), identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
+    identity = await payment_actor(identity, db, "package", "ipr-finance-internal-payment")
     from app.core.finance_action_permissions import require_finance_action
     await require_finance_action(identity, db, "finance.payment.delete")
     from app.core.imported_internal_finance import adjust_imported_internal_paid
@@ -512,6 +538,7 @@ async def cancel_internal_payment_package(package_id: int, reverse_paid: bool = 
     if identity.get("role") != "admin":
         raise HTTPException(status_code=403, detail="仅管理员可以撤销付款包")
     package = await _ensure_record_module(package_id, "finance_package", identity, db)
+    require_payment_business(package, identity)
     if package.status == "已付款" and not reverse_paid:
         raise HTTPException(status_code=409, detail="已核销付款包必须显式冲正后才能撤销")
     if package.status not in {"待核销", "已付款"}:
@@ -560,8 +587,9 @@ async def cancel_internal_payment_package(package_id: int, reverse_paid: bool = 
 @router.post(f"{settings.api_prefix}/finance/payment-packages/{{package_id}}/rollback")
 async def rollback_pending_writeoff_package(
     package_id: int, body: FinancePaymentRollbackInput,
-    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db),
 ):
+    identity = await payment_actor(identity, db, "package", "writeoff", "ipr-finance-internal-writeoff")
     """BUG20261028007：待核销请款单右键“回滚”，整个付款包退回待付款（上一个栏目）。
 
     付款包只改状态为“已回滚”并保留（逻辑删除），费用去掉付款包关联、恢复“已审批”，各记一条日志。"""
@@ -575,6 +603,7 @@ async def rollback_pending_writeoff_package(
     if not package:
         raise HTTPException(status_code=404, detail="付款包不存在")
     await _ensure_record_module(package_id, "finance_package", identity, db)
+    require_payment_business(package, identity)
     if package.status != "待核销":
         raise HTTPException(status_code=409, detail="只有待核销的请款单可以回滚")
     raw_fee_ids = list((package.data or {}).get("fee_ids", []))

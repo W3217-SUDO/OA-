@@ -314,8 +314,11 @@ async def query_payments(filters, identity, db):
     await _require_record_module_menu("finance", identity, db, action="查询请款")
     record = BusinessRecord
     data = record.data
+    from app.core.finance_centers import record_business_conditions
+    # 带业务类型时只出该类型的请款单（501099）；不带时不加条件。
     conditions = [or_(record.module == "contract_payment", payment_application_fee_condition()),
-                  *(await _record_scope_conditions(identity, db))]
+                  *(await _record_scope_conditions(identity, db)),
+                  *record_business_conditions(identity, allow_shared_contract=False)]
     scope = filters.get("scope", "all")
     applicant_value = func.coalesce(func.nullif(data["applicant"].as_string(), ""), record.owner)
     if scope == "mine":
