@@ -13,6 +13,7 @@ import {
 import Table from "../components/ResizableTable";
 import { ReloadOutlined, UploadOutlined } from "@ant-design/icons";
 import { displayChinesePersonName, displayChinesePersonNames } from "../contractPeoplePresentation.mjs";
+import { BusinessRegistrationInfo } from "./CompanyLookup";
 import { canDeleteCustomerAttachment, getCustomerAttachmentDate } from "../customerUiBatchI15.mjs";
 import type {
   Attachment,
@@ -131,6 +132,8 @@ export function CustomerDetailView({ initialView, customer, directory, customerT
           <label><span>电话</span><Input disabled value={customer.data.phone || ""} /></label>
           <label><span>传 真</span><Input disabled value={customer.data.fax || ""} /></label>
         </div>
+        {/* 501106：查企业带出的工商信息，只读。 */}
+        <BusinessRegistrationInfo value={(customer.data as Record<string, unknown>).business_registration as never} />
       </section>
       <section>
         <h3>法人信息</h3>

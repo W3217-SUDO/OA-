@@ -509,6 +509,8 @@ app.include_router(recycle_bin_router)
 from app.areas.system.change_logs import router as change_logs_router  # noqa: E402
 app.include_router(change_logs_router)
 app.include_router(personal_agent_router)
+from app.areas.crm.company_lookup import router as company_lookup_router  # 501106 企查查
+app.include_router(company_lookup_router)
 app.include_router(agent_admin_router)
 app.include_router(data_query_router)
 app.include_router(case_statistics_router)

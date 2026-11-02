@@ -17,6 +17,7 @@ import { ReloadOutlined } from "@ant-design/icons";
 import { matchesDirectoryOption } from "../customerUiBatchI14.mjs";
 import { canDeleteCustomerAttachment, getCustomerAttachmentDate } from "../customerUiBatchI15.mjs";
 import { customerRegistrationAddressRules, customerPostalCodeRules } from "./constants";
+import { BusinessRegistrationInfo, CompanyLookup } from "./CompanyLookup";
 import type { FormInstance } from "antd";
 import type { Attachment, Contact, Customer, DirectoryUser, Note } from "./types";
 
@@ -76,6 +77,8 @@ export function CustomerCreatePage({
   onDownloadDocument,
 }: CustomerCreatePageProps) {
   const organizationType = Form.useWatch("organization_type", form);
+  const businessRegistration = Form.useWatch("business_registration", form);
+  const companyDuplicates = Form.useWatch("company_duplicates", form);
   const userLabel = (value: unknown) => displayChinesePersonName(value, directory);
   const contactPhotoActions = (contact: Contact) => canManage ? (
     <Space size={0}>
@@ -244,7 +247,15 @@ export function CustomerCreatePage({
         <section>
           <h3>基本信息</h3>
           <div className="customer-create-grid">
-            <Form.Item label="客户名称" name="title" rules={[{ required: true }]}><Input /></Form.Item>
+            {/* 501106：输入至少 2 个字点“查企业”，从企查查带出工商信息（个人客户不查）。 */}
+            <Form.Item label="客户名称" required>
+              <div className="customer-title-lookup">
+                <Form.Item name="title" noStyle rules={[{ required: true, message: "请输入客户名称" }]}><Input /></Form.Item>
+                {organizationType !== "个人" && <CompanyLookup form={form} />}
+              </div>
+            </Form.Item>
+            <Form.Item name="business_registration" hidden><Input /></Form.Item>
+            <Form.Item name="company_duplicates" hidden><Input /></Form.Item>
             <Form.Item label="客户编码" name="serial_no"><Input disabled placeholder="自动生成" /></Form.Item>
             <Form.Item label="客户状态" name="status"><Select allowClear placeholder="请选择" options={["潜在","目标","立项","关怀","签约","谈判","价值"].map(value=>({value,label:value}))} /></Form.Item>
             <Form.Item label="客户类型" name="customer_type"><Select options={customerTypeOptions} /></Form.Item>
@@ -262,6 +273,7 @@ export function CustomerCreatePage({
             <Form.Item label="电话" name="phone"><Input /></Form.Item>
             <Form.Item label="传真" name="fax"><Input /></Form.Item>
           </div>
+          <BusinessRegistrationInfo value={businessRegistration} duplicates={companyDuplicates} />
         </section>
         <section>
           <h3>法人信息</h3>

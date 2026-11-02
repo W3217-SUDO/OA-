@@ -117,7 +117,7 @@ def exclusion_reasons(route: APIRoute) -> list[str]:
         reasons.append("智能体或 MCP 自身运行入口，防止递归调用及绕过人工确认网关")
     if path == "/health" or segments.intersection({"health", "healthz", "runtime", "metrics", "cache", "caches"}):
         reasons.append("健康检查或运行时维护，不属于 OA 业务操作")
-    if segments.intersection({"debug", "diagnostics", "credential", "credentials", "secrets", "tokens", "api-keys"}):
+    if segments.intersection({"debug", "diagnostics", "credential", "credentials", "external-credentials", "secrets", "tokens", "api-keys"}):
         reasons.append("调试或密钥凭据管理，不向模型开放")
     if "approval-gateway" in segments or "tool-requests" in segments or "agent-tools" in segments and "decision" in segments:
         reasons.append("人工确认网关不可由模型发现或自行批准")

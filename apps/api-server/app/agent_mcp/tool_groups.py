@@ -137,7 +137,7 @@ def classify_tool(route, method: str) -> tuple[str, str | None]:
         return "04", None
     if root in {"conflict-reviews", "conflict-rules", "legacy-contract-history"} or path == "customers/conflicts":
         return "05", None
-    if root in {"customers", "parties", "party-library"}:
+    if root in {"customers", "parties", "party-library", "company-lookup"}:
         return "03", None
     if root == "receivables":
         return "17", None
@@ -188,7 +188,7 @@ def classify_tool(route, method: str) -> tuple[str, str | None]:
             return "25", "reporting"
     platform = {
         "reports": "reporting", "notifications": "notifications_feedback", "feedback": "notifications_feedback",
-        "system": "system_parameters", "records": "system_parameters", "audit": "system_parameters", "search": "system_parameters",
+        "system": "system_parameters", "external-credentials": "system_parameters", "records": "system_parameters", "audit": "system_parameters", "search": "system_parameters",
         "agent": "ai_documents_skills", "agent-admin": "ai_documents_skills", "templates": "ai_documents_skills", "capability-market": "ai_documents_skills",
     }
     if root in platform:

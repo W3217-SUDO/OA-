@@ -460,8 +460,14 @@ export default function CustomerCenterPage({
       "industry", "output_value", "cooperation_status", "gb_classification",
       "website", "organization_nature", "organization_code",
       "registration_region", "registration_postal_code", "registered_capital",
-      "registration_year",
+      "registration_year", "business_registration",
     ];
+    // 501106：查企业发现已有同一信用代码或同名客户（含回收站）时不能重复新建。
+    if (!editing && Array.isArray(v.company_duplicates) && v.company_duplicates.length) {
+      const first = v.company_duplicates[0];
+      message.error(`已有客户 ${first.title}（${first.serial_no}${first.deleted ? "，在回收站" : ""}），不能重复新建`);
+      return;
+    }
     const details = Object.fromEntries(
       detailFields.map((key) => [key, v[key] || ""]),
     );
