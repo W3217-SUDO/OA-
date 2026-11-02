@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { Button, Tooltip } from "antd";
 import { ArrowLeftOutlined, FolderOpenOutlined, InboxOutlined, ReloadOutlined, ScheduleOutlined, SolutionOutlined } from "@ant-design/icons";
-import { COURT_INTAKE_SKILL } from "../agentSkillRouting";
 import { ConfirmationHistory } from "./ConfirmationHistory";
 import { ConversationManager } from "./ConversationManager";
 import { ConversationWorkspaceNavigation } from "./ConversationWorkspaceNavigation";
@@ -56,7 +55,7 @@ export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPers
         {/* 501141：固定任务入口，点开新建对话并带好技能和开场提示。 */}
         <div className="assistant-task-entries" role="group" aria-label="固定任务">
           {(workspace.taskEntries || []).map((entry) => <Button key={entry.key} type="text" icon={TASK_ICONS[entry.key]} title={entry.hint} disabled={busy}
-            onClick={() => entry.skillId === COURT_INTAKE_SKILL ? onStartIntake() : onStartTask?.(entry.skillId)}>{entry.label}</Button>)}
+            onClick={() => onStartTask ? onStartTask(entry.skillId) : onStartIntake()}>{entry.label}</Button>)}
         </div>
         {!!workspace.courtIntakeConversations?.length && <div className="assistant-intake-history" aria-label="收文历史">
           {workspace.courtIntakeConversations.slice(0, 8).map((item) => <Button key={item.id} type="text" size="small" disabled={busy}

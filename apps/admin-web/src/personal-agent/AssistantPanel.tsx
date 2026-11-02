@@ -85,7 +85,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   const startIntake = workspace.courtIntakeAvailable ? () => { mcp.close(); setCaseSession(null); void workspace.startCourtIntake().catch((error: Error) => message.warning(error.message)); } : undefined;
   // 501141：固定任务入口（任务处理、客户与合同）；收文处理沿用收文助手。
   const startTask = (skillId: string) => {
-    if (skillId === COURT_INTAKE_SKILL) { startIntake?.(); return; }
+    // 501147：三个固定任务（含收文助手）都回到各自的固定会话。
     mcp.close(); setCaseSession(null); void workspace.startTaskEntry(skillId).catch((error: Error) => message.warning(error.message));
   };
   const activeTaskEntry = taskEntryForSkill(workspace.skillId);
