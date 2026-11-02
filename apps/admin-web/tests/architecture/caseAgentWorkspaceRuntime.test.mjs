@@ -1298,8 +1298,14 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   assert.equal(projects()[1].props.disabled, true, "保留失权项目但禁止打开，不用假个人空间掩盖失权");
   assert.equal(byClass("assistant-workspace-personal-entry").props["aria-current"], "page");
   assert.equal(byClass("assistant-workspace-case-materials"), undefined, "材料引用不再冒充左栏项目入口");
+  // 501147：点当前空间收起/展开最近会话（记在本机），点别的空间才切换。
+  const spacesBefore = spaces.length;
   await act(async () => { byClass("assistant-workspace-personal-entry").props.onClick(); });
-  assert.deepEqual(spaces.at(-1), { kind: "personal" });
+  assert.equal(renderer.root.findAllByType("history-slot").length, 0, "点当前空间收起最近会话");
+  assert.equal(byClass("assistant-workspace-personal-entry").props["aria-expanded"], false);
+  assert.equal(spaces.length, spacesBefore, "收起不切换空间");
+  await act(async () => { byClass("assistant-workspace-personal-entry").props.onClick(); });
+  assert.equal(renderer.root.findAllByType("history-slot").length, 1, "再点展开");
   assert.equal(renderer.root.findByType("personal-ai-space").props.open, false, "个人空间切换不打开生成文件弹窗");
   await act(async () => { projects()[0].props.onClick(); });
   assert.deepEqual(spaces.at(-1), { kind: "case", case_id: 42 });
