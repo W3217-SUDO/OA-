@@ -17,12 +17,12 @@ const feeQueryColumnWidths: Record<string, number> = {
     费用类型: 150,
 };
 
-// 待退费（501150）：原告/被告、开庭律师/律师助理各合一栏；操作列收窄靠右，进度时长放宽；法院显示全称后加宽。
+// 待退费（501150）：原告/被告、开庭律师/律师助理、进度及时长各合一栏（上下两行）；操作列收窄靠右；法院显示全称后加宽。
 const refundColumnWidths: Record<string, number> = {
     "原告/被告": 260,
     "开庭律师/律师助理": 150,
     法院名称: 210,
-    进度时长: 150,
+    进度及时长: 150,
     操作: 72,
 };
 
@@ -79,6 +79,7 @@ export function createConfiguredColumns(context: {
       </span>) : (header),
         key: `${header}-${index}`,
         ...moneyColumnStyle(header),
+        ...(header === "进度及时长" ? { sorter: (a: any, b: any) => Number(a.data?.refund_progress_days || 0) - Number(b.data?.refund_progress_days || 0) } : {}),
         ...(header === "进度时长" ? { align: "right" as const, sorter: (a: any, b: any) => Number(a.data?.refund_progress_days || 0) - Number(b.data?.refund_progress_days || 0) } : {}),
         width: context.initialView === "finance-internal-settle"
             ? context.settlementColumnWidths[index]
@@ -129,6 +130,9 @@ export function createConfiguredColumns(context: {
         </div>) : header === "开庭律师/律师助理" ? (<div className="finance-party-stack">
           <span><i>律师</i>{context.cellValue(row, "开庭律师") || "—"}</span>
           <span><i>助理</i>{context.cellValue(row, "律师助理") || "—"}</span>
+        </div>) : header === "进度及时长" ? (<div className="finance-party-stack">
+          <span><i>进度</i>{context.cellValue(row, "退费进度") || "—"}</span>
+          <span><i>时长</i>{row.data?.refund_progress_days == null ? "—" : `${row.data.refund_progress_days} 天`}</span>
         </div>) : header === "操作" ? ([
             "finance-internal-refused",
             "finance-internal-void",
@@ -172,7 +176,7 @@ export function createConfiguredColumns(context: {
     })).map((column) => {
         if (context.isRefundCaseFeeRoute || context.isFeeQueryRoute) {
             const header = context.activeRouteConfig.headers[Number(column.key.split("-").pop())];
-            if (header === "操作" || header === "原告/被告" || header === "开庭律师/律师助理") return column;
+            if (header === "操作" || header === "原告/被告" || header === "开庭律师/律师助理" || header === "进度及时长") return column;
             const render = column.render;
             return {
                 ...column,
