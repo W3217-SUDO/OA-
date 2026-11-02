@@ -36,7 +36,7 @@ export const AGENT_TASK_ENTRIES: AgentTaskEntry[] = [
     fixed: true, inputHint: "请粘贴法院短信或送达链接，也可以问收文相关的问题。",
     greeting: "把法院送达短信或链接粘贴到下面，我会自动下载文书、匹配案件、收文入库并回填法院案号和开庭；缴费通知会先问你再提交缴纳。" },
   { key: "customer", label: "客户与合同", hint: "新建客户、合同、案件、费用，申请开票", skillId: "customer-contract-case", prompt: "",
-    fixed: true, inputHint: "请告诉我客户名称和要办的事，或者发来合同扫描件。",
+    fixed: true, inputHint: "可以新建客户、合同、案件或费用等，直接告诉我要办的事（也可以发来合同扫描件）。",
     greeting: "告诉我客户名称和要办的事，或者发来合同扫描件。我会按顺序办理新建客户、新建合同并提交审批、立案、新建案件费用、申请开票，每一步都先请你确认。" },
 ];
 export const taskEntryForSkill = (skillId: string) => AGENT_TASK_ENTRIES.find((item) => item.skillId === skillId);
