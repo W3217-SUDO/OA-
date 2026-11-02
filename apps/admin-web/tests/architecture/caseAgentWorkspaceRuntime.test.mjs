@@ -1159,7 +1159,7 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   List.Item = ({ actions, children }) => React.createElement("list-item", null, children, actions);
   List.Item.Meta = ({ title, description }) => React.createElement("list-meta", { title, description }, description);
   const dependencies = {
-    antd: { ...require("antd"), Alert: component("alert"), Button: component("button"), Input: { TextArea: component("textarea") }, List, Tag: component("tag"), Tooltip: component("tooltip") },
+    antd: { ...require("antd"), Alert: component("alert"), Button: component("button"), Dropdown: ({ menu, children }) => React.createElement("dropdown", { menu }, children), Input: { TextArea: component("textarea") }, List, Tag: component("tag"), Tooltip: component("tooltip") },
     "./AssistantStart": { __esModule: true, default: component("start"), shortcuts: [] },
     "./ConversationManager": { ConversationManager: ({ navigation, ...props }) => React.createElement("conversation-manager", props, navigation) },
     "./AssistantWorkspaceTools": { AssistantWorkspaceTools: component("workspace-tools") },
@@ -1258,7 +1258,10 @@ test("homepage pending summary is shown once and direct cancellation retains fai
     ["assistant-workspace-generated-entry", "assistant-workspace-personal-entry", "assistant-workspace-project"].includes(item.props.className)
     || ["导入技能", "智能体设置", "案件空间"].includes(item.props.children) || item.props["aria-label"] === "选择案件空间"
   ))).map((item) => item.type === "confirmation-history" ? "历史确认记录" : item.props.className === "assistant-workspace-project" ? "案件项目" : item.props["aria-label"] === "选择案件空间" ? "添加案件" : item.props.children);
-  assert.deepEqual(navigationOrder, ["AI生成文件夹", "历史确认记录", "导入技能", "智能体设置", "个人空间", "案件空间", "添加案件", "案件项目", "案件项目"], "个人空间、案件标题、添加按钮及全部项目整体移到智能体设置后，不隐藏或拆散项目");
+  // 501147：智能体设置、记忆管理、导入技能收进右上角“设置”，左侧只留会话、固定任务和空间。
+  assert.deepEqual(navigationOrder, ["AI生成文件夹", "历史确认记录", "个人空间", "案件空间", "添加案件", "案件项目", "案件项目"], "个人空间、案件标题、添加按钮及全部项目整体保留，不隐藏或拆散项目");
+  const settingsItems = () => renderer.root.findAllByType("dropdown").flatMap((item) => item.props.menu.items);
+  assert.deepEqual(settingsItems().map((item) => item.label), ["智能体设置", "记忆管理", "导入技能"], "右上角“设置”收纳三项设置");
   assert.deepEqual(projectModes, [true], "PC进入真实默认个人项目模式");
   assert.equal(selectCaseSpace().props.disabled, false);
   assert.equal(projects()[0].props.disabled, false);
@@ -1278,14 +1281,14 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   assert.equal(byClass("assistant-workspace-generated-entry").props.children, "AI生成文件夹");
   assert.equal(renderer.root.findByType("personal-ai-space").props.open, true, "生成文件夹独立复用原受权文件组件");
   await act(async () => renderer.root.findByType("personal-ai-space").props.onClose());
-  await act(async () => { button("智能体设置").props.onClick(); button("返回工作台").props.onClick(); });
+  await act(async () => { settingsItems().find((item) => item.key === "agent").onClick(); button("返回工作台").props.onClick(); });
   assert.deepEqual(routes, ["agent-center", "dashboard"], "侧栏沿用上层授权的真实导航回调");
   desktopWorkspace = { ...desktopWorkspace, status: { ready: true, commands: [] } };
   await act(async () => { renderer.update(React.createElement(AiChatPage, { ...chatProps, onOpenAgentCenter: undefined })); });
   assert.equal(selectCaseSpace().props.disabled, true, "案件入口使用真实命令权限，而非只改标签");
   assert.ok(projects().every(item => item.props.disabled), "没有命令权限时不能借项目书签绕过");
   assert.equal(byClass("assistant-workspace-case-materials"), undefined, "无案件权限不展示既有选中案件材料入口");
-  assert.equal(button("智能体设置"), undefined, "上层未授导航回调时不制造设置入口，稳定route和权限链不因更名改变");
+  assert.equal(settingsItems().some((item) => item.key === "agent"), false, "上层未授导航回调时不制造设置入口，稳定route和权限链不因更名改变");
   desktopWorkspace = { ...desktopWorkspace, status: { ready: true, commands: [{ id: "cases" }] }, loadError: "工作区读取失败" };
   await act(async () => { renderer.update(React.createElement(AiChatPage, chatProps)); });
   assert.equal(selectCaseSpace().props.disabled, true);

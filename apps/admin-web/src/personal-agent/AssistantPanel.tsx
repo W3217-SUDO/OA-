@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
-import { Alert, Button, Input, List, Tag, Tooltip, message } from "antd";
-import { ApiOutlined, ArrowLeftOutlined, LinkOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, FileWordOutlined, FolderOpenOutlined, ReloadOutlined } from "@ant-design/icons";
+import { Alert, Button, Dropdown, Input, List, Tag, Tooltip, message } from "antd";
+import { ApiOutlined, ArrowLeftOutlined, LinkOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, ExperimentOutlined, FileWordOutlined, FolderOpenOutlined, ReloadOutlined, RobotOutlined, SettingOutlined } from "@ant-design/icons";
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
 import { TaskEntryCards } from "./TaskEntryCards";
 import AgentAvatar from "./AgentAvatar";
@@ -248,6 +248,12 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           </span> : conversationTitle}
         </span>
         {desktopWorkspace && currentCaseProject && <><Tooltip title="案件智能体"><Button className="workspace-case-link" size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体" title="案件智能体" onClick={() => onOpenCaseAgent?.(currentCaseProject.case_id!, currentCaseProject.serial_no!)}>案件智能体</Button></Tooltip><Button size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体文件夹" onClick={() => setCaseAgentFolderOpen(true)}>案件智能体文件夹</Button></>}
+        {/* 501147：智能体设置、记忆管理、导入技能收进右上角“设置”，左侧只留会话和固定任务。 */}
+        {desktopWorkspace && <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items: [
+          ...(onOpenAgentCenter ? [{ key: "agent", icon: <RobotOutlined />, label: "智能体设置", onClick: onOpenAgentCenter }] : []),
+          { key: "memory", icon: <SettingOutlined />, label: "记忆管理", onClick: () => setMemoryOpen(true) },
+          { key: "skills", icon: <ExperimentOutlined />, label: "导入技能", disabled: loading || workspace.conversationBusy || workspace.uploading, onClick: () => workspaceToolsRef.current?.importSkills() },
+        ] }}><Button className="assistant-settings-trigger" size="small" icon={<SettingOutlined />} aria-label="设置">设置</Button></Dropdown>}
         {!desktopWorkspace && <div className="assistant-bar-actions">
           <Tooltip title="个人 AI 空间"><Button className="personal-ai-space-trigger" type="text" icon={<FolderOpenOutlined />} aria-label="个人 AI 空间" onClick={() => setPersonalSpaceOpen(true)}><span className="personal-ai-space-label">个人 AI 空间</span></Button></Tooltip>
           <ConfirmationHistory onReopen={reopen} busy={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId || workspace.uploading} />
@@ -463,9 +469,6 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         name={name || "AI助手"}
         logoSrc={logoSrc}
         onOpenPersonalSpace={() => setPersonalSpaceOpen(true)}
-        onOpenMemory={() => setMemoryOpen(true)}
-        onImportSkills={() => workspaceToolsRef.current?.importSkills()}
-        onOpenAgentCenter={onOpenAgentCenter}
         onOpenCaseAgentConversation={(item: CaseAgentConversationSummary) => void openCaseConversation(item)}
         onReopenConfirmation={reopen}
         onReturnWorkbench={onReturnOverview}

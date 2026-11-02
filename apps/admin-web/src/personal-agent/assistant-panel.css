@@ -207,3 +207,6 @@
 .assistant-task-entries { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .assistant-cards.is-task-entries { margin-bottom: 10px; }
 .assistant-workspace-greeting .assistant-cards.is-task-entries { margin-top: 16px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+
+/* 501147：右上角“设置”（智能体设置、记忆管理、导入技能） */
+.assistant-settings-trigger { flex: none; }

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Button, Tooltip } from "antd";
-import { ArrowLeftOutlined, ExperimentOutlined, FolderOpenOutlined, InboxOutlined, ReloadOutlined, RobotOutlined, ScheduleOutlined, SettingOutlined, SolutionOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, FolderOpenOutlined, InboxOutlined, ReloadOutlined, ScheduleOutlined, SolutionOutlined } from "@ant-design/icons";
 import { COURT_INTAKE_SKILL } from "../agentSkillRouting";
 import { ConfirmationHistory } from "./ConfirmationHistory";
 import { ConversationManager } from "./ConversationManager";
@@ -14,9 +14,6 @@ type Props = {
   name: string;
   logoSrc?: string;
   onOpenPersonalSpace: () => void;
-  onOpenMemory: () => void;
-  onImportSkills: () => void;
-  onOpenAgentCenter?: () => void;
   onReopenConfirmation: (detail: ConfirmationDetail) => Promise<void>;
   onReturnWorkbench?: () => void;
   onOpenCaseAgentConversation?: (item: CaseAgentConversationSummary) => void;
@@ -27,7 +24,7 @@ type Props = {
 
 const TASK_ICONS: Record<string, ReactNode> = { tasks: <ScheduleOutlined />, intake: <InboxOutlined />, customer: <SolutionOutlined /> };
 
-export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPersonalSpace, onOpenMemory, onImportSkills, onOpenAgentCenter, onReopenConfirmation, onReturnWorkbench, onOpenCaseAgentConversation, onStartIntake, onOpenIntake, onStartTask }: Props) {
+export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPersonalSpace, onReopenConfirmation, onReturnWorkbench, onOpenCaseAgentConversation, onStartIntake, onOpenIntake, onStartTask }: Props) {
   const busy = workspace.loading || workspace.stopping || workspace.uploading || !!workspace.decisionId || workspace.conversationBusy;
   return <aside className="assistant-workspace-sidebar" aria-label="AI 工作区导航">
     <div className="assistant-workspace-brand">
@@ -62,10 +59,7 @@ export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPers
             title={item.title} onClick={() => onOpenIntake(item.id)}>{item.title}</Button>)}
         </div>}
         <Button type="text" className="assistant-workspace-generated-entry" icon={<FolderOpenOutlined />} onClick={onOpenPersonalSpace}>AI生成文件夹</Button>
-        <Button type="text" icon={<SettingOutlined />} aria-label="记忆管理" onClick={onOpenMemory}>记忆管理</Button>
         <ConfirmationHistory onReopen={onReopenConfirmation} busy={busy || !!workspace.dismissalId} />
-        <Button type="text" icon={<ExperimentOutlined />} aria-label="导入技能" disabled={busy} onClick={onImportSkills}>导入技能</Button>
-        {onOpenAgentCenter && <Button type="text" icon={<RobotOutlined />} onClick={onOpenAgentCenter}>智能体设置</Button>}
         <ConversationWorkspaceNavigation workspace={workspace} />
       </>}
     />
