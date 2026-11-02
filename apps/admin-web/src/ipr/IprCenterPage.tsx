@@ -62,6 +62,7 @@ IprRemindersPanel,
 IprTrademarkImage,
 IprTasksPanel,
 } from "./IprCaseDetail";
+import { iprCaseDetailRoute } from "./iprCaseTabs";
 import { IprCaseList } from "./IprCaseList";
 import { IprWarningRules } from "./IprWarningRules";
 import { createIprDocumentsActions } from "./services/documentsActions";
@@ -104,9 +105,12 @@ ReminderEventType
 export default function IprCenterPage({
   initialView,
   onNavigate,
+  detailCaseId,
 }: {
   initialView: string;
   onNavigate?: (route: string) => void;
+  /** 单独的案件标签：只显示这一个案件，返回列表切回列表标签（BUG20261102003）。 */
+  detailCaseId?: number;
 }) {
   const kind =
     initialView === "ipr-trademark"
@@ -1383,10 +1387,30 @@ export default function IprCenterPage({
   };
 
   const closeIprDetail = () => {
+    if (detailCaseId && onNavigate) {
+      onNavigate(initialView);
+      return;
+    }
     activeIprDetailId.current = null;
     cpcHistoryRequest.current += 1;
     setDetail(null);
   };
+  // 列表里点案号：另开这个案件自己的标签，列表标签保持原样（BUG20261102003）。
+  function openCaseTab(record: IprRecord) {
+    if (!detailCaseId && onNavigate) {
+      onNavigate(iprCaseDetailRoute(record));
+      return;
+    }
+    void openDetail(record);
+  }
+  const loadedCaseTab = useRef(0);
+  useEffect(() => {
+    if (!detailCaseId || loadedCaseTab.current === detailCaseId) return;
+    loadedCaseTab.current = detailCaseId;
+    void api.get<IprRecord>(`/ipr/cases/${detailCaseId}`)
+      .then(({ data }) => void openDetail(data))
+      .catch((error: any) => message.error(error?.response?.data?.detail || "知识产权案件不可查看或已不存在"));
+  });
   // 案件页替换列表显示，打开时回到页面顶部。
   const openedIprDetailId = detail?.id;
   useEffect(() => {
@@ -1433,7 +1457,7 @@ export default function IprCenterPage({
         onPageChange={(nextPage, nextPageSize) =>
           void load(nextPage, nextPageSize)
         }
-        onOpenDetail={(record) => void openDetail(record)}
+        onOpenDetail={(record) => openCaseTab(record)}
         onOpenMainListCustomerCases={openMainListCustomerCases}
         onEdit={openEdit}
         onAction={action}
@@ -1608,7 +1632,7 @@ export default function IprCenterPage({
                         const { data } = await api.get<IprRecord>(
                           `/ipr/cases/${row.current_case_record_id}`
                         );
-                        void openDetail(data);
+                        openCaseTab(data);
                       }}
                     >
                       Current case

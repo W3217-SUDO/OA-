@@ -41,6 +41,7 @@ export function isWorkspaceRouteGranted(
   if (route === "case-global-search" || route.startsWith("case-detail-")) return hasCaseRead();
   if (route === "case-agent-center") return hasFamily("case");
   if (route.startsWith("customer-detail-")) return hasFamily("customer");
+  if (route.startsWith("ipr-case-detail-")) return hasFamily("ipr");
   if (["contract-detail-", "contract-change-", "contract-payment-apply-", "contract-invoice-apply-", "contract-investigation-"].some((prefix) => route.startsWith(prefix))) {
     return hasFamily("contract");
   }

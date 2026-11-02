@@ -1,5 +1,6 @@
 import Dashboard, { type DashboardView } from "./Dashboard";
 import { ConflictReviewHost } from "./conflict-review/ConflictReviewHost";
+import { IPR_CASE_TAB_PREFIX, iprCaseTabLabel, parseIprCaseDetailRoute } from "./ipr/iprCaseTabs";
 import { dashboardWorkspace } from "./dashboardWorkspace";
 import {
   Component,
@@ -1075,6 +1076,7 @@ function resolveWorkspacePageLabel(key: string, items: NavItem[] = menuItems, pe
     }
     return "客户查看";
   }
+  if (normalizedKey.startsWith(IPR_CASE_TAB_PREFIX)) return iprCaseTabLabel(normalizedKey) || "知识产权案件";
   if (normalizedKey.startsWith("contract-change-")) return "合同变更";
   if (normalizedKey.startsWith("contract-investigation-")) return "新建调查任务";
   if (normalizedKey.startsWith("contract-payment-apply-")) return "合同付款";
@@ -1916,6 +1918,9 @@ export default function App() {
       <IprCaseRebootPage />
     ) : route === "ipr-patent-annual-fee" ? (
       <IprAnnualFeePage />
+    ) : route.startsWith(IPR_CASE_TAB_PREFIX) ? (
+      <IprCenterPage key={active} initialView={parseIprCaseDetailRoute(active)?.kind === "商标" ? "ipr-trademark" : "ipr-patent"}
+        detailCaseId={parseIprCaseDetailRoute(active)?.id} onNavigate={(target) => navigate(target, { reuse: true })} />
     ) : route.startsWith("ipr-") ? (
       <IprCenterPage initialView={active} onNavigate={navigate} />
     ) : route === "case-legacy-ls-history" ? (
