@@ -177,6 +177,8 @@ async def query_company_hearings(identity, db, *, page, page_size, filters, hear
     visible = await _contract_customer_record_dicts(records, await _allowed_field_keys(identity, db), db, identity)
     by_id = {record["id"]: record for record in visible}
     items = []
+    from app.core.court_display import court_names_by_code
+    court_names = await court_names_by_code(db) if rows else {}
     for row in rows:
         hearing_at = _case_hearing_datetime(row["day"])
         if hearing_at is None:
@@ -188,7 +190,9 @@ async def query_company_hearings(identity, db, *, page, page_size, filters, hear
             "case_no": case["serial_no"], "customer": case["customer"],
             "weekday": "星期" + "一二三四五六日"[hearing_day.weekday()],
             "hearing_date": hearing_day.isoformat(), "hearing_time": row["time"],
-            "court": row["court"], "courtroom": row["courtroom"], "hearing_type": row["hearing_type"],
+            # 开庭日程显示法院全称，不显示案件里存的代号（501149 全站排查）。
+            "court": court_names.get(str(row["court"] or "").strip().casefold()) or row["court"],
+            "courtroom": row["courtroom"], "hearing_type": row["hearing_type"],
             "hearing_lawyer": row["hearing_lawyer"],
         })
     return {"items": items, "total": total, "page": page, "page_size": page_size}

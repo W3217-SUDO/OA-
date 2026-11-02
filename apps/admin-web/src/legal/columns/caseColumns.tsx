@@ -5,6 +5,7 @@ import type { MessageType } from "antd/es/message/interface";
 import { useMemo } from "react";
 import { ARCHIVE_LOCKED_STATUSES } from "../constants";
 import type { CaseDetailCapabilities, CaseRow } from "../types";
+import { caseCourtName } from "../courtDisplay";
 export function createCaseColumns(context: {
     readonly openCounselDetail: (row: CaseRow, preferredTab?: string | undefined) => Promise<void>;
     readonly openRelatedContract: (target: unknown) => void;
@@ -62,7 +63,7 @@ export function createCaseColumns(context: {
             key: "court",
             width: 190,
             ellipsis: true,
-            render: (_: unknown, r: CaseRow) => r.data.court || "-",
+            render: (_: unknown, r: CaseRow) => caseCourtName(r.data) || "-",
         },
         {
             title: "开庭律师",

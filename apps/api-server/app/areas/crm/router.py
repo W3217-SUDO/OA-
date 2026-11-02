@@ -1472,6 +1472,16 @@ async def close_customer_portal(customer_id: int, body: CustomerPortalActionInpu
     return {"customer_id": customer.id, "account": portal.get("account", ""), "enabled": False}
 
 
+def _portal_case_dict(item, court_names):
+    """客户端案件也显示法院全称，不显示“冀01”这类代号（501149 全站排查）。"""
+    from app.core.court_display import case_court_displays
+    from app.core.system import _record_dict
+    result = _record_dict(item)
+    result["data"] = {**(result.get("data") or {})}
+    result["data"]["court_displays"] = case_court_displays(result["data"], court_names, item.serial_no)
+    return result
+
+
 @router.post(f"{settings.api_prefix}/customer-portal/overview")
 async def customer_portal_overview(body: CustomerPortalLoginInput, db: AsyncSession = Depends(get_db)):
     from app.core.crm import (
@@ -1487,10 +1497,12 @@ async def customer_portal_overview(body: CustomerPortalLoginInput, db: AsyncSess
     records = list((await db.scalars(select(BusinessRecord).where(BusinessRecord.customer == customer.title, BusinessRecord.module.in_(["contract", "case"])))).all())
     record_ids = [item.id for item in records]
     files = list((await db.scalars(select(FileAttachment).where(FileAttachment.record_id.in_(record_ids)))).all()) if record_ids else []
+    from app.core.court_display import court_names_by_code
+    court_names = await court_names_by_code(db) if any(item.module == "case" for item in records) else {}
     return {
         "customer": {"id": customer.id, "serial_no": customer.serial_no, "name": customer.title, "level": (customer.data or {}).get("level", "")},
         "contracts": [_record_dict(item) for item in records if item.module == "contract"],
-        "cases": [_record_dict(item) for item in records if item.module == "case"],
+        "cases": [_portal_case_dict(item, court_names) for item in records if item.module == "case"],
         "documents": [_attachment_dict(item, next((record for record in records if record.id == item.record_id), None)) for item in files],
     }
 

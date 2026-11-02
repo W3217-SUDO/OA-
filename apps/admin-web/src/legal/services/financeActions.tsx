@@ -5,6 +5,7 @@ import type { MessageType } from "antd/es/message/interface";
 import dayjs from "dayjs";
 import type { Key } from "react";
 import { api } from "../../api";
+import { caseCourtName } from "../courtDisplay";
 import { rememberBusinessRecordDetailTarget } from "../../businessRecordDetailNavigation";
 import { buildCaseFeeContractOptions, defaultCaseFeeContractId } from "../../caseFeeContractOptions.mjs";
 import { resolveCaseFeeInvoiceEligibility } from "../../caseFeeInvoiceEligibility.mjs";
@@ -374,7 +375,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                     expense_scope: expenseScope, fee_type_id: initialTypeId,
                     expense_subtype: initialType?.name,
                     fee_type: initialType?.base_fee_type,
-                    handler: profile.username || row.owner, court: row.data.court || "", payee: expenseScope === "内部" ? undefined : row.data.court || "",
+                    handler: profile.username || row.owner, court: caseCourtName(row.data), payee: expenseScope === "内部" ? undefined : caseCourtName(row.data),
                     deadline: undefined, description: "",
                 }] });
         setCaseFeeCreateStep(0);
@@ -574,7 +575,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                 fee_record_id: courtRefundFee.id,
                 case_no: viewingCounselCase.serial_no,
                 customer: viewingCounselCase.customer,
-                court: courtRefundFee.data.court || viewingCounselCase.data.court || "",
+                court: courtRefundFee.data.court || caseCourtName(viewingCounselCase.data),
                 original_payment_no: courtRefundFee.data.document_no || courtRefundFee.serial_no,
                 amount: Number(values.amount),
                 applicant: profile.display_name || profile.username,

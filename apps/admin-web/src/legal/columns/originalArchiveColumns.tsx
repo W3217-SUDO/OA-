@@ -1,6 +1,7 @@
 import { Button } from "antd";
 import dayjs from "dayjs";
 import type { CaseRow } from "../types";
+import { caseCourtName } from "../courtDisplay";
 // 提交、审核时间保存为 ISO 时间戳，列表显示到分钟。
 const archiveTime = (value: unknown) => {
     if (!value) return "";
@@ -20,7 +21,7 @@ export function createOriginalArchiveColumns(context: {
         { title: "提交日期", key: "submitted", width: 150, render: (_: unknown, row: CaseRow) => archiveTime(row.data.archive_submitted_at) },
         ...(context.archiveDone || context.archiveRefused ? [{ title: "审核人", key: "reviewer", width: 105, render: (_: unknown, row: CaseRow) => context.casePersonDisplayName(row.data.archive_reviewer, row.data.archive_reviewer_display_name) }, { title: "审核日期", key: "reviewed", width: 150, render: (_: unknown, row: CaseRow) => archiveTime(row.data.archive_reviewed_at || row.data.archived_at) }] : [{ title: "提交人备注", key: "comment", width: 160, render: (_: unknown, row: CaseRow) => row.data.archive_submit_comment || row.description || "" }]),
         { title: "案件编号", width: 145, render: (_: unknown, row: CaseRow) => <Button type="link" className="case-cell-link" onClick={() => void context.openCounselDetail(row)}>{row.serial_no}</Button> }, { title: "案件阶段", dataIndex: "status", width: 110 },
-        { title: "法院名称", key: "court", width: 190, render: (_: unknown, row: CaseRow) => row.data.court || "" },
+        { title: "法院名称", key: "court", width: 190, render: (_: unknown, row: CaseRow) => caseCourtName(row.data) },
         { title: "原告", key: "plaintiff", width: 180, render: (_: unknown, row: CaseRow) => row.data.plaintiff || row.customer },
         { title: "被告", key: "defendant", width: 180, render: (_: unknown, row: CaseRow) => row.data.opponent || "" },
         { title: "开庭律师", key: "hearing", width: 105, render: (_: unknown, row: CaseRow) => context.casePersonDisplayName(row.data.hearing_lawyer, row.data.hearing_lawyer_display_name) },

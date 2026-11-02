@@ -143,8 +143,11 @@ export function PersonalAiOfficeEditor({ file, onClose, onBusy, onVersionCreated
     footer={<Button disabled={!!busy || disabled} onClick={close}>关闭</Button>}>
     <div className="personal-ai-office-content">
       <div className="personal-ai-office-file">{officeIcon}<strong>{file.name}</strong></div>
-      <Alert type="info" showIcon title="使用钉钉在线编辑"
-        description={`正在为${file.owner_name}打开钉钉 Office 编辑器。编辑内容保存后，可回到 OA 自动回写当前文件，原文件记录保留。`} />
+      {/* 501157：原来写“正在为…打开”，看起来像已经在打开，其实要点下面的按钮才会打开。 */}
+      <Alert type="info" showIcon title={session ? "钉钉 Office 编辑器已在新窗口打开" : "请点击下方“在线编辑”按钮"}
+        description={session
+          ? "如果没有看到钉钉编辑页面，请点“打开钉钉编辑”。编辑保存后回到 OA，会自动回写当前文件，原文件记录保留。"
+          : `点击后会在新窗口打开${file.owner_name}的钉钉 Office 编辑器（需要已登录钉钉）。编辑保存后回到 OA，会自动回写当前文件，原文件记录保留。`} />
       {savedVersion && <Alert type="warning" showIcon title={savedVersion.copied ? "OA Office 副本已生成；正在核对完整文件。" : "OA Office 已自动回写；正在核对完整文件。"} description={`文件：${savedVersion.file.id}`} />}
       {error && <Alert type="error" showIcon title={submissionUncertain ? "请求结果未确认，请核对，勿重复提交" : "操作未完成"} description={error} />}
       <ol className="personal-ai-office-steps">
@@ -153,7 +156,7 @@ export function PersonalAiOfficeEditor({ file, onClose, onBusy, onVersionCreated
         <li>返回 OA 后系统会自动回写当前 OA 文件；如需另存为新文件，再点击“生成副本”。</li>
       </ol>
       <div className="personal-ai-office-actions">
-        <Button icon={session ? <ReloadOutlined /> : officeIcon} loading={busy === "open"} disabled={disabled || !!busy || !!savedVersion || submissionUncertain}
+        <Button type={session ? "default" : "primary"} icon={session ? <ReloadOutlined /> : officeIcon} loading={busy === "open"} disabled={disabled || !!busy || !!savedVersion || submissionUncertain}
           onClick={() => void prepare()}>{session ? "重新打开钉钉编辑" : "在线编辑"}</Button>
         {session && <Button type="primary" icon={<ExportOutlined />} href={session.url} target="_blank" rel="noopener noreferrer" disabled={!!busy || disabled}>打开钉钉编辑</Button>}
         {session && <Button icon={<SaveOutlined />} loading={busy === "save"} disabled={disabled || !!busy || !!savedVersion || submissionUncertain} onClick={() => void save(false)}>同步已保存内容</Button>}
@@ -161,6 +164,7 @@ export function PersonalAiOfficeEditor({ file, onClose, onBusy, onVersionCreated
         {savedVersion && <Button icon={<ReloadOutlined />} loading={busy === "read"} disabled={disabled || !!busy} onClick={() => void retryReadback()}>重新读取已回存的新版本</Button>}
       </div>
       <p className="personal-ai-office-hint">钉钉编辑器会自动保存。返回 OA 后系统自动回写当前文件；只有点击“生成副本”才会增加文件。</p>
+      <p className="personal-ai-office-hint">打不开时：请允许本站弹出新窗口后重试，或在钉钉客户端里打开 OA 再点“在线编辑”；也可以关闭本窗口，在文件列表里点“在线查看”用 OA 内置预览（可“编辑并保存”），或点“下载”后用本机 Office 编辑。</p>
     </div>
   </Modal>;
 }

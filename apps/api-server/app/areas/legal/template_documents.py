@@ -101,6 +101,8 @@ def case_template_values(record, document_type: str, context: dict) -> dict:
         elif "一审" in record.status:
             trial_level = "一审"
             court = case_value(data, "first_court_name", "first_instance_court", "court", legacy="FirstIntanceCourtName")
+    # 案件里多存“冀01”这类代号，文书一律打印法院全称（501149 全站排查）。
+    court = (context.get("court_names") or {}).get(str(court or "").strip().casefold()) or court
     return {
         "case_no": record.serial_no, "client": record.customer,
         "plaintiff": plaintiff, "defendant": defendant, "opponent": opponent,

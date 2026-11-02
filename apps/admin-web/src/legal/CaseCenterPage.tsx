@@ -3,6 +3,7 @@ import { StatusTag } from "../components/common/StatusTag";
 import { CaseLogEntry } from "./CaseDetail/CaseLogEntry";
 import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 import { CaseClueContextPanel } from "./CaseClueContextPanel";
+import { caseCourtName } from "./courtDisplay";
 import { CaseClueSelect } from "./CaseClueSelect";
 import { CaseLitigantAgentDataError, normalizeCaseLitigantAgentFields } from "./caseLitigantAgents";
 import { useConflictReview } from "../conflict-review/useConflictReview";
@@ -2556,7 +2557,7 @@ export default function CaseCenterPage({
       case "plaintiff": return row.data.plaintiff||row.customer||"";
       case "defendant": return Array.isArray(row.data.defendants)?row.data.defendants.join(","):row.data.defendants||row.data.opponent||"";
       case "status": return row.status;
-      case "court": return row.data.court||row.data.first_court_name||"";
+      case "court": return caseCourtName(row.data);
       case "hearing_at": return row.data.hearing_date||row.data.first_court_hearing_date||"";
       case "handling_lawyer": return casePersonDisplayNames(row.data.handling_lawyers);
       case "assistant": return caseAssistantDisplayNames(row.data);

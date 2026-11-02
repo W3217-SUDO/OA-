@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Alert, Button, Card, Form, Input, message, Select, Space, Tabs, Tag, Typography } from "antd";
 import Table from "./components/ResizableTable";
 import { api } from "./api";
+import { caseCourtName } from "./legal/courtDisplay";
 
 type Credentials = { account: string; password: string };
 type PortalData = {
@@ -88,7 +89,7 @@ export default function CustomerPortalPage() {
           <Button onClick={() => { setCredentials(null); setData(null); }}>退出</Button>
         </Space>
         <Tabs style={{ marginTop: 20 }} items={[
-          { key: "cases", label: `案件进展（${data.cases.length}）`, children: <Table rowKey="id" dataSource={data.cases} columns={[{ title: "案件编号", dataIndex: "serial_no" }, { title: "案件名称", dataIndex: "title" }, { title: "当前阶段", dataIndex: "status", render: (value) => <Tag color="blue">{value}</Tag> }, { title: "法院", render: (_, row) => row.data.court || row.data.first_court_name || "—" }]} /> },
+          { key: "cases", label: `案件进展（${data.cases.length}）`, children: <Table rowKey="id" dataSource={data.cases} columns={[{ title: "案件编号", dataIndex: "serial_no" }, { title: "案件名称", dataIndex: "title" }, { title: "当前阶段", dataIndex: "status", render: (value) => <Tag color="blue">{value}</Tag> }, { title: "法院", render: (_, row) => caseCourtName(row.data) || "—" }]} /> },
           { key: "contracts", label: `合同（${data.contracts.length}）`, children: <Table rowKey="id" dataSource={data.contracts} columns={[{ title: "合同编号", dataIndex: "serial_no" }, { title: "合同名称", dataIndex: "title" }, { title: "状态", dataIndex: "status" }, { title: "外部合同号", render: (_, row) => (row.data.external_contract_numbers || [row.data.external_contract_no]).filter(Boolean).join("、") || "—" }]} /> },
           { key: "documents", label: `文档下载（${data.documents.length}）`, children: <Table rowKey="id" dataSource={data.documents} columns={[{ title: "文件名", dataIndex: "original_name" }, { title: "类别", dataIndex: "category" }, { title: "大小", dataIndex: "size", render: (value) => `${Math.ceil(Number(value || 0) / 1024)} KB` }, { title: "操作", render: (_, row) => <Button type="link" onClick={() => download(row)}>下载</Button> }]} /> },
           { key: "requests", label: "提交需求", children: <div style={{ maxWidth: 680 }}><Alert type="info" showIcon message="需求提交后会生成真实客户任务并分派给客户负责人。" style={{ marginBottom: 16 }} /><Form layout="vertical" onFinish={submitDemand}><Form.Item label="需求标题" name="title" rules={[{ required: true, min: 2 }]}><Input /></Form.Item><Form.Item label="关联案件" name="case_no"><Select allowClear options={data.cases.map((item) => ({ value: item.serial_no, label: `${item.serial_no}｜${item.title}` }))} /></Form.Item><Form.Item label="具体需求" name="content" rules={[{ required: true, min: 2 }]}><Input.TextArea rows={5} /></Form.Item><Button type="primary" htmlType="submit">提交服务需求</Button></Form></div> },

@@ -1697,10 +1697,14 @@ async def create_refund_page_case_fees(
                     payment_type = await _active_payment_type(request_item.payment_type_id, db) if request_item.payment_type_id else None
             serial = f"FY{datetime.now():%Y%m%d%H%M%S%f}{uuid4().hex[:6]}"
             case_data = case_record.data or {}
+            # 案件法院多存“冀01”这类代号；新费用记法院全称（501149 全站排查）。
+            from app.core.court_display import court_names_by_code
+            case_court = str(case_data.get("court_name") or case_data.get("court") or "").strip()
+            case_court = (await court_names_by_code(db)).get(case_court.casefold()) or case_court if case_court else ""
             payment_type_data = _finance_payment_type_dict(payment_type) if payment_type else {}
             payee_name = (
                 _contract_person_display_name(payee_user.display_name, {payee_user.username.lower(): payee_user.display_name})
-                if payee_user else str(payment_type_data.get("payee") or ("" if body.submit_payment and request_item.fee_type == "官方费用" else case_data.get("court_name") or case_data.get("court") or ""))
+                if payee_user else str(payment_type_data.get("payee") or ("" if body.submit_payment and request_item.fee_type == "官方费用" else case_court))
             )
             record_status = "待审批" if body.submit_payment else "草稿"
             item = BusinessRecord(
@@ -1723,7 +1727,7 @@ async def create_refund_page_case_fees(
                     "contract_no": contract_record.serial_no if contract_record else str(case_data.get("contract_no") or ""),
                     "deadline": str(request_item.deadline) if request_item.deadline else "",
                     "handler": handler,
-                    "court": str(case_data.get("court_name") or case_data.get("court") or ""),
+                    "court": case_court,
                     "document_no": "",
                     "payee": payee_name,
                     "base_amount": _round_fee_amount(request_item.base_amount),

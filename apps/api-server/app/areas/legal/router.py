@@ -845,6 +845,11 @@ async def download_case_document_template(
     if not template:
         raise HTTPException(status_code=400, detail="不支持的文档类型")
     case_data = _build_case_template_data(case_record)
+    from app.core.court_display import court_names_by_code
+    court_names = await court_names_by_code(db)
+    for key in ("court", "recipient_unit"):
+        value = str(case_data.get(key) or "").strip()
+        case_data[key] = court_names.get(value.casefold()) or case_data.get(key, "")
     filled_content = _fill_template(template["content"], case_data)
     doc = Document()
     for paragraph_text in filled_content.split("\n"):

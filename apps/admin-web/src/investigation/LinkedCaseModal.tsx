@@ -2,6 +2,7 @@ import { POPUP_WIDTH } from "../components/common/popupSize";
 import { StatusTag } from "../components/common/StatusTag";
 import { Modal, Descriptions, Button } from "antd";
 import type { Row } from "./types";
+import { caseCourtName } from "../legal/courtDisplay";
 
 interface LinkedCaseModalProps {
   open: boolean;
@@ -59,7 +60,7 @@ export default function LinkedCaseModal({
                 {
                   key: "court",
                   label: "法院",
-                  children: linkedCase.data.court || "—",
+                  children: caseCourtName(linkedCase.data) || "—",
                 },
                 {
                   key: "owner",

@@ -1111,7 +1111,9 @@ async def _case_document_context(record: BusinessRecord, db: AsyncSession) -> di
         case_lawyer_phone = str((primary_user.profile or {}).get("mobile") or "")
     if not assistant_phone and assistant_user:
         assistant_phone = str((assistant_user.profile or {}).get("mobile") or "")
+    from app.core.court_display import court_names_by_code
     return {
+        "court_names": await court_names_by_code(db),
         "company": {
             "name": str(company.get("name") or "上海沪知律师事务所"),
             "address": str(company.get("address") or ""),
