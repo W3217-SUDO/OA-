@@ -19,7 +19,8 @@ export type AgentTaskEntry = { key: string; label: string; hint: string; skillId
 export const AGENT_TASK_ENTRIES: AgentTaskEntry[] = [
   { key: "tasks", label: "任务处理", hint: "查我的任务，完成、转交、延期", skillId: "my-tasks", prompt: "我有哪些任务",
     greeting: "我会按已逾期、今天到期、本周到期汇总你负责的任务，再按你的答复完成、转交或延期；每一步操作前都会先请你确认。" },
-  { key: "intake", label: "收文处理", hint: "粘贴法院短信，自动收文入库", skillId: COURT_INTAKE_SKILL, prompt: "",
+  // 收文处理沿用原来的“收文助手”（tgn 11-02 20:27 确认）。
+  { key: "intake", label: "收文助手", hint: "粘贴法院送达短信，自动收文入库", skillId: COURT_INTAKE_SKILL, prompt: "",
     greeting: "把法院送达短信或链接粘贴到下面，我会自动下载文书、匹配案件、收文入库并回填法院案号和开庭；缴费通知会先问你再提交缴纳。" },
   { key: "customer", label: "客户与合同", hint: "新建客户、合同、案件、费用，申请开票", skillId: "customer-contract-case", prompt: "",
     greeting: "告诉我客户名称和要办的事，或者发来合同扫描件。我会按顺序办理新建客户、新建合同并提交审批、立案、新建案件费用、申请开票，每一步都先请你确认。" },
