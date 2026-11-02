@@ -1134,13 +1134,14 @@ async def contract_payment_candidates(contract_id: int, identity: dict = Depends
 
 
 @router.post(f"{settings.api_prefix}/contracts/{{contract_id}}/payment-types", status_code=status.HTTP_201_CREATED)
-async def create_contract_payment_type(contract_id: int, body: FinancePaymentTypeCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+async def create_contract_payment_type(contract_id: int, body: FinancePaymentTypeCreateInput, identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db)):
     from app.core.finance import (
         _create_payment_type, _finance_payment_type_dict,
     )
     from app.core.permissions import (
         _ensure_record_module, _require_contract_action, _require_record_owner_or_manager,
     )
+    identity = await payment_actor(identity, db, "mine")
     contract = await _ensure_record_module(contract_id, "contract", identity, db)
     await _require_contract_action(identity, db, "contract.payment.create", "新增合同付款单位")
     await _require_record_owner_or_manager(contract, identity, db)
