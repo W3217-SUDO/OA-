@@ -48,7 +48,8 @@ export function ConfirmationHistoryDetails({ record, onClose, onReopen, onReopen
       {onReopen && detail?.can_decide && detail.item.status === "pending" && <Button type="primary" icon={<ArrowRightOutlined />} loading={reopening} disabled={busy || loading || !!error} onClick={() => void reopen()}>回到对话查看并确认</Button>}
     </Space>}>
     {error && <Alert type="error" showIcon title="操作未完成" description={error} />}
-    <Spin spinning={loading}><div className="confirmation-history-detail-content">
+    {loading && <Spin size="small" style={{ display: "block", marginBottom: 8 }} />}
+    <div className="confirmation-history-detail-content">
       {detail && <>
         <strong>{detail.item.summary}</strong>
         {detail.item.status === "pending" && <Tag color="warning">待确认</Tag>}
@@ -58,6 +59,6 @@ export function ConfirmationHistoryDetails({ record, onClose, onReopen, onReopen
         {!detail.action && detail.item.source === "mcp" && detail.request_preview && <AgentOperationPreview action={{ id: detail.item.id, type: "mcp.call", summary: detail.item.summary, payload: { request_id: detail.item.id }, preview: detail.request_preview }} />}
         {detail.item.result != null && <pre>{typeof detail.item.result === "string" ? detail.item.result : readableValue(detail.item.result, detail.action?.preview ?? detail.request_preview ?? undefined)}</pre>}
       </>}
-    </div></Spin>
+    </div>
   </Modal>;
 }

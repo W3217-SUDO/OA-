@@ -33,6 +33,6 @@ export function MaterialPreview({ item, onClose }: { item: Material | null; onCl
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [item]);
   return <Modal open={!!item} title={item?.name} width={POPUP_WIDTH.lg} footer={null} onCancel={onClose}>
-    {error ? <Alert type="error" showIcon title={error} /> : <Spin spinning={loading}><div style={{ minHeight: 120 }}><AttachmentPreviewContent preview={preview} /></div></Spin>}
+    {error ? <Alert type="error" showIcon title={error} /> : <>{loading && <Spin size="small" style={{ display: "block", marginBottom: 8 }} />}<div style={{ minHeight: 120 }}><AttachmentPreviewContent preview={preview} /></div></>}
   </Modal>;
 }

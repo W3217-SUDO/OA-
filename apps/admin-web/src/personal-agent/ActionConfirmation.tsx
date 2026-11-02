@@ -94,6 +94,8 @@ export function ActionConfirmation({ action, deciding, decisionFailure, onDecide
     {personalMcpPreviewMissing && <Alert type="error" showIcon title="外部工具调用预览不完整，不能确认执行" />}
     {pendingFailure && <Alert type={pendingFailure.state === "unknown" ? "warning" : "info"} showIcon title={pendingFailure.state === "syncing" ? "正在只读核对真实执行状态" : pendingFailure.state === "unknown" ? "执行状态未能核实，禁止重复提交" : "已读取最新对话状态，可在历史记录查看详情"} style={{ marginBottom: 12 }} />}
     {currentStatus && currentStatus !== "pending" && <Alert type={currentStatus === "succeeded" ? "success" : "warning"} showIcon title={currentStatus === "failed" ? "该确认请求已失败，不能重复执行" : `该请求${STATUS_NAMES[currentStatus]}，不能重复确认`} style={{ marginBottom: 12 }} />}
-    <Spin spinning={loading}><div style={{ maxHeight: "60dvh", overflowY: "auto" }}>{previewAction && <AgentOperationPreview action={previewAction} />}</div></Spin>
+    {/* antd 6 的 <Spin> 包内容时整块不显示（确认卡空白，11-02），加载提示单独放，内容照常显示。 */}
+    {loading && <Spin size="small" style={{ display: "block", marginBottom: 8 }} />}
+    <div style={{ maxHeight: "60dvh", overflowY: "auto" }}>{previewAction && <AgentOperationPreview action={previewAction} />}</div>
   </Modal>;
 }

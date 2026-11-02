@@ -44,7 +44,7 @@ function PersonalAiPdfContent({ blob }: { blob: Blob }) {
   }, [blob]);
   return <>
     {error && <Alert type="error" showIcon title="PDF 页面渲染失败" description={error} />}
-    <Spin spinning={rendering}><div ref={host} className="personal-ai-pdf-content" /></Spin>
+    <>{rendering && <Spin size="small" style={{ display: "block", marginBottom: 8 }} />}<div ref={host} className="personal-ai-pdf-content" /></>
   </>;
 }
 
@@ -82,7 +82,8 @@ export function PersonalAiFilePreview({ file, blob, downloading, downloadError, 
     </>}>
     {error && <Alert type="error" showIcon title="文件查看未完成" description={error} />}
     {downloadError && <Alert type="error" showIcon title="文件下载未完成" description={downloadError} />}
-    <Spin spinning={loading}><div className="personal-ai-file-preview-content"><AttachmentPreviewContent preview={preview}
-      pdfContent={preview?.kind === "pdf" ? <PersonalAiPdfContent blob={preview.blob} /> : undefined} /></div></Spin>
+    {loading && <Spin size="small" style={{ display: "block", marginBottom: 8 }} />}
+    <div className="personal-ai-file-preview-content"><AttachmentPreviewContent preview={preview}
+      pdfContent={preview?.kind === "pdf" ? <PersonalAiPdfContent blob={preview.blob} /> : undefined} /></div>
   </Modal>;
 }
