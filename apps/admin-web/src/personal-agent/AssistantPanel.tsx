@@ -332,6 +332,8 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
                     {logoSrc ? <img src={logoSrc} alt="" width={32} height={32} /> : <AgentAvatar size={32} />}
                   </div>}
                   <div className={`assistant-bubble${item.failed ? " is-failed" : ""}${thinking ? " is-thinking" : ""}`}>
+                    {/* 501147（tgn 22:29）：像聊天一样显示说话人，双方颜色不同。 */}
+                    {desktopWorkspace && <div className="assistant-message-name">{item.role === "user" ? "我" : (name || "AI助手")}</div>}
                     {item.content
                       ? <MessageText content={item.content} />
                       : (thinking ? <span className="assistant-thinking" role="status" title={progressText}><span>{progressText}</span></span> : "")}

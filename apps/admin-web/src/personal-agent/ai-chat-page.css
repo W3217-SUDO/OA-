@@ -786,3 +786,15 @@
     line-height: 44px;
   }
 }
+
+/* 501147（tgn 22:29）：电脑端对话显示说话人，双方用不同底色区分（半透明，浅色深色主题都适用） */
+@media (min-width: 0px) {
+  .ai-chat-page.is-desktop-workspace .assistant-message-name { margin-bottom: 2px; font-size: 12px; font-weight: 600; line-height: 1.5; opacity: .75; }
+  .ai-chat-page.is-desktop-workspace .assistant-message.is-user .assistant-message-name { text-align: right; }
+  .ai-chat-page.is-desktop-workspace .assistant-message.is-assistant .assistant-bubble:not(.is-failed) {
+    padding: 8px 14px; border: 1px solid rgba(31, 138, 76, .22); border-radius: 10px; background: rgba(31, 138, 76, .07);
+  }
+  .ai-chat-page.is-desktop-workspace .assistant-message.is-user .assistant-bubble {
+    padding: 8px 14px; border: 1px solid rgba(22, 119, 255, .25); border-radius: 10px; background: rgba(22, 119, 255, .09);
+  }
+}
