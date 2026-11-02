@@ -206,6 +206,8 @@ DEFAULT_SYSTEM_MENUS += [
     ("system-parameters-district", "system-parameters", "地区设置", "", 12),
     ("system-parameters-court-officer", "system-parameters", "法院工作人员", "", 13),
     ("system-parameters-dashboard-portals", "system-parameters", "首页分端待办", "", 14),
+    # 501106：外部接口凭据（企查查等），只有系统管理员能看（陶威 11-02 23:27）。
+    ("system-parameters-api-settings", "system-parameters", "API 设置", "", 15),
     ("system-law-firms", "system", "律所档案", "", 13),
     ("system-management-cache", "system-management", "缓存管理", "", 1),
     ("system-management-recycle", "system-management", "回收站", "", 4),

@@ -678,6 +678,7 @@ const menuItems: NavItem[] = [
           { key: "system-parameters-district", label: "地区设置" },
           { key: "system-parameters-court-officer", label: "法院工作人员" },
           { key: "system-parameters-dashboard-portals", label: "首页分端待办" },
+          { key: "system-parameters-api-settings", label: "API 设置" },
         ],
       },
       { key: "system-law-firms", label: "律所档案" },

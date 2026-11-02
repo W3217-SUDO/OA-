@@ -87,7 +87,7 @@ class CompanyLookupTest(unittest.IsolatedAsyncioTestCase):
             async with self.sessions() as db:
                 with self.assertRaises(HTTPException) as caught:
                     await qcc.search_companies("上海甲", LAWYER, db)
-        self.assertIn("外部接口凭据", caught.exception.detail)
+        self.assertIn("系统参数 › API 设置", caught.exception.detail)
 
     async def test_duplicates_by_credit_code_then_name_including_deleted(self):
         async with self.sessions() as db:
@@ -98,6 +98,28 @@ class CompanyLookupTest(unittest.IsolatedAsyncioTestCase):
             items = (await qcc.customer_duplicates("91310000AAAAAAAAAA", "上海甲科技", LAWYER, db))["items"]
         self.assertEqual([(item["serial_no"], item["matched_by"], item["deleted"]) for item in items],
                          [("KH1", "统一社会信用代码", False), ("KH2", "名称", True)])
+
+
+    async def test_official_status_codes_and_provider_list(self):
+        self.assertEqual(qcc.QCC_STATUS["107"], "被禁止的IP或者签名错误")
+        self.assertIn("白名单", qcc.qcc_error_message("107"))
+        self.assertEqual(qcc.qcc_error_message("999"), "企查查返回 999：999")
+        async with self.sessions() as db:
+            await qcc.save_qcc_credentials(qcc.CredentialInput(key=FAKE_KEY, secret=FAKE_SECRET), ADMIN, db)
+            listed = await qcc.external_credential_providers(ADMIN, db)
+        self.assertEqual([item["id"] for item in listed["items"]], ["qcc"])
+        self.assertTrue(listed["items"][0]["status"]["configured"])
+        self.assertNotIn(FAKE_KEY, json.dumps(listed, ensure_ascii=False)); self.assertNotIn(FAKE_SECRET, json.dumps(listed, ensure_ascii=False))
+
+    async def test_only_actual_system_admin(self):
+        self.admin.stop()
+        try:
+            with self.assertRaises(HTTPException) as caught:
+                qcc._require_admin({**LAWYER, "_user_action_keys": ["agent.global.manage"]})
+            self.assertEqual(caught.exception.status_code, 403)
+            qcc._require_admin(ADMIN)
+        finally:
+            self.admin.start()
 
 
 if __name__ == "__main__":

@@ -1,10 +1,18 @@
 """新建客户按关键词从企查查开放平台带出工商信息（501106，陶威 11-02 开通）。
 
-- 凭据：管理员在“智能体设置 › 外部接口凭据”粘贴 Key + SecretKey，加密存在 system_configs，不回显、不进日志；
+- 凭据：管理员在“系统参数 › API 设置 › 企查查开放平台”粘贴 Key + SecretKey，加密存在 system_configs，不回显、不进日志；
   页面没配时才读服务器私有配置 QCC_APP_KEY / QCC_SECRET_KEY。
-- 签名：Token = MD5(Key + Timespan + SecretKey) 大写，Header 带 Token、Timespan。
-- 接口：模糊搜索 886（FuzzySearch/GetList）、企业工商信息 410（ECIV4/GetBasicDetailsByName）。
+- 签名：Header 带 Token、Timespan；Token = MD5(Key + Timespan + SecretKey) 32 位大写，Timespan 为 Unix 时间戳（秒）。
+- 接口：模糊搜索 886（FuzzySearch/GetList，每次最多 5 条）、企业工商信息 410（ECIV4/GetBasicDetailsByName，keyword 为
+  企业全称或统一社会信用代码，不含电话）。735 工商详情（ECIInfoVerify/GetInfo）含电话但单价 2 元，暂不用。
 - 控费：同一关键词结果缓存 7 天，同一企业详情缓存 30 天；每人每天 50 次、全所每天上限可调；每次调用（含命中缓存）都记日志。
+
+官方文档（11-02 核对，以此为准）：
+- 模糊搜索 886：https://openapi.qcc.com/dataApi/886
+- 企业工商信息 410：https://openapi.qcc.com/dataApi/410
+- 企业工商详情 735：https://openapi.qcc.com/dataApi/735
+- 请求状态码：https://openapi.qcc.com/services/after/status
+  （页面数据来自 https://openapi.qcc.com/API/DataApiDetail/getErrorCodeInfo，下面 QCC_STATUS 照抄）
 """
 import base64
 import hashlib
@@ -36,10 +44,23 @@ SETTINGS_KEY = "external_qcc_settings"
 SEARCH_CACHE_DAYS, DETAIL_CACHE_DAYS = 7, 30
 DEFAULT_USER_DAILY, DEFAULT_TOTAL_DAILY = 50, 500
 ABNORMAL_STATUS = ("注销", "吊销", "撤销", "迁出", "停业", "清算")
-QCC_MESSAGES = {
-    "101": "企查查 Key 无效，请管理员核对凭据", "102": "企查查 Key 已过期", "103": "企查查账户余额不足",
-    "104": "企查查接口未开通或无权限", "107": "服务器 IP 不在企查查白名单", "109": "企查查签名校验失败，请核对 SecretKey",
-    "112": "企查查调用频率超限，请稍后再试", "201": "企查查没有查到匹配的企业",
+# 官方请求状态码（https://openapi.qcc.com/services/after/status），200 查询成功、201 查询无结果，其余为错误。
+QCC_STATUS = {
+    "101": "当前的KEY无效或者还未生效中", "102": "当前KEY已欠费", "103": "当前KEY被暂停使用", "104": "请求KEY异常，请联系管理员", "105": "接口已下线停用",
+    "106": "非法请求过多，请联系管理员", "107": "被禁止的IP或者签名错误", "108": "异常请求过多，请联系管理员", "109": "请求超过每日系统限制", "110": "当前相同查询连续出错，请等2小时后重试",
+    "111": "接口权限未开通，请联系管理员", "112": "您的账号剩余使用量已不足或已过期", "113": "当前接口已被删除，请重新申请", "114": "当前接口已被禁用，请联系管理员",
+    "115": "身份验证错误或者已过期", "116": "请求超过每日（服务期）调用总量限制", "117": "当前不支持的请求参数调用量过多", "118": "当前接口不支持此方式的调用", "119": "您的账号出现异常，请联系管理员",
+    "120": "系统流量异常，请稍后再试", "121": "数据不能出境", "122": "请求超过系统并发限制", "123": "您的请求已达未认证权益上限，请及时认证", "124": "系统维护中，暂时无法下单",
+    "125": "查询参数错误", "126": "查询参数类型或结构有误", "199": "系统未知错误，请联系技术客服", "200": "查询成功", "201": "查询无结果", "202": "查询参数错误，请检查",
+    "203": "系统查询有异常，请联系技术人员", "205": "等待处理中", "207": "请求数据的条目数超过上限（5000）", "208": "此接口不支持此公司类型查询", "209": "企业数量超过上限",
+    "213": "参数长度不能小于2", "214": "您还未购买过该接口，请先购买", "215": "不支持的查询关键字", "218": "该企业暂不支持空壳扫描", "219": "该企业暂不支持准入尽调",
+    "223": "查询参数模糊，无法获取结果", "224": "查询参数无效",
+}
+# 管理员能处理的几种，补一句该做什么。
+QCC_HINTS = {
+    "101": "请在 API 设置里核对 Key", "107": "请在企查查后台把服务器出口 IP 加入白名单，并核对 SecretKey",
+    "112": "请到企查查充值或续期", "115": "请核对 Key 和 SecretKey，并确认服务器时间准确",
+    "111": "请在企查查开通该接口", "214": "请在企查查购买该接口",
 }
 
 
@@ -51,8 +72,12 @@ def _cipher() -> Fernet:
 
 
 def _require_admin(identity: dict) -> None:
-    from app.agent_permissions import require_agent_settings_management
-    require_agent_settings_management(identity)
+    """API 设置只有系统管理员能看能改（陶威 11-02 23:27）。"""
+    from app.core.permissions import _require_actual_system_admin
+    try:
+        _require_actual_system_admin(identity)
+    except HTTPException as exc:
+        raise HTTPException(403, "API 设置只有系统管理员可以查看和修改") from exc
 
 
 async def _config(db: AsyncSession, key: str, *, lock: bool = False) -> SystemConfig | None:
@@ -72,7 +97,7 @@ async def credentials(db: AsyncSession) -> tuple[str, str, str]:
     key, secret = os.environ.get("QCC_APP_KEY", "").strip(), os.environ.get("QCC_SECRET_KEY", "").strip()
     if key and secret:
         return key, secret, "server"
-    raise HTTPException(409, "企查查接口尚未配置，请管理员在“智能体设置 › 外部接口凭据”填写")
+    raise HTTPException(409, "企查查接口尚未配置，请管理员在“系统参数 › API 设置”填写")
 
 
 def _signature(key: str, secret: str) -> dict:
@@ -96,7 +121,13 @@ async def _qcc_get(path: str, params: dict, key: str, secret: str) -> dict:
         return payload
     if status == "201":
         return {"Status": "201", "Result": None}
-    raise HTTPException(502, QCC_MESSAGES.get(status, f"企查查返回错误（{status}）"))
+    raise HTTPException(502, qcc_error_message(status))
+
+
+def qcc_error_message(status: str) -> str:
+    text = QCC_STATUS.get(status) or str(status or "未知错误")
+    hint = QCC_HINTS.get(status)
+    return f"企查查返回 {status}：{text}" + (f"（{hint}）" if hint else "")
 
 
 # ---------- 缓存、限量、日志 ----------
@@ -323,6 +354,22 @@ async def _status(db: AsyncSession) -> dict:
             "today_calls": len(entries)}
 
 
+# 系统参数 › API 设置：每个外部接口一项，页面按这里的字段画表单；以后接百度等接口在这里加一项并实现同样的 4 个路由。
+PROVIDERS = [{
+    "id": "qcc", "name": "企查查开放平台", "doc_url": "https://openapi.qcc.com/dataApi/886",
+    "usage": "新建客户时“查企业”：输入名称查询，选中后带出工商基本信息",
+    "fields": [{"name": "key", "label": "Key（应用 AppKey）"}, {"name": "secret", "label": "SecretKey（密钥）"}],
+    "test_note": "测试连接会做一次企业模糊搜索，计 1 次费用（0.10 元）", "has_limits": True,
+}]
+
+
+@router.get(f"{settings.api_prefix}/external-credentials")
+async def external_credential_providers(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """API 设置：所有外部接口及其配置状态（不回显任何凭据）。"""
+    _require_admin(identity)
+    return {"items": [{**provider, "status": await _status(db)} for provider in PROVIDERS]}
+
+
 @router.get(f"{settings.api_prefix}/external-credentials/qcc")
 async def qcc_credential_status(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """企查查凭据状态（不回显 Key 和 SecretKey）。"""
@@ -335,7 +382,7 @@ async def save_qcc_credentials(body: CredentialInput, identity: dict = Depends(c
     """保存企查查 Key + SecretKey（加密存储，不回显、不进日志）。"""
     _require_admin(identity)
     record = await _config(db, CREDENTIAL_KEY, lock=True) or SystemConfig(
-        key=CREDENTIAL_KEY, label="企查查开放平台凭据", group="外部接口凭据", value={}, description="加密保存，不回显")
+        key=CREDENTIAL_KEY, label="企查查开放平台凭据", group="API 设置", value={}, description="加密保存，不回显")
     encrypted = _cipher().encrypt(json.dumps({"key": body.key.strip(), "secret": body.secret.strip()}).encode()).decode()
     record.value = {"encrypted": encrypted, "updated_by": identity["username"], "updated_at": _now().isoformat(timespec="seconds")}
     db.add(record)
@@ -348,7 +395,7 @@ async def save_qcc_limits(body: LimitInput, identity: dict = Depends(current_ide
     """每人每天、全所每天的企查查查询上限。"""
     _require_admin(identity)
     record = await _config(db, SETTINGS_KEY, lock=True) or SystemConfig(
-        key=SETTINGS_KEY, label="企查查查询上限", group="外部接口凭据", value={}, description="")
+        key=SETTINGS_KEY, label="企查查查询上限", group="API 设置", value={}, description="")
     record.value = {"user_daily": body.user_daily, "total_daily": body.total_daily}
     db.add(record)
     await db.commit()
