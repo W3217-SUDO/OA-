@@ -214,20 +214,20 @@ export default function DashboardOverview({ showHead = true, greeting, name, bri
                   <td className="wb-overview-case-stage"><span className="wb-overview-stage">{item.stage || "—"}</span></td>
                   <td className="case-wide">{item.plaintiff || "—"}</td>
                   <td className="case-wide">{item.defendant || "—"}</td>
-                  <td className="case-narrow wb-overview-parties">
+                  <td className="case-narrow wb-overview-parties"><div className="wb-overview-stack">
                     <span><i>原告</i>{item.plaintiff || "—"}</span>
                     <span><i>被告</i>{item.defendant || "—"}</span>
-                  </td>
+                  </div></td>
                   <td className="wb-overview-case-date"><time>{item.date || "—"}</time></td>
                   <td className="wb-overview-case-manager">{showPeople(item.manager)}</td>
                   <td className="case-wide">{showPeople(item.lawyer)}</td>
                   <td className="case-wide">{showPeople(item.agent)}</td>
                   <td className="case-wide">{showPeople(item.assistant)}</td>
-                  <td className="case-narrow wb-overview-team">
+                  <td className="case-narrow wb-overview-team"><div className="wb-overview-stack">
                     <span><i>开庭</i>{showPeople(item.lawyer)}</span>
                     <span><i>经办</i>{showPeople(item.agent)}</span>
                     <span><i>助理</i>{showPeople(item.assistant)}</span>
-                  </td>
+                  </div></td>
                 </tr>
               ))}</tbody>
             </table>
