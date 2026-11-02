@@ -42,7 +42,7 @@ class CompanyCaseDeleteRow3Test(unittest.IsolatedAsyncioTestCase):
             await db.flush()
             task = BusinessRecord(
                 module="task", serial_no="CODEX-813-R3-TASK", title="Row 3 Case Task", customer=case.customer,
-                status="待接收", owner=ADMIN["username"], department=ADMIN["department"], data={"case_id": case.id},
+                status="已完成", owner=ADMIN["username"], department=ADMIN["department"], data={"case_id": case.id},
             )
             db.add(task)
             db.add_all([

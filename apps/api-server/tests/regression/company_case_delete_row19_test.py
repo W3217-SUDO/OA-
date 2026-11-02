@@ -26,7 +26,7 @@ class CompanyCaseDeleteRow19Test(unittest.IsolatedAsyncioTestCase):
             case = BusinessRecord(module="case", serial_no="CODEX-812-ROW19-CASE", title="CODEX-812-ROW19-CASE", customer="CODEX-812-ROW19-CUSTOMER", status="新案待分配", owner=IDENTITY["username"], department=IDENTITY["department"], data={"case_type": "民事案件"})
             db.add(case)
             await db.flush()
-            db.add(BusinessRecord(module="task", serial_no="CODEX-812-ROW19-TASK", title="CODEX-812-ROW19-TASK", customer=case.customer, status="待接收", owner=IDENTITY["username"], department=case.department, data={"case_id": case.id}))
+            db.add(BusinessRecord(module="task", serial_no="CODEX-812-ROW19-TASK", title="CODEX-812-ROW19-TASK", customer=case.customer, status="已完成", owner=IDENTITY["username"], department=case.department, data={"case_id": case.id}))
             db.add(WorkflowEvent(record_id=case.id, action="CODEX-812-ROW19", from_status=case.status, to_status=case.status, operator=IDENTITY["username"], comment=""))
             db.add(Notification(source_key="CODEX-812-ROW19", source_type="case", source_id=case.id, recipient=IDENTITY["username"], title="CODEX-812-ROW19", content="CODEX-812-ROW19"))
             db.add(HearingSchedule(case_record_id=case.id, hearing_date=date(2026, 8, 13), hearing_time="09:00", court="CODEX-812-ROW19", courtroom="1", hearing_type="一审开庭", hearing_lawyer=IDENTITY["username"]))

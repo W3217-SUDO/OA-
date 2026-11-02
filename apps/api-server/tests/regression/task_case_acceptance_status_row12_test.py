@@ -43,7 +43,8 @@ class TaskCaseAcceptanceStatusRow12Test(unittest.IsolatedAsyncioTestCase):
             case = BusinessRecord(
                 module="case", serial_no="CODEX-901-R12-CASE", title="第十二行案件", customer="第十二行客户",
                 status="办理中", owner=INITIATOR["username"], department=INITIATOR["department"],
-                data={"case_team_usernames": [INITIATOR["username"]], "handling_lawyer_usernames": [INITIATOR["username"]]},
+                # BUG20261102013：案件任务只能发给本案人员，负责人登记在承办律师里。
+                data={"case_team_usernames": [INITIATOR["username"]], "handling_lawyer_usernames": [INITIATOR["username"], OWNER["username"]]},
             )
             db.add(case)
             await db.commit()

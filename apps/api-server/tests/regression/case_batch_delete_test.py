@@ -41,7 +41,7 @@ class CaseBatchDeleteTest(unittest.IsolatedAsyncioTestCase):
             db.add_all(self.cases)
             await db.flush()
             self.ids = [row.id for row in self.cases]
-            task = BusinessRecord(module="task", serial_no="CODEX-TASK", title="CODEX task", status="进行中",
+            task = BusinessRecord(module="task", serial_no="CODEX-TASK", title="CODEX task", status="已完成",
                                   owner=self.identity["username"], data={"case_id": self.ids[0]})
             db.add(task)
             await db.flush()

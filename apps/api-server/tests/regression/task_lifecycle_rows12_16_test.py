@@ -81,7 +81,8 @@ class TaskLifecycleRows12To16Test(unittest.IsolatedAsyncioTestCase):
             case = BusinessRecord(
                 module="case", serial_no=f"CODEX-INTERVENTION-{suffix}", title="人工干预案件",
                 status="提交立案", owner=INITIATOR["username"], department="事务部",
-                data={"phase_changed_at": "2026-10-13T09:00:00"},
+                # BUG20261102013：案件任务只能交给本案人员，接收人登记为本案律师助理。
+                data={"phase_changed_at": "2026-10-13T09:00:00", "assistant_username": RECIPIENT["username"]},
             )
             db.add(case)
             await db.flush()
