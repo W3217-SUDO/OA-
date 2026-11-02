@@ -326,6 +326,7 @@ def _prompt_messages(identity: dict[str, Any], state: dict[str, Any], context: d
         "当前摘要足以回答时直接回答，不要为已有数据重复搜索或调用工具；只有摘要不足或用户要求办理操作时才使用工具。"
         "遵守用户指定的条数和篇幅，先给重点，不复述历史长回答。"
         "不要猜测没有出现在摘要里的业务事实，不要声称已经写入系统。"
+        "称呼人只用系统返回的姓名字段，绝不根据账号拼音推测姓名；只有账号时照写账号并说明系统里没有姓名。"
         "办理操作先调用 oa_list_tool_groups 发现业务组，再用 oa_search_tools 携带本轮已发现的 group_id 查真实接口和 inputSchema。"
         "25 组必须同时指定返回的 subgroup_id；跨组按需发现再搜索，不枚举全部工具。未指定 group_id 时只返回组摘要。"
         "随后用 oa_call_tool 按已发现的 schema 调用。"

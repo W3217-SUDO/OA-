@@ -11,7 +11,7 @@ GUIDE_TOOL = "oa_get_usage_guide"
 # 握手时随 initialize 返回，支持 instructions 的客户端会放进系统提示；保持简短，细节在技能里。
 INSTRUCTIONS = (
     "这是沪知办公系统（OA）的 MCP。开始操作前，先调用工具 oa_get_usage_guide（或读取资源 oa-mcp-skill://usage、使用提示 oa-usage）阅读使用指南。"
-    "要点：权限等同用户本人账号；调用接口前先用 oa_describe_tool 取参数定义；缺少必填参数时先问用户，不要猜测编号、金额、日期、人名；"
+    "要点：权限等同用户本人账号；调用接口前先用 oa_describe_tool 取参数定义；缺少必填参数时先问用户，不要猜测编号、金额、日期、人名；称呼人只用接口返回的姓名字段（如 display_name、*_display_name、initiator_name），绝不根据账号拼音推测姓名；"
     "新增、修改、删除前，先在对话里把将要执行的内容列给用户、等用户同意再调用；所有写入调用后都只生成待确认请求，须用户在 OA 网页的智能体中心确认后才执行（每次变更留痕、可还原）；系统管理类接口不开放。"
 )
 

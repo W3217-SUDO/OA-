@@ -772,7 +772,7 @@ async def _clues_to_cases(run: Run, args: dict) -> dict:
                "按我方案号查案件，并带出案件费用、附件、任务和办案指引（含付款三要素是否齐全的提示）。",
                CASE_REF, write=False,
                uses=("oa_search_ordinary_cases_post", "oa_get_record_get", "oa_list_case_relations_get", "oa_list_attachments_get",
-                     "oa_list_case_tasks_get", "oa_get_case_workflow_guide_get"))
+                     "oa_list_case_tasks_get", "oa_get_case_workflow_guide_get", "oa_user_directory_get"))
 async def _case_overview(run: Run, args: dict) -> dict:
     case = await find_case(run, args)
     detail = await run.read("oa_get_record_get", {"path": {"record_id": case["id"]}}, "案件详情")
@@ -781,10 +781,32 @@ async def _case_overview(run: Run, args: dict) -> dict:
     files = await run.read("oa_list_attachments_get", {"query": {"record_id": case["id"], "page_size": 100}}, "案件附件")
     tasks = await run.read("oa_list_case_tasks_get", {"path": {"case_id": case["id"]}}, "案件任务")
     guide = await run.read("oa_get_case_workflow_guide_get", {"path": {"case_id": case["id"]}}, "办案指引")
-    return {"case": detail, "fees": [_brief(row, "id", "serial_no", "title", "status") | {
+    return {"case": detail, "people": await _case_people(run, detail), "fees": [_brief(row, "id", "serial_no", "title", "status") | {
         key: (row.get("data") or {}).get(key) for key in ("fee_type", "amount", "expense_scope", "paid_amount", "payment_requested_amount", "refund_amount")}
         for row in _items(fees)], "attachments": [_brief(row, "id", "original_name", "category", "created_at") for row in _items(files)],
             "tasks": _items(tasks) or tasks, "workflow_guide": guide}
+
+
+# 案件上只存账号的人员字段（经办律师等已存姓名的不在此列）：由系统按账号取真实姓名（501140）。
+CASE_ACCOUNT_FIELDS = {"owner": "负责人", "hearing_lawyer": "开庭律师", "hearing_lawyers": "开庭律师",
+                       "handling_lawyer_usernames": "经办律师", "assistant_username": "律师助理", "assistant_usernames": "律师助理",
+                       "investigator_username": "调查员", "source_person_username": "案源人"}
+
+
+async def _case_people(run: Run, detail: dict) -> dict:
+    data = (detail or {}).get("data") or {}
+    values = {label: value for key, label in CASE_ACCOUNT_FIELDS.items()
+              if (value := (detail.get(key) if key == "owner" else data.get(key)))}
+    if not values:
+        return {}
+    directory = await _directory_names(run)
+    people: dict[str, list[str]] = {}
+    for label, value in values.items():
+        accounts = value if isinstance(value, list) else [value]
+        names = [_person(directory.get(str(account).strip().lower()), account) for account in accounts if str(account or "").strip()]
+        people.setdefault(label, [])
+        people[label] += [name for name in names if name not in people[label]]
+    return {"names": people, "note": "称呼这些人员只用这里的姓名，不要根据账号推测"}
 
 
 PARTY_LIST = {"type": "array", "maxItems": 50, "items": {"type": "object", "additionalProperties": False, "required": ["name", "organization_type", "identity_no"],
@@ -999,14 +1021,54 @@ async def _task_act(run: Run, args: dict) -> dict:
 
 
 OPEN_TASK_STATUSES = "待接收,待处理,处理中,进行中,已逾期"
-TASK_FIELDS = ("id", "serial_no", "title", "status", "deadline", "days_remaining", "priority", "initiator", "source",
+TASK_FIELDS = ("id", "serial_no", "title", "status", "deadline", "days_remaining", "priority", "source",
                "case_no", "plaintiff", "defendant", "case_stage", "reminder_text", "rejected_reason")
+NO_NAME = "（系统里没有这个人的姓名）"
+
+
+def _person(name, account, missing=False) -> str:
+    """人名只用系统按账号取出的真实姓名；取不到时如实给账号并注明，不交给模型去猜（501140）。"""
+    account = str(account or "").strip()
+    name = str(name or "").strip()
+    if not account and not name:
+        return ""
+    if name and name != "—" and not missing:
+        return name
+    return f"{account or name}{NO_NAME}"
+
+
+def _task_people(row: dict, directory: dict[str, str]) -> dict:
+    collaborators = row.get("collaborators") or []
+    names = row.get("collaborator_display_names") or []
+    people = {
+        "initiator_name": _person(row.get("initiator_display_name"), row.get("initiator"), row.get("initiator_display_name_missing")),
+        "owner_name": _person(row.get("owner_display_name"), row.get("owner"), row.get("owner_display_name_missing")),
+        "collaborator_names": [_person(names[index] if index < len(names) else "", account)
+                               for index, account in enumerate(collaborators)],
+        # 只用于转交、指派时填账号，不用于称呼人。
+        "accounts": {"initiator_account": row.get("initiator"), "owner_account": row.get("owner")},
+    }
+    recipient = str(row.get("handoff_recipient") or "").strip()
+    if recipient:
+        people["handoff_recipient_name"] = _person(directory.get(recipient.lower()), recipient)
+    return people
+
+
+async def _directory_names(run: Run) -> dict[str, str]:
+    try:
+        result = await run.read("oa_user_directory_get", {"query": {}}, "按账号取真实姓名")
+    except StepFailed:
+        run.notes.append("人员姓名读取失败，只能显示账号；不要根据账号推测姓名")
+        return {}
+    return {str(item.get("username") or "").lower(): str(item.get("display_name") or "") for item in _items(result)}
 
 
 async def _my_open_tasks(run: Run) -> list[dict]:
     result = await run.read("oa_list_tasks_get", {"query": {"scope": "mine", "relation": "owned", "statuses": OPEN_TASK_STATUSES,
                                                             "sort_by": "deadline", "sort_order": "asc", "page_size": 200}}, "我负责的未完成任务")
-    return [_brief(row, *TASK_FIELDS) for row in _items(result)]
+    rows = _items(result)
+    directory = await _directory_names(run) if any(row.get("handoff_recipient") for row in rows) else {}
+    return [{**_brief(row, *TASK_FIELDS), **_task_people(row, directory)} for row in rows]
 
 
 def _due_group(task: dict) -> str:
@@ -1018,8 +1080,9 @@ def _due_group(task: dict) -> str:
 
 @business_tool("biz_my_tasks", "我的任务汇总",
                "查我负责的未完成任务（待接收、待处理、处理中、已逾期），按已逾期/今天到期/本周到期/以后到期/无截止日期分组，"
-               "带案号、原被告、案件阶段、发起人、截止日期，供按案件总结后问律师怎么处理。",
-               {}, write=False, uses=("oa_list_tasks_get",))
+               "带案号、原被告、案件阶段、截止日期，以及系统取出的发起人、负责人、协作人真实姓名（initiator_name 等）；"
+               "称呼人只用这些姓名字段，不要根据账号推测姓名。",
+               {}, write=False, uses=("oa_list_tasks_get", "oa_user_directory_get"))
 async def _my_tasks(run: Run, args: dict) -> dict:
     tasks = await _my_open_tasks(run)
     groups: dict[str, list[dict]] = {name: [] for name in ("已逾期", "今天到期", "本周到期", "以后到期", "无截止日期")}
@@ -1036,7 +1099,7 @@ async def _my_tasks(run: Run, args: dict) -> dict:
                "可一次延期多条，都改到同一天。",
                {"task_ids": {"type": "array", "items": INT, "minItems": 1, "maxItems": 20, "description": "要延期的任务 ID（见 biz_my_tasks）"},
                 "deadline": _desc(DATE, "新的截止日期"), "comment": _desc(S, "延期原因")},
-               ("task_ids", "deadline"), write=True, uses=("oa_list_tasks_get", "oa_batch_update_tasks_post"))
+               ("task_ids", "deadline"), write=True, uses=("oa_list_tasks_get", "oa_user_directory_get", "oa_batch_update_tasks_post"))
 async def _task_postpone(run: Run, args: dict) -> dict:
     from datetime import date
     try:

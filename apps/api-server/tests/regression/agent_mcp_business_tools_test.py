@@ -133,6 +133,43 @@ class BusinessToolRunTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn(group, text)
         self.assertNotIn("'owner'", text)
 
+    async def test_my_tasks_give_real_names_not_accounts(self):
+        # 501140：发起人等姓名由系统按账号取，模型拿不到只有账号的字段去猜名字。
+        async def fake_call(name, arguments):
+            if name == "oa_user_directory_get":
+                return {"items": [{"username": "zhangsan", "display_name": "张三"}]}
+            return {"items": [
+                {"id": 1, "title": "补证据", "days_remaining": 1, "initiator": "shenjf", "initiator_display_name": "沈建锋",
+                 "owner": "u", "owner_display_name": "本人", "collaborators": ["fujunpeng"], "collaborator_display_names": ["付骏鹏"],
+                 "handoff_recipient": "zhangsan"},
+                {"id": 2, "title": "旧任务", "days_remaining": 3, "initiator": "olduser", "initiator_display_name": "olduser",
+                 "initiator_display_name_missing": True, "owner": "u", "owner_display_name": "本人"}]}
+
+        with patch.object(business_tools, "get_auth_context", return_value=_context(readonly=False)):
+            result = await business_tools.run_business_tool("biz_my_tasks", {}, call=fake_call)
+        tasks = {task["id"]: task for group in result["groups"].values() for task in group}
+        self.assertEqual(tasks[1]["initiator_name"], "沈建锋")
+        self.assertEqual(tasks[1]["collaborator_names"], ["付骏鹏"])
+        self.assertEqual(tasks[1]["handoff_recipient_name"], "张三")
+        self.assertEqual(tasks[2]["initiator_name"], "olduser（系统里没有这个人的姓名）")
+        self.assertNotIn("initiator", tasks[1])
+
+    async def test_case_overview_names_account_only_people(self):
+        async def fake_call(name, arguments):
+            if name == "oa_user_directory_get":
+                return {"items": [{"username": "chenjiugen", "display_name": "陈久根"}]}
+            if name == "oa_search_ordinary_cases_post":
+                return {"items": [{"id": 9, "serial_no": "HZMS1"}]}
+            if name == "oa_get_record_get":
+                return {"id": 9, "serial_no": "HZMS1", "owner": "admin", "data": {"hearing_lawyer": "chenjiugen", "handling_lawyers": ["陈久根"]}}
+            return {"items": []}
+
+        with patch.object(business_tools, "get_auth_context", return_value=_context(readonly=False)):
+            result = await business_tools.run_business_tool("biz_case_overview", {"case_no": "HZMS1"}, call=fake_call)
+        self.assertFalse(result.get("isError"), result)
+        self.assertEqual(result["people"]["names"]["开庭律师"], ["陈久根"])
+        self.assertEqual(result["people"]["names"]["负责人"], ["admin（系统里没有这个人的姓名）"])
+
     async def test_postpone_plans_batch_update_only_for_my_open_tasks(self):
         from datetime import date, timedelta
         calls = []
