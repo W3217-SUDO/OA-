@@ -74,6 +74,19 @@ class IprAnnualFeeMonitorTest(unittest.TestCase):
         self.assertIn("总计为：400", "".join(text.split()))
         self.assertEqual([c.text for c in document.tables[-1].rows[0].cells][:3], ["序号", "案件编号", "案件名称"])
 
+    def test_notice_template_uses_confirmed_bank_account(self):
+        # 高勤兰 11-02 确认（BUG20261030004）：收款账户改为中信银行古北支行。
+        import re
+        import zipfile
+        from io import BytesIO
+        from app.areas.ipr.annual_fee_notice_template import annual_fee_notice_template
+        xml = zipfile.ZipFile(BytesIO(annual_fee_notice_template())).read("word/document.xml").decode("utf-8")
+        text = re.sub(r"<[^>]+>", "", xml)
+        for expected in ("名称：上海申浩律师事务所", "账号：8110201012400029679", "中信银行古北支行"):
+            self.assertIn(expected, text)
+        self.assertNotIn("452075880439", text)
+        self.assertNotIn("中国银行上海市交大徐汇校区支行", text)
+
     def test_first_paid_year_and_leap_day(self):
         self.assertEqual(afm._first_paid_year_no({"first_annual_year": "3"}, date(2015, 5, 1)), 3)
         self.assertEqual(afm._first_paid_year_no({"authorization_date": "2016-04-30T00:00:00"}, date(2015, 5, 1)), 1)
