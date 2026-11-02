@@ -1937,6 +1937,7 @@ export default function SealCenterPage({
       <Card
         className="panel seal-original-panel"
         title={tab === "assets" ? "印章资产管理" : tab === "legacy" ? "旧系统用印记录" : "用印申请列表"}
+        extra={tab === "legacy" ? <Button onClick={() => setTab(tabFromView(initialView))}>返回用印申请</Button> : null}
       >
         {tab !== "assets" && tab !== "legacy" && mobileFilter.toggle}
         {tab !== "assets" && tab !== "legacy" && (
@@ -1989,6 +1990,8 @@ export default function SealCenterPage({
                 查询
               </Button>
               <Button onClick={clearQuery}>清空</Button>
+              {/* BUG20261102010：旧系统用印申请（1,496 条，迁在公文发文里）只读查看入口；页签条是隐藏的，原来点不进去。 */}
+              <Button onClick={() => setTab("legacy")}>旧系统用印记录</Button>
             </div>
           </Form>
         )}
