@@ -528,9 +528,14 @@ def _warehouse_evidence_dict(
         data["notary_no"] = canonical_notary_no
     if warehouse and location:
         data.update(_warehouse_location_data(warehouse, location))
+    from app.core.person_names import person_name
+    # 调查员：登记时填的姓名或账号优先，没填按证物负责人账号；账号显示姓名，不是新系统账号的旧数据显示原值。
+    investigator = str(data.get("investigator") or "").strip()
+    data["investigator_display_name"] = person_name(investigator or item.owner)
     return {
         "id": item.id,
         "serial_no": item.serial_no,
+        "owner_display_name": person_name(item.owner),
         "title": item.title,
         "customer": item.customer,
         "status": item.status,

@@ -226,9 +226,16 @@ async def list_warehouse_evidence(
         data_like("evidence_status", evidence_status),
         data_like("case_no", case_no),
         data_like("shop_name", shop_name),
-        data_like("investigator", investigator),
     ]
     conditions.extend(condition for condition in filter_conditions if condition is not None)
+    if investigator.strip():
+        # 调查员多数只记在证物负责人账号上：按姓名或账号都能查到。
+        term = f"%{investigator.strip()}%"
+        usernames = (await db.scalars(select(User.username).where(
+            or_(User.username.ilike(term), User.display_name.ilike(term))))).all()
+        conditions.append(or_(BusinessRecord.data["investigator"].as_string().ilike(term),
+                              BusinessRecord.owner.ilike(term),
+                              *([BusinessRecord.owner.in_(usernames)] if usernames else [])))
     if notary_no.strip():
         term = f"%{notary_no.strip()}%"
         conditions.append(or_(
