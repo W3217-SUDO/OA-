@@ -5,7 +5,7 @@
 .investigation-rule,.investigation-hidden-tabs{display:none!important}.investigation-original>.ant-card-head{min-height:35px;border-top:2px solid var(--oa-primary)}.investigation-original>.ant-card-head .ant-card-head-title{padding:7px 0;font-size:14px}.investigation-original>.ant-card-body{padding:10px}.investigation-query{display:grid;grid-template-columns:repeat(4,minmax(205px,1fr));gap:0 12px;padding:10px;background:var(--oa-fill);border:1px solid var(--oa-border);margin-bottom:10px}.investigation-query .ant-form-item{margin-bottom:8px}.investigation-actions{grid-column:1/-1;display:flex;gap:7px;flex-wrap:wrap;padding-left:90px}.investigation-original .ant-table-thead>tr>th{padding:7px 8px!important;background:var(--oa-fill)!important}.investigation-original .ant-table-tbody>tr>td{padding:6px 8px!important}.notary-import-page{border:1px solid var(--oa-border);padding:14px}.notary-file-rule{margin-bottom:10px;color:var(--oa-text-2)}.notary-import-page>label{display:inline-block;margin-right:8px}.notary-import-page>.ant-space{margin:12px 0;display:flex}.notary-import-page .ant-table{margin-top:8px}.notary-upload-button{height:32px;padding:4px 15px;border:1px solid var(--oa-border);border-radius:6px;background:var(--oa-surface);cursor:pointer;display:inline-flex;align-items:center;gap:8px;box-sizing:border-box}.notary-upload-button:hover{color:color-mix(in srgb, #1677ff var(--oa-ink), #fff);border-color:#4096ff}.notary-selected-file{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--oa-text-2)}@media(max-width:1000px){.investigation-query{grid-template-columns:repeat(2,minmax(220px,1fr))}}@media(max-width:600px){.investigation-query{grid-template-columns:1fr}.investigation-actions{padding-left:0}}
 .investigation-actions-bottom{display:flex;padding:12px 0 0;margin-top:2px}
 /* 表格内部滚动，分页保留在列表的可见区域内。 */
-.page-workbench:has(.investigation-original) {
+.page-workbench:has(> .workspace-page:not(.is-cached) .investigation-original) {
   overflow: hidden;
 }
 .page-workbench > .workspace-page > .investigation-original {
@@ -91,11 +91,11 @@
 .clue-audit-content .investigation-original > .ant-card-head .ant-card-head-title {
   padding: 0;
 }
-.page-workbench:has(> .investigation-audit-side) {
+.page-workbench:has(> .workspace-page:not(.is-cached) > .investigation-audit-side) {
   display: flex;
   overflow: hidden;
 }
-.page-workbench:has(> .investigation-audit-side) > .investigation-original {
+.page-workbench:has(> .workspace-page:not(.is-cached) > .investigation-audit-side) > .workspace-page:not(.is-cached) > .investigation-original {
   flex: 1 1 0;
   width: 0;
 }
@@ -185,11 +185,11 @@
   padding: 4px 0 12px;
 }
 @media (max-width: 800px) {
-  .page-workbench:has(> .investigation-audit-side) {
+  .page-workbench:has(> .workspace-page:not(.is-cached) > .investigation-audit-side) {
     display: block;
     overflow: auto;
   }
-  .page-workbench:has(> .investigation-audit-side) > .investigation-original {
+  .page-workbench:has(> .workspace-page:not(.is-cached) > .investigation-audit-side) > .workspace-page:not(.is-cached) > .investigation-original {
     width: 100%;
     height: 40vh;
   }

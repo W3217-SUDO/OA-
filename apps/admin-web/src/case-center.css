@@ -389,7 +389,7 @@
 
 /* 归档队列固定筛选和操作区，只有桌面表体使用剩余高度；窄屏保留整页滚动。 */
 @media(min-width:768px){
-  .page-workbench:has(>.case-archive-page){overflow:hidden}
+  .page-workbench:has(> .workspace-page:not(.is-cached) > .case-archive-page){overflow:hidden}
   .page-workbench > .workspace-page > .case-archive-page{height:100%;min-height:0}
   .case-archive-page>.case-archive-panel{display:flex;height:100%;min-height:0;flex-direction:column;overflow:hidden}
   .case-archive-panel>.ant-card-head{flex:0 0 auto}

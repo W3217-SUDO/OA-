@@ -704,11 +704,11 @@ body > div > .ant-modal-root .ant-modal:not(.ant-modal-confirm) .ant-modal-body,
 }
 
 /* 调查/公证类页面：主卡片只占工具条之外的剩余高度。 */
-:root .page-workbench:has(> .investigation-original) {
+:root .page-workbench:has(> .workspace-page:not(.is-cached) > .investigation-original) {
   display: flex;
   flex-direction: column;
 }
-:root .page-workbench:has(> .investigation-original) > * {
+:root .page-workbench:has(> .workspace-page:not(.is-cached) > .investigation-original) > .workspace-page:not(.is-cached) > :not(.investigation-original) {
   flex: 0 0 auto;
 }
 :root .page-workbench > .workspace-page > .investigation-original {
