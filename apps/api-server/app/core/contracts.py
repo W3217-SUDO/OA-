@@ -820,3 +820,32 @@ async def _single_linked_case_for_contract(
         *scope,
     ).order_by(BusinessRecord.id).limit(2))).all())
     return rows[0] if len(rows) == 1 else None
+
+
+async def notify_cases_of_rejected_contract(contract: BusinessRecord, comment: str, operator: str, db: AsyncSession) -> int:
+    """合同审批被驳回时，已据此立案的案件通知经办律师和案件负责人；案件不自动删除、不改状态（陶国南 11-02：不等审批即可立案）。"""
+    from app.models import Notification
+    cases = list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "case",
+        or_(BusinessRecord.data["contract_id"].as_integer() == contract.id,
+            BusinessRecord.data["contract_record_id"].as_integer() == contract.id),
+        BusinessRecord.status.not_in(["已删除", "已合并"]),
+    ))).all())
+    stamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    sent = 0
+    for case in cases:
+        data = case.data or {}
+        recipients = {str(value).strip() for value in (data.get("handling_lawyer_usernames") or []) if str(value or "").strip()}
+        if case.owner:
+            recipients.add(case.owner)
+        for recipient in sorted(recipients):
+            db.add(Notification(
+                source_key=f"contract-rejected-{contract.id}-{case.id}-{recipient}-{stamp}"[:128], source_type="case",
+                source_id=case.id, sender=operator or "system", recipient=recipient, notification_type="系统通知",
+                title=f"关联合同被驳回：{case.serial_no}",
+                content=(f"案件 {case.serial_no} 关联的合同 {contract.serial_no} 审批被驳回"
+                         + (f"（意见：{comment}）" if comment else "") + "。案件没有自动删除，请修改合同后重新提交审批，或决定是否撤案。"),
+                level="warning", is_read=False,
+            ))
+            sent += 1
+    return sent

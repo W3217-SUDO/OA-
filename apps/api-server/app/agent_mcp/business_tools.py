@@ -815,7 +815,8 @@ PARTY_LIST = {"type": "array", "maxItems": 50, "items": {"type": "object", "addi
 
 
 @business_tool("biz_case_create_from_contract", "从合同新建案件",
-               "个案模式：选合同新建案件（无合同不能建案；批量维权案件应从线索生成）。建案后写入当事人。",
+               "个案模式：选合同新建案件（无合同不能建案；批量维权案件应从线索生成）。合同提交审批后即可立案，不必等审批通过"
+               "（陶国南 11-02），前提是该客户利益检索无冲突。建案后写入当事人。",
                {**CONTRACT_REF, "title": _desc(S, "案件名称"), "case_type": _desc(S, "案件类型，如 民事案件、刑事案件、法律顾问"), "client_position": {"type": "string", "enum": ["原告/申请人", "被告/被申请人", "第三人"], "description": "客户诉讼地位"},
                 "cause_or_charge": _desc(S, "案由"), "status": _desc(S, "案件阶段"), "handling_lawyers": _desc(NAMES, "经办律师账号"),
                 "assistant": _desc(S, "律师助理账号"), "investigator": _desc(S, "调查员"), "source_person": _desc(S, "案源人"),
@@ -830,7 +831,7 @@ async def _case_create(run: Run, args: dict) -> dict:
     contract = await find_record(run, "contract", args.get("contract_no"), args.get("contract_id"), "合同")
     eligible = await run.read("oa_list_case_eligible_contracts_get", {}, "核对合同可建案")
     if contract["id"] not in {row.get("id") for row in _items(eligible)}:
-        raise HTTPException(409, "该合同当前不能新建案件（未审批通过、已归档或无权）")
+        raise HTTPException(409, "该合同当前不能新建案件（草稿、已归档或无权）")
     body = _drop_empty({key: args.get(key) for key in ("title", "case_type", "client_position", "cause_or_charge", "status", "handling_lawyers",
                                                       "assistant", "investigator", "source_person", "right_type", "investigation_clue", "court",
                                                       "court_case_no", "courtroom", "judge", "filing_date", "hearing_date", "description")})

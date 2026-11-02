@@ -360,6 +360,9 @@ async def approve_contract(contract_id: int, body: ContractApprovalInput, identi
             for step in steps:
                 if step.status == "等待中": step.status = "已取消"
             action = "合同审批拒绝"
+            # 合同没审批完也可以立案（陶国南 11-02 18:40）：被驳回时通知已立案件的经办律师，案件不自动删。
+            from app.core.contracts import notify_cases_of_rejected_contract
+            await notify_cases_of_rejected_contract(contract, body.comment.strip(), identity["username"], db)
         else:
             current.status = "已通过"; next_step = next((x for x in steps if x.status == "等待中"), None)
             if next_step:
