@@ -16,6 +16,8 @@ import { errorText, mentionedCaseSerial, workspaceDocumentSaveTarget, type Confi
 
 const SUPPORTED_FILE = /\.(pdf|docx|doc|wps|xlsx|txt|png|jpe?g)$/i;
 export const MATERIAL_ACCEPT = ".pdf,.docx,.doc,.wps,.xlsx,.txt,.png,.jpg,.jpeg";
+/** 外部服务调用确认执行后自动发出的追问：请智能体用中文整理回答并附来源。 */
+export const EXTERNAL_RESULT_FOLLOW_UP = "请根据上面外部服务返回的结果，用中文回答我刚才的问题：列出要点，并附上来源链接。";
 type Draft = typeof EMPTY_DRAFT;
 
 export function usePersonalWorkspace() {
@@ -250,6 +252,7 @@ export function usePersonalWorkspace() {
   };
   const stop = async () => { try { await runtime.stop(id); } catch (error) { message.error(errorText(error, "停止生成失败")); } };
 
+  const followUp = useRef<WorkspaceState | null>(null);
   const decide = async (action: PendingAction, decision: "approved" | "rejected", mcpCredential?: string) => {
     if (decisionLock.current) return false;
     if (loading || conversations.locked() || sendStarts.current.has(id)) throw new Error("正在加载或切换对话，请完成后再确认");
@@ -283,8 +286,18 @@ export function usePersonalWorkspace() {
       const { data } = response;
       if (data.state.conversation_id !== id) throw new Error("确认响应对话编号不匹配，请核对实际执行状态，禁止重复提交");
       runtime.replace(data.state); updateDraft(id, "decisionResult", data.result);
-      message.success(decision === "approved" ? "操作已完成" : "已取消操作"); return true;
-    } finally { decisionLock.current = false; setDecisionId(""); }
+      message.success(decision === "approved" ? "操作已完成" : "已取消操作");
+      // 外部工具调用成功后让智能体接着读结果、用中文回答（原始返回在对话里折叠）；文件、全文下载类不用。
+      const outcome = (data.result ?? {}) as { files?: unknown; full_law?: unknown };
+      if (decision === "approved" && action.type === "personal_mcp.call" && !outcome.files && !outcome.full_law) {
+        followUp.current = data.state;
+      }
+      return true;
+    } finally {
+      decisionLock.current = false; setDecisionId("");
+      const target = followUp.current; followUp.current = null;
+      if (target) setTimeout(() => void send(EXTERNAL_RESULT_FOLLOW_UP, target), 0);
+    }
   };
 
   const dismissActions = async (actions: PendingAction[]) => {

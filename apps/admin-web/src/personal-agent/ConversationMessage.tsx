@@ -1,3 +1,4 @@
+import { ToolOutput } from "./ToolOutput";
 import { ToolTrace } from "./ToolTrace";
 import { Button, Tooltip } from "antd";
 import { CopyOutlined, FileWordOutlined, FolderOpenOutlined, PaperClipOutlined, RobotOutlined } from "@ant-design/icons";
@@ -35,7 +36,7 @@ export function ConversationMessage({ item, generating, readingMaterials, progre
       </div>
       <div className="workspace-message-surface">
         <div className="workspace-message-body">
-          {assistant ? item.content ? <AgentMessageContent content={item.content} /> : <span className="workspace-thinking" role="status">{generating ? progress || (readingMaterials ? "正在读取材料并处理问题…" : "正在处理…") : "未收到回答"}</span> : <div className="workspace-user-content">{item.content}</div>}
+          {assistant && item.tool_output ? <ToolOutput content={item.content} /> : assistant ? item.content ? <AgentMessageContent content={item.content} /> : <span className="workspace-thinking" role="status">{generating ? progress || (readingMaterials ? "正在读取材料并处理问题…" : "正在处理…") : "未收到回答"}</span> : <div className="workspace-user-content">{item.content}</div>}
         </div>
         {assistant && generating && !!item.content && !!progress && <p className="workspace-thinking workspace-tool-progress" role="status" aria-live="polite">{progress}</p>}
         {assistant && <AgentToolResult result={item.tool_result} />}

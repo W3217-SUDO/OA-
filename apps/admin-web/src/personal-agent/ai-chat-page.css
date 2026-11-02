@@ -802,3 +802,6 @@
 .ai-chat-page.is-desktop-workspace .assistant-new-commands { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .ai-chat-page.is-desktop-workspace .assistant-message.is-user { display: flex; flex-direction: row-reverse; align-items: flex-start; gap: 10px; }
 .ai-chat-page.is-desktop-workspace .assistant-message-avatar.is-user { flex: none; background: rgba(22, 119, 255, .15); color: #1677ff; font-size: 12px; font-weight: 600; }
+
+/* 外部服务原始返回：默认折叠。 */
+.agent-tool-output summary { cursor: pointer; color: var(--oa-text-2); }

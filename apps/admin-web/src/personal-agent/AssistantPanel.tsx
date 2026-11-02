@@ -1,3 +1,4 @@
+import { ToolOutput } from "./ToolOutput";
 import { forwardRef, useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
 import { Alert, Button, Dropdown, Input, List, Tag, Tooltip, message } from "antd";
 import { ApiOutlined, ArrowLeftOutlined, LinkOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, ExperimentOutlined, FileWordOutlined, FolderOpenOutlined, ReloadOutlined, RobotOutlined, SettingOutlined } from "@ant-design/icons";
@@ -336,7 +337,9 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
                   <div className={`assistant-bubble${item.failed ? " is-failed" : ""}${thinking ? " is-thinking" : ""}`}>
                     {/* 501147（tgn 22:29）：像聊天一样显示说话人，双方颜色不同。 */}
                     {desktopWorkspace && <div className="assistant-message-name">{item.role === "user" ? (userName || "我") : (name || "AI助手")}</div>}
-                    {item.content
+                    {item.tool_output
+                      ? <ToolOutput content={item.content} />
+                      : item.content
                       ? <MessageText content={item.content} />
                       : (thinking ? <span className="assistant-thinking" role="status" title={progressText}><span>{progressText}</span></span> : "")}
                     {item.role === "assistant" && <AgentToolResult result={item.tool_result} />}
