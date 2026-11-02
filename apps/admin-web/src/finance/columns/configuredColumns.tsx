@@ -17,9 +17,10 @@ const feeQueryColumnWidths: Record<string, number> = {
     费用类型: 150,
 };
 
-// 待退费（501150）：原告/被告合一栏；操作列收窄靠右，进度时长放宽；法院显示全称后加宽。
+// 待退费（501150）：原告/被告、开庭律师/律师助理各合一栏；操作列收窄靠右，进度时长放宽；法院显示全称后加宽。
 const refundColumnWidths: Record<string, number> = {
     "原告/被告": 260,
+    "开庭律师/律师助理": 150,
     法院名称: 210,
     进度时长: 130,
     操作: 72,
@@ -125,6 +126,9 @@ export function createConfiguredColumns(context: {
         render: (_: unknown, row: any) => header === "" ? null : header === "原告/被告" ? (<div className="finance-party-stack">
           <span><i>原告</i>{context.cellValue(row, "原告") || "—"}</span>
           <span><i>被告</i>{context.cellValue(row, "被告") || "—"}</span>
+        </div>) : header === "开庭律师/律师助理" ? (<div className="finance-party-stack">
+          <span><i>律师</i>{context.cellValue(row, "开庭律师") || "—"}</span>
+          <span><i>助理</i>{context.cellValue(row, "律师助理") || "—"}</span>
         </div>) : header === "操作" ? ([
             "finance-internal-refused",
             "finance-internal-void",
@@ -168,7 +172,7 @@ export function createConfiguredColumns(context: {
     })).map((column) => {
         if (context.isRefundCaseFeeRoute || context.isFeeQueryRoute) {
             const header = context.activeRouteConfig.headers[Number(column.key.split("-").pop())];
-            if (header === "操作" || header === "原告/被告") return column;
+            if (header === "操作" || header === "原告/被告" || header === "开庭律师/律师助理") return column;
             const render = column.render;
             return {
                 ...column,

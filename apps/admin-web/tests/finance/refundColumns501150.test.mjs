@@ -9,12 +9,13 @@ const columns = fs.readFileSync(new URL("../../src/finance/columns/configuredCol
 test("待退费表头原告/被告合一栏", () => {
   const refund = routes.slice(routes.indexOf('"finance-refund": {'));
   const headers = refund.slice(refund.indexOf("headers: ["), refund.indexOf("],", refund.indexOf("headers: [")));
-  assert.match(headers, /"案号",\s*"原告\/被告",\s*"案件阶段"/);
-  assert.doesNotMatch(headers, /"原告",|"被告",/);
+  assert.match(headers, /"案号",\s*"原告\/被告",\s*"案件阶段",\s*"开庭律师\/律师助理",\s*"费用类型"/);
+  assert.doesNotMatch(headers, /"原告",|"被告",|"律师助理",|"开庭律师",/);
 });
 
 test("合一栏上原告下被告，操作列靠右收窄、进度时长放宽", () => {
   assert.match(columns, /header === "原告\/被告" \? \(<div className="finance-party-stack">\s*<span><i>原告<\/i>[^\n]*\n\s*<span><i>被告<\/i>/);
+  assert.match(columns, /header === "开庭律师\/律师助理" \? \(<div className="finance-party-stack">\s*<span><i>律师<\/i>\{context\.cellValue\(row, "开庭律师"\)[^\n]*\n\s*<span><i>助理<\/i>\{context\.cellValue\(row, "律师助理"\)/);
   const widths = columns.slice(columns.indexOf("const refundColumnWidths"), columns.indexOf("};", columns.indexOf("const refundColumnWidths")));
   const width = (name) => Number(new RegExp(`${name}: (\\d+)`).exec(widths)[1]);
   assert.ok(width("操作") < 100);
