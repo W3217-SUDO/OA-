@@ -15,7 +15,7 @@ import { conversationDraftKey, conversationWorkspaceKey, PERSONAL_CONVERSATION_W
 import { errorText, mentionedCaseSerial, workspaceDocumentSaveTarget, type ConfirmationDetail, type ConversationWorkspace, type DecisionFailure, type Material, type PendingAction, type ResponseMode, type WorkspaceCase, type WorkspaceMessage, type WorkspaceSkill, type WorkspaceState, type WorkspaceStatus } from "./types";
 
 const SUPPORTED_FILE = /\.(pdf|docx|doc|wps|xlsx|txt|png|jpe?g)$/i;
-export const MATERIAL_ACCEPT = ".pdf,.docx,.xlsx,.txt,.png,.jpg,.jpeg";
+export const MATERIAL_ACCEPT = ".pdf,.docx,.doc,.wps,.xlsx,.txt,.png,.jpg,.jpeg";
 type Draft = typeof EMPTY_DRAFT;
 
 export function usePersonalWorkspace() {

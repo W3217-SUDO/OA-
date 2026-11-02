@@ -100,7 +100,7 @@ async def prepare_materials(identity: dict, db: AsyncSession, attachment_ids: li
         if Path(item.original_name).suffix.lower() in CONVERT_ONLY_SUFFIXES:
             # WPS、旧版 Word 读不出正文，但可以先转成 Word（陶国南 11-01），不挡这一轮提问。
             readings.append({"id": item.id, "name": item.original_name, "status": "convert_only", "page_count": None,
-                             "content": "", "reading_limit": "这份文件不能直接读取正文；用户要整理或阅读时，先调用 material_to_word 转成 Word"})
+                             "content": "", "reading_limit": "这份文件不能直接读取正文；请用户点材料旁的“转成 Word”按钮转换后再读"})
             continue
         try:
             reading = await _read_file(item, identity)

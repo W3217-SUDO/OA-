@@ -34,9 +34,6 @@ REMOTE_MODEL_TOOLS = [
              {'group_id': {'type': 'string'}, 'law_title': {'type': 'string', 'maxLength': 200, 'description': '法律名称，全称或简称'},
               'estimated_articles': {'type': 'integer', 'minimum': 1, 'maximum': 300, 'description': '这部法律大约有多少条'}},
              ('group_id', 'law_title', 'estimated_articles')),
-    function('material_to_word', '把用户本轮上传的 PDF、WPS 或旧版 Word（.doc）材料转成 Word（.docx），存到用户个人空间，原文件保留。'
-             '用户说“整理成 Word / 转成 Word”时用；扫描件（只有图片）不能转。返回新文件名。',
-             {'attachment_id': {'type': 'integer', 'minimum': 1, 'description': '本轮材料的附件 ID'}}, ('attachment_id',)),
     function('personal_mcp_call_tool', '只为本轮发现的第三方工具准备待确认请求，所有调用均需用户点击前端确认；不得传入任何凭据。',
              {'tool_id': {'type': 'string'}, 'arguments': {'type': 'object'}}, ('tool_id', 'arguments')),
 ]
@@ -52,16 +49,6 @@ class PersonalMcpToolSession(ModelToolSession):
         self.model_tools = [*MODEL_TOOLS, *REMOTE_MODEL_TOOLS]
 
     async def _execute(self, name, arguments):
-        if name == 'material_to_word':
-            from app.core.word_conversion import material_to_word
-            if set(arguments) != {'attachment_id'} or not isinstance(arguments['attachment_id'], int):
-                raise HTTPException(422, '转换只接受材料的附件 ID')
-            actual = await authenticated_identity(self.db)
-            if actual['username'] != self.identity['username']:
-                raise HTTPException(403, '只能转换本人上传的材料')
-            file = await material_to_word(arguments['attachment_id'], actual, self.db, conversation_id=self.conversation_id)
-            return {'result': {'status': 'saved', 'name': file['name'], 'location': '个人空间',
-                               'next': '可在个人空间下载 Word/PDF，或另存到案件'}}
         if name == 'web_fetch_page':
             from app.agent_mcp.web_fetch import fetch_page
             if set(arguments) != {'url'}:

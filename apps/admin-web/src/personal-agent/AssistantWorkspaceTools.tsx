@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from "react";
 import { Button, Popover, Segmented, Select, Tooltip, message } from "antd";
-import { CloseOutlined, ExperimentOutlined, FileOutlined, FolderOpenOutlined, FolderOutlined, LoadingOutlined, PaperClipOutlined, PlusOutlined, SettingOutlined } from "@ant-design/icons";
+import { CloseOutlined, ExperimentOutlined, FileOutlined, FileWordOutlined, FolderOpenOutlined, FolderOutlined, LoadingOutlined, PaperClipOutlined, PlusOutlined, SettingOutlined } from "@ant-design/icons";
 import { CaseMaterialsPicker } from "./CaseMaterialsPicker";
 import { MaterialPreview } from "./MaterialPreview";
 import { SkillManager } from "./SkillManager";
@@ -8,6 +8,7 @@ import { skillChoiceLabel } from "./skillScope";
 import { errorText, type Material, type ResponseMode } from "./types";
 import { MATERIAL_ACCEPT, type usePersonalWorkspace } from "./usePersonalWorkspace";
 import { NO_AGENT_SKILL_OPTION } from "../agentSkillRouting";
+import { api } from "../api";
 import "./assistant-workspace-tools.css";
 
 export type AssistantWorkspaceToolsHandle = { importSkills: () => void };
@@ -19,6 +20,17 @@ export const AssistantWorkspaceTools = forwardRef<AssistantWorkspaceToolsHandle,
   const [pickerMode, setPickerMode] = useState<"case" | "materials" | null>(null);
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [previewMaterial, setPreviewMaterial] = useState<Material | null>(null);
+  const [convertingId, setConvertingId] = useState<number | null>(null);
+  // 陶国南 11-01：上传的 PDF、WPS、旧版 Word 一键转成 Word 存到个人空间；点按钮即本人确认，原文件保留。
+  const convertToWord = async (item: Material) => {
+    if (convertingId) return;
+    setConvertingId(item.id);
+    try {
+      const { data } = await api.post<{ file: { name: string } }>(`/personal-agent/ai-space/materials/${item.id}/to-word`);
+      message.success(`已转成 Word，存到个人空间：${data.file.name}`);
+    } catch (failure) { message.error(errorText(failure, "转成 Word 没有完成")); }
+    finally { setConvertingId(null); }
+  };
   const fileRef = useRef<HTMLInputElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   // 生成期间允许准备下一轮草稿；上传、确认、切换和停止中的真实锁仍保持禁用。
@@ -152,6 +164,7 @@ export const AssistantWorkspaceTools = forwardRef<AssistantWorkspaceToolsHandle,
         <FileOutlined />
         <button type="button" className="assistant-context-name" title={item.name} onClick={() => setPreviewMaterial(item)}>{item.name}</button>
         {item.source === "upload" && <span className="assistant-context-status" title={item.error || undefined}>{item.status === "failed" ? "读取失败" : item.status === "readable" ? "可读取" : "已缓存"}</span>}
+        {item.source === "upload" && /\.(pdf|wps|doc)$/i.test(item.name) && <Tooltip title="转成 Word 存到个人空间，原文件保留"><Button type="text" htmlType="button" size="small" icon={<FileWordOutlined />} loading={convertingId === item.id} disabled={busy || (!!convertingId && convertingId !== item.id)} aria-label={`把${item.name}转成 Word`} onClick={() => void convertToWord(item)} /></Tooltip>}
         <Tooltip title={`移除${item.name}`}><Button type="text" htmlType="button" size="small" icon={<CloseOutlined />} disabled={busy} aria-label={`移除${item.name}`} onClick={() => {
           if (item.source === "upload") workspace.setMaterials(workspace.materials.filter((value) => value.id !== item.id));
           else {
