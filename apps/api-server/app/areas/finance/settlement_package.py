@@ -1,7 +1,7 @@
 """结算管理“导出结算清单”：按回款导出压缩包，每个案件一个文件夹（BUG20261102001，shenhe 11-02 确认）。
 
 文件夹里放：
-- 个案结算表：按 shenhe 给的“结算提成表”原件（模板 F59）填数；
+- 个案结算表：按 shenhe 给的“结算提成表”原件（settlement_sheet_template）填数；
 - 法院文书：案件附件里文件名（或文件类型）是判决书、裁定书、调解书、和解协议的；
 - 票据：诉讼费、保全费放缴费支付凭证（案件票据文件），公证费放公证处发票（案件发票/票据文件）；
   公证服务费、律师费发票不放。同一案件上一次回款之前已产生的成本，上一次结算已放过，不再放。
@@ -14,14 +14,17 @@ import zipfile
 from copy import copy
 from datetime import date, datetime
 from decimal import Decimal
+from functools import lru_cache
 from io import BytesIO
 
+import xlrd
 import xlwt
 from fastapi import HTTPException
 from sqlalchemy import Text, select
 from starlette.concurrency import run_in_threadpool
 
-from app.areas.finance.excel_templates import copy_style, read_template
+from app.areas.finance.excel_templates import copy_style
+from app.areas.finance.settlement_sheet_template import TEMPLATE_XLS
 from app.models import BusinessRecord, FileAttachment, IncomingPayment, SystemParameter
 
 MAX_RECEIPTS = 30
@@ -81,9 +84,14 @@ def _safe_name(value: str) -> str:
     return re.sub(r'[\\/:*?"<>|\r\n\t]+', "_", str(value or "").strip()) or "未命名"
 
 
+@lru_cache(maxsize=1)
+def _template():
+    return xlrd.open_workbook(file_contents=TEMPLATE_XLS, formatting_info=True)
+
+
 def render_case_sheet(values: dict, costs: list[tuple[Decimal | None, Decimal | None]]) -> bytes:
-    """按 F59 原件逐格复制样式、合并区域、行高列宽，再把本案数据填进值单元格。"""
-    source = read_template("F59")
+    """按原件逐格复制样式、合并区域、行高列宽，再把本案数据填进值单元格。"""
+    source = _template()
     template = source.sheet_by_index(0)
     book = xlwt.Workbook(encoding="utf-8")
     for index, colour in source.colour_map.items():
