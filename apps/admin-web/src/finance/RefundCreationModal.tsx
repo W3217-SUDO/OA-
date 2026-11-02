@@ -40,7 +40,8 @@ export function RefundCreationModal({ open, form, cases, onSubmit, onClose }: Re
                 const item = cases.find((candidate) => candidate.serial_no === caseNo);
                 if (item) {
                   form.setFieldValue("customer", item.customer);
-                  form.setFieldValue("court", item.data.court || "");
+                  // 案件里多存法院代号，退款法院带出名称（501149）。
+                  form.setFieldValue("court", item.data.court_displays?.court?.name || item.data.court || "");
                 }
               }}
             />

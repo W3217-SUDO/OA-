@@ -850,7 +850,7 @@ function FinanceCenterContent({
         fee_record_id: record.id,
         case_no: record.data?.case_no || "",
         customer: record.customer || "",
-        court: record.data?.court || record.data?.payee || "",
+        court: record.data?.court_name || record.data?.court || record.data?.payee || "",
         original_payment_no: record.data?.document_no || "",
         amount: Math.abs(Number(record.data?.amount || 0)) || undefined,
         applicant: applicantName || record.owner_display_name || "姓名待维护",

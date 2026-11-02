@@ -1519,6 +1519,9 @@ async def _invoice_case_fee_rows(
     cases_by_id = {item.id: item for item in cases}
     cases_by_no = {item.serial_no: item for item in cases}
     commission_lifecycle_statuses = await _case_commission_lifecycle_statuses(fees, db)
+    # 旧数据的法院多存代号（如“冀01”），列表、详情、导出一律显示法院参数里的名称；对不上的显示原值（501149）。
+    from app.core.court_display import court_names_by_code
+    court_names = await court_names_by_code(db) if fees else {}
 
     fees_by_case: dict[str, list[BusinessRecord]] = {}
     for item in fees:
@@ -1674,8 +1677,10 @@ async def _invoice_case_fee_rows(
         hearing_name = str(data.get("hearing_lawyer") or case_data.get("hearing_lawyer") or case_data.get("court_lawyer") or "")
         court_no = str(data.get("court_case_no") or case_data.get("court_case_no") or case_data.get("first_instance_case_no") or case_data.get("official_no") or "")
         certificate_no = str(data.get("certificate_no") or data.get("notary_no") or case_data.get("certificate_no") or case_data.get("notary_no") or "")
-        court_name = str(data.get("court_name") or data.get("court") or case_data.get("court_name") or case_data.get("first_instance_court") or "")
-        paid_org = str(data.get("paid_organization") or data.get("payee") or court_name)
+        court_name = str(data.get("court_name") or data.get("court") or case_data.get("court_name") or case_data.get("first_instance_court") or "").strip()
+        court_name = court_names.get(court_name.casefold()) or court_name
+        paid_org = str(data.get("paid_organization") or data.get("payee") or court_name).strip()
+        paid_org = court_names.get(paid_org.casefold()) or paid_org
         display_payment_status = _finance_fee_payment_status(
             item, commission_lifecycle_statuses.get(item.id),
         )
