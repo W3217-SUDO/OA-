@@ -19,7 +19,9 @@ test("合一栏上原告下被告，操作列靠右收窄、进度时长放宽",
   const widths = columns.slice(columns.indexOf("const refundColumnWidths"), columns.indexOf("};", columns.indexOf("const refundColumnWidths")));
   const width = (name) => Number(new RegExp(`${name}: (\\d+)`).exec(widths)[1]);
   assert.ok(width("操作") < 100);
-  assert.ok(width("进度时长") >= 130);
+  assert.ok(width("进度时长") >= 150);
+  const view = fs.readFileSync(new URL("../../src/finance/FinanceOriginalRoutesView.tsx", import.meta.url), "utf8");
+  assert.match(view, /x: isFeeQueryRoute \|\| isRefundCaseFeeRoute\s*\? originalColumns\.reduce/);
   assert.match(columns, /context\.isRefundCaseFeeRoute && header === "操作" \? \("right" as const\)/);
   assert.match(columns, /context\.isRefundCaseFeeRoute && header === "操作" \? \{ align: "right" as const \}/);
 });

@@ -779,7 +779,8 @@ export function FinanceOriginalRoutesView(props: FinanceOriginalRoutesViewProps)
                     : ""
                 }
                 scroll={{
-                  x: isFeeQueryRoute
+                  // 待退费按各列实际宽度相加；按列数估的总宽偏小，会把各列压窄，“进度时长”只剩“时长”（501150）。
+                  x: isFeeQueryRoute || isRefundCaseFeeRoute
                     ? originalColumns.reduce((total, column) => total + Number(column.width), 36)
                     : activeRouteConfig?.source === "incoming"
                     ? originalColumns.reduce((total, column) => total + Number(column.width || 120), 48)

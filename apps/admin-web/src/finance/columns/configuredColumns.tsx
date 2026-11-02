@@ -22,7 +22,7 @@ const refundColumnWidths: Record<string, number> = {
     "原告/被告": 260,
     "开庭律师/律师助理": 150,
     法院名称: 210,
-    进度时长: 130,
+    进度时长: 150,
     操作: 72,
 };
 
