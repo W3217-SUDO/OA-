@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { clearFeedbackReplyDraft, loadFeedbackReplyDraft, saveFeedbackReplyDraft } from "./draft";
 import { Alert, Button, Descriptions, Input, message, Popconfirm, Space, Spin, Tag, Tooltip } from "antd";
 import { ArrowUpOutlined, PaperClipOutlined, PictureOutlined } from "@ant-design/icons";
 import { beijingTime } from "./time";
@@ -32,7 +33,29 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
   const [comment, setComment] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [composing, setComposing] = useState(false);
+  const [replyDraftReady, setReplyDraftReady] = useState(false);
   const [withdrawNote, setWithdrawNote] = useState("");
+  // 回复草稿按单号存在本机：切走、关掉详情再回来接着写；发送成功清空回复框后草稿也随之清空（BUG20261102002）。
+  useEffect(() => {
+    let cancelled = false;
+    setReplyDraftReady(false);
+    setComment("");
+    setFiles([]);
+    void loadFeedbackReplyDraft(feedbackId).then((draft) => {
+      if (cancelled) return;
+      if (draft) { setComment(draft.text); setFiles(draft.files); }
+      setReplyDraftReady(true);
+    });
+    return () => { cancelled = true; };
+  }, [feedbackId]);
+  useEffect(() => {
+    if (!replyDraftReady) return;
+    const timer = window.setTimeout(() => {
+      if (!comment.trim() && !files.length) void clearFeedbackReplyDraft(feedbackId);
+      else void saveFeedbackReplyDraft(feedbackId, comment, files);
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [comment, files, feedbackId, replyDraftReady]);
   const openPicker = useRef<(() => void) | null>(null);
 
   const load = useCallback(async () => {

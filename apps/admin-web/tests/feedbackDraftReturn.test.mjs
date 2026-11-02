@@ -17,3 +17,15 @@ test('draft text or attachments mean the page reopens on the form', async () => 
   await clearFeedbackDraft();
   assert.equal(hasFeedbackDraft(), false);
 });
+
+test('reply drafts are kept per ticket and cleared separately', async () => {
+  const { loadFeedbackReplyDraft, saveFeedbackReplyDraft, clearFeedbackReplyDraft } = await import('../src/feedback/draft.ts');
+  store.set('user', JSON.stringify({ username: 'gaoqinlan' }));
+  await saveFeedbackReplyDraft(500923, '写了一半的回复', []);
+  await saveFeedbackReplyDraft(500929, '另一张单', []);
+  assert.equal((await loadFeedbackReplyDraft(500923))?.text, '写了一半的回复');
+  assert.equal((await loadFeedbackReplyDraft(500929))?.text, '另一张单');
+  await clearFeedbackReplyDraft(500923);
+  assert.equal(await loadFeedbackReplyDraft(500923), null);
+  assert.equal((await loadFeedbackReplyDraft(500929))?.text, '另一张单');
+});

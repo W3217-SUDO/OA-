@@ -74,3 +74,31 @@ export async function clearFeedbackDraft() {
   try { localStorage.removeItem(textKey()); } catch { /* ignore */ }
   try { await withStore("readwrite", (store) => store.delete(draftOwner())); } catch { /* ignore */ }
 }
+
+// 问题详情“处理和沟通”的回复草稿：按单号分开存，切走再回来、关掉详情再打开都还在；发送成功后清空（BUG20261102002，高勤兰 11-02）。
+const replyTextKey = (feedbackId: number) => `sunhold:feedback-reply-draft:${draftOwner()}:${feedbackId}`;
+const replyFilesKey = (feedbackId: number) => `${draftOwner()}:reply:${feedbackId}`;
+
+export type FeedbackReplyDraft = { text: string; files: File[] };
+
+export async function loadFeedbackReplyDraft(feedbackId: number): Promise<FeedbackReplyDraft | null> {
+  let text = "";
+  try { text = String(JSON.parse(localStorage.getItem(replyTextKey(feedbackId)) || "null")?.text || ""); } catch { text = ""; }
+  let files: File[] = [];
+  try { files = (await withStore<File[] | undefined>("readonly", (store) => store.get(replyFilesKey(feedbackId)))) || []; }
+  catch { files = []; }
+  return text || files.length ? { text, files } : null;
+}
+
+export async function saveFeedbackReplyDraft(feedbackId: number, text: string, files: File[]) {
+  try { localStorage.setItem(replyTextKey(feedbackId), JSON.stringify({ text, savedAt: Date.now() })); } catch { /* 存储不可用时只是不保存草稿 */ }
+  try {
+    if (files.length) await withStore("readwrite", (store) => store.put(files, replyFilesKey(feedbackId)));
+    else await withStore("readwrite", (store) => store.delete(replyFilesKey(feedbackId)));
+  } catch { /* 同上 */ }
+}
+
+export async function clearFeedbackReplyDraft(feedbackId: number) {
+  try { localStorage.removeItem(replyTextKey(feedbackId)); } catch { /* ignore */ }
+  try { await withStore("readwrite", (store) => store.delete(replyFilesKey(feedbackId))); } catch { /* ignore */ }
+}
