@@ -65,7 +65,8 @@ export function IprFilesPanel({
     onChange: onPageChange,
   };
 
-  const active = detail.status === "在办";
+  // 迁移案件的状态是老系统阶段名，和老系统一样都能维护文档；新系统流程里的草稿、待审批、已驳回、已结案除外（BUG20261028020）。
+  const active = !!detail.status && !["草稿", "待审批", "已驳回", "已结案"].includes(detail.status);
   const canManage = active && roleActionAllowed("ipr.case.file.manage");
   // 右键菜单按原系统：上传、查看、下载、标记已转、删除、生成申请文件、刷新。
   const menuItems = (row: Attachment | null) => [
@@ -82,7 +83,7 @@ export function IprFilesPanel({
       onClick: () => row && confirmIprDeletion("file", row.original_name, () => onDeleteFile(row)),
     },
     {
-      key: "generate", label: "生成申请文件", disabled: !row || !active || !roleActionAllowed("ipr.case.document.generate"),
+      key: "generate", label: "生成申请文件", disabled: !row || detail.status !== "在办" || !roleActionAllowed("ipr.case.document.generate"),
       onClick: () => row && onGenerateApplication(row),
     },
     { key: "refresh", label: "刷新", onClick: onRefresh },
@@ -94,7 +95,7 @@ export function IprFilesPanel({
       {iprSectionErrors.files ? (
         <Alert type="error" showIcon message={iprSectionErrors.files} style={{ marginBottom: 12 }} />
       ) : null}
-      {detail.status === "在办" ? (
+      {active ? (
         <Space style={{ marginBottom: 8 }}>
           {roleActionAllowed("ipr.case.file.manage") && <Button size="small" type="primary" onClick={onOpenUpload}>上传文档</Button>}
           {roleActionAllowed("ipr.case.file.manage") && <Button size="small" disabled={!selectedIprFileIds.length} onClick={onMarkSelectedTransmitted}>批量标记已转</Button>}
@@ -107,7 +108,7 @@ export function IprFilesPanel({
         size="small"
         pagination={filesPagination}
         dataSource={attachments}
-        rowSelection={detail.status === "在办" ? {
+        rowSelection={active ? {
           selectedRowKeys: selectedIprFileIds,
           onChange: (keys) => onSelectedFileIdsChange(keys.map(Number)),
           getCheckboxProps: (row: Attachment) => ({
@@ -146,7 +147,7 @@ export function IprFilesPanel({
             render: (_, row: Attachment) =>
               row.requires_transmission ? (row.is_transmitted ? <Tag color="green">已转</Tag> : <Tag color="gold">是</Tag>) : "否",
           },
-          ...(detail.status === "在办" ? [{
+          ...(active ? [{
             title: "操作",
             fixed: "right" as const,
             width: 150,

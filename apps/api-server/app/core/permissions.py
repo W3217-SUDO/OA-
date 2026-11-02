@@ -2464,11 +2464,20 @@ async def _ipr_annual_fee_capabilities(case_record: BusinessRecord, identity: di
     return {"can_manage": True}
 
 
+# 新系统自己的知识产权案件流程状态里，这几个不能维护案件文档；迁移案件的状态是老系统阶段名
+# （如“答复审查意见”“年费监控”），老系统任何阶段都能上传、标记已转、删除文档（BUG20261028020，高勤兰 11-02）。
+IPR_FILE_LOCKED_STATUSES = frozenset({"草稿", "待审批", "已驳回", "已结案"})
+
+
+def ipr_case_files_writable(status: str | None) -> bool:
+    return bool(status) and status not in IPR_FILE_LOCKED_STATUSES
+
+
 async def _ensure_ipr_case_file_write(case_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
     """Dedicated guard for IPR case files; generic attachment routes must not bypass it."""
     record = await _ensure_record_module(case_id, "ipr_case", identity, db)
     await _require_record_owner_or_manager(record, identity, db)
-    if record.status != "在办":
+    if not ipr_case_files_writable(record.status):
         raise HTTPException(status_code=409, detail="仅在办知识产权案件可以维护案件文档")
     return record
 
