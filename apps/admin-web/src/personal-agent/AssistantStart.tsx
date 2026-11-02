@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
-import { AuditOutlined, ExceptionOutlined, FolderOpenOutlined, InboxOutlined, ScheduleOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { AuditOutlined, ExceptionOutlined, FolderOpenOutlined, ScheduleOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import type { AgentTaskEntry } from "../agentSkillRouting";
+import { TaskEntryCards } from "./TaskEntryCards";
 
 // 由工作台当天的数据生成的建议：点击后把具体内容交给智能体处理。
 export type AssistantSuggestion = {
@@ -28,11 +30,13 @@ type Props = {
   suggestions: AssistantSuggestion[];
   disabled: boolean;
   onPick: (prompt: string) => void;
-  onStartIntake?: () => void;
+  /** 固定任务入口（501141）：任务处理、收文处理、客户与合同。 */
+  taskEntries?: AgentTaskEntry[];
+  onStartTask?: (skillId: string) => void;
 };
 
 // 还没有对话时占满面板中间：先给出今天最值得问的几件事。
-export default function AssistantStart({ suggestions, disabled, onPick, onStartIntake }: Props) {
+export default function AssistantStart({ suggestions, disabled, onPick, taskEntries = [], onStartTask }: Props) {
   return (
     <div className="assistant-start">
       {!!suggestions.length && (
@@ -49,16 +53,8 @@ export default function AssistantStart({ suggestions, disabled, onPick, onStartI
           ))}
         </div>
       )}
+      {onStartTask && <TaskEntryCards entries={taskEntries} disabled={disabled} onStart={onStartTask} />}
       <div className="assistant-cards is-shortcut">
-        {onStartIntake && (
-          <button type="button" className="assistant-card" disabled={disabled} onClick={onStartIntake}>
-            <span className="assistant-card-icon"><InboxOutlined /></span>
-            <span className="assistant-card-body">
-              <b>收文助手</b>
-              <span>粘贴法院送达短信，自动收文入库</span>
-            </span>
-          </button>
-        )}
         {shortcuts.map((item) => (
           <button key={item.label} type="button" className="assistant-card" disabled={disabled} onClick={() => onPick(item.prompt)}>
             <span className="assistant-card-icon">{item.icon}</span>

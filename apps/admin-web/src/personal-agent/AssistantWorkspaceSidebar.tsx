@@ -1,5 +1,7 @@
+import type { ReactNode } from "react";
 import { Button, Tooltip } from "antd";
-import { ArrowLeftOutlined, ExperimentOutlined, FolderOpenOutlined, InboxOutlined, ReloadOutlined, RobotOutlined, SettingOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, ExperimentOutlined, FolderOpenOutlined, InboxOutlined, ReloadOutlined, RobotOutlined, ScheduleOutlined, SettingOutlined, SolutionOutlined } from "@ant-design/icons";
+import { COURT_INTAKE_SKILL } from "../agentSkillRouting";
 import { ConfirmationHistory } from "./ConfirmationHistory";
 import { ConversationManager } from "./ConversationManager";
 import { ConversationWorkspaceNavigation } from "./ConversationWorkspaceNavigation";
@@ -20,9 +22,12 @@ type Props = {
   onOpenCaseAgentConversation?: (item: CaseAgentConversationSummary) => void;
   onStartIntake: () => void;
   onOpenIntake: (id: string) => void;
+  onStartTask?: (skillId: string) => void;
 };
 
-export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPersonalSpace, onOpenMemory, onImportSkills, onOpenAgentCenter, onReopenConfirmation, onReturnWorkbench, onOpenCaseAgentConversation, onStartIntake, onOpenIntake }: Props) {
+const TASK_ICONS: Record<string, ReactNode> = { tasks: <ScheduleOutlined />, intake: <InboxOutlined />, customer: <SolutionOutlined /> };
+
+export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPersonalSpace, onOpenMemory, onImportSkills, onOpenAgentCenter, onReopenConfirmation, onReturnWorkbench, onOpenCaseAgentConversation, onStartIntake, onOpenIntake, onStartTask }: Props) {
   const busy = workspace.loading || workspace.stopping || workspace.uploading || !!workspace.decisionId || workspace.conversationBusy;
   return <aside className="assistant-workspace-sidebar" aria-label="AI 工作区导航">
     <div className="assistant-workspace-brand">
@@ -39,13 +44,18 @@ export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPers
       onCreate={workspace.createConversation}
       onSelect={workspace.selectConversation}
       onDelete={workspace.deleteConversation}
+      onRename={workspace.renameConversation}
       caseAgentConversations={workspace.caseAgentConversations}
       onSelectCaseAgentConversation={onOpenCaseAgentConversation}
       listClassName="assistant-conversation-list"
       rowClassName="assistant-conversation-row"
       selectClassName="assistant-conversation-select"
       navigation={<>
-        <Button type="text" icon={<InboxOutlined />} aria-label="收文助手" disabled={busy || !workspace.courtIntakeAvailable} onClick={onStartIntake}>收文助手</Button>
+        {/* 501141：固定任务入口，点开新建对话并带好技能和开场提示。 */}
+        <div className="assistant-task-entries" role="group" aria-label="固定任务">
+          {(workspace.taskEntries || []).map((entry) => <Button key={entry.key} type="text" icon={TASK_ICONS[entry.key]} title={entry.hint} disabled={busy}
+            onClick={() => entry.skillId === COURT_INTAKE_SKILL ? onStartIntake() : onStartTask?.(entry.skillId)}>{entry.label}</Button>)}
+        </div>
         {!!workspace.courtIntakeConversations?.length && <div className="assistant-intake-history" aria-label="收文历史">
           {workspace.courtIntakeConversations.slice(0, 8).map((item) => <Button key={item.id} type="text" size="small" disabled={busy}
             className={item.id === workspace.state.conversation_id ? "is-active" : undefined}

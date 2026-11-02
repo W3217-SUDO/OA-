@@ -48,6 +48,14 @@ export function usePersonalConversations(onState: (state: WorkspaceState) => voi
     catch (failure) { if (spaces.isCurrent(ticket)) setError(errorText(failure, "空间会话加载失败")); throw failure; }
     finally { if (spaces.isCurrent(ticket)) setLoading(false); }
   };
+  // 改名不切换当前对话，只刷新列表（501141）。
+  const rename = async (id: string, title: string) => {
+    const ticket = spaces.capture();
+    const response = await api.patch<ConversationSnapshot>(`/personal-agent/conversations/${encodeURIComponent(id)}`, { title }, { params: conversationWorkspaceParams(ticket.workspace) });
+    validate(response.data, ticket.workspace);
+    if (spaces.isCurrent(ticket)) setItems(response.data.items);
+    return response.data.items;
+  };
   const change = async (action: "create" | "select" | "delete", id?: string, captured?: ConversationView) => {
     if (lock.current) throw new Error("正在切换对话，请稍后再试");
     lock.current = true;
@@ -69,5 +77,5 @@ export function usePersonalConversations(onState: (state: WorkspaceState) => voi
       return apply(response.data, appliedTicket);
     } finally { lock.current = false; setBusy(false); }
   };
-  return { items, projects, caseAgentConversations, busy, loading, error, workspace: spaces.workspace, capture: spaces.capture, read, openWorkspace, locked: () => lock.current, load, refresh, create: (view?: ConversationView) => change("create", undefined, view), select: (id: string) => change("select", id), remove: (id: string) => change("delete", id) };
+  return { items, projects, caseAgentConversations, busy, loading, error, workspace: spaces.workspace, capture: spaces.capture, read, openWorkspace, locked: () => lock.current, load, refresh, create: (view?: ConversationView) => change("create", undefined, view), select: (id: string) => change("select", id), remove: (id: string) => change("delete", id), rename };
 }

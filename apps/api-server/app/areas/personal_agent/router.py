@@ -319,6 +319,19 @@ async def personal_agent_select_conversation(conversation_id: str, identity: dic
     return await manage_conversations(await personal_identity(identity, db), "select", conversation_id, db=db, workspace=workspace)
 
 
+class PersonalConversationRenameInput(BaseModel):
+    title: str = Field(min_length=1, max_length=60, description="新的对话名称")
+
+
+@router.patch(f"{settings.api_prefix}/personal-agent/conversations/{{conversation_id}}")
+async def personal_agent_rename_conversation(conversation_id: str, body: PersonalConversationRenameInput,
+                                             identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+                                             workspace: dict | None = Depends(conversation_workspace)):
+    """历史会话重命名（501141）。"""
+    return await manage_conversations(await personal_identity(identity, db), "rename", conversation_id, db=db,
+                                      workspace=workspace, title=body.title)
+
+
 @router.delete(f"{settings.api_prefix}/personal-agent/conversations/{{conversation_id}}")
 async def personal_agent_delete_conversation(conversation_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
                                              workspace: dict | None = Depends(conversation_workspace)):

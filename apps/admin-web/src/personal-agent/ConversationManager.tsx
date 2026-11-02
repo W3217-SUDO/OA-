@@ -1,6 +1,7 @@
 import { useRef, useState, type ReactNode } from "react";
-import { Button, Drawer, Empty, Modal, Spin, Tooltip, message } from "antd";
-import { DeleteOutlined, FolderOpenOutlined, HistoryOutlined, LoadingOutlined, MessageOutlined, PlusOutlined } from "@ant-design/icons";
+import { POPUP_WIDTH } from "../components/common/popupSize";
+import { Button, Drawer, Empty, Input, Modal, Spin, Tooltip, message } from "antd";
+import { DeleteOutlined, EditOutlined, FolderOpenOutlined, HistoryOutlined, LoadingOutlined, MessageOutlined, PlusOutlined } from "@ant-design/icons";
 import { errorText, type WorkspaceConversation } from "./types";
 import type { CaseAgentConversationSummary } from "./types";
 
@@ -14,6 +15,8 @@ type Props = {
   onCreate: () => Promise<unknown>;
   onSelect: (id: string) => Promise<unknown>;
   onDelete: (id: string) => Promise<unknown>;
+  /** 历史会话改名（501141）；不传则不显示改名按钮。 */
+  onRename?: (id: string, title: string) => Promise<unknown>;
   // 抽屉样式类由调用方给出：智能体中心与工作台的样式作用域不同。
   drawerClassName?: string;
   listClassName?: string;
@@ -26,7 +29,7 @@ type Props = {
   onSelectCaseAgentConversation?: (item: CaseAgentConversationSummary) => void;
 };
 
-export function ConversationManager({ items, activeId, busy, loading = false, runningIds, onCreate, onSelect, onDelete,
+export function ConversationManager({ items, activeId, busy, loading = false, runningIds, onCreate, onSelect, onDelete, onRename,
   drawerClassName = "workspace-conversation-drawer",
   listClassName = "workspace-conversation-list",
   rowClassName = "workspace-conversation-row",
@@ -38,6 +41,19 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
   onSelectCaseAgentConversation,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [renaming, setRenaming] = useState<WorkspaceConversation | null>(null);
+  const [newTitle, setNewTitle] = useState("");
+  const [savingTitle, setSavingTitle] = useState(false);
+  const startRename = (item: WorkspaceConversation) => { setRenaming(item); setNewTitle(item.title); };
+  const saveRename = async () => {
+    const title = newTitle.trim();
+    if (!renaming || !onRename) return;
+    if (!title) { message.warning("请输入对话名称"); return; }
+    setSavingTitle(true);
+    try { await onRename(renaming.id, title); message.success("对话已改名"); setRenaming(null); }
+    catch (error) { message.error(errorText(error, "对话改名失败")); }
+    finally { setSavingTitle(false); }
+  };
   const [modal, contextHolder] = Modal.useModal();
   const createConfirmationOpen = useRef(false);
   const run = async (operation: () => Promise<unknown>, close = false) => {
@@ -74,9 +90,15 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
         <button type="button" className={selectClassName} aria-current={item.id === activeId ? "true" : undefined} disabled={busy} onClick={() => void run(() => onSelect(item.id), presentation === "drawer")}>
           {runningIds.includes(item.id) ? <LoadingOutlined /> : <MessageOutlined />}<span><b title={item.title}>{item.title}</b><small>{runningIds.includes(item.id) ? "正在回答" : `${item.updated_at ? new Date(item.updated_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) + " · " : ""}${item.message_count} 条消息`}</small></span>
         </button>
+        {onRename && <Tooltip title="重命名"><Button type="text" icon={<EditOutlined />} aria-label={`重命名对话：${item.title}`} disabled={busy} onClick={() => startRename(item)} /></Tooltip>}
         <Tooltip title={runningIds.includes(item.id) ? "请先停止该对话的回答" : "删除对话"}><Button type="text" danger icon={<DeleteOutlined />} aria-label={`删除对话：${item.title}`} disabled={busy || runningIds.includes(item.id)} onClick={() => remove(item)} /></Tooltip>
       </div>)}</div>
   </>;
+  const renameModal = <Modal title="重命名对话" width={POPUP_WIDTH.sm} open={!!renaming} okText="保存" cancelText="取消" confirmLoading={savingTitle}
+    onOk={() => void saveRename()} onCancel={() => { if (!savingTitle) setRenaming(null); }} destroyOnHidden>
+    <Input value={newTitle} maxLength={40} showCount autoFocus placeholder="输入新的对话名称" aria-label="对话名称"
+      onChange={(event) => setNewTitle(event.target.value)} onPressEnter={() => void saveRename()} />
+  </Modal>;
   const caseAgentList = caseAgentConversations.length ? <section className="assistant-case-agent-history" aria-label="案件智能体历史会话">
     <div className="assistant-workspace-history-heading"><FolderOpenOutlined /><h2>案件智能体会话</h2></div>
     <div className="assistant-conversation-list">
@@ -89,6 +111,7 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
   </section> : null;
   if (presentation === "sidebar") return <>
     {contextHolder}
+    {onRename && renameModal}
     <div className="assistant-workspace-navigation">
       <div className="workspace-conversation-controls">
         <Button icon={<PlusOutlined />} aria-label="新建对话" disabled={busy} onClick={() => create()}><span className="workspace-conversation-label">新建对话</span></Button>
@@ -103,6 +126,7 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
   </>;
   return <>
     {contextHolder}
+    {onRename && renameModal}
     <div className="workspace-conversation-controls">
       <Tooltip title="新建对话"><Button size="small" icon={<PlusOutlined />} aria-label="新建对话" disabled={busy} onClick={() => create()}><span className="workspace-conversation-label">新建对话</span></Button></Tooltip>
       <Tooltip title="对话列表"><Button size="small" type="text" icon={<HistoryOutlined />} aria-label="对话列表" onClick={() => setOpen(true)}>{showHistoryLabel && <span className="workspace-conversation-label">对话列表</span>}</Button></Tooltip>

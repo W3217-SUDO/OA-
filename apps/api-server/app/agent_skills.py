@@ -100,7 +100,7 @@ CUSTOMER_CONTRACT_CASE_SKILL = AgentSkill(
     id="customer-contract-case",
     name="新客户签约立案",
     category="办事",
-    description="告诉智能体客户名称或合同，按 OA 流程新建客户、新建合同并提交审批，合同批准后从合同立案",
+    description="告诉智能体客户名称或合同，按 OA 流程新建客户、新建合同并提交审批，合同批准后从合同立案，再新建案件费用、申请开票",
     source="system:customer-contract-case",
     available=True,
     unavailable_reason="",
@@ -112,9 +112,13 @@ CUSTOMER_CONTRACT_CASE_SKILL = AgentSkill(
         "附件来自用户在对话里发的文件，没有就请用户先发合同扫描件；不传审批人时工具会列出可选审批人，请用户选。"
         "3. 立案：合同审批通过才能立案，用 biz_contract_overview 看合同状态，未通过就告诉用户“合同还在审批，批准后再立案”，不要强行建案；"
         "通过后用 biz_case_create_from_contract，必填案件名称、案件类型、客户诉讼地位、经办律师，可一并填律师助理、调查员、案源人、案由、法院、当事人。"
-        "4. 每完成一步就汇报编号（客户编号、合同编号、案件编号），再问是否继续下一步。"
+        "4. 费用：立案后合同里有收费信息的，问律师是否在案件里新建案件费用；同意后用 biz_case_fee_create_and_request_payment 建费用，"
+        "金额、费用类型从合同带出，缺的问律师，费用类型 ID 用 oa_list_finance_payment_types_get 查，不猜。"
+        "5. 开票：建好费用后问是否申请开票；要开就用 biz_case_invoice_request（只能开律师费，开票抬头、税号从客户档案带出，缺了先请律师补）。"
+        "律师说暂时不开就记下，不反复追问。"
+        "6. 每完成一步就汇报编号（客户编号、合同编号、案件编号、费用编号、开票申请编号），再问是否继续下一步。"
     ),
-    quick_prompts=("给新客户签合同并立案", "这份合同批了，帮我立案"),
+    quick_prompts=("给新客户签合同并立案", "这份合同批了，帮我立案", "给这个案件建费用并申请开票"),
 )
 
 CASE_FEE_INVOICE_SKILL = AgentSkill(

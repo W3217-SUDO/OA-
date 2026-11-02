@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type SetStateAction } from "react";
 import { message } from "antd";
 import { api } from "../api";
 import { subscribeAgentSkillCatalog } from "../agentSkillCatalog";
-import { COURT_INTAKE_SKILL } from "../agentSkillRouting";
+import { AGENT_TASK_ENTRIES, COURT_INTAKE_SKILL } from "../agentSkillRouting";
 import { aiExcelDocumentName, aiWordDocumentName, isAiSpreadsheetGenerationRequest, isAiWordGenerationRequest, isUsableAiDocumentContent } from "../legal/constants";
 import { confirmCaseAgentDocument } from "../legal/services/agentDocumentConfirmation";
 import { confirmPersonalAiDocument } from "./personalAiDocumentConfirmation";
@@ -347,6 +347,19 @@ export function usePersonalWorkspace() {
       return next;
     }),
     courtIntakeConversations: (conversations.items || []).filter((item) => item.skill_id === COURT_INTAKE_SKILL),
+    // 固定任务入口（501141）：在个人空间新建对话，选好技能，填好开场提示（用户可改后再发送）。
+    taskEntries: AGENT_TASK_ENTRIES.filter((entry) => skills.some((item) => item.id === entry.skillId && item.available)),
+    startTaskEntry: (skillId: string) => changeConversation(async () => {
+      const entry = AGENT_TASK_ENTRIES.find((item) => item.skillId === skillId);
+      if (!entry || !skills.some((item) => item.id === skillId && item.available)) throw new Error("这个任务入口暂不可用");
+      if (conversations.workspace?.kind !== "personal") await conversations.openWorkspace(PERSONAL_CONVERSATION_WORKSPACE);
+      const next = await conversations.create();
+      const key = conversationDraftKey(next.conversation_id || "", conversations.capture().workspace);
+      updateDraft(key, "skillId", skillId);
+      if (entry.prompt) updateDraft(key, "input", entry.prompt);
+      return next;
+    }),
+    renameConversation: (target: string, title: string) => conversations.rename(target, title),
     openCourtIntake: (target: string) => changeConversation(async () => {
       const next = target === state.conversation_id ? state : await conversations.select(target);
       updateDraft(conversationDraftKey(target, conversations.capture().workspace), "skillId", COURT_INTAKE_SKILL);

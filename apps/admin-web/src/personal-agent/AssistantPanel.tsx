@@ -2,6 +2,7 @@ import { forwardRef, useCallback, useEffect, useRef, useState, type ComponentRef
 import { Alert, Button, Input, List, Tag, Tooltip, message } from "antd";
 import { ApiOutlined, ArrowLeftOutlined, LinkOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, FileWordOutlined, FolderOpenOutlined, ReloadOutlined } from "@ant-design/icons";
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
+import { TaskEntryCards } from "./TaskEntryCards";
 import AgentAvatar from "./AgentAvatar";
 import { AgentToolResult } from "../AgentToolResult";
 import { ToolTrace } from "./ToolTrace";
@@ -19,7 +20,7 @@ import { McpConnectionTurn } from "./McpConnectionTurn";
 import { agentOperationMessage, responseErrorMessage, userFacingAgentText } from "../AgentOperationPreview";
 import { errorText, mentionedCaseSerial, workspaceDocumentSaveTarget, type CaseAgentConversationSummary, type ConfirmationDetail, type PendingAction, type WorkspaceMessage, type WorkspaceState } from "./types";
 import type { usePersonalWorkspace } from "./usePersonalWorkspace";
-import { COURT_INTAKE_SKILL } from "../agentSkillRouting";
+import { COURT_INTAKE_SKILL, taskEntryForSkill } from "../agentSkillRouting";
 import "./assistant-panel.css";
 
 export type { AssistantSuggestion };
@@ -82,6 +83,12 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   const [caseSession, setCaseSession] = useState<{ item: CaseAgentConversationSummary; state: WorkspaceState; loading: boolean; sending: boolean } | null>(null);
   // 进入收文助手时关掉案件智能体会话视图，否则主区域仍显示原案件会话。
   const startIntake = workspace.courtIntakeAvailable ? () => { mcp.close(); setCaseSession(null); void workspace.startCourtIntake().catch((error: Error) => message.warning(error.message)); } : undefined;
+  // 501141：固定任务入口（任务处理、客户与合同）；收文处理沿用收文助手。
+  const startTask = (skillId: string) => {
+    if (skillId === COURT_INTAKE_SKILL) { startIntake?.(); return; }
+    mcp.close(); setCaseSession(null); void workspace.startTaskEntry(skillId).catch((error: Error) => message.warning(error.message));
+  };
+  const activeTaskEntry = taskEntryForSkill(workspace.skillId);
   const openIntake = (id: string) => { mcp.close(); setCaseSession(null); void workspace.openCourtIntake(id).catch((error: Error) => message.warning(error.message)); };
   const lastMessage = state.messages[state.messages.length - 1];
   const displayedState = caseSession?.state || state;
@@ -262,6 +269,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
             onCreate={workspace.createConversation}
             onSelect={(id) => { mcp.close(); setCaseSession(null); return workspace.selectConversation(id); }}
             onDelete={workspace.deleteConversation}
+            onRename={workspace.renameConversation}
             drawerClassName="assistant-conversation-drawer"
             listClassName="assistant-conversation-list"
             rowClassName="assistant-conversation-row"
@@ -280,14 +288,17 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
       {!hasDisplayedMessages && !mcp.open && <div className={`assistant-empty-state${logoSrc ? " has-logo" : ""}`}>
         {logoSrc && <img className="assistant-empty-logo" src={logoSrc} alt="" width={56} height={56} />}
         {intakeMode ? <div className="assistant-workspace-greeting"><h1>收文助手</h1><p>把法院送达短信或链接粘贴到下面，我会自动下载文书、匹配案件、收文入库并回填法院案号和开庭；缴费通知会先问你再提交缴纳。</p></div>
-          : desktopWorkspace ? <div className="assistant-workspace-greeting"><h1>今天想处理什么？</h1></div> : <AssistantStart suggestions={suggestions} disabled={sending} onPick={submit} onStartIntake={startIntake} />}
-        {!desktopWorkspace && !intakeMode && <div className="assistant-mobile-empty">
+          : activeTaskEntry ? <div className="assistant-workspace-greeting"><h1>{activeTaskEntry.label}</h1><p>{activeTaskEntry.greeting}</p></div>
+          : desktopWorkspace ? <div className="assistant-workspace-greeting"><h1>今天想处理什么？</h1>
+            <TaskEntryCards entries={workspace.taskEntries || []} disabled={sending} onStart={startTask} /></div>
+          : <AssistantStart suggestions={suggestions} disabled={sending} onPick={submit} taskEntries={workspace.taskEntries || []} onStartTask={startTask} />}
+        {!desktopWorkspace && !intakeMode && !activeTaskEntry && <div className="assistant-mobile-empty">
           <h2>今天想处理什么？</h2>
           <div className="assistant-mobile-suggestions">
             {suggestions.slice(0, 1).map((item) => <button key={item.kind} type="button" disabled={sendBlocked} onClick={() => submit(item.prompt)}>
               {item.label}<em>{item.count}</em>
             </button>)}
-            {startIntake && <button type="button" disabled={sendBlocked} onClick={startIntake}>收文助手</button>}
+            {(workspace.taskEntries || []).map((entry) => <button key={entry.key} type="button" disabled={sendBlocked} onClick={() => startTask(entry.skillId)}>{entry.label}</button>)}
             {shortcuts.slice(0, 2).map((item) => <button key={item.label} type="button" disabled={sendBlocked} onClick={() => submit(item.prompt)}>{item.label}</button>)}
           </div>
         </div>}
@@ -460,6 +471,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         onReturnWorkbench={onReturnOverview}
         onStartIntake={() => startIntake?.()}
         onOpenIntake={openIntake}
+        onStartTask={startTask}
       />}
       {desktopWorkspace ? <div className="assistant-workspace-main">{content}</div> : content}
       {caseAgentFolderOpen && currentCaseProject?.case_id && <CaseAgentFileFolderModal open caseId={currentCaseProject.case_id} serialNo={currentCaseProject.serial_no} onClose={() => setCaseAgentFolderOpen(false)} />}

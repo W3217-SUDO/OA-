@@ -278,6 +278,8 @@ def read_state(directory: Path, conversation_id: str | None = None) -> dict[str,
     state["updated_at"] = str(value.get("updated_at") or "")
     first = next((item for item in state["messages"] if isinstance(item, dict) and item.get("role") == "user" and item.get("content")), None)
     state["conversation_title"] = str(value.get("conversation_title") or (" ".join(str(first["content"]).split())[:40] if first else state["conversation_title"]))
+    # 用户自己改过名的对话，之后不再按首句自动起名（501141）。
+    state["title_renamed"] = bool(value.get("title_renamed"))
     return state
 
 
@@ -439,6 +441,22 @@ async def delete_conversation(directory: Path, conversation_id: str, workspace: 
         return _snapshot(directory, state["workspace"] if workspace is not None else None)
 
 
+async def rename_conversation(directory: Path, conversation_id: str, title: str,
+                              workspace: dict[str, Any] | None = None) -> dict[str, Any]:
+    """历史会话改名（501141）：只改名称，不动消息和待确认操作。"""
+    title = " ".join(str(title or "").split())[:40]
+    if not title:
+        raise HTTPException(status_code=422, detail="请输入对话名称")
+    async with STATE_LOCK:
+        state = read_state(directory, conversation_id)
+        require_membership(state, workspace)
+        path = _path(directory, conversation_id)
+        value = _read_json(path) if path.exists() else {key: item for key, item in state.items() if key != "pending_actions"}
+        value["conversation_title"], value["title_renamed"] = title, True
+        _write_json(path, value)
+        return _snapshot(directory, state["workspace"] if workspace is not None else None)
+
+
 async def save_state(directory: Path, state: dict[str, Any]) -> None:
     async with STATE_LOCK:
         conversation_id = state["conversation_id"]
@@ -450,8 +468,11 @@ async def save_state(directory: Path, state: dict[str, Any]) -> None:
         state["workspace"] = current["workspace"]
         if not state["created_at"]:
             state["created_at"] = datetime.now(timezone.utc).isoformat()
-        if len(state["messages"]) == 1 and state["messages"][0].get("role") == "user":
+        if len(state["messages"]) == 1 and state["messages"][0].get("role") == "user" and not current.get("title_renamed"):
             state["conversation_title"] = _first_message_title(state["messages"][0])
+        if current.get("title_renamed"):
+            # 回答过程中用户改了名：以文件里的新名称为准，不被处理前读到的旧名称覆盖。
+            state["conversation_title"], state["title_renamed"] = current["conversation_title"], True
         _write_json(_path(directory, conversation_id), state)
 
 

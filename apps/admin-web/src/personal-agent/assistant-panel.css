@@ -202,3 +202,8 @@
 .assistant-intake-history { display: flex; flex-direction: column; gap: 2px; margin: 0 0 6px 28px; }
 .assistant-intake-history .ant-btn { justify-content: flex-start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ant-color-text-secondary, var(--oa-text-2)); }
 .assistant-intake-history .ant-btn.is-active { color: var(--ant-color-primary, color-mix(in srgb, #1f8a4c var(--oa-ink), #fff)); font-weight: 500; }
+
+/* 501141：固定任务入口（侧栏一组按钮；空对话里一排卡片） */
+.assistant-task-entries { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.assistant-cards.is-task-entries { margin-bottom: 10px; }
+.assistant-workspace-greeting .assistant-cards.is-task-entries { margin-top: 16px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }

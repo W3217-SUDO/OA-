@@ -91,12 +91,12 @@ async def _save_state(username: str, state: dict[str, Any]) -> None:
 
 
 async def manage_conversations(identity: dict[str, Any], action: str = "list", conversation_id: str | None = None, *,
-                               db: AsyncSession, workspace: dict[str, Any] | None = None) -> dict[str, Any]:
+                               db: AsyncSession, workspace: dict[str, Any] | None = None, title: str = "") -> dict[str, Any]:
     directory = _user_dir(identity["username"])
     if workspace is not None:
         workspace = normalize_workspace(workspace)
         await require_workspace_access(workspace, identity, db)
-    if action in ("select", "delete") and conversation_id:
+    if action in ("select", "delete", "rename") and conversation_id:
         state = await conversations.get_conversation_state(directory, conversation_id)
         await require_state_access(state, identity, db, workspace)
     await ensure_identity_file(identity)
@@ -108,6 +108,8 @@ async def manage_conversations(identity: dict[str, Any], action: str = "list", c
         snapshot = await conversations.select_conversation(directory, conversation_id, workspace)
     elif action == "delete" and conversation_id:
         snapshot = await conversations.delete_conversation(directory, conversation_id, workspace)
+    elif action == "rename" and conversation_id:
+        snapshot = await conversations.rename_conversation(directory, conversation_id, title, workspace)
     elif action == "list":
         snapshot = await conversations.list_conversations(directory, workspace)
     else:
