@@ -19,6 +19,32 @@ def pdf_name(name: str) -> str:
     return str(Path(name).with_suffix(".pdf"))
 
 
+async def _soffice(content: bytes, suffix: str, target: str) -> bytes:
+    soffice = shutil.which("soffice")
+    if not soffice:
+        raise HTTPException(503, "服务器还没有安装文档转换工具")
+    async with _SLOTS:
+        with tempfile.TemporaryDirectory(prefix="oa-convert-") as work:
+            source = Path(work) / ("source" + suffix)
+            source.write_bytes(content)
+            process = await asyncio.create_subprocess_exec(
+                "nice", "-n", "10", soffice, "--headless", "--norestore", "--nologo",
+                f"-env:UserInstallation=file://{work}/profile", "--convert-to", target, "--outdir", work, str(source),
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+                env={"HOME": work, "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"},
+            )
+            try:
+                await asyncio.wait_for(process.wait(), _TIMEOUT_SECONDS)
+            except TimeoutError:
+                process.kill()
+                await process.wait()
+                raise HTTPException(504, "文档转换超时，请稍后重试") from None
+            output = Path(work) / ("source." + target)
+            if process.returncode != 0 or not output.is_file():
+                raise HTTPException(502, "文档转换没有成功，请稍后重试")
+            return output.read_bytes()
+
+
 async def convert_to_pdf(name: str, content: bytes) -> bytes:
     from app.core.storage import _docx_bytes
 

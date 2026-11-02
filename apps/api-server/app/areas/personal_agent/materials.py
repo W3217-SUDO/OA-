@@ -21,6 +21,7 @@ from app.data_models.documents import FileAttachment
 
 
 PERSONAL_MATERIAL_CATEGORY = "个人智能体材料"
+CONVERT_ONLY_SUFFIXES = {".wps", ".doc"}
 MAX_FILE_BYTES = 20 * 1024 * 1024
 
 
@@ -96,6 +97,11 @@ async def prepare_materials(identity: dict, db: AsyncSession, attachment_ids: li
         item = items.get(attachment_id)
         if not item:
             raise HTTPException(status_code=404, detail="材料已被删除，请重新选择")
+        if Path(item.original_name).suffix.lower() in CONVERT_ONLY_SUFFIXES:
+            # WPS、旧版 Word 读不出正文，但可以先转成 Word（陶国南 11-01），不挡这一轮提问。
+            readings.append({"id": item.id, "name": item.original_name, "status": "convert_only", "page_count": None,
+                             "content": "", "reading_limit": "这份文件不能直接读取正文；用户要整理或阅读时，先调用 material_to_word 转成 Word"})
+            continue
         try:
             reading = await _read_file(item, identity)
         except HTTPException:

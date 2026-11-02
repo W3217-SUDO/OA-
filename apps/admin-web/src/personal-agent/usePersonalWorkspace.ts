@@ -14,7 +14,7 @@ import { EMPTY_PERSONAL_DRAFT as EMPTY_DRAFT, usePersonalDrafts } from "./usePer
 import { conversationDraftKey, conversationWorkspaceKey, PERSONAL_CONVERSATION_WORKSPACE, requireConversationWorkspace } from "./conversationWorkspace";
 import { errorText, mentionedCaseSerial, workspaceDocumentSaveTarget, type ConfirmationDetail, type ConversationWorkspace, type DecisionFailure, type Material, type PendingAction, type ResponseMode, type WorkspaceCase, type WorkspaceMessage, type WorkspaceSkill, type WorkspaceState, type WorkspaceStatus } from "./types";
 
-const SUPPORTED_FILE = /\.(pdf|docx|xlsx|txt|png|jpe?g)$/i;
+const SUPPORTED_FILE = /\.(pdf|docx|doc|wps|xlsx|txt|png|jpe?g)$/i;
 export const MATERIAL_ACCEPT = ".pdf,.docx,.xlsx,.txt,.png,.jpg,.jpeg";
 type Draft = typeof EMPTY_DRAFT;
 
@@ -95,7 +95,7 @@ export function usePersonalWorkspace() {
     if (!files.length || uploadLock.current || conversations.locked()) return;
     if (materials.length + caseMaterials.length + files.length > 12) { message.warning("每次提问最多选择12份材料"); return; }
     if (files.some((file) => !SUPPORTED_FILE.test(file.name) || !file.size || file.size > 20 * 1024 * 1024)) {
-      message.error("请选择20MB以内的 PDF、Word（.docx）、Excel（.xlsx）、TXT 或 PNG/JPG 图片"); return;
+      message.error("请选择20MB以内的 PDF、Word、WPS、Excel（.xlsx）、TXT 或 PNG/JPG 图片"); return;
     }
     uploadLock.current = true; setUploading(true);
     try {
@@ -113,9 +113,12 @@ export function usePersonalWorkspace() {
           const readingStatus = data.reading_status || data.reading?.status;
           const readingError = data.reading_error || data.reading?.detail || undefined;
           const status = readingStatus === "readable" || readingStatus === "parsed" || readingStatus === "visual" ? "readable" : readingStatus === "failed" || readingStatus === "unavailable" || data.cache_status === "failed" ? "failed" : "cached";
-          const material: Material = { id: data.attachment_id, name: data.attachment.original_name, status, error: readingError };
+          // WPS、旧版 Word 读不出正文，但能转成 Word，不当作读取失败挡住发送。
+          const convertOnly = /\.(wps|doc)$/i.test(data.attachment.original_name) && status === "failed";
+          const material: Material = { id: data.attachment_id, name: data.attachment.original_name, status: convertOnly ? "cached" : status, error: convertOnly ? undefined : readingError };
           setMaterials((current) => [...current, material]);
-          if (status === "failed") message.error(`${material.name}：${material.error || "文件已缓存，但正文无法读取"}`);
+          if (convertOnly) message.info(`${material.name}：WPS 和旧版 Word 不能直接读取，可以让智能体“转成 Word”`);
+          else if (status === "failed") message.error(`${material.name}：${material.error || "文件已缓存，但正文无法读取"}`);
           else if (status === "cached") message.info(`${material.name}：已缓存，发送问题时读取正文`);
         } catch (error) {
           message.error(`${file.name}：${errorText(error, "文件上传失败")}`);

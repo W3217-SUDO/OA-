@@ -270,7 +270,7 @@ async def upload_attachment(
     # 旧普通案件文件库不按扩展名拒收：案件资料常含法院专用格式、加密包和
     # 其他业务文件。文件仍受大小、案件权限和受控下载约束；知识产权
     # 案件继续走自己的专用格式校验接口。
-    allowed = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".zip", ".rar"}
+    allowed = {".pdf", ".wps", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".png", ".jpg", ".jpeg", ".zip", ".rar"}
     is_employee_avatar = bool(record and record.module == "hr" and category == "员工头像")
     # BUG20261030015：调查线索附件同样不限格式（和旧系统一致），仍受大小和线索权限约束。
     if not is_employee_avatar and (not record or record.module not in {"case", "clue"}) and suffix not in allowed:

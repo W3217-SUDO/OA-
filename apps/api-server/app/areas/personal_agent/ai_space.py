@@ -100,6 +100,24 @@ async def download_personal_ai_file(file_id: str = Path(pattern=r"^[a-f0-9]{32}$
     })
 
 
+@router.post("/files/{file_id}/to-word", status_code=201)
+async def convert_personal_ai_file_to_word(file_id: str = Path(pattern=r"^[a-f0-9]{32}$"),
+                                           identity=Depends(current_identity), db=Depends(get_db)):
+    """个人空间的 PDF、WPS、旧版 Word 转成 Word 新文件，原文件保留（陶国南 11-01）。"""
+    from app.core.word_conversion import personal_file_to_word
+
+    return {"file": await personal_file_to_word(file_id, identity, db)}
+
+
+@router.post("/materials/{attachment_id}/to-word", status_code=201)
+async def convert_personal_material_to_word(attachment_id: int = Path(ge=1),
+                                            identity=Depends(current_identity), db=Depends(get_db)):
+    """对话里本人上传的 PDF、WPS、旧版 Word 转成 Word，存到个人空间。"""
+    from app.core.word_conversion import material_to_word
+
+    return {"file": await material_to_word(attachment_id, identity, db)}
+
+
 @router.get("/files/{file_id}/content")
 async def get_personal_ai_file_content(file_id: str = Path(pattern=r"^[a-f0-9]{32}$"),
                                        identity=Depends(current_identity), db=Depends(get_db)):
