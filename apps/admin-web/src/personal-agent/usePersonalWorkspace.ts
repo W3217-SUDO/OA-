@@ -384,6 +384,13 @@ export function usePersonalWorkspace() {
       }
       return next;
     },
+    // 501147（tgn 11-03 00:04）：左侧固定任务是会话归集，点开某条历史会话只进入它并带好技能，不自动发任何指令。
+    openTaskConversation: (target: string, skillId: string) => changeConversation(async () => {
+      if (conversations.workspace?.kind !== "personal") await conversations.openWorkspace(PERSONAL_CONVERSATION_WORKSPACE);
+      const next = target === state.conversation_id ? state : await conversations.select(target);
+      updateDraft(conversationDraftKey(target, conversations.capture().workspace), "skillId", skillId);
+      return next;
+    }),
     renameConversation: (target: string, title: string) => conversations.rename(target, title),
     // 501147（tgn 22:27）：进入智能体默认是新对话框；第一次发送时才真正建会话，不留空会话。
     startBlank: () => runtime.activate({ conversation_id: null, messages: [], pending_actions: [], dismissed_action_ids: [], workspace: PERSONAL_CONVERSATION_WORKSPACE }),

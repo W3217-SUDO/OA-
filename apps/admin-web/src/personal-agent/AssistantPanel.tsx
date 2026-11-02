@@ -89,6 +89,10 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
     // 501147：三个固定任务（含收文助手）都回到各自的固定会话。
     mcp.close(); setCaseSession(null); void workspace.startTaskEntry(skillId).catch((error: Error) => message.warning(error.message));
   };
+  // 501147（tgn 11-03 00:04）：左侧会话归集里点历史会话，只进入会话，不发指令。
+  const openTaskConversation = (id: string, skillId: string) => {
+    mcp.close(); setCaseSession(null); void workspace.openTaskConversation(id, skillId).catch((error: Error) => message.warning(error.message));
+  };
   const activeTaskEntry = taskEntryForSkill(workspace.skillId);
   const userName = workspace.status?.identity?.display_name || "";
   const openIntake = (id: string) => { mcp.close(); setCaseSession(null); void workspace.openCourtIntake(id).catch((error: Error) => message.warning(error.message)); };
@@ -487,6 +491,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         onStartIntake={() => startIntake?.()}
         onOpenIntake={openIntake}
         onStartTask={startTask}
+        onOpenTaskConversation={openTaskConversation}
       />}
       {desktopWorkspace ? <div className="assistant-workspace-main">{content}</div> : content}
       {caseAgentFolderOpen && currentCaseProject?.case_id && <CaseAgentFileFolderModal open caseId={currentCaseProject.case_id} serialNo={currentCaseProject.serial_no} onClose={() => setCaseAgentFolderOpen(false)} />}

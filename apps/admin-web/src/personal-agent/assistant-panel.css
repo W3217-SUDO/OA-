@@ -205,6 +205,19 @@
 
 /* 501141：固定任务入口（侧栏一组按钮；空对话里一排卡片） */
 .assistant-task-entries { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+/* 501147（tgn 11-03 00:04）：左侧固定任务是会话归集，可展开列出该类历史会话 */
+.assistant-task-group { display: flex; flex-direction: column; min-width: 0; }
+.assistant-task-group > .ant-btn { justify-content: flex-start; width: 100%; }
+.assistant-task-group-label { flex: 1; min-width: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.assistant-task-group-count { margin-left: 4px; color: var(--oa-text-2); font-size: 12px; }
+.assistant-task-group-arrow { margin-left: 4px; color: var(--oa-text-2); font-size: 10px; }
+.assistant-task-group-list { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 6px; padding: 0 0 0 24px; list-style: none; }
+.assistant-task-group-list button { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 32px; padding: 4px 8px; border: 0; border-radius: 6px; background: transparent; color: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.assistant-task-group-list button:hover:not(:disabled), .assistant-task-group-list button.is-active { background: var(--oa-surface-2, rgba(0, 0, 0, 0.05)); }
+.assistant-task-group-list button:disabled { cursor: not-allowed; opacity: 0.6; }
+.assistant-task-group-list button > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.assistant-task-group-list time { flex: none; color: var(--oa-text-2); font-size: 11px; }
+.assistant-task-group-empty { padding: 4px 8px; color: var(--oa-text-2); font-size: 12px; }
 .assistant-cards.is-task-entries { margin-bottom: 10px; }
 /* 501147（tgn 23:17）：四张卡片分两排，每排两个（电脑和手机都是） */
 .assistant-cards.is-task-entries { grid-template-columns: repeat(2, minmax(0, 1fr)); }
