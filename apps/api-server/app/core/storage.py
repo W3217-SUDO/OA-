@@ -516,7 +516,11 @@ async def _copy_seal_source_attachments(
                 await _ensure_record_module(source_record.id, "customer", identity, db)
             else:
                 raise HTTPException(status_code=422, detail="用印申请来源文件必须关联客户、合同或案件")
-            source_path = _attachment_storage_path(source)
+            # OSS 附件本机未缓存时先取回（BUG20261102011）
+            try:
+                source_path = await ensure_attachment_local(source)
+            except HTTPException as exc:
+                raise HTTPException(status_code=exc.status_code, detail=f"来源文件 {source.original_name} 读取失败：{exc.detail}") from exc
             if source_path is None:
                 raise HTTPException(status_code=404, detail=f"来源文件 {source.original_name} 不存在")
             target = UPLOAD_ROOT / f"{uuid4().hex}{source_path.suffix.lower()}"
