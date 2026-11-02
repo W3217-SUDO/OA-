@@ -113,7 +113,8 @@ async def execute_call(payload, identity, db, *, action_id):
                 except Exception as exc:
                     raise HTTPException(502, remote_error(exc, 'tools/call', server)) from None
                 if result.is_error:
-                    raise HTTPException(502, '外部MCP工具报告执行失败，请核对外部实际状态，禁止重复提交')
+                    raise HTTPException(502, '外部MCP工具报告执行失败' + _remote_error_text(result, configuration)
+                                        + '，请核对外部实际状态，禁止重复提交')
     if batch is not None:
         from .remote_full_law import save_full_law
         if safe_remote(articles, configuration) != articles:
@@ -125,3 +126,19 @@ async def execute_call(payload, identity, db, *, action_id):
                              'points': calls * price if price else None}, 'files': [reference]}
     return await store_remote_files(result, configuration, identity, db, tool_name=payload['tool_name'],
                                     conversation_id=request.data['conversation_id'], action_id=action_id)
+
+
+def _remote_error_text(result, configuration):
+    """外部工具自己报的错（如百度 invalid_model），去掉凭据回声后截短给人看，便于判断是参数、开通还是额度问题。"""
+    texts = [str(getattr(item, 'text', '') or '') for item in (result.content or [])]
+    text = ' '.join(part.strip() for part in texts if part.strip())[:400]
+    if not text:
+        return ''
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict) and (data.get('code') or data.get('message')):
+            text = '：'.join(str(data.get(key)) for key in ('code', 'message') if data.get(key))
+    except ValueError:
+        pass
+    redacted = redact_verification(text, configuration)
+    return '（外部返回：' + (redacted if isinstance(redacted, str) else '内容含凭据，已隐藏')[:300] + '）'

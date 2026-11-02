@@ -129,9 +129,10 @@ class PersonalMcpToolSession(ModelToolSession):
         scope_label = '全局共享MCP' if payload['scope'] == 'global' else '个人MCP'
         summary = ('调用' + scope_label + '「' + target + '」的' + descriptor['name']
                    + '工具，将' + json.dumps(payload['arguments'], ensure_ascii=False) + '参数发送到该外部服务')
-        preview = {'operation_name': summary, 'target': target, 'tool_name': descriptor['name'], 'method': 'POST',
-                   'path': 'MCP tools/call', 'params': {'scope': payload['scope'], 'connection_id': payload['connection_id'],
-                                                     'revision': payload['revision'], 'body': payload['arguments']}, 'requires_confirmation': True,
+        # 确认卡只给人看要发出去的参数（连接编号、版本这些内部值在 payload 里核对，不再当“确认信息”逐条列出），参数名按工具说明给中文提示。
+        preview = {'operation_name': summary, 'target': scope_label + '「' + target + '」', 'tool_name': descriptor['name'], 'method': 'POST',
+                   'path': 'MCP tools/call', 'params': {'body': payload['arguments']}, 'requires_confirmation': True,
+                   'field_labels': _argument_labels(descriptor, payload['arguments']),
                    'original_values': '第三方工具可能产生外部业务写入；所有调用均需人工确认'}
         self.pending_actions.append({'type': 'personal_mcp.call', 'summary': summary, 'payload': payload, 'preview': preview})
         result = {'status': 'pending', 'summary': summary, 'preview': preview, 'requires_confirmation': True}
@@ -174,3 +175,14 @@ class PersonalMcpToolSession(ModelToolSession):
         self._prepared[key] = result
         return {'result': result}
 
+
+def _argument_labels(descriptor, arguments):
+    """参数显示名：工具说明里该参数描述的第一句（截短），没有就用参数名。说明来自第三方，只作显示。"""
+    properties = ((descriptor.get('input_schema') or descriptor.get('inputSchema') or {}).get('properties') or {})
+    labels = {}
+    for key in arguments:
+        text = str((properties.get(key) or {}).get('title') or (properties.get(key) or {}).get('description') or '').strip()
+        for mark in ('，', '。', ',', '.', '；', '（', '('):
+            text = text.split(mark, 1)[0]
+        labels[key] = f'{text[:16]}（{key}）' if text else key
+    return labels
