@@ -330,7 +330,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
               const documentTarget = workspaceDocumentSaveTarget(item);
               return (
                 <div key={`${item.created_at || "message"}-${index}`} className={`assistant-message is-${item.role}`}>
-                  {item.role === "user" && desktopWorkspace && <div className="assistant-message-avatar is-user" role="img" aria-label={userName || "我"}>{(userName || "我").slice(-2)}</div>}
+                  {item.role === "user" && desktopWorkspace && <div className="assistant-message-avatar is-user" role="img" aria-label={userName || "我"}>{avatarText(userName)}</div>}
                   {item.role === "assistant" && <div className="assistant-message-avatar" role="img" aria-label={name || "AI助手"}>
                     {logoSrc ? <img src={logoSrc} alt="" width={32} height={32} /> : <AgentAvatar size={32} />}
                   </div>}
@@ -496,3 +496,10 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
 });
 
 export default AssistantPanel;
+
+/** 头像文字：人名取后两个字（陶国南→国南）；“管理者”“系统管理员”这类岗位名取第一个字，免得截成“理者”。 */
+function avatarText(name?: string) {
+  const value = (name || "我").trim() || "我";
+  if (/管理(者|员)$/.test(value)) return value.slice(0, 1);
+  return value.slice(-2);
+}
