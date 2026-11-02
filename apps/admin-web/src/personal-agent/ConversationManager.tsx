@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import { POPUP_WIDTH } from "../components/common/popupSize";
 import { Button, Drawer, Empty, Input, Modal, Spin, Tooltip, message } from "antd";
-import { DeleteOutlined, EditOutlined, FolderOpenOutlined, HistoryOutlined, LoadingOutlined, MessageOutlined, PlusOutlined } from "@ant-design/icons";
+import { DeleteOutlined, EditOutlined, FolderOpenOutlined, HistoryOutlined, LoadingOutlined, MessageOutlined, PlusOutlined, UnorderedListOutlined } from "@ant-design/icons";
 import { errorText, type WorkspaceConversation } from "./types";
 import type { CaseAgentConversationSummary } from "./types";
 
@@ -24,7 +24,10 @@ type Props = {
   selectClassName?: string;
   showHistoryLabel?: boolean;
   presentation?: "drawer" | "sidebar";
-  navigation?: ReactNode;
+  /** 传函数时，历史会话作为参数交给导航，放在所选空间下面（501147）。 */
+  navigation?: ReactNode | ((history: ReactNode) => ReactNode);
+  /** 历史会话放进空间时的标题，如“个人空间 · 最近会话”。 */
+  historyTitle?: string;
   caseAgentConversations?: CaseAgentConversationSummary[];
   onSelectCaseAgentConversation?: (item: CaseAgentConversationSummary) => void;
 };
@@ -37,6 +40,7 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
   showHistoryLabel = false,
   presentation = "drawer",
   navigation,
+  historyTitle,
   caseAgentConversations = [],
   onSelectCaseAgentConversation,
 }: Props) {
@@ -104,7 +108,7 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
   const sidebarList = <>
       {!items.length && (loading ? <div className="assistant-conversation-loading" role="status" aria-live="polite" aria-label="正在加载对话"><Spin size="small" /><span>正在加载对话</span></div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无对话" />)}
       {rowsOf(items.slice(0, recentLimit))}
-      {items.length > 0 && <Button type="link" size="small" className="assistant-history-all" onClick={() => { setHistoryKeyword(""); setHistoryOpen(true); }}>全部历史会话（{items.length}）</Button>}
+      {items.length > 0 && <Button type="link" icon={<UnorderedListOutlined />} className="assistant-history-all" onClick={() => { setHistoryKeyword(""); setHistoryOpen(true); }}>全部历史会话（{items.length}）</Button>}
   </>;
   const historyModal = () => <Modal title="全部历史会话" width={POPUP_WIDTH.md} open={historyOpen} footer={null} onCancel={() => setHistoryOpen(false)} destroyOnHidden>
     <Input.Search allowClear placeholder="按名称搜索" aria-label="搜索历史会话" value={historyKeyword} onChange={(event) => setHistoryKeyword(event.target.value)} />
@@ -127,6 +131,24 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
       </div>)}
     </div>
   </section> : null;
+  if (presentation === "sidebar" && typeof navigation === "function") {
+    const history = <section className="assistant-workspace-history is-in-space" aria-label={historyTitle || "最近会话"} aria-busy={loading}>
+      <div className="assistant-workspace-history-heading"><HistoryOutlined /><h2>{historyTitle || "最近会话"}</h2></div>
+      {caseAgentList}
+      {sidebarList}
+    </section>;
+    return <>
+      {contextHolder}
+      {onRename && renameModal}
+      <div className="assistant-workspace-navigation">
+        <div className="workspace-conversation-controls">
+          <Button icon={<PlusOutlined />} aria-label="新建对话" disabled={busy} onClick={() => create()}><span className="workspace-conversation-label">新建对话</span></Button>
+        </div>
+        {navigation(history)}
+      </div>
+      {historyOpen && historyModal()}
+    </>;
+  }
   if (presentation === "sidebar") return <>
     {contextHolder}
     {onRename && renameModal}
@@ -134,7 +156,7 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
       <div className="workspace-conversation-controls">
         <Button icon={<PlusOutlined />} aria-label="新建对话" disabled={busy} onClick={() => create()}><span className="workspace-conversation-label">新建对话</span></Button>
       </div>
-      {navigation}
+      {navigation as ReactNode}
     </div>
     <section className="assistant-workspace-history" aria-label="历史会话" aria-busy={loading}>
       <div className="assistant-workspace-history-heading"><HistoryOutlined /><h2>历史会话</h2></div>

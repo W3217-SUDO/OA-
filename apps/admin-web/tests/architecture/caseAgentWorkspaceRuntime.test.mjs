@@ -1190,7 +1190,7 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   const dependencies = {
     antd: { ...require("antd"), Alert: component("alert"), Button: component("button"), Dropdown: ({ menu, children }) => React.createElement("dropdown", { menu }, children), Input: { TextArea: component("textarea") }, List, Tag: component("tag"), Tooltip: component("tooltip") },
     "./AssistantStart": { __esModule: true, default: component("start"), shortcuts: [] },
-    "./ConversationManager": { ConversationManager: ({ navigation, ...props }) => React.createElement("conversation-manager", props, navigation) },
+    "./ConversationManager": { ConversationManager: ({ navigation, ...props }) => React.createElement("conversation-manager", props, typeof navigation === "function" ? navigation(React.createElement("history-slot", { title: props.historyTitle })) : navigation) },
     "./AssistantWorkspaceTools": { AssistantWorkspaceTools: component("workspace-tools") },
     "./ConfirmationHistory": { ConfirmationHistory: component("confirmation-history") },
     "./PersonalAiSpace": { PersonalAiSpace: component("personal-ai-space") },
@@ -1290,6 +1290,7 @@ test("homepage pending summary is shown once and direct cancellation retains fai
   // 501147：智能体设置、记忆管理、导入技能收进右上角“设置”，左侧只留会话、固定任务和空间。
   assert.deepEqual(navigationOrder, ["AI生成文件夹", "历史确认记录", "个人空间", "案件空间", "添加案件", "案件项目", "案件项目"], "个人空间、案件标题、添加按钮及全部项目整体保留，不隐藏或拆散项目");
   const settingsItems = () => renderer.root.findAllByType("dropdown").flatMap((item) => item.props.menu.items);
+  assert.equal(renderer.root.findByType("history-slot").props.title, "个人空间 · 最近会话", "最近会话紧贴所选空间，标题写明归属");
   assert.deepEqual(settingsItems().map((item) => item.label), ["智能体设置", "记忆管理", "导入技能"], "右上角“设置”收纳三项设置");
   assert.deepEqual(projectModes, [true], "PC进入真实默认个人项目模式");
   assert.equal(selectCaseSpace().props.disabled, false);

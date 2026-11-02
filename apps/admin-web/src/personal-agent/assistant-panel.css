@@ -215,3 +215,8 @@
 .assistant-history-all-list { margin-top: 12px; max-height: 60vh; overflow-y: auto; }
 .assistant-history-all-list .assistant-conversation-row { display: flex; align-items: center; gap: 4px; }
 .assistant-history-all-list .assistant-conversation-select { flex: 1 1 auto; min-width: 0; }
+/* 501147：最近会话紧贴在所选空间下面，缩进并加左边线，一眼看出归属 */
+.assistant-workspace-history.is-in-space { margin: 4px 0 8px 14px; padding-left: 10px; border-left: 2px solid var(--ant-color-primary-border, #b7d9c4); }
+.assistant-workspace-history.is-in-space .assistant-workspace-history-heading h2 { font-size: 13px; }
+.assistant-history-all { align-self: flex-start; font-weight: 500; }
+.assistant-settings-trigger { font-weight: 500; }

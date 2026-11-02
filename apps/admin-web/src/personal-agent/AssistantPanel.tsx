@@ -253,7 +253,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
           ...(onOpenAgentCenter ? [{ key: "agent", icon: <RobotOutlined />, label: "智能体设置", onClick: onOpenAgentCenter }] : []),
           { key: "memory", icon: <SettingOutlined />, label: "记忆管理", onClick: () => setMemoryOpen(true) },
           { key: "skills", icon: <ExperimentOutlined />, label: "导入技能", disabled: loading || workspace.conversationBusy || workspace.uploading, onClick: () => workspaceToolsRef.current?.importSkills() },
-        ] }}><Button className="assistant-settings-trigger" size="small" icon={<SettingOutlined />} aria-label="设置">设置</Button></Dropdown>}
+        ] }}><Button className="assistant-settings-trigger" icon={<SettingOutlined />} aria-label="设置">设置</Button></Dropdown>}
         {!desktopWorkspace && <div className="assistant-bar-actions">
           <Tooltip title="个人 AI 空间"><Button className="personal-ai-space-trigger" type="text" icon={<FolderOpenOutlined />} aria-label="个人 AI 空间" onClick={() => setPersonalSpaceOpen(true)}><span className="personal-ai-space-label">个人 AI 空间</span></Button></Tooltip>
           <ConfirmationHistory onReopen={reopen} busy={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId || workspace.uploading} />

@@ -25,6 +25,10 @@ type Props = {
 const TASK_ICONS: Record<string, ReactNode> = { tasks: <ScheduleOutlined />, intake: <InboxOutlined />, customer: <SolutionOutlined /> };
 
 export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPersonalSpace, onReopenConfirmation, onReturnWorkbench, onOpenCaseAgentConversation, onStartIntake, onOpenIntake, onStartTask }: Props) {
+  // 501147：历史会话标题写明属于哪个空间。
+  const current = workspace.currentWorkspace;
+  const caseProject = current?.kind === "case" ? workspace.workspaceProjects.find((item) => item.kind === "case" && item.case_id === current.case_id) : undefined;
+  const historyTitle = current?.kind === "case" ? `${caseProject?.serial_no || "案件空间"} · 最近会话` : "个人空间 · 最近会话";
   const busy = workspace.loading || workspace.stopping || workspace.uploading || !!workspace.decisionId || workspace.conversationBusy;
   return <aside className="assistant-workspace-sidebar" aria-label="AI 工作区导航">
     <div className="assistant-workspace-brand">
@@ -47,7 +51,8 @@ export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPers
       listClassName="assistant-conversation-list"
       rowClassName="assistant-conversation-row"
       selectClassName="assistant-conversation-select"
-      navigation={<>
+      historyTitle={historyTitle}
+      navigation={(history) => <>
         {/* 501141：固定任务入口，点开新建对话并带好技能和开场提示。 */}
         <div className="assistant-task-entries" role="group" aria-label="固定任务">
           {(workspace.taskEntries || []).map((entry) => <Button key={entry.key} type="text" icon={TASK_ICONS[entry.key]} title={entry.hint} disabled={busy}
@@ -60,7 +65,7 @@ export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPers
         </div>}
         <Button type="text" className="assistant-workspace-generated-entry" icon={<FolderOpenOutlined />} onClick={onOpenPersonalSpace}>AI生成文件夹</Button>
         <ConfirmationHistory onReopen={onReopenConfirmation} busy={busy || !!workspace.dismissalId} />
-        <ConversationWorkspaceNavigation workspace={workspace} />
+        <ConversationWorkspaceNavigation workspace={workspace} history={history} />
       </>}
     />
     <div className="assistant-workspace-footer">
