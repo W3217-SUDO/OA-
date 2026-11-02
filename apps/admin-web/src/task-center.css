@@ -1,7 +1,7 @@
-.content:has(.task-original-panel) > .page-head {
+.content:has(.workspace-page:not(.is-cached) .task-original-panel) > .page-head {
   display: none;
 }
-.content:has(.task-original-panel) {
+.content:has(.workspace-page:not(.is-cached) .task-original-panel) {
   padding-top: 9px;
 }
 
@@ -441,7 +441,7 @@
 }
 
 @media (max-width: 720px) {
-  .content:has(.task-original-panel) {
+  .content:has(.workspace-page:not(.is-cached) .task-original-panel) {
     padding: 0 8px 12px;
   }
   .task-original-panel > .ant-card-head {

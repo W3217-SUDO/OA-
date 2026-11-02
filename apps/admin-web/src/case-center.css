@@ -1,5 +1,5 @@
-.content:has(.case-original-panel) > .page-head { display: none; }
-.content:has(.case-original-panel) { padding-top: 8px; }
+.content:has(.workspace-page:not(.is-cached) .case-original-panel) > .page-head { display: none; }
+.content:has(.workspace-page:not(.is-cached) .case-original-panel) { padding-top: 8px; }
 .case-original-layout { display: grid; grid-template-columns: 168px minmax(0,1fr); gap: 8px; }
 .case-original-layout.case-phase-collapsed { grid-template-columns: 28px minmax(0,1fr); }
 .case-phase-panel { height: calc(100dvh - 78px); min-height:0; padding:8px 7px; overflow-y:scroll; scrollbar-gutter:stable; overscroll-behavior:contain; background:var(--oa-fill); border-right:1px solid var(--oa-border); }
@@ -379,7 +379,7 @@
   .case-detail-drawer .case-fee-empty-state .ant-btn-link{padding:6px 8px}
 }
 /* 8.12-row2-scroll-layout */
-.page-workbench:has(.case-original-layout) { overflow: hidden; }
+.page-workbench:has(.workspace-page:not(.is-cached) .case-original-layout) { overflow: hidden; }
 .page-workbench > .workspace-page > .case-original-layout { height: 100%; min-height: 0; }
 .case-original-layout > .case-original-panel { display: flex; min-height: 0; flex-direction: column; }
 .case-original-layout > .case-original-panel > .ant-card-body { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; }
@@ -405,7 +405,7 @@
 }
 
 /* 8.12 row 2 rework: keep detail controls and summaries fixed; scroll records only. */
-.page-workbench:has(.case-detail-static-root){overflow:hidden}
+.page-workbench:has(.workspace-page:not(.is-cached) .case-detail-static-root){overflow:hidden}
 .page-workbench > .workspace-page > .case-center-page:has(.case-detail-static-root){height:100%;min-height:0}
 .case-detail-static-root{position:absolute!important;inset:0!important;width:100%;height:100%!important;min-height:0;overflow:hidden}
 .case-detail-static-root .ant-drawer-content-wrapper{height:100%!important}
@@ -462,7 +462,7 @@
 
 /* 手机案件列表保留同一份筛选和表格，仅切换排布与滚动容器。 */
 @media(max-width:767px){
-  .page-workbench:has(.case-original-layout){overflow:auto;scrollbar-gutter:auto}
+  .page-workbench:has(.workspace-page:not(.is-cached) .case-original-layout){overflow:auto;scrollbar-gutter:auto}
   .page-workbench > .workspace-page > .case-center-page:has(.case-original-layout){height:auto;min-height:0}
   .case-original-layout,
   .case-original-layout.case-phase-collapsed{grid-template-columns:minmax(0,1fr);width:100%;max-width:100%;height:auto;min-height:0;gap:8px}

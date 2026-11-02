@@ -182,10 +182,10 @@
   }
 }
 
-.content:has(.finance-original-panel) > .page-head {
+.content:has(.workspace-page:not(.is-cached) .finance-original-panel) > .page-head {
   display: none;
 }
-.content:has(.finance-original-panel) {
+.content:has(.workspace-page:not(.is-cached) .finance-original-panel) {
   padding-top: 9px;
 }
 .finance-original-panel {
@@ -325,13 +325,13 @@
 
 /* 结算页收窄左侧导航，给展开的案件分配明细留出稳定的可视宽度。 */
 @media (min-width: 992px) {
-  .app-body:has(.finance-original-panel) > .sidebar.ant-layout-sider:not(.ant-layout-sider-collapsed) {
+  .app-body:has(.workspace-page:not(.is-cached) .finance-original-panel) > .sidebar.ant-layout-sider:not(.ant-layout-sider-collapsed) {
     width: 220px !important;
     min-width: 220px !important;
     max-width: 220px !important;
     flex: 0 0 220px !important;
   }
-  .app-body:has(.finance-original-panel.finance-general-settlement) > .sidebar.ant-layout-sider:not(.ant-layout-sider-collapsed) {
+  .app-body:has(.workspace-page:not(.is-cached) .finance-original-panel.finance-general-settlement) > .sidebar.ant-layout-sider:not(.ant-layout-sider-collapsed) {
     width: 200px !important;
     min-width: 200px !important;
     max-width: 200px !important;
@@ -1714,10 +1714,10 @@
   border-top: 2px solid var(--oa-primary);
   background: var(--oa-surface);
 }
-.content:has(.finance-invoice-detail-page) > .page-head {
+.content:has(.workspace-page:not(.is-cached) .finance-invoice-detail-page) > .page-head {
   display: none;
 }
-.content:has(.finance-invoice-detail-page) {
+.content:has(.workspace-page:not(.is-cached) .finance-invoice-detail-page) {
   padding-top: 8px;
 }
 .finance-invoice-detail-page .finance-original-title {

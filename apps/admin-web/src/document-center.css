@@ -55,7 +55,7 @@
   }
 }
 
-.content:has(.receipt-original-panel) > .page-head {
+.content:has(.workspace-page:not(.is-cached) .receipt-original-panel) > .page-head {
   display: none;
 }
 .receipt-original-panel {

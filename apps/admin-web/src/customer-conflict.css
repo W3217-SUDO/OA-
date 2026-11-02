@@ -1,5 +1,5 @@
-.content:has(.conflict-panel) > .page-head { display: none; }
-.content:has(.conflict-panel) { padding-top: 8px; background: var(--oa-surface); }
+.content:has(.workspace-page:not(.is-cached) .conflict-panel) > .page-head { display: none; }
+.content:has(.workspace-page:not(.is-cached) .conflict-panel) { padding-top: 8px; background: var(--oa-surface); }
 
 .conflict-panel.ant-card {
   border: 0;

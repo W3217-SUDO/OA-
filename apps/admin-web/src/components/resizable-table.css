@@ -120,10 +120,10 @@ th.oa-stack-column {
 @media (max-width: 720px) {
   /* 卡片列表按内容撑高、整页滚动：桌面“表格在卡片内部滚动”的定高布局在手机卡片模式下取消，
      否则卡片会被裁掉，只能看到第一张。 */
-  .page-workbench:has(.oa-mobile-cards) {
+  .page-workbench:has(.workspace-page:not(.is-cached) .oa-mobile-cards) {
     overflow-y: auto !important;
   }
-  .page-workbench:has(.oa-mobile-cards) :is(.ant-card, .ant-card-body, .ant-tabs, .ant-tabs-content-holder, .ant-tabs-content, .ant-tabs-tabpane) {
+  .page-workbench:has(.workspace-page:not(.is-cached) .oa-mobile-cards) :is(.ant-card, .ant-card-body, .ant-tabs, .ant-tabs-content-holder, .ant-tabs-content, .ant-tabs-tabpane) {
     height: auto !important;
     max-height: none !important;
     overflow: visible !important;
