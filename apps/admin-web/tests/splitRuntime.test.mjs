@@ -48,11 +48,11 @@ test.after(() => {
 
 test('finance query reads default pagination at invocation and applies response metadata', async () => {
   let pageSize = 15; const calls = [], rows = [], meta = [];
-  const actions = createFinancePaymentsActions({ get feeQueryMeta() { return { pageSize }; }, isRefundCaseFeeRoute: false, feeQueryParams: (query, page, size) => ({ ...query, page, page_size: size }), setFeeQueryRows: value => rows.push(value), setFeeQueryMeta: value => meta.push(value) });
+  const actions = createFinancePaymentsActions({ financeScope: 'platform', get feeQueryMeta() { return { pageSize }; }, isRefundCaseFeeRoute: false, feeQueryParams: (query, page, size) => ({ ...query, page, page_size: size }), setFeeQueryRows: value => rows.push(value), setFeeQueryMeta: value => meta.push(value) });
   api.get = async (url, options) => { calls.push([url, options.params]); return { data: { items: [{ id: 7 }], total: 1 } }; };
   pageSize = 30;
   await actions.loadFeeQuery({ customer: 'CODEX-SPLIT' }, 2);
-  assert.deepEqual(calls, [['/finance/fees/query', { customer: 'CODEX-SPLIT', page: 2, page_size: 30 }]]);
+  assert.deepEqual(calls, [['/finance/fees/query', { customer: 'CODEX-SPLIT', page: 2, page_size: 30, finance_scope: 'platform' }]]);
   assert.deepEqual(rows, [[{ id: 7 }]]);
   assert.deepEqual(meta, [{ total: 1, page: 2, pageSize: 30, totals: {} }]);
   api.get = async () => { throw new Error('request rejected'); };

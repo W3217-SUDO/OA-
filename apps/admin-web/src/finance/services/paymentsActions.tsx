@@ -2,12 +2,13 @@ import { message, Modal } from "antd";
 import type { FormInstance } from "antd/es/form/hooks/useForm";
 import dayjs from "dayjs";
 import { api } from "../../api";
+import { financeCenterApi } from "./financeCenterApi";
 import { isContractPayment, isPendingWriteoffPackage, paymentActionPath, unifiedPaymentQueryParams } from "../paymentLifecycle.mjs";
 import type { FinanceActionGate } from "../../financeActionGate.mjs";
 import { formatRequiredDate } from "../../formSafety";
 import { createPaymentPrintPreview, normalizePaymentPackageResponse, paymentPackageEmptySelectionMessage, paymentPackageRequestParams, paymentPackageWordExportPath, paymentPackageWriteoffPayload, paymentQueryRequestParams } from "../constants";
 import type { PaymentWriteoffFormValues } from "../formTypes";
-import type { Fee, PaymentPackagePreview, PaymentPrintDocumentData, Transaction } from "../types";
+import type { Fee, FinanceScope, PaymentPackagePreview, PaymentPrintDocumentData, Transaction } from "../types";
 
 export async function voidRejectedPaymentApplication(feeId: number): Promise<void> {
     await api.post(`/finance/fees/${feeId}/void`, { comment: "已拒绝请款单作废" });
@@ -26,6 +27,7 @@ export async function deletePaymentPackageRequest(packageId: number): Promise<vo
 }
 /** finance payments operations; dependencies are read when each operation runs. */
 export interface FinancePaymentsDependencies {
+    readonly financeScope: FinanceScope;
     readonly setFeeDetail: React.Dispatch<React.SetStateAction<Fee | null>>;
     readonly feeQueryMeta: {
         total: number;
@@ -226,7 +228,8 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
     };
     const loadFeeQuery = async (query: Record<string, any>, page = 1, pageSize = context.feeQueryMeta.pageSize) => {
         const { isRefundCaseFeeRoute, feeQueryParams, setFeeQueryRows, setFeeQueryMeta } = context;
-        const response = await api.get(isRefundCaseFeeRoute
+        // 翻页、查询也带本中心，和首次打开同口径（陶国南 2026-11-02）。
+        const response = await financeCenterApi(context.financeScope).get(isRefundCaseFeeRoute
             ? "/finance/case-fees/refunds"
             : "/finance/fees/query", {
             params: feeQueryParams(query, page, pageSize),
@@ -241,7 +244,7 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
         });
     };
     const loadPaymentQueryPage = async (query: Record<string, any>, page = 1, pageSize = context.paymentQueryPageSize) => {
-        return api.get("/finance/payment-applications/query", {
+        return financeCenterApi(context.financeScope).get("/finance/payment-applications/query", {
             params: unifiedPaymentQueryParams(paymentQueryRequestParams(query, page, pageSize)),
         });
     };
@@ -764,7 +767,7 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
         }
         setFeeQueryExportLoading(true);
         try {
-            const response = await api.get(isRefundCaseFeeRoute
+            const response = await financeCenterApi(context.financeScope).get(isRefundCaseFeeRoute
                 ? "/finance/case-fees/refunds/export"
                 : "/finance/fees/query/export", {
                 params: {

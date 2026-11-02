@@ -729,6 +729,9 @@ async def query_finance_fees(
     if dashboard_queue:
         # 工作台点进来时费用就是“待缴官费”数字那一批，不再按列表自己的未缴条件二次筛选。
         unpaid_official = not identity.get("_dashboard_queue_exact")
+    if identity.get("_finance_scope") in {"firm", "platform"}:
+        # 财务中心/平台财务中心的费用查询按老系统只列外部费用，内部费用在“内部费用”菜单查（陶国南 2026-11-02）。
+        external_only = True
     from app.core.finance import (
         _fee_query_rows,
     )
@@ -800,13 +803,15 @@ async def export_finance_fee_query(
     paid_from: date | None = None, paid_to: date | None = None,
     hearing_lawyer: str = "", assistant: str = "", case_stages: str = "", fee_types: str = "",
     dashboard_queue: str = "",
-    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+    identity: dict = Depends(optional_finance_center_identity), db: AsyncSession = Depends(get_db),
 ):
     from app.core.dashboard_scope import dashboard_request_identity
     identity = await dashboard_request_identity(dashboard_queue, {"official-fee-unpaid"}, identity, db)
     if dashboard_queue:
         # 工作台点进来时费用就是“待缴官费”数字那一批，不再按列表自己的未缴条件二次筛选。
         unpaid_official = not identity.get("_dashboard_queue_exact")
+    if identity.get("_finance_scope") in {"firm", "platform"}:
+        external_only = True
     from app.core.finance import (
         _fee_query_rows,
     )
@@ -832,6 +837,8 @@ async def export_finance_fee_query(
         assistant=assistant, case_stages=case_stages, fee_types=fee_types,
         ids=selected_ids,
     )
+    # 导出与列表同口径：只导本中心的费用。
+    rows = await filter_rows_by_center(rows, identity, db)
     if selected_ids is not None and len(rows) != len(selected_ids):
         raise HTTPException(status_code=422, detail="部分费用不存在或无权导出")
     if not rows:

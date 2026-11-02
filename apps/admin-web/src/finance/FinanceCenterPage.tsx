@@ -632,6 +632,7 @@ function FinanceCenterContent({
   // customer and package before rendering. Fetch the canonical record for
   // payment-list detail actions instead of reusing a possibly truncated row.
   const { openPaymentDetail, loadFeeQuery, loadPaymentQueryPage, loadPaymentPackages, createFee, feeAction, submitPaymentCancel, submitPaymentRollback, writeoffFee, writeoffPaymentPackage, downloadPaymentPrintWord, submitFeeReview, previewInternalPaymentPackage, submitInternalPaymentPackage, openPaymentPackageDetail, submitPaymentPackageEditor, exportFeeQuery } = createFinancePaymentsActions({
+    get financeScope() { return financeScope; },
     get setCases() { return setCases; },
     get setFeeDetail() { return setFeeDetail; },
     get feeQueryMeta() { return feeQueryMeta; },
