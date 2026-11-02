@@ -405,6 +405,8 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         }}
       >
         <AssistantWorkspaceTools key={workspace.draftKey} ref={workspaceToolsRef} workspace={workspace} desktopWorkspace={desktopWorkspace} onOpenPersonalAiSpace={() => setPersonalSpaceOpen(true)} onOpenMemory={() => setMemoryOpen(true)} />
+        {/* 501147：收文助手、客户与合同打开固定会话后，在输入框上方提示该做什么。 */}
+        {activeTaskEntry?.inputHint && !caseSession && <div className="assistant-task-hint" role="note">{activeTaskEntry.inputHint}</div>}
         <form className="assistant-composer-input" onSubmit={(event) => { event.preventDefault(); submit(); }}>
           <Input.TextArea
             ref={inputRef}
@@ -423,7 +425,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
             }}
             maxLength={8000}
             autoSize={{ minRows: 3, maxRows: 8 }}
-            placeholder={intakeMode ? "粘贴法院送达短信或 zxfw.court.gov.cn 链接" : "告诉智能体你要完成的 OA 工作"}
+            placeholder={activeTaskEntry?.inputHint || (intakeMode ? "粘贴法院送达短信或 zxfw.court.gov.cn 链接" : "告诉智能体你要完成的 OA 工作")}
             aria-label="给智能体的指令"
           />
           <div className="assistant-composer-actions">

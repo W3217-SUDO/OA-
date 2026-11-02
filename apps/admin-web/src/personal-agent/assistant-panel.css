@@ -220,3 +220,5 @@
 .assistant-workspace-history.is-in-space .assistant-workspace-history-heading h2 { font-size: 13px; }
 .assistant-history-all { align-self: flex-start; font-weight: 500; }
 .assistant-settings-trigger { font-weight: 500; }
+/* 501147：固定会话的输入提示 */
+.assistant-task-hint { margin: 0 0 6px; padding: 6px 10px; border-radius: 6px; background: var(--ant-color-info-bg, #e6f4ff); color: var(--ant-color-text-secondary, #555); font-size: 13px; }

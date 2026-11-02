@@ -656,7 +656,15 @@ test("fixed task conversation sends one dated summary per day (501147)", () => {
   assert.ok(prompt.startsWith("—— 2026-11-03 ——"));
   assert.equal(hasDailyMarker([{ role: "user", content: prompt }], "2026-11-03"), true, "当天已汇总过不再重复发");
   assert.equal(hasDailyMarker([{ role: "user", content: tasks.dailyPrompt("2026-11-02") }], "2026-11-03"), false, "新的一天再汇总一次");
-  assert.ok(AGENT_TASK_ENTRIES.every((item) => item.fixed && item.dailyPrompt("2026-11-03").startsWith("—— 2026-11-03 ——")), "三个固定任务都是固定会话（tgn 21:54）");
+  assert.ok(AGENT_TASK_ENTRIES.every((item) => item.fixed), "三个固定任务都是固定会话（tgn 21:54）");
+  // tgn 22:22：只有任务处理点开就发；收文、客户与合同只打开并提示。
+  assert.equal(tasks.autoPrompt, "我今日的任务");
+  for (const key of ["intake", "customer"]) {
+    const entry = AGENT_TASK_ENTRIES.find((item) => item.key === key);
+    assert.equal(entry.autoPrompt, undefined, `${key} 不自动发消息`);
+    assert.ok(entry.inputHint, `${key} 有输入提示`);
+  }
+  assert.ok(AGENT_TASK_ENTRIES.find((item) => item.key === "intake").inputHint.includes("请粘贴法院短信或送达链接"));
 });
 
 test("sidebar shows the 5 latest conversations and opens the full searchable history (501147)", async () => {

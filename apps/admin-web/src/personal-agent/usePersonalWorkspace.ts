@@ -364,9 +364,11 @@ export function usePersonalWorkspace() {
         if (entry.prompt && !entry.fixed) updateDraft(key, "input", entry.prompt);
         return opened;
       });
-      // 每天第一次进入时带上日期自动汇总当天任务，之前的处理过程接着往下写。
+      // 只有“任务处理”点入口就发“我今日的任务”（当天第一次带上日期）；收文、客户与合同只打开会话并提示（tgn 11-02 22:22）。
       const today = localDateText();
-      if (entry.fixed && entry.dailyPrompt && next?.conversation_id && !hasDailyMarker(next.messages, today)) await send(entry.dailyPrompt(today), next);
+      if (entry.fixed && entry.autoPrompt && next?.conversation_id) {
+        await send(entry.dailyPrompt && !hasDailyMarker(next.messages, today) ? entry.dailyPrompt(today) : entry.autoPrompt, next);
+      }
       return next;
     },
     renameConversation: (target: string, title: string) => conversations.rename(target, title),
