@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Button, Input, message, Space, Tag } from "antd";
+import { Button, Input, message, Modal, Space, Tag } from "antd";
 import dayjs from "dayjs";
 import { api } from "../api";
 import FeedbackFileDrop, { FEEDBACK_MAX_FILES } from "./FeedbackFileDrop";
@@ -116,7 +116,11 @@ export default function FeedbackForm({ sourceRoute, pageControls, openPages, men
   };
 
 
-  const discardDraft = () => {
+  const discardDraft = () => Modal.confirm({
+    title: "清空草稿？", content: "已填的问题描述、勾选的页面和截图附件都会清空。", okText: "清空", okButtonProps: { danger: true }, cancelText: "取消",
+    onOk: clearDraftNow,
+  });
+  const clearDraftNow = () => {
     void clearFeedbackDraft();
     setDescription("");
     setFiles([]);
@@ -167,7 +171,7 @@ export default function FeedbackForm({ sourceRoute, pageControls, openPages, men
       <Space wrap>
         <Button type="primary" loading={submitting} onClick={() => void submit()}>提交反馈</Button>
         <Button onClick={onCancel} disabled={submitting}>取消</Button>
-        {savedAt && <Button type="link" danger onClick={discardDraft} disabled={submitting}>清空草稿</Button>}
+        <Button type="link" danger onClick={discardDraft} disabled={submitting || (!description.trim() && !files.length)}>清空草稿</Button>
       </Space>
       <span className="feedback-hint">{savedAt ? `草稿已自动保存 ${dayjs(savedAt).format("HH:mm:ss")}，取消或离开后下次自动恢复` : "填写内容会自动保存为草稿"}</span>
     </div>

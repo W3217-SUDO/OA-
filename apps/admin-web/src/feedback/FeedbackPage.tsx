@@ -3,6 +3,7 @@ import { Button, Card, Segmented } from "antd";
 import { api } from "../api";
 import FeedbackManager, { FEEDBACK_GROUP_STATUSES, type FeedbackView } from "./FeedbackManager";
 import { FEEDBACK_SOURCE_ROUTE_KEY, feedbackPageLabel, readFeedbackPageControls, type FeedbackPageOption } from "./navigation";
+import { hasFeedbackDraft } from "./draft";
 import type { FeedbackStatusCounts } from "./types";
 import "./feedback.css";
 
@@ -17,7 +18,8 @@ export default function FeedbackPage({ onNavigate, openPages, menuPages, resolve
   const [sourceRoute] = useState(() => sessionStorage.getItem(FEEDBACK_SOURCE_ROUTE_KEY) || "");
   const [pageControls] = useState(readFeedbackPageControls);
   // 从某个页面点“问题反馈”进来先填写；直接打开（如从通知、页签）先看处理中的（tgn 11-01，BUG20261101005）。
-  const [view, setView] = useState<FeedbackView>(sourceRoute ? "create" : "open");
+  // 有没提交的草稿时，切到别的页签再回来也先回到填写页，已填内容原样保留（高勤兰 11-02，BUG20261102002）。
+  const [view, setView] = useState<FeedbackView>(sourceRoute || hasFeedbackDraft() ? "create" : "open");
   const [navKey, setNavKey] = useState(0);
   const [counts, setCounts] = useState<Record<string, number> | null>(null);
   const [countKey, setCountKey] = useState(0);

@@ -36,6 +36,14 @@ async function withStore<T>(mode: IDBTransactionMode, run: (store: IDBObjectStor
   }
 }
 
+/** 有没提交的草稿（同步判断，用来决定回到“问题反馈”时先打开填写页；BUG20261102002）。 */
+export function hasFeedbackDraft(): boolean {
+  try {
+    const text = JSON.parse(localStorage.getItem(textKey()) || "null");
+    return Boolean(text && (String(text.description || "").trim() || text.hasFiles));
+  } catch { return false; }
+}
+
 export async function loadFeedbackDraft(): Promise<FeedbackDraft | null> {
   let text: Omit<FeedbackDraft, "files"> | null = null;
   try { text = JSON.parse(localStorage.getItem(textKey()) || "null"); } catch { text = null; }
@@ -53,7 +61,7 @@ export async function saveFeedbackDraft(draft: Omit<FeedbackDraft, "savedAt">): 
   const savedAt = Date.now();
   try {
     const { files: _files, ...text } = draft;
-    localStorage.setItem(textKey(), JSON.stringify({ ...text, savedAt }));
+    localStorage.setItem(textKey(), JSON.stringify({ ...text, hasFiles: draft.files.length > 0, savedAt }));
   } catch { /* 存储不可用时只是不保存草稿 */ }
   try {
     if (draft.files.length) await withStore("readwrite", (store) => store.put(draft.files, draftOwner()));
