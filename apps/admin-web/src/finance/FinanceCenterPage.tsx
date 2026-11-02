@@ -94,7 +94,7 @@ import { RefundLogDrawer } from "./RefundLogDrawer";
 import { InvoiceDetailTables } from "./InvoiceDetailTables";
 import { ContractPaymentEditPage } from "./ContractPaymentEditPage";
 import { invoiceObjectFees } from "./invoiceDetails.mjs";
-import { canEditContractPayment, isContractPayment, paymentApplicationDate, paymentLifecycleStatus } from "./paymentLifecycle.mjs";
+import { canEditContractPayment, isContractPayment, isPendingWriteoffPackage, paymentApplicationDate, paymentLifecycleStatus } from "./paymentLifecycle.mjs";
 import { useFinanceRuntimeContext } from "./hooks/useFinanceRuntimeContext";
 import { usePaymentReversalState } from "./hooks/usePaymentReversalState";
 import { usePaymentWriteoffState } from "./hooks/usePaymentWriteoffState";
@@ -3399,7 +3399,18 @@ function FinanceCenterContent({
     104, 207, 83, 83, 83, 155, 83, 83, 83, 83, 83, 83, 83, 155, 83,
     83, 155, 83, 17,
   ];
+  // BUG20261028007（shenhe 11-02）：内部费用 付款单查询、付款单-核销 也要右键 查看、回滚；
+  // 待核销的回滚整个付款包退回待付款（上一个栏目），和付款管理一致。
+  const canRollbackPayment = ["admin", "manager", "auditor"].includes(role);
+  const internalRollbackMenu = (row: Fee) => initialView === "finance-internal-query" ? [
+    { key: "view", label: "查看", onClick: () => setFeeDetail(row) },
+    ...(canRollbackPayment && isPendingWriteoffPackage(row) ? [{ key: "rollback", label: "回滚", onClick: () => openPaymentRollback(row) }] : []),
+  ] : initialView === "finance-internal-writeoff" ? [
+    { key: "view", label: "查看", onClick: () => void openPaymentPackageDetail(row) },
+    ...(canRollbackPayment && row.status === "待核销" ? [{ key: "rollback", label: "回滚", onClick: () => openPaymentRollback({ ...row, data: { ...row.data, payment_package_id: row.id } }) }] : []),
+  ] : [];
   const configuredColumns = createConfiguredColumns({
+    rowMenu: ["finance-internal-query", "finance-internal-writeoff"].includes(initialView) ? internalRollbackMenu : undefined,
     get activeRouteConfig() { return activeRouteConfig; },
     get initialView() { return initialView; },
     get settlementColumnWidths() { return settlementColumnWidths; },

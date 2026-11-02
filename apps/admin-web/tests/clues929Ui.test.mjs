@@ -24,7 +24,7 @@ async function load(path, api = {}, messages = []) {
     name: 'isolated-clue-ui', setup(builder) {
       builder.onResolve({ filter: /\/api$/ }, () => ({ path: 'api', namespace: 'verification' }));
       builder.onResolve({ filter: /^antd$/ }, () => ({ path: 'antd', namespace: 'verification' }));
-      builder.onLoad({ filter: /.*/, namespace: 'verification' }, ({ path }) => ({ contents: path === 'api' ? 'export const api=globalThis.__clueApi;' : 'export const message=globalThis.__clueMessages; export const Button="button"; export const Empty="empty"; export const Modal="modal"; export const Select="select"; export const Alert="alert"; export const Spin="spin"; export const Descriptions="descriptions"; export const Tag="tag"; export const Tooltip="tooltip";' }));
+      builder.onLoad({ filter: /.*/, namespace: 'verification' }, ({ path }) => ({ contents: path === 'api' ? 'export const api=globalThis.__clueApi;' : 'export const message=globalThis.__clueMessages; export const Button="button"; export const Empty="empty"; export const Modal="modal"; export const Select="select"; export const Alert="alert"; export const Spin="spin"; export const Descriptions="descriptions"; export const Tag="tag"; export const Tooltip="tooltip"; export const Dropdown="dropdown";' }));
     },
   }] });
   const target = new Module(fileURLToPath(import.meta.url));

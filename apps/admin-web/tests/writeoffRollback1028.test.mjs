@@ -20,3 +20,14 @@ test("右键菜单与提交走付款包回滚接口", () => {
   const actions = read("../src/finance/services/paymentsActions.tsx");
   assert.match(actions, /isPendingWriteoffPackage\(paymentRollbackTarget\)\s*\?\s*`\/finance\/payment-packages\/\$\{paymentRollbackTarget\.data\.payment_package_id\}\/rollback`/);
 });
+
+test("内部费用 付款单查询、付款单-核销 也有右键查看和回滚（shenhe 11-02）", () => {
+  const page = read("../src/finance/FinanceCenterPage.tsx");
+  assert.match(page, /rowMenu: \["finance-internal-query", "finance-internal-writeoff"\]\.includes\(initialView\) \? internalRollbackMenu : undefined/);
+  assert.match(page, /canRollbackPayment && isPendingWriteoffPackage\(row\)/);
+  assert.match(page, /payment_package_id: row\.id/);
+  const columns = read("../src/finance/columns/configuredColumns.tsx");
+  assert.match(columns, /trigger=\{\["contextMenu"\]\} menu=\{\{ items \}\}/);
+  const actions = read("../src/finance/services/paymentsActions.tsx");
+  assert.match(actions, /initialView === "finance-internal-writeoff"\) \{\s*await loadPaymentPackages/);
+});

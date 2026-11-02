@@ -1,6 +1,6 @@
 import type { OriginalRouteConfig } from "../types";
 import { moneyColumnStyle } from "../moneyColumns";
-import { Button, Tag, message } from "antd";
+import { Button, Dropdown, Tag, message } from "antd";
 import type { Fee, IncomingPayment, SettlementRow } from "../types";
 
 const feeQueryColumnWidths: Record<string, number> = {
@@ -62,6 +62,7 @@ export function createConfiguredColumns(context: {
     readonly openInvoiceProcess: (row: Fee) => void;
     readonly openInvoiceDetail: (row: Fee) => Promise<void>;
     readonly openPaymentPackageDetail: (row: Fee) => Promise<void>;
+    readonly rowMenu?: (row: any) => { key: string; label: string; onClick: () => void }[];
 }) {
     return context.activeRouteConfig?.headers.map((header, index) => ({
         title: header.includes("/") ? (<span className="finance-stacked-header">
@@ -206,6 +207,21 @@ export function createConfiguredColumns(context: {
                     <Tag style={{ margin: 0, whiteSpace: "normal", maxWidth: "100%", overflowWrap: "anywhere" }}>已发生本地分配操作</Tag>
                 </div>}
                 </>;
+            },
+        };
+    }).map((column) => {
+        // BUG20261028007：内部费用 付款单查询、付款单-核销 每行右键 查看、回滚。
+        const rowMenu = context.rowMenu;
+        if (!rowMenu) return column;
+        const render = column.render;
+        return {
+            ...column,
+            render: (value: unknown, row: any) => {
+                const items = rowMenu(row);
+                const content = render(value, row);
+                return items.length ? <Dropdown trigger={["contextMenu"]} menu={{ items }}>
+                    <span style={{ display: "inline-block", minWidth: 20 }}>{content}</span>
+                </Dropdown> : content;
             },
         };
     });

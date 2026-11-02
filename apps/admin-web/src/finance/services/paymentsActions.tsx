@@ -391,7 +391,11 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
             message.success("回滚成功！");
             setPaymentRollbackTarget(null);
             setPaymentRollbackComment("");
-            if (internalApplication || isContractPayment(paymentRollbackTarget)) {
+            if (initialView === "finance-internal-writeoff") {
+                await loadPaymentPackages(originalQuery, context.paymentPackageMeta.page, context.paymentPackageMeta.pageSize);
+                return;
+            }
+            if (internalApplication || initialView === "finance-internal-query" || isContractPayment(paymentRollbackTarget)) {
                 await context.load();
                 return;
             }
