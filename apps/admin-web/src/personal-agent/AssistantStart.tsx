@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { AuditOutlined, ExceptionOutlined, FolderOpenOutlined, ScheduleOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import type { AgentTaskEntry } from "../agentSkillRouting";
 import { TaskEntryCards } from "./TaskEntryCards";
+import { NEW_CONVERSATION_COMMANDS } from "../agentSkillRouting";
 
 // 由工作台当天的数据生成的建议：点击后把具体内容交给智能体处理。
 export type AssistantSuggestion = {
@@ -53,7 +54,7 @@ export default function AssistantStart({ suggestions, disabled, onPick, taskEntr
           ))}
         </div>
       )}
-      {onStartTask && <TaskEntryCards entries={taskEntries} disabled={disabled} onStart={onStartTask} />}
+      {onStartTask && <TaskEntryCards entries={taskEntries} disabled={disabled} onStart={onStartTask} commands={NEW_CONVERSATION_COMMANDS} onCommand={onPick} />}
       <div className="assistant-cards is-shortcut">
         {shortcuts.map((item) => (
           <button key={item.label} type="button" className="assistant-card" disabled={disabled} onClick={() => onPick(item.prompt)}>

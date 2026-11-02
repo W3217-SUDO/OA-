@@ -206,7 +206,9 @@
 /* 501141：固定任务入口（侧栏一组按钮；空对话里一排卡片） */
 .assistant-task-entries { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .assistant-cards.is-task-entries { margin-bottom: 10px; }
-.assistant-workspace-greeting .assistant-cards.is-task-entries { margin-top: 16px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+/* 501147（tgn 23:17）：四张卡片分两排，每排两个（电脑和手机都是） */
+.assistant-cards.is-task-entries { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.assistant-workspace-greeting .assistant-cards.is-task-entries { margin-top: 16px; max-width: 640px; }
 
 /* 501147：右上角“设置”（智能体设置、记忆管理、导入技能） */
 .assistant-settings-trigger { flex: none; }
