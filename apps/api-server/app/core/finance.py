@@ -1016,7 +1016,9 @@ async def _finance_linked_case(case_no: str, identity: dict, db: AsyncSession) -
     case_no = case_no.strip()
     if not case_no:
         return None
-    item = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.serial_no == case_no, *(await _record_scope_conditions(identity, db))))
+    # 501099：非诉（知识产权）的费用挂在知识产权案件上。
+    module = "ipr_case" if identity.get("_business_type") == "非诉" else "case"
+    item = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == module, BusinessRecord.serial_no == case_no, *(await _record_scope_conditions(identity, db))))
     if not item:
         raise HTTPException(status_code=404, detail="关联案件不存在或无权访问")
     return item
@@ -1051,7 +1053,7 @@ async def _validate_invoice_source_links(
     case_record = await _finance_linked_case(body.case_no, identity, db)
     if body.case_record_id:
         linked_case = await _ensure_record_visible(body.case_record_id, identity, db)
-        if linked_case.module != "case":
+        if linked_case.module != ("ipr_case" if identity.get("_business_type") == "非诉" else "case"):
             raise HTTPException(status_code=422, detail="关联记录不是案件")
         if case_record and case_record.id != linked_case.id:
             raise HTTPException(status_code=409, detail="案件编号与案件记录不一致")
