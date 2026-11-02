@@ -1971,7 +1971,8 @@ export default function App() {
         <UnknownPageMessage route={active} />
       </Card>
     );
-  return requestedPage;
+  const currentPage = requestedPage;
+  return currentPage;
   };
   // 最近打开的页签页面留在内存里（最多 KEEP_ALIVE_PAGES 个），切换页签不重建；
   // 带目标进入、刷新、双击侧栏菜单时重新打开；关掉页签就释放（BUG20261102003）。
