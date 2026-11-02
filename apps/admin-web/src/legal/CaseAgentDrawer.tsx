@@ -1,4 +1,5 @@
 import { POPUP_WIDTH } from "../components/common/popupSize";
+import { CaseAgentDock } from "./CaseAgentDock";
 import { StatusTag } from "../components/common/StatusTag";
 import {
 CloseOutlined,
@@ -10,7 +11,7 @@ RobotOutlined,
 SendOutlined,
 StopOutlined,
 } from "@ant-design/icons";
-import { Alert,Button,Drawer,Image,Input,message,Modal,Select,Space,Tag,Tree } from "antd";
+import { Alert,Button,Image,Input,message,Modal,Select,Space,Tag,Tree } from "antd";
 import { useEffect, useState } from "react";
 import { AgentOperationPreview, agentOperationName, hasAgentOperationPreview } from "../AgentOperationPreview";
 import { AgentToolResult } from "../AgentToolResult";
@@ -80,8 +81,6 @@ export const CaseAgentDrawer = ({
   agentOpen,
   closeCaseAgent,
   agentCase,
-  agentDrawerWidth,
-  startAgentDrawerResize,
   agentStatus,
   agentLoading,
   agentSending,
@@ -133,15 +132,12 @@ export const CaseAgentDrawer = ({
     ? selectedSkill.quick_prompts
     : ["概括案件现状", "检查最近期限风险", "汇总合同与费用", "列出尚未完成的任务"];
   return (
-    <Drawer
-      className="case-agent-drawer"
-      size={agentDrawerWidth}
+    // 501165：停靠在右侧、不遮挡案件信息的面板（可调宽、放大、收起、浮动），替代原来带遮罩的抽屉。
+    <CaseAgentDock
       open={agentOpen}
       title={<span><RobotOutlined /> 案件智能体：{agentCase?.serial_no || ""}</span>}
       onClose={closeCaseAgent}
-      destroyOnHidden
     >
-      <div className="case-agent-resize-handle" role="separator" aria-label="拖动调整智能体宽度" onPointerDown={startAgentDrawerResize} />
       <div className="case-agent-panel" data-testid="case-agent-panel">
         <div className="case-agent-status">
           <Space className="case-agent-status-badges" size={[6, 6]} wrap>
@@ -248,6 +244,6 @@ export const CaseAgentDrawer = ({
           <Button type="primary" icon={agentSending && !agentInput.trim() && !agentScreenshots.length ? <StopOutlined /> : <SendOutlined />} disabled={agentLoading || !agentStatus?.ready || (!agentSending && !agentInput.trim() && !agentScreenshots.length)} title={agentSending && !agentInput.trim() && !agentScreenshots.length ? "停止生成" : agentSending ? "发送引导并打断当前生成" : "发送"} onClick={() => agentSending && !agentInput.trim() && !agentScreenshots.length ? stopCaseAgentResponse() : void sendCaseAgentMessage()} />
         </div>
       </div>
-    </Drawer>
+    </CaseAgentDock>
   );
 };
