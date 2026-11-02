@@ -812,6 +812,8 @@ body.case-agent-docked .app-body .content{margin-right:var(--case-agent-dock-wid
 .case-agent-dock-body{flex:1;min-height:0;overflow:hidden;background:var(--oa-fill)}
 .case-agent-dock-body>.case-agent-panel{height:100%}
 .case-agent-dock-resize{position:absolute;z-index:2;top:0;bottom:0;width:8px;cursor:ew-resize;touch-action:none}
+.case-agent-dock.is-docked{border-top:1px solid var(--oa-border);border-top-left-radius:10px;overflow:hidden}
+.case-agent-dock-resize.is-top{top:-3px;right:0;bottom:auto;left:0;width:auto;height:8px;cursor:ns-resize}
 .case-agent-dock-resize.is-left{left:-3px}.case-agent-dock-resize.is-right{right:-3px}
 .case-agent-dock-resize.is-corner{top:auto;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize}
 .case-agent-dock-resize.is-left:hover::after,.case-agent-dock-resize.is-left:active::after{content:"";position:absolute;top:0;bottom:0;left:3px;width:2px;background:var(--oa-primary)}

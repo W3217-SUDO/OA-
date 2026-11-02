@@ -4,21 +4,29 @@ import { CloseOutlined, CompressOutlined, ExpandOutlined, MenuFoldOutlined, Push
 
 // 501165（tgn 11-03 07:36）：案件智能体停靠在右侧，不遮挡左侧案件信息；默认占页面宽度 2/9，
 // 拖左边缘调宽，可放大、收起成右侧小按钮，也可拖出成浮动窗口；每人上次的宽度和位置记在本机。手机仍全屏。
+// tgn 07:52：“打开默认 2/9，放置在右下角”——停靠时贴右下角，高度约为可视区 70%，拖上边缘可调高。
 export const DOCK_DEFAULT_RATIO = 2 / 9;
 export const DOCK_MIN_WIDTH = 320;
 export const DOCK_MAX_RATIO = 0.7;
+export const DOCK_DEFAULT_HEIGHT = 0.7;
+const DOCK_MIN_HEIGHT = 320;
 const TOPBAR = 50;
 const MOBILE_QUERY = "(max-width: 767px)";
 const BODY_CLASS = "case-agent-docked";
 
 type FloatRect = { x: number; y: number; w: number; h: number };
-export type DockLayout = { mode: "docked" | "floating"; ratio: number; float: FloatRect | null };
+export type DockLayout = { mode: "docked" | "floating"; ratio: number; heightRatio: number; float: FloatRect | null };
+
+export function clampHeight(ratio: number, available: number) {
+  const min = Math.min(DOCK_MIN_HEIGHT / Math.max(available, 1), 1);
+  return Math.min(1, Math.max(min, Number.isFinite(ratio) ? ratio : DOCK_DEFAULT_HEIGHT));
+}
 
 const storageKey = () => {
   try {
     const user = JSON.parse(localStorage.getItem("user") || "null");
-    return `oa.caseAgentDock.v1.${user?.username || "anonymous"}`;
-  } catch { return "oa.caseAgentDock.v1.anonymous"; }
+    return `oa.caseAgentDock.v2.${user?.username || "anonymous"}`;
+  } catch { return "oa.caseAgentDock.v2.anonymous"; }
 };
 
 export function clampRatio(ratio: number, viewport: number) {
@@ -40,10 +48,10 @@ export function readDockLayout(): DockLayout {
     const value = JSON.parse(localStorage.getItem(storageKey()) || "null");
     if (value && (value.mode === "docked" || value.mode === "floating")) {
       const float = value.float && ["x", "y", "w", "h"].every((key) => Number.isFinite(value.float[key])) ? value.float : null;
-      return { mode: value.mode === "floating" && float ? "floating" : "docked", ratio: Number(value.ratio) || DOCK_DEFAULT_RATIO, float };
+      return { mode: value.mode === "floating" && float ? "floating" : "docked", ratio: Number(value.ratio) || DOCK_DEFAULT_RATIO, heightRatio: Number(value.heightRatio) || DOCK_DEFAULT_HEIGHT, float };
     }
   } catch { /* 本机存储不可用时用默认布局 */ }
-  return { mode: "docked", ratio: DOCK_DEFAULT_RATIO, float: null };
+  return { mode: "docked", ratio: DOCK_DEFAULT_RATIO, heightRatio: DOCK_DEFAULT_HEIGHT, float: null };
 }
 
 function saveDockLayout(layout: DockLayout) {
@@ -75,6 +83,8 @@ export function CaseAgentDock({ open, title, onClose, children }: Props) {
 
   const docked = open && !collapsed && !viewport.mobile && layout.mode === "docked";
   const dockWidth = maximized ? viewport.width : Math.round(clampRatio(layout.ratio, viewport.width) * viewport.width);
+  const available = viewport.height - TOPBAR;
+  const dockHeight = Math.round(clampHeight(layout.heightRatio, available) * available);
   // 停靠时左侧页面让出面板宽度，案件信息随之自适应；浮动、收起、关闭时还原。
   useEffect(() => {
     const root = document.body;
@@ -99,10 +109,15 @@ export function CaseAgentDock({ open, title, onClose, children }: Props) {
   };
 
   const floatRect = (): FloatRect => clampFloat(layoutRef.current.float || {
-    x: viewport.width - dockWidth - 24, y: TOPBAR + 24, w: Math.max(dockWidth, 380), h: Math.round((viewport.height - TOPBAR) * 0.8),
+    x: viewport.width - Math.max(dockWidth, 380) - 24, y: viewport.height - dockHeight - 24, w: Math.max(dockWidth, 380), h: dockHeight,
   }, viewport);
 
-  // 停靠时拖左边缘调宽；浮动时拖左右边和右下角调大小。
+  // 停靠时拖左边缘调宽、拖上边缘调高；浮动时拖左右边和右下角调大小。
+  const resizeDockHeight = (event: ReactPointerEvent) => {
+    const start = dockHeight;
+    let latest = layoutRef.current;
+    drag(event, (_dx, dy) => { latest = { ...layoutRef.current, heightRatio: clampHeight((start - dy) / available, available) }; update(latest, false); }, () => saveDockLayout(latest));
+  };
   const resizeDock = (event: ReactPointerEvent) => {
     const start = dockWidth;
     let latest = layoutRef.current;
@@ -122,14 +137,14 @@ export function CaseAgentDock({ open, title, onClose, children }: Props) {
     if ((event.target as HTMLElement).closest("button")) return;
     if (maximized) return;
     const startMode = layoutRef.current.mode;
-    const start = startMode === "floating" ? floatRect() : { ...floatRect(), x: viewport.width - dockWidth, y: TOPBAR, w: dockWidth };
+    const start = startMode === "floating" ? floatRect() : { x: viewport.width - dockWidth, y: viewport.height - dockHeight, w: dockWidth, h: dockHeight };
     const grabX = event.clientX - start.x, grabY = event.clientY - start.y;
     let detached = startMode === "floating";
     let latest = layoutRef.current;
     drag(event, (dx, dy, moveEvent) => {
       if (!detached && Math.abs(dx) + Math.abs(dy) < 12) return;
       detached = true;
-      const rect = clampFloat({ ...start, x: moveEvent.clientX - grabX, y: moveEvent.clientY - grabY, h: startMode === "floating" ? start.h : Math.round((viewport.height - TOPBAR) * 0.8) }, viewport);
+      const rect = clampFloat({ ...start, x: moveEvent.clientX - grabX, y: moveEvent.clientY - grabY, h: start.h }, viewport);
       latest = { ...layoutRef.current, mode: "floating", float: rect };
       update(latest, false);
     }, () => { if (detached) saveDockLayout(latest); });
@@ -146,7 +161,7 @@ export function CaseAgentDock({ open, title, onClose, children }: Props) {
   const style = mobile ? undefined
     : maximized ? { top: TOPBAR, right: 0, bottom: 0, left: 0 }
     : rect ? { top: rect.y, left: rect.x, width: rect.w, height: rect.h }
-    : { top: TOPBAR, right: 0, bottom: 0, width: dockWidth };
+    : { right: 0, bottom: 0, width: dockWidth, height: dockHeight };
   const className = `case-agent-dock${mobile ? " is-mobile" : maximized ? " is-maximized" : floating ? " is-floating" : " is-docked"}`;
   return <section className={className} style={style} role="complementary" aria-label="案件智能体">
     <header className="case-agent-dock-header" onPointerDown={mobile ? undefined : moveHeader}>
@@ -162,7 +177,10 @@ export function CaseAgentDock({ open, title, onClose, children }: Props) {
       </span>
     </header>
     <div className="case-agent-dock-body">{children}</div>
-    {!mobile && !maximized && !floating && <div className="case-agent-dock-resize is-left" role="separator" aria-label="拖动调整智能体宽度" onPointerDown={resizeDock} />}
+    {!mobile && !maximized && !floating && <>
+      <div className="case-agent-dock-resize is-left" role="separator" aria-label="拖动调整智能体宽度" onPointerDown={resizeDock} />
+      <div className="case-agent-dock-resize is-top" role="separator" aria-label="拖动调整智能体高度" onPointerDown={resizeDockHeight} />
+    </>}
     {floating && <>
       <div className="case-agent-dock-resize is-left" role="separator" aria-label="拖动调整智能体宽度" onPointerDown={resizeFloat("left")} />
       <div className="case-agent-dock-resize is-right" role="separator" aria-label="拖动调整智能体宽度" onPointerDown={resizeFloat("right")} />
