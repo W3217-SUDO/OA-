@@ -1105,6 +1105,7 @@ def _optional_record_id(value: object) -> int:
 async def _run_business_rules_once() -> None:
     """按既有顺序执行期限规则，每条规则独立提交或回滚。"""
     from app.core.attachment_deletion import reconcile_pending_attachment_deletes
+    from app.core.case_phase_auto import apply_civil_case_phase_rules
     from app.core.investigation import (
         _apply_notary_auto_conversion,
     )
@@ -1117,6 +1118,7 @@ async def _run_business_rules_once() -> None:
         ("任务超期绩效", _apply_task_overdue_performance),
         ("案件自动任务", _apply_case_automatic_task_rules),
         ("附件暂存协调", reconcile_pending_attachment_deletes),
+        ("民事案件自动改阶段", apply_civil_case_phase_rules),
     )
     for name, rule in rules:
         try:
