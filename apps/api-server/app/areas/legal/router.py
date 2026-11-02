@@ -2945,12 +2945,12 @@ async def read_case_task(case_id: int, task_id: int, identity: dict = Depends(cu
 @router.get(f"{settings.api_prefix}/cases/{{case_id}}/tasks/{{task_id}}/attachments/{{attachment_id}}/download")
 async def download_case_task_file(case_id: int, task_id: int, attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.case_task_view import visible_case_task
-    from app.core.storage import _attachment_storage_path
+    from app.core.storage import ensure_attachment_local
     await visible_case_task(case_id, task_id, identity, db)
     item = await db.get(FileAttachment, attachment_id)
     if not item or item.record_id != task_id or item.category not in {"任务资料附件", "任务反馈附件"}:
         raise HTTPException(404, "该任务附件不存在")
-    path = _attachment_storage_path(item)
+    path = await ensure_attachment_local(item)
     if path is None:
         raise HTTPException(404, "附件文件不存在")
     return FileResponse(path, media_type=item.content_type, filename=item.original_name)

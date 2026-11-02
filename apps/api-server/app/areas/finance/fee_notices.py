@@ -222,7 +222,7 @@ async def download_finance_fee_inform_bill(inform_id: int, identity: dict = Depe
         _fee_inform_record,
     )
     from app.core.storage import (
-        _attachment_storage_path,
+        ensure_attachment_local,
     )
     notice, source_fee = await _fee_inform_record(inform_id, identity, db)
     await _require_linked_case_fee_action(source_fee, "case.fee.receipt.view", identity, db)
@@ -230,7 +230,7 @@ async def download_finance_fee_inform_bill(inform_id: int, identity: dict = Depe
     attachment = await db.get(FileAttachment, attachment_id) if attachment_id else None
     if not attachment or attachment.record_id != notice.id:
         raise HTTPException(status_code=404, detail="费用通知票据文件不存在")
-    path = _attachment_storage_path(attachment)
+    path = await ensure_attachment_local(attachment)
     if path is None:
         raise HTTPException(status_code=404, detail="费用通知票据文件不存在")
     return FileResponse(path, media_type=attachment.content_type, filename=attachment.original_name)

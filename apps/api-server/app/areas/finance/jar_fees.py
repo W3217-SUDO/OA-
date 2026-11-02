@@ -265,11 +265,11 @@ async def download_jar_fee_file(jar_fee_id: int, attachment_id: int, identity: d
         _require_jar_fee_access,
     )
     from app.core.storage import (
-        _attachment_storage_path,
+        ensure_attachment_local,
     )
     await _require_jar_fee_access(identity, db); item = await _jar_fee_or_404(jar_fee_id, identity, db); attachment = await db.get(FileAttachment, attachment_id)
     if not attachment or attachment.record_id != item.id: raise HTTPException(status_code=404, detail="交案费文件不存在")
-    path = _attachment_storage_path(attachment)
+    path = await ensure_attachment_local(attachment)
     if path is None: raise HTTPException(status_code=404, detail="交案费文件不存在")
     return FileResponse(path, media_type=attachment.content_type, filename=attachment.original_name)
 

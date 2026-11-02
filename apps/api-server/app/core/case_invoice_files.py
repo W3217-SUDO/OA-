@@ -47,9 +47,9 @@ async def require_invoice_file_access(identity, db):
         raise HTTPException(403, "当前账号没有案件发票文件权限")
 
 
-def _invoice_file_entries(attachment):
-    from app.core.storage import _attachment_storage_path
-    path = _attachment_storage_path(attachment)
+async def _invoice_file_entries(attachment):
+    from app.core.storage import ensure_attachment_local
+    path = await ensure_attachment_local(attachment)
     if path is None:
         raise HTTPException(409, "上传文件不存在，请重新上传")
     if Path(attachment.original_name).suffix.lower() != ".zip":
@@ -108,7 +108,7 @@ async def import_invoice_files(identity, db, attachment_ids):
     try:
         for attachment in pending:
             try:
-                source_path, entries = _invoice_file_entries(attachment)
+                source_path, entries = await _invoice_file_entries(attachment)
                 plans = []
                 seen = set()
                 for name, content in entries:

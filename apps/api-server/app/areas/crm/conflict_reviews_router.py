@@ -272,12 +272,12 @@ async def upload_conflict_attachment(review_id: int, file: UploadFile = File(...
 
 @router.get("/{review_id}/attachments/{attachment_id}/download")
 async def download_conflict_attachment(review_id: int, attachment_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.storage import _attachment_storage_path
+    from app.core.storage import ensure_attachment_local
     await ensure_conflict_review_visible(review_id, identity, db)
     item = await db.get(FileAttachment, attachment_id)
     if not item or item.record_id != review_id or item.category != ATTACHMENT_CATEGORY:
         raise HTTPException(status_code=404, detail="本次审查附件不存在")
-    path = _attachment_storage_path(item)
+    path = await ensure_attachment_local(item)
     if not path:
         raise HTTPException(status_code=404, detail="书面材料文件不存在")
     return FileResponse(path, media_type=item.content_type, filename=item.original_name)

@@ -400,7 +400,7 @@ async def _authorized_pdf_preview_attachment(
     content_type = str(item.content_type or "").lower()
     if suffix != ".pdf" and content_type != "application/pdf":
         raise HTTPException(status_code=422, detail="仅支持 PDF 文件在线逐页预览")
-    path = _attachment_storage_path(item)
+    path = await ensure_attachment_local(item)
     if path is None:
         raise HTTPException(status_code=404, detail="附件文件不存在")
     if path.stat().st_size > PDF_PREVIEW_MAX_FILE_BYTES:

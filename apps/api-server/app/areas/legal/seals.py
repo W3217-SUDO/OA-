@@ -222,7 +222,7 @@ async def batch_download_seal_files(body: SealPackageDownloadInput, identity: di
         _ensure_record_module,
     )
     from app.core.storage import (
-        _attachment_storage_path,
+        ensure_attachment_local,
     )
     record_ids = list(dict.fromkeys(body.application_ids))
     records: dict[int, BusinessRecord] = {}
@@ -241,17 +241,25 @@ async def batch_download_seal_files(body: SealPackageDownloadInput, identity: di
 
     output = io.BytesIO()
     included = 0
+    missing: list[str] = []
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for attachment in attachments:
             record = records[int(attachment.record_id)]
-            path = _attachment_storage_path(attachment)
+            # OSS 附件本机未缓存时先取回；取不到的写进清单，不再静默漏掉
+            try:
+                path = await ensure_attachment_local(attachment)
+            except HTTPException:
+                path = None
             if path is None:
+                missing.append(f"{record.serial_no}\t{attachment.original_name or attachment.stored_name}")
                 continue
             safe_name = Path(str(attachment.original_name or attachment.stored_name).replace("\\", "/")).name
             safe_name = re.sub(r"[\x00-\x1f]+", "_", safe_name).strip(" .") or attachment.stored_name
             safe_serial = re.sub(r"[\\/\x00-\x1f]+", "_", record.serial_no).strip(" .") or f"seal-{record.id}"
             archive.writestr(f"{safe_serial}/{attachment.id}-{safe_name}", path.read_bytes())
             included += 1
+        if included and missing:
+            archive.writestr("未能下载的文件.txt", "以下文件暂时无法读取，请稍后重试或联系管理员：\n" + "\n".join(missing) + "\n")
     if not included:
         raise HTTPException(status_code=404, detail="所选附件文件不存在")
     output.seek(0)
