@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Alert, Button, Modal, Space, Spin, Tag } from "antd";
 import { ArrowRightOutlined, ReloadOutlined } from "@ant-design/icons";
 import { api } from "../api";
-import { AgentOperationPreview, agentOperationMessage } from "../AgentOperationPreview";
+import { AgentOperationPreview, agentOperationMessage, readableValue } from "../AgentOperationPreview";
 import { errorText, type ConfirmationDetail, type ConfirmationRecord } from "./types";
 
 type Props = {
@@ -56,7 +56,7 @@ export function ConfirmationHistoryDetails({ record, onClose, onReopen, onReopen
         {detail.item.error != null && <Alert type="error" showIcon title="执行错误" description={agentOperationMessage(detail.item.error)} />}
         {detail.action && <AgentOperationPreview action={detail.action} />}
         {!detail.action && detail.item.source === "mcp" && detail.request_preview && <AgentOperationPreview action={{ id: detail.item.id, type: "mcp.call", summary: detail.item.summary, payload: { request_id: detail.item.id }, preview: detail.request_preview }} />}
-        {detail.item.result != null && <pre>{typeof detail.item.result === "string" ? detail.item.result : JSON.stringify(detail.item.result, null, 2)}</pre>}
+        {detail.item.result != null && <pre>{typeof detail.item.result === "string" ? detail.item.result : readableValue(detail.item.result, detail.action?.preview ?? detail.request_preview ?? undefined)}</pre>}
       </>}
     </div></Spin>
   </Modal>;

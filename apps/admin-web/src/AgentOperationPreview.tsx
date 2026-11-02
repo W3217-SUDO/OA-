@@ -15,6 +15,9 @@ export type AgentActionPreview = {
   params?: Record<string, unknown>;
   original_values?: string;
   requires_confirmation?: boolean;
+  /** 501137：后端随预览给出的参数中文名和代码值中文。 */
+  field_labels?: Record<string, string>;
+  value_labels?: Record<string, Record<string, string>>;
 };
 
 export type AgentApprovalAction = {
@@ -44,6 +47,12 @@ const ACTION_FIELD_NAMES: Record<string, string> = {
   case_id: "案件", id: "案件", hearing_lawyer: "开庭律师", hearing_lawyers: "开庭律师",
   handling_lawyer: "经办律师", customer_manager: "客户负责人", assistant: "助理", comment: "备注",
   module: "业务类型", serial_no: "案号", record_id: "业务记录", target_id: "目标记录",
+  // 501137：老确认记录没有后端显示名时的常用参数中文名。
+  task_id: "任务ID", task_ids: "任务ID", action: "动作", recipient: "接收人账号", end_at: "结束时间", start_at: "开始时间",
+  remark: "备注", reason: "原因", amount: "金额", fee_type: "费用类型", fee_id: "费用ID", fee_ids: "费用ID",
+  contract_id: "合同ID", contract_no: "合同编号", case_no: "案号", level: "审级", court_case_no: "法院案号",
+  hearing_date: "开庭日期", hearing_time: "开庭时间", judge: "法官", clerk: "书记员", approved: "审批结论",
+  finance_scope: "财务中心", payment_id: "到账ID", invoice_no: "发票号", collaborators: "协作人",
 };
 const PARAMETER_GROUP_NAMES: Record<string, string> = {
   path: "相关信息", query: "相关信息", body: "确认信息", files: "附件信息",
@@ -64,13 +73,56 @@ const USER_FACING_FIELD_NAMES: Record<string, string> = {
 const HIDDEN_PARAMETER_FIELDS = new Set([
   "conversation_id", "message_index", "expected_content_sha256", "request_id",
 ]);
-const valueText = (value: unknown): string => {
+// 501137：前端兜底的代码值中文（老确认记录没有 value_labels 时用）。
+const DEFAULT_VALUE_NAMES: Record<string, Record<string, string>> = {
+  action: { accept: "接受任务", reject: "拒绝任务", handoff: "转交任务", complete: "完成任务", confirm: "发起人确认完成",
+    restart: "重启任务", feedback: "任务沟通留言", withdraw: "撤回", rollback: "回滚", resend: "重新发送", start: "开始处理", assign: "指派" },
+  finance_scope: { firm: "财务中心（律所）", platform: "平台财务中心", internal: "内部" },
+  level: { first: "一审", second: "二审", retrial: "再审" },
+};
+// 结果里常见的键（执行结果、办理步骤）。
+const RESULT_FIELD_NAMES: Record<string, string> = {
+  mode: "办理方式", steps: "办理步骤", step: "步骤", purpose: "内容", kind: "读写", status: "状态", result: "结果",
+  error: "错误", failed_step: "失败步骤", problem: "问题", notes: "说明", id: "ID", serial_no: "编号", title: "名称",
+  request_id: "确认单号", summary: "摘要", message: "说明", detail: "说明", items: "明细", total: "合计", created: "新建",
+  updated: "更新", deleted: "删除", count: "数量", name: "名称", task: "任务", tasks: "任务", case: "案件", contract: "合同",
+  customer: "客户", fee: "费用", invoice: "发票", payment: "付款", deadline: "截止日期", amount: "金额", next_step: "下一步",
+  confirmation_url: "确认页面", isError: "是否出错",
+};
+// 只供系统用、不给用户看的键。
+const HIDDEN_RESULT_FIELDS = new Set(["tool", "arguments", "uri", "download_url", "mime_type", "type", "artifact_id", "resource_id", "structuredContent", "content"]);
+const hasChinese = (text: string) => /[\u4e00-\u9fff]/.test(text);
+const fieldName = (field: string, preview?: AgentActionPreview) => preview?.field_labels?.[field] || ACTION_FIELD_NAMES[field]
+  || RESULT_FIELD_NAMES[field] || (hasChinese(field) ? field : "其他信息");
+const codeValue = (field: string, value: unknown, preview?: AgentActionPreview): unknown => {
+  if (typeof value !== "string") return value;
+  return preview?.value_labels?.[field]?.[value] ?? DEFAULT_VALUE_NAMES[field]?.[value] ?? value;
+};
+/** 把对象逐行写成“中文名：值”，不显示代码格式和英文键名。 */
+export const readableValue = (value: unknown, preview?: AgentActionPreview, field = "", depth = 0): string => {
+  value = codeValue(field, value, preview);
   if (value === undefined) return "未读取";
   if (value === null) return "空值";
   if (value === "") return "空字符串";
-  return typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
+  if (typeof value === "boolean") return value ? "是" : "否";
+  const indent = "  ".repeat(depth);
+  if (Array.isArray(value)) {
+    if (!value.length) return "无";
+    if (value.every((item) => item === null || typeof item !== "object")) return value.map((item) => readableValue(item, preview, field, depth)).join("、");
+    return value.map((item, index) => `${indent}第${index + 1}项：\n${readableValue(item, preview, field, depth + 1)}`).join("\n");
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).filter(([key]) => !HIDDEN_RESULT_FIELDS.has(key) && !HIDDEN_PARAMETER_FIELDS.has(key));
+    if (!entries.length) return "无";
+    return entries.map(([key, item]) => {
+      const text = readableValue(item, preview, key, depth + 1);
+      return item !== null && typeof item === "object" && text.includes("\n") ? `${indent}${fieldName(key, preview)}：\n${text}` : `${indent}${fieldName(key, preview)}：${text.trim()}`;
+    }).join("\n");
+  }
+  return String(value);
 };
-const parameterLabel = (field: string) => ACTION_FIELD_NAMES[field] || "字段信息";
+const valueText = (value: unknown, preview?: AgentActionPreview, field: string | undefined = ""): string => readableValue(value, preview, field ?? "");
+const parameterLabel = (field: string, preview?: AgentActionPreview) => fieldName(field, preview);
 const visibleParameterEntries = (values: Record<string, unknown>) => Object.entries(values).filter(([field]) => !HIDDEN_PARAMETER_FIELDS.has(field));
 
 /** 将模型遗留的技术字段转换为用户可读的中文，避免在聊天和确认标题中暴露接口字段。 */
@@ -116,10 +168,10 @@ export const hasAgentOperationPreview = (action: AgentApprovalAction) => action.
   action.payload?.request_id && action.preview?.operation_name && action.preview.method && action.preview.path && action.preview.params && action.preview.requires_confirmation === true,
 );
 
-const ParameterValues = ({ values }: { values: Record<string, unknown> }) => <div className="agent-action-create">
+const ParameterValues = ({ values, preview }: { values: Record<string, unknown>; preview?: AgentActionPreview }) => <div className="agent-action-create">
   {visibleParameterEntries(values).map(([field, value]) => <div key={field}>
-    <strong style={{ overflowWrap: "anywhere" }}>{parameterLabel(field)}</strong>
-    <span>{valueText(value)}</span>
+    <strong style={{ overflowWrap: "anywhere" }}>{parameterLabel(field, preview)}</strong>
+    <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{valueText(value, preview, field)}</span>
   </div>)}
 </div>;
 
@@ -142,22 +194,22 @@ export function AgentOperationPreview({ action, target }: { action: AgentApprova
       return <section key={group}>
         <strong>{PARAMETER_GROUP_NAMES[group] || "确认信息"}</strong>
         {objectValue
-          ? <ParameterValues values={objectValue} />
-          : <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{valueText(value)}</div>}
+          ? <ParameterValues values={objectValue} preview={preview} />
+          : <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{valueText(value, preview)}</div>}
       </section>;
     })}
-    {preview?.create && <section><strong>确认信息</strong><ParameterValues values={preview.create} /></section>}
+    {preview?.create && <section><strong>确认信息</strong><ParameterValues values={preview.create} preview={preview} /></section>}
     {!preview?.create && !!preview?.changes?.length && <Table
       size="small" bordered pagination={false} rowKey="field" dataSource={preview.changes}
       scroll={{ x: 480 }}
       columns={[
-        { title: "字段", dataIndex: "field", width: 130, render: (field: string) => parameterLabel(field) },
-        { title: "修改前", dataIndex: "before", render: (value: unknown, change: { before_read?: boolean }) => <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{change.before_read === true ? valueText(value) : "未读取"}</span> },
-        { title: "修改后", dataIndex: "after", render: (value: unknown) => <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{valueText(value)}</span> },
+        { title: "字段", dataIndex: "field", width: 130, render: (field: string) => parameterLabel(field, preview) },
+        { title: "修改前", dataIndex: "before", render: (value: unknown, change: { field?: string; before_read?: boolean }) => <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{change.before_read === true ? valueText(value, preview, change?.field) : "未读取"}</span> },
+        { title: "修改后", dataIndex: "after", render: (value: unknown, change?: { field: string }) => <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{valueText(value, preview, change?.field)}</span> },
       ]}
     />}
     {!preview?.params && !preview?.create && !preview?.changes?.length && action.payload && <section>
-      <strong>确认信息</strong><ParameterValues values={action.payload} />
+      <strong>确认信息</strong><ParameterValues values={action.payload} preview={preview} />
     </section>}
   </div>;
 }

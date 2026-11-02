@@ -356,11 +356,13 @@ async def _call_tool(name: str, arguments: dict, *, conversation_id: str | None 
             return await execute_original(spec, params, case_origin=case_origin, conversation_id=conversation_id)
         # 其余写入一律先生成待确认请求（陶威 11-01 21:55）：站内智能体弹确认卡片，外部 MCP 由本人在 OA 网页智能体中心确认。
         target, changes, original = await _original_changes(spec, params, db)
+        from app.agent_mcp.display_labels import display_maps
         preview = {
             "operation_name": spec.title, "tool_name": spec.name, "method": spec.method,
             "path": render_path(spec, params), "path_template": spec.path, "params": params,
             "original_values": original, "requires_confirmation": True,
             **({"target": target} if target else {}), **({"changes": changes} if changes else {}),
+            **display_maps(params),
         }
         pending = await _create_pending_request(
             identity, db, tool_name=spec.name, fingerprint=descriptor_fingerprint(spec), arguments=arguments, params=params,
@@ -469,11 +471,13 @@ async def prepare_business_request(tool, values: dict, plan: dict, *, conversati
     identity = await authenticated_identity()
     steps = [f"{step['step']}. {step['purpose']}" + ("（写入）" if step.get("kind") == "写" else "")
              for step in plan.get("steps") or []]
+    from app.agent_mcp.display_labels import display_maps
     preview = {
         "operation_name": tool.title, "tool_name": tool.name, "method": "POST",
         "path": f"业务工具 {tool.name}", "path_template": f"/business-tools/{tool.name}",
         "params": {"path": {}, "query": {}, "body": values, "steps": "\n".join(steps)},
         "original_values": "按下列步骤依次办理，任一步失败即停止", "requires_confirmation": True,
+        **display_maps({"body": values}, tool.properties),
     }
     async with SessionLocal() as db:
         return await _create_pending_request(

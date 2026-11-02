@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button, message, Space } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 import { api } from "./api";
-import { agentOperationError } from "./AgentOperationPreview";
+import { agentOperationError, readableValue } from "./AgentOperationPreview";
 
 type DownloadResource = { name: string; endpoint: string };
 
@@ -49,6 +49,6 @@ export function AgentToolResult({ result, showDetails = false }: { result: unkno
         style={{ height: "auto", minHeight: 44, minWidth: 44, whiteSpace: "normal", overflowWrap: "anywhere", maxWidth: "100%" }}
         onClick={() => void download(resource)}>{resource.name}</Button>)}
     </Space>}
-    {showDetails && result !== undefined && result !== null && <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(result, null, 2)}</pre>}
+    {showDetails && result !== undefined && result !== null && <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{typeof result === "string" ? result : readableValue(result)}</pre>}
   </>;
 }

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Alert, Button, Drawer, Empty, Pagination, Select, Spin, Tag, Tooltip } from "antd";
 import { AuditOutlined, EyeOutlined, ReloadOutlined } from "@ant-design/icons";
 import { api } from "../api";
-import { agentOperationMessage } from "../AgentOperationPreview";
+import { agentOperationMessage, readableValue } from "../AgentOperationPreview";
 import { ConfirmationHistoryDetails } from "./ConfirmationHistoryDetails";
 import { errorText, type ConfirmationDetail, type ConfirmationHistoryPage, type ConfirmationRecord, type ConfirmationStatus } from "./types";
 import "./confirmation-history.css";
@@ -78,7 +78,7 @@ export function ConfirmationHistory({ onReopen, busy = false }: { onReopen?: (de
               {item.error !== null && item.error !== undefined && <Alert type="error" showIcon title="执行错误" description={agentOperationMessage(item.error)} />}
               {item.result !== null && item.result !== undefined && <details className="confirmation-history-result">
                 <summary>执行结果</summary>
-                <pre>{typeof item.result === "string" ? item.result : JSON.stringify(item.result, null, 2)}</pre>
+                <pre>{typeof item.result === "string" ? item.result : readableValue(item.result)}</pre>
               </details>}
               <Button className="confirmation-history-detail-button" icon={<EyeOutlined />} disabled={busy} onClick={() => setSelectedRecord(item)}>查看详情</Button>
             </li>)}

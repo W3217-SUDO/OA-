@@ -1,6 +1,11 @@
 """从已校验或持久保存的接口参数生成确认摘要，不查询或执行业务。"""
 
+from contextvars import ContextVar
+
 from app.config import settings
+
+# 本次摘要用的中文显示名（预览里保存的 field_labels / value_labels，501137）。
+_DISPLAY: ContextVar[tuple[dict, dict]] = ContextVar("action_summary_display", default=({}, {}))
 
 
 _FIELD_LABELS = {
@@ -35,6 +40,21 @@ _FIELD_LABELS = {
     "commission_details": "提成明细", "employee_username": "员工账号", "commission_type": "提成类别",
     "items": "明细", "lines": "明细", "changes": "修改字段", "data": "业务字段",
     "actions": "操作明细", "case_contracts": "案件合同关联", "module": "业务模块",
+    # 501137：业务工具和常用接口里其余参数的中文名，不再显示内部代码名。
+    "file_date": "建档日期", "investigation_id": "调查任务ID", "start_date": "开始日期", "page": "页码", "page_size": "每页条数",
+    "clue_id": "线索ID", "clue_ids": "线索ID", "warehouse_id": "仓库ID", "storage_location_id": "存放位置ID",
+    "finance_scope": "财务中心", "business_type": "业务类型", "archive_type": "归档类型", "payment_id": "到账ID",
+    "receipt_id": "到账ID", "receipt_ids": "到账ID", "invoice_id": "发票ID", "invoice_ids": "发票ID",
+    "user_id": "用户ID", "username": "账号", "display_name": "姓名", "name": "名称", "content": "内容",
+    "note": "备注", "notes": "备注", "phone": "电话", "email": "邮箱", "address": "地址", "court": "法院",
+    "court_case_no": "法院案号", "judge": "法官", "clerk": "书记员", "hearing_date": "开庭日期", "hearing_time": "开庭时间",
+    "filing_date": "立案日期", "level": "审级", "case_stage": "案件阶段", "case_type": "案件类型", "cause_or_charge": "案由",
+    "client_position": "客户诉讼地位", "handling_lawyers": "经办律师", "assistant": "律师助理", "investigator": "调查员",
+    "source_person": "案源人", "plaintiffs": "原告", "defendants": "被告", "third_parties": "第三人",
+    "organization_type": "主体类型", "identity_no": "证件号码", "contacts": "联系人", "category": "类别",
+    "invoice_type": "发票类型", "invoice_title": "发票抬头", "taxpayer_id": "纳税人识别号", "tax_rate": "税率",
+    "application_date": "申请日期", "reminder_date": "提醒日期", "date": "日期", "type": "类型", "keyword": "关键字",
+    "confirm": "确认执行", "scope": "范围", "decision": "决定",
 }
 
 _TASK_ACTIONS = {
@@ -78,9 +98,12 @@ def _value_text(value) -> str:
 
 
 def _field_text(key: str, value) -> str:
+    from app.agent_mcp.display_labels import field_label, value_label
     prefix, separator, name = key.rpartition(".")
     name = name if separator else key
-    label = (prefix + "." if separator else "") + _FIELD_LABELS.get(name, name)
+    labels, values = _DISPLAY.get()
+    label = (prefix + "." if separator else "") + field_label(name, labels)
+    value = value_label(name, value, values)
     if name == "approved" and isinstance(value, bool):
         text = "通过" if value else "拒绝"
     elif isinstance(value, str) and (name in {"recipient", "owner", "handler", "amount"} or name.endswith("_amount")):
@@ -155,6 +178,14 @@ def _action_list(actions: list) -> str:
 
 def summary_from_preview(preview: dict) -> str:
     """新旧确认记录共用，只读取原预览；不依赖当前目录或修改历史记录。"""
+    token = _DISPLAY.set((preview.get("field_labels") or {}, preview.get("value_labels") or {}))
+    try:
+        return _summary_from_preview(preview)
+    finally:
+        _DISPLAY.reset(token)
+
+
+def _summary_from_preview(preview: dict) -> str:
     path = preview["path_template"].removeprefix(settings.api_prefix)
     method = preview["method"]
     params = preview["params"]
@@ -178,7 +209,7 @@ def summary_from_preview(preview: dict) -> str:
             if key.endswith(("_id", "_ids", "_no", "_nos", "Ids")) and key not in {"fee_type_id", "payment_type_id"}:
                 targets.append(_field_text(key, value))
             elif key in {"data", "changes"} and isinstance(value, dict):
-                details.update({_FIELD_LABELS.get(key, key) + "." + name: item for name, item in value.items()})
+                details.update({_FIELD_LABELS.get(key, "业务字段") + "." + name: item for name, item in value.items()})
             else:
                 details[key] = value
     if body is not None and not isinstance(body, dict):

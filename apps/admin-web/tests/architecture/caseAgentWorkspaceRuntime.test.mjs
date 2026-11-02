@@ -795,6 +795,12 @@ test("real approval preview loads the shared table and preserves original values
   assert.equal(before(null, { before_read: true }).props.children, "空值");
   assert.equal(after("新律师").props.children, "新律师");
   assert.equal(after("").props.children, "空字符串");
+  // 501137：参数名、代码值、嵌套对象都显示中文，不出现“字段信息”和英文代码。
+  const { readableValue } = loadModule("../AgentOperationPreview.tsx", {});
+  const labelled = { field_labels: { task_id: "任务ID", action: "动作" }, value_labels: { action: { complete: "完成任务" } } };
+  assert.equal(readableValue({ task_id: 498463, action: "complete" }, labelled), "任务ID：498463\n动作：完成任务");
+  assert.equal(readableValue({ action: "handoff", unknown_code: true }), "动作：转交任务\n其他信息：是");
+  assert.equal(readableValue({ court: { level: "second", hearing_date: "2026-11-20" } }), "法院：\n  审级：二审\n  开庭日期：2026-11-20");
   const created = AgentOperationPreview({ action: { ...action, preview: { ...action.preview, create: { title: "新建任务" } } } });
   assert.equal(React.Children.toArray(created.props.children).some((child) => child.type === table.type), false);
   const mcp = { id: "r1", type: "mcp.call", summary: "修改案件", payload: { request_id: "r1" }, preview: {
@@ -838,7 +844,8 @@ test("personal confirmation history reads pending and decided records with pagin
   assert.equal(renderer.root.findByType("tag").props.children, "已执行");
   assert.equal(renderer.root.findByType("summary").props.children, "执行结果");
   assert.equal(renderer.root.findByType("details").props.open, undefined, "完整结果默认折叠");
-  assert.deepEqual(JSON.parse(renderer.root.findByType("pre").props.children), record.result);
+  // 501137：执行结果逐行显示中文名和值，不再显示代码格式。
+  assert.equal(renderer.root.findByType("pre").props.children, "数量：2\n说明：已生成期限提醒");
   assert.equal(renderer.root.findAllByType("button").length, 3, "历史新增只读详情，不提供决定或重放按钮");
   await act(async () => renderer.root.findAllByType("button").find((button) => button.props.children === "查看详情").props.onClick());
   assert.equal(renderer.root.findByType("history-details").props.record, record);
