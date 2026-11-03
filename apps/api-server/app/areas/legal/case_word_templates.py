@@ -229,7 +229,8 @@ def fill(content: bytes, slots: list[dict], values: dict) -> bytes:
             if item.filename in parts and b"<w:p" in payload:
                 root = etree.fromstring(payload)
                 for paragraph in root.iter(W + "p"):
-                    for segment in _segments(paragraph):
+                    segments = _segments(paragraph)
+                    for segment in segments:
                         count = len(_split_segment("".join(_run_text(run) for run in segment)))
                         text = "".join(str(values.get(key, "")) for key in keys[position:position + count])
                         position += count
@@ -238,9 +239,10 @@ def fill(content: bytes, slots: list[dict], values: dict) -> bytes:
                         nodes[0].set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
                         for node in nodes[1:]:
                             node.text = ""
-                        for run in segment:
-                            mark = run.find(f"{W}rPr/{W}u")
-                            if mark is not None:
+                    if segments:
+                        # 陶国南 16:42：定稿不留下划线。替换过的段落里，空白 run、段落标记上的下划线也一并去掉（字段以外的文字本来就没有下划线）。
+                        for mark in paragraph.iter(W + "u"):
+                            if mark.getparent().tag == W + "rPr":
                                 mark.getparent().remove(mark)
                     _replace_slots(paragraph, placeholder_values, PLACEHOLDER)
                 payload = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)

@@ -140,6 +140,9 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
                                   "因原被告之间已达成和解并履行，现原告申请撤回对甲店、北京三快在线科技有限公司的起诉。望法院准许。", "下划线换成案件信息，括号说明去掉，正文不改")
         saved = Document(BytesIO(Path(attachment.path).read_bytes()))
         self.assertFalse(any(run.underline for paragraph in saved.paragraphs for run in paragraph.runs if run.text), "替换后去掉下划线")
+        from zipfile import ZipFile
+        with ZipFile(attachment.path) as package:
+            self.assertNotIn(b"<w:u ", package.read("word/document.xml"), "空白 run、段落标记上也不留下划线")
         self.assertEqual(body[7], "代理人：沈建锋")
         self.assertRegex(body[8], r"^日  期：\d{4}年\d{1,2}月\d{1,2}日$")
         self.assertFalse(any("{" in text for text in body))
