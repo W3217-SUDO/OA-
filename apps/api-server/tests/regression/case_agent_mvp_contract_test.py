@@ -527,7 +527,9 @@ class CaseAgentApiContractTest(unittest.IsolatedAsyncioTestCase):
             status = await case_agent_status(case.id, identity, db)
             self.assertTrue(status["ready"])
             workflow = await get_case_workflow_guide(case.id, identity, db)
-            self.assertEqual(workflow["manual"]["version"], "2026-08")
+            # 501189（思法汇成 11-03）：测试案件没填案由，按通用诉讼流程并提醒补填案由，不再套用知识产权手册。
+            self.assertEqual(workflow["manual"]["name"], "民商事诉讼案件通用办案流程")
+            self.assertTrue(workflow["manual"]["cause_missing"])
             self.assertEqual(workflow["current_phase"]["code"], "document-preparation")
             self.assertTrue(workflow["materials"])
             result = await send_case_agent_message(
