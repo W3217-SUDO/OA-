@@ -1,5 +1,6 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 from app.core.automatic_task_diagnostics import automatic_task_diagnostics_scope
+from app.core.case_people import split_case_people
 
 from app.core.constants import (
     CASE_EVENT_COMPLETED_STATUS, logger,
@@ -426,7 +427,7 @@ async def _sync_notifications(identity: dict, db: AsyncSession) -> None:
             case_record.owner,
             str(hearing.hearing_lawyer or "").strip(),
             str(case_data.get("assistant_username") or case_data.get("assistant") or "").strip(),
-            str(case_data.get("investigator_username") or case_data.get("investigator") or "").strip(),
+            *split_case_people(case_data.get("investigator_usernames") or case_data.get("investigator_username") or case_data.get("investigator")),
             *(str(value).strip() for value in (case_data.get("handling_lawyer_usernames") or []) if str(value).strip()),
         }
         if username not in responsible:

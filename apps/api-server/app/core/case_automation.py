@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.automatic_task_diagnostics import warn_automatic_task
 from app.core.case_automation_sources import RuleSources, _as_date, _case_clues, _load_sources, _reference_list
+from app.core.case_people import split_case_people
 from app.core.task_personnel import resolve_automatic_task_user
 from app.models import (
     BusinessRecord, Department, User, WorkflowEvent,
@@ -221,7 +222,8 @@ async def _apply_phase_rules(case_record: BusinessRecord, sources: RuleSources, 
                 method in TIMESTAMP_ORGANIZATIONS for method in current_methods
             ):
                 investigator = await resolve_automatic_task_user(
-                    (case_record.data or {}).get("investigator_username")
+                    (case_record.data or {}).get("investigator_usernames")
+                    or split_case_people((case_record.data or {}).get("investigator_username"))
                     or next((
                         (sources.current_clues[number].data or {}).get("collected_by")
                         for number in clue_numbers if number in sources.current_clues

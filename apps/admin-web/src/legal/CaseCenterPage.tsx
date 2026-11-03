@@ -104,7 +104,8 @@ normalizeFeeSubtypeForScope
 } from "../caseRelationConsumption.mjs";
 import {
 CASE_EXECUTION_STATUSES,
-prioritizeCaseAssistantSelection
+prioritizeCaseAssistantSelection,
+splitCasePeople
 } from "../caseSecondBatchParity";
 import { buildWarehouseLocationOptions,resolveCaseWarehouseLocationIds } from "../caseWarehouseLocationParity.mjs";
 import {
@@ -642,6 +643,7 @@ export default function CaseCenterPage({
     );
     return option?.value || normalized;
   };
+  const isCasePersonOption = (value: string) => caseAssistantOptions.some((item) => item.value === value);
   const resolveCasePersonValues = (sources: unknown) => {
     const values = Array.isArray(sources) ? sources : [sources];
     return values.map((value) => resolveCasePersonValue(String(value || ""))).filter(Boolean);
@@ -880,6 +882,7 @@ export default function CaseCenterPage({
     get normalCaseEditForm() { return normalCaseEditForm; },
     get resolveCasePersonValues() { return resolveCasePersonValues; },
     get resolveCasePersonValue() { return resolveCasePersonValue; },
+    get isCasePersonOption() { return isCasePersonOption; },
     get setEditingNormalCase() { return setEditingNormalCase; },
     get editingNormalCase() { return editingNormalCase; },
     get loadCounselDetailCluesPage() { return loadCounselDetailCluesPage; },
@@ -4515,11 +4518,16 @@ export default function CaseCenterPage({
           <div className="form-grid">
             <Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item>
             <Form.Item label="律师助理" name="assistants" normalize={prioritizeCaseAssistantSelection}><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="可选择多人；最新选择的助理排在最前" /></Form.Item>
-            <Form.Item label="调查员" name="investigator"><KeywordPersonSelect allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>
-            {isCivilCaseType(editingNormalCase?.data.case_type) && <Form.Item label="案源人" name="business_owner"><KeywordPersonSelect allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>}
+            <Form.Item label="调查员" name="investigators" extra="默认按关联调查线索的调查员带出，可多选"><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="可选择多人" /></Form.Item>
+            {isCivilCaseType(editingNormalCase?.data.case_type) && <Form.Item label="案源人" name="business_owners"><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="可选择多人" /></Form.Item>}
             {editingNormalCase?.data.case_type === "行政案件及国家赔偿" && <Form.Item label="权利类型" name="right_type"><Select allowClear options={rightTypeOptions}/></Form.Item>}
           </div>
-          <Form.Item label="关联调查线索" name="investigation_clue_ids"><CaseClueSelect caseId={editingNormalCase?.id} /></Form.Item>
+          <Form.Item label="关联调查线索" name="investigation_clue_ids"><CaseClueSelect caseId={editingNormalCase?.id} onPickRows={(rows, allKnown) => {
+            // 改了关联线索：调查员按线索的调查员重新带出（同一人一次）；有线索不在候选里时保留已选的人
+            const picked = resolveCasePersonValues(splitCasePeople(rows.map((row) => row.data?.investigator_usernames?.length ? row.data.investigator_usernames : row.owner)));
+            const current = allKnown ? [] : (normalCaseEditForm.getFieldValue("investigators") || []);
+            normalCaseEditForm.setFieldsValue({ investigators: [...new Set([...current, ...picked])] });
+          }} /></Form.Item>
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>
