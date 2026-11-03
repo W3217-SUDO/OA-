@@ -16,6 +16,7 @@ from app.areas.agent_admin.skills import router as skills_router
 from app.areas.agent_admin.system_skills import router as system_skills_router
 from app.areas.agent_admin.plugins import router as plugins_router
 from app.areas.agent_admin.model_providers import router as model_providers_router
+from app.areas.agent_admin.cloud_runtime import router as cloud_runtime_router
 from app.areas.capability_market.router import router as capability_router
 
 
@@ -24,6 +25,7 @@ router.include_router(skills_router)
 router.include_router(system_skills_router)
 router.include_router(plugins_router)
 router.include_router(model_providers_router)
+router.include_router(cloud_runtime_router)
 router.include_router(capability_router)
 
 

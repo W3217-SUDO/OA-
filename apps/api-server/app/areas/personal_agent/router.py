@@ -166,17 +166,19 @@ async def personal_agent_status(identity: dict = Depends(current_identity), db: 
     file_capability = await personal_save_capability(safe_identity, db)
     from app.harness_agent.runtime import readiness
     from app.harness_agent.model_providers import active_model
+    from app.cloud_agent.config import active as cloud_active
     native = readiness()
     active = await active_model(db)
+    cloud = await cloud_active(db)
     return {
-        "ready": bool(settings.langgraph_enabled and active.configured and native["ready"]),
-        "agent_runtime_backend": settings.agent_runtime_backend,
+        "ready": bool(settings.langgraph_enabled and (cloud is not None or (active.configured and native["ready"]))),
+        "agent_runtime_backend": "volcengine-managed-agents" if cloud else settings.agent_runtime_backend,
         "harness_version": native["version"],
-        "runtime_error": native["error"],
-        "model": active.model,
-        "model_provider": active.name,
+        "runtime_error": "" if cloud else native["error"],
+        "model": cloud.model if cloud else active.model,
+        "model_provider": "火山云端智能体" if cloud else active.name,
         "runtime": "personal-agent",
-        "supports_response_modes": supports_response_modes(active),
+        "supports_response_modes": False if cloud else supports_response_modes(active),
         "write_requires_confirmation": True,
         "personal_file_storage": file_capability,
         "identity": {key: value for key, value in safe_identity.items() if not key.startswith("_")},

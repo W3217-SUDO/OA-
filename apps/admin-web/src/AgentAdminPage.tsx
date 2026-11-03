@@ -10,6 +10,7 @@ import { CapabilityMarket } from "./capability-market/CapabilityMarket";
 import { GlobalMcpWorkspace } from "./capability-market/GlobalMcpWorkspace";
 import { DshPluginCenter } from "./capability-market/DshPluginCenter";
 import { DshModelProviders } from "./capability-market/DshModelProviders";
+import { CloudRuntimeSettings } from "./capability-market/CloudRuntimeSettings";
 import { CaseWordTemplatesAdmin } from "./capability-market/CaseWordTemplatesAdmin";
 import { SystemSkillPanel } from "./SystemSkillPanel";
 import { SkillRuntimeStatus } from "./personal-agent/SkillRuntimeStatus";
@@ -176,6 +177,7 @@ export default function AgentAdminPage({ isSystemAdmin }: { isSystemAdmin: boole
       ]} />
       {error && <Alert type="error" showIcon title="智能体设置加载未完成" description={error} action={<Button loading={loading} onClick={() => void load()}>重试</Button>} />}
       {tab === "plugins" && <DshPluginCenter active canManage={isSystemAdmin} onBusy={setCapabilityBusy} />}
+      {tab === "dsh-api" && isSystemAdmin && <CloudRuntimeSettings active canManage={isSystemAdmin} onBusy={setCapabilityBusy} />}
       {tab === "dsh-api" && isSystemAdmin && <DshModelProviders active canManage={isSystemAdmin} onBusy={setCapabilityBusy} />}
       {tab === "word-templates" && <CaseWordTemplatesAdmin active />}
       <div hidden={tab !== "global"}>

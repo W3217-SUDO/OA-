@@ -158,6 +158,13 @@ def _content(messages, *, resumed):
 
 async def run(messages, on_delta, *, tools, schema, identity, db, workspace, conversation,
               response_mode="fast", mode_supported=False, on_progress=None):
+    # 智能体设置里启用了云端智能体时，个人助手和案件智能体都改走火山 Managed Agents，不在本机起 DSH。
+    from app.cloud_agent.config import active as cloud_active
+    cloud = await cloud_active(db)
+    if cloud is not None:
+        from app.cloud_agent.runtime import run as cloud_run
+        return await cloud_run(messages, on_delta, tools=tools, schema=schema, identity=identity, db=db, workspace=workspace,
+                               conversation=conversation, cloud=cloud, on_progress=on_progress)
     state = readiness()
     if not state["ready"]:
         raise HTTPException(503, "DeepSeek Harness 未就绪：" + state["error"])

@@ -35,6 +35,13 @@ async def request_model(
 ) -> str:
     if identity is None or db is None or not workspace or not conversation:
         raise HTTPException(409, "Harness 缺少已认证的工作区会话，未创建共享会话")
+    from app.cloud_agent.config import active as cloud_active
+    if await cloud_active(db) is not None:
+        if response_mode == "deep":
+            raise HTTPException(status_code=422, detail="当前模型未启用回答模式切换")
+        from app.harness_agent.runtime import run
+        return await run(messages, on_delta, tools=tools, schema=MODEL_TOOLS if model_tools is None else model_tools,
+                         identity=identity, db=db, workspace=workspace, conversation=conversation, on_progress=on_progress)
     from app.harness_agent.model_providers import active_model
     active = await active_model(db)
     if not active.configured:
