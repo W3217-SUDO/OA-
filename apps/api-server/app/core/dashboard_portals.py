@@ -1,6 +1,6 @@
-"""首页分端待办：律师端、财务行政端、调查端各放哪些待办，角色默认看哪个端（系统参数“首页分端待办”）。
+"""首页分端待办：律师端、财务行政端、调查端、非诉端各放哪些待办，角色默认看哪个端（系统参数“首页分端待办”）。
 
-系统管理员固定看三个端，不单独配置；其他角色按勾选显示。有多个端时用页签切换，一次只显示一个端
+系统管理员固定看全部端，不单独配置；其他角色按勾选显示。有多个端时用页签切换，一次只显示一个端
 （用户 2026-10-26：三个端分开，一次只看一个端）；每个端的项数不限，首页一页显示 8 项，多了前端自动分页切换。待办数字口径不变：首页数字 = 点进去那个列表的总数；
 已在“我的待办”和“案件与费用提醒”里统计的项直接复用那两组数字，其余项在这里按列表接口计数。
 """
@@ -9,6 +9,8 @@ from fastapi import HTTPException
 CONFIG_KEY = "dashboard_portals"
 # 旧的“管理端（全部待办）”勾选项，2026-10-26 起不再提供；旧配置里勾了它的角色按三个端都勾处理。
 MANAGE_PORTAL = "manage"
+# 旧“管理端”勾选当时只对应这三个端；501209 新加的非诉端不因旧勾选自动给出。
+LEGACY_MANAGE_PORTALS = ("lawyer", "finance_admin", "investigation")
 ADMIN_ROLE_NAMES = {"系统管理员", "SYSTEM-ADMIN"}
 
 # 待办目录：key、名称、点进去的页面、数字来源（todo=我的待办，metric=提醒指标，extra=本模块计数）、口径说明。
@@ -39,6 +41,11 @@ PORTAL_ITEMS = (
     ("urgent", "紧急案件", "dashboard-queue-urgent-cases", "metric:urgent-cases", "我的紧急案件"),
     ("refund", "待退费", "dashboard-queue-refund-pending", "metric:refund-pending", "我的案件里待退费的"),
     ("fee-unreceived", "未到官费金额", "dashboard-queue-official-fee-unreceived", "metric:official-fee-unreceived", "未到账官费，按金额显示"),
+    # BUG20261103（501209，高勤兰 11-03）：财务和非诉常用的四项，数字同点进去的列表；tgn 11-06 定：不开放个人自定义，只按角色配。
+    ("invoice-pending", "待开票", "finance-invoice-pending", "extra", "开票管理里待处理开票的总数（需要开票审核或开具权限）"),
+    ("payment-waiting", "待付款", "finance-payment-waiting", "extra", "付款管理里待付款列表的总数"),
+    ("payment-audit", "待审批付款", "finance-payment-audit", "extra", "请款单审批里待审批的费用和合同付款"),
+    ("ipr-warning", "非诉期限预警", "ipr-warnings", "extra", "发给我、还没处理的知识产权期限预警"),
 )
 ITEM_KEYS = tuple(key for key, *_ in PORTAL_ITEMS)
 
@@ -48,13 +55,18 @@ DEFAULT_PORTALS = [
         "task", "fee-unpaid", "appeal", "evidence", "opinion", "receipts-pending", "receivable", "archive-closing",
     ]},
     {"key": "finance_admin", "name": "财务行政端", "items": [
-        "task", "fee-unpaid", "internal-fee-audit", "fee-audit", "settlement-audit", "archive-fee", "seal-stamping",
+        "invoice-pending", "receipts-pending", "payment-audit", "internal-fee-audit",
+        "task", "fee-unpaid", "fee-audit", "settlement-audit", "archive-fee", "seal-stamping",
     ]},
     {"key": "investigation", "name": "调查端", "items": [
         "task", "fee-unpaid", "clue-audit", "notary-review", "evidence",
     ]},
+    # 501209：第 4 个端。生产上已保存的三端配置读出时自动补上这个端（见 _with_all_portals）。
+    {"key": "ipr", "name": "非诉端", "items": [
+        "ipr-warning", "task",
+    ]},
 ]
-# 角色默认归属：按人事角色名称匹配；系统管理员固定看三个端，不在这里配置。
+# 角色默认归属：按人事角色名称匹配；系统管理员固定看全部端，不在这里配置。非诉端默认不分给任何角色，由管理员勾选。
 DEFAULT_ROLE_PORTALS = {
     "合伙人律师": ["lawyer"], "主办律师": ["lawyer"], "承办律师": ["lawyer"], "律师助理": ["lawyer"],
     "案件主管": ["lawyer"], "合同管理员": ["lawyer"], "业务专员": ["lawyer"], "客户主管": ["lawyer"],
@@ -64,7 +76,7 @@ DEFAULT_ROLE_PORTALS = {
 }
 DEFAULT_CONFIG = {"portals": DEFAULT_PORTALS, "role_portals": DEFAULT_ROLE_PORTALS}
 
-# 管理端（用户 2026-10-27）：排在三个端之后的第四个页签，只有管理员（admin 角色，即管理者账号）能看到。
+# 管理端（用户 2026-10-27）：排在各分端之后的最后一个页签，只有管理员（admin 角色，即管理者账号）能看到。
 # 固定内容、不进分端配置，和 2026-10-26 去掉的旧“管理端（全部待办）”勾选项无关（旧勾选仍按三个端都勾处理）。
 ADMIN_PORTAL_KEY = "admin"
 ADMIN_PORTAL_ITEMS = (
@@ -80,13 +92,23 @@ def catalog() -> list[dict]:
             for key, label, route, source, description in PORTAL_ITEMS]
 
 
+def _with_all_portals(portals):
+    """已保存的旧配置少了后加的端（如 501209 的非诉端）时按默认补上，顺序按默认端排；不能因为少端就整份退回默认、丢掉管理员的配置。"""
+    if not isinstance(portals, list) or not all(isinstance(item, dict) for item in portals):
+        raise HTTPException(status_code=422, detail="端口配置无效")
+    default_keys = [portal["key"] for portal in DEFAULT_PORTALS]
+    saved = [item.get("key") for item in portals]
+    if any(key not in default_keys for key in saved) or len(set(saved)) != len(saved):
+        raise HTTPException(status_code=422, detail="端口固定为律师端、财务行政端、调查端、非诉端，不能增删")
+    by_key = {item["key"]: item for item in portals}
+    return [by_key.get(portal["key"]) or {**portal, "items": list(portal["items"])} for portal in DEFAULT_PORTALS]
+
+
 def validate_config(value: dict) -> dict:
     if not isinstance(value, dict) or set(value) != {"portals", "role_portals"}:
         raise HTTPException(status_code=422, detail="首页分端配置必须包含端口和角色归属")
-    portals, role_portals = value["portals"], value["role_portals"]
+    portals, role_portals = _with_all_portals(value["portals"]), value["role_portals"]
     default_keys = [portal["key"] for portal in DEFAULT_PORTALS]
-    if not isinstance(portals, list) or [item.get("key") if isinstance(item, dict) else None for item in portals] != default_keys:
-        raise HTTPException(status_code=422, detail="端口固定为律师端、财务行政端、调查端，不能增删")
     cleaned_portals = []
     for portal in portals:
         name = portal.get("name")
@@ -103,9 +125,10 @@ def validate_config(value: dict) -> dict:
     for role, keys in role_portals.items():
         if not isinstance(role, str) or not role.strip() or not isinstance(keys, list) or any(key not in allowed for key in keys):
             raise HTTPException(status_code=422, detail="角色归属里有无效的角色或端口")
-        # 系统管理员固定看三个端，这一行的勾选不再保存。
+        # 系统管理员固定看全部端，这一行的勾选不再保存。
         if keys and role.strip() not in ADMIN_ROLE_NAMES:
-            cleaned_roles[role.strip()] = [key for key in default_keys if key in keys or MANAGE_PORTAL in keys]
+            cleaned_roles[role.strip()] = [key for key in default_keys
+                                           if key in keys or (MANAGE_PORTAL in keys and key in LEGACY_MANAGE_PORTALS)]
     return {"portals": cleaned_portals, "role_portals": cleaned_roles}
 
 
@@ -120,7 +143,7 @@ async def load_config(db) -> dict:
 
 
 async def portal_keys_for_identity(identity, db, config) -> list[str]:
-    """当前账号能看的端：系统管理员（admin 账号或人事角色为系统管理员）固定看三个端；
+    """当前账号能看的端：系统管理员（admin 账号或人事角色为系统管理员）固定看全部端；
     其他角色按人事角色名称（或编码）匹配勾选，
     没勾任何端就不显示分端页签，首页回到原来的“我的待办”（用户 2026-10-25：没勾就不要显示）。
     """
@@ -161,6 +184,18 @@ async def _feedback_count(status, db) -> int:
     )) or 0)
 
 
+async def _ipr_warning_count(identity, db) -> int:
+    """非诉期限预警：发给我、状态不是“已处理”的预警，案件范围同预警列表。"""
+    from app.core.dependencies import BusinessRecord, IprCaseWarning, func, select
+    from app.core.permissions import _record_scope_conditions
+
+    return int(await db.scalar(select(func.count()).select_from(IprCaseWarning).join(
+        BusinessRecord, BusinessRecord.id == IprCaseWarning.case_record_id).where(
+        BusinessRecord.module == "ipr_case", IprCaseWarning.recipient == identity.get("username", ""),
+        IprCaseWarning.status != "已处理", *(await _record_scope_conditions(identity, db)),
+    )) or 0)
+
+
 async def _extra_count(key, identity, db) -> int:
     from app.core import dashboard_list_counts as list_counts
 
@@ -185,6 +220,26 @@ async def _extra_count(key, identity, db) -> int:
         return await list_counts._list_total(list_receivable_contracts, scope="mine", identity=identity, db=db)
     if key == "archive-closing":
         return await list_counts.archive_queue_total(identity, db, "refused")
+    if key == "invoice-pending":
+        return await list_counts.invoice_pending_total(identity, db)
+    if key == "payment-waiting":
+        scoped = await list_counts._finance_center_identity(identity, db)
+        if scoped is None:
+            return 0
+        from app.areas.finance.payment_workflow import list_workflow_payments
+        try:
+            rows = (await list_workflow_payments(stage="waiting", identity=scoped, db=db))["items"]
+        except HTTPException as error:
+            if error.status_code in {403, 404}:
+                return 0
+            raise
+        # 与待付款列表页面同一过滤：合同付款只列“待付款”，费用列已审批、待付款、部分付款。
+        return sum(1 for row in rows if row.get("status") == "待付款"
+                   or (row.get("module") != "contract_payment" and row.get("status") in {"已审批", "部分付款"}))
+    if key == "payment-audit":
+        return await list_counts.payment_audit_total(identity, db)
+    if key == "ipr-warning":
+        return await _ipr_warning_count(identity, db)
     if key == "notary-review":
         from app.areas.legal.record_queries import list_records
         return await list_counts._list_total(list_records, module="notary", record_status="待审核",

@@ -94,6 +94,11 @@ const PORTAL_ICONS: Record<string, ReactNode> = {
   "fee-unreceived": <WalletOutlined />,
   "feedback-pending": <MessageOutlined />,
   "feedback-verify": <CheckCircleOutlined />,
+  // 501209：非诉端等用的四项。
+  "invoice-pending": <FileTextOutlined />,
+  "payment-waiting": <PayCircleOutlined />,
+  "payment-audit": <AuditOutlined />,
+  "ipr-warning": <AlertOutlined />,
 };
 
 export type DashboardPortalTodoItem = DashboardTodoItem & { key: string; description: string; metric?: DashboardData["metrics"][number]; amount?: boolean };

@@ -81,7 +81,7 @@ type Props = {
   onNavigate: (route: string) => void;
   onOpenCase: (caseNo: string) => void;
   onRefresh: () => void;
-  // 首页分端待办：有多个端时（系统管理员固定三个端）按端分页签，一次只显示一个端；
+  // 首页分端待办：有多个端时（系统管理员固定全部端）按端分页签，一次只显示一个端；
   // 没有端（角色未归属）时显示原来的“我的待办”。
   portals?: DashboardPortal[];
   portalData?: Partial<DashboardData>;

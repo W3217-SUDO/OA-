@@ -21,3 +21,6 @@ export function iprCaseTabLabel(route: string): string | null {
   const parsed = parseIprCaseDetailRoute(route);
   return parsed ? `${parsed.kind} ${parsed.serialNo}` : null;
 }
+
+/** 501209：工作台“非诉期限预警”的入口，打开知识产权中心并弹出预警列表；有知识产权菜单就能进。 */
+export const IPR_WARNINGS_ROUTE = "ipr-warnings";

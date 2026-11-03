@@ -107,8 +107,11 @@ export default function IprCenterPage({
   initialView,
   onNavigate,
   detailCaseId,
+  openWarnings,
 }: {
   initialView: string;
+  /** 501209：从工作台“非诉期限预警”进来时直接弹出预警列表。 */
+  openWarnings?: boolean;
   onNavigate?: (route: string) => void;
   /** 单独的案件标签：只显示这一个案件，返回列表切回列表标签（BUG20261102003）。 */
   detailCaseId?: number;
@@ -1278,6 +1281,11 @@ export default function IprCenterPage({
       loadReminderEventTypes(),
     ]);
   };
+
+  useEffect(() => {
+    if (openWarnings) openWarningWorkbench();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openWarnings]);
 
   const openWarningRuleEditor = (rule?: IprWarningRule) => {
     setEditingWarningRule(rule || null);

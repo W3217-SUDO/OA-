@@ -62,6 +62,26 @@ async def archive_queue_total(identity, db, view):
     return int(result.get("total") or 0)
 
 
+async def invoice_pending_total(identity, db):
+    """待开票（finance-invoice-pending）：与开票管理“待处理”列表同一权限和条件；没有权限计 0。"""
+    from app.core.finance import _invoice_list_rows
+    from app.core.finance_centers import filter_rows_by_center, has_nonlitigation_page
+    from app.core.invoice_permissions import invoice_permissions
+
+    scoped = await _finance_center_identity(identity, db)
+    if scoped is None:
+        return 0
+    grants = await invoice_permissions(scoped, db)
+    if not any(grants[scope][action] for scope in ("firm", "platform") for action in ("review", "issue")) \
+            and not await has_nonlitigation_page(scoped, db, "ipr-finance-invoice-pending"):
+        return 0
+    rows = await _invoice_list_rows(
+        scoped, db, scope="pending", customer="", application_no="", invoice_type="", invoice_title="", invoice_no="",
+        invoice_status="", invoiced_from=None, invoiced_to=None, case_no="", applicant_filter="",
+    )
+    return len(await filter_rows_by_center(rows, scoped, db))
+
+
 async def payment_audit_total(identity, db):
     """请款单审批（finance-payment-audit）：外部费用“待审批” + 合同付款“待审批”。"""
     from app.areas.legal.record_queries import list_records

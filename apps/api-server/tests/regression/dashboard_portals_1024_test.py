@@ -74,10 +74,12 @@ class DashboardPortalsTest(unittest.IsolatedAsyncioTestCase):
     def test_default_config_matches_requested_split(self):
         value = validate_config(DEFAULT_CONFIG)
         portals = {portal["name"]: portal["items"] for portal in value["portals"]}
-        self.assertEqual(list(portals), ["律师端", "财务行政端", "调查端"])
+        self.assertEqual(list(portals), ["律师端", "财务行政端", "调查端", "非诉端"])
         self.assertEqual(portals["律师端"], ["task", "fee-unpaid", "appeal", "evidence", "opinion", "receipts-pending", "receivable", "archive-closing"])
-        self.assertEqual(portals["财务行政端"], ["task", "fee-unpaid", "internal-fee-audit", "fee-audit", "settlement-audit", "archive-fee", "seal-stamping"])
+        self.assertEqual(portals["财务行政端"], ["invoice-pending", "receipts-pending", "payment-audit", "internal-fee-audit", "task", "fee-unpaid", "fee-audit", "settlement-audit", "archive-fee", "seal-stamping"])
         self.assertEqual(portals["调查端"], ["task", "fee-unpaid", "clue-audit", "notary-review", "evidence"])
+        # 501209：第 4 个端“非诉端”。
+        self.assertEqual(portals["非诉端"], ["ipr-warning", "task"])
         self.assertNotIn("系统管理员", value["role_portals"])
         # 用户 2026-10-26：项数不限，首页一页 8 项，多了分页切换。
         full = validate_config({**DEFAULT_CONFIG, "portals": [{**DEFAULT_CONFIG["portals"][0], "items": list(ITEM_KEYS)}, *DEFAULT_CONFIG["portals"][1:]]})
@@ -85,7 +87,8 @@ class DashboardPortalsTest(unittest.IsolatedAsyncioTestCase):
 
     def test_invalid_config_is_rejected(self):
         broken = [
-            {**DEFAULT_CONFIG, "portals": DEFAULT_CONFIG["portals"][:2]},
+            {**DEFAULT_CONFIG, "portals": [*DEFAULT_CONFIG["portals"][:2], DEFAULT_CONFIG["portals"][0]]},
+            {**DEFAULT_CONFIG, "portals": [*DEFAULT_CONFIG["portals"], {"key": "other", "name": "其他端", "items": []}]},
             {**DEFAULT_CONFIG, "portals": [{**DEFAULT_CONFIG["portals"][0], "items": ["task", "no-such-item"]}, *DEFAULT_CONFIG["portals"][1:]]},
             {**DEFAULT_CONFIG, "portals": [{**DEFAULT_CONFIG["portals"][0], "items": ["task", "task"]}, *DEFAULT_CONFIG["portals"][1:]]},
             {**DEFAULT_CONFIG, "role_portals": {"承办律师": ["unknown"]}},
@@ -93,6 +96,16 @@ class DashboardPortalsTest(unittest.IsolatedAsyncioTestCase):
         for value in broken:
             with self.assertRaises(HTTPException):
                 validate_config(value)
+
+    def test_saved_three_portal_config_gets_ipr_portal_added(self):
+        # 501209：生产上已保存的是三端配置，读出和保存时补上非诉端，管理员原来的配置不丢。
+        three = {"portals": [{**DEFAULT_CONFIG["portals"][0], "items": ["task", "appeal"]}, *DEFAULT_CONFIG["portals"][1:3]],
+                 "role_portals": {"承办律师": ["lawyer"]}}
+        value = validate_config(three)
+        self.assertEqual([portal["key"] for portal in value["portals"]], ["lawyer", "finance_admin", "investigation", "ipr"])
+        self.assertEqual(value["portals"][0]["items"], ["task", "appeal"])
+        self.assertEqual(value["portals"][3], DEFAULT_CONFIG["portals"][3])
+        self.assertEqual(value["role_portals"], {"承办律师": ["lawyer"]})
 
     async def test_settings_endpoint_reads_and_saves(self):
         response = await self.client.get(f"{API}/system/dashboard-portals")
@@ -108,7 +121,7 @@ class DashboardPortalsTest(unittest.IsolatedAsyncioTestCase):
         again = (await self.client.get(f"{API}/system/dashboard-portals")).json()["value"]
         self.assertEqual(again["portals"][0]["items"], ["task", "appeal"])
         self.assertEqual(again["role_portals"]["承办律师"], ["lawyer", "investigation"])
-        rejected = await self.client.put(f"{API}/system/dashboard-portals", json={"value": {**value, "portals": value["portals"][:1]}})
+        rejected = await self.client.put(f"{API}/system/dashboard-portals", json={"value": {**value, "portals": [*value["portals"], value["portals"][0]]}})
         self.assertEqual(rejected.status_code, 422)
         async with self.sessions() as db:
             audits = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "system_audit"))).all()
@@ -119,7 +132,7 @@ class DashboardPortalsTest(unittest.IsolatedAsyncioTestCase):
         # 2026-10-27 起另有第四个“管理端”，只放问题反馈和问题处理中心。
         async with self.sessions() as db:
             result = await dashboard(ADMIN, db, section="portals")
-        self.assertEqual([portal["name"] for portal in result["portals"]], ["律师端", "财务行政端", "调查端", "管理端"])
+        self.assertEqual([portal["name"] for portal in result["portals"]], ["律师端", "财务行政端", "调查端", "非诉端", "管理端"])
         self.assertEqual([portal["items"] for portal in result["portals"]],
                          [*(portal["items"] for portal in DEFAULT_CONFIG["portals"]), ["feedback-pending", "feedback-verify"]])
         extra = {item for portal in result["portals"] for item in portal["items"]
@@ -144,7 +157,7 @@ class DashboardPortalsTest(unittest.IsolatedAsyncioTestCase):
             await db.commit()
         async with self.sessions() as db:
             result = await dashboard(ADMIN, db, section="portals")
-        self.assertEqual([portal["key"] for portal in result["portals"]], ["lawyer", "finance_admin", "investigation", ADMIN_PORTAL["key"]])
+        self.assertEqual([portal["key"] for portal in result["portals"]], ["lawyer", "finance_admin", "investigation", "ipr", ADMIN_PORTAL["key"]])
 
     async def test_legacy_config_is_read_without_falling_back(self):
         # 某端放了 12 项、某角色勾了旧的“管理端”：12 项原样保留（首页每页 8 项分页显示），“管理端”按三个端都勾处理。
@@ -164,6 +177,44 @@ class DashboardPortalsTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("系统管理员", value["role_portals"])
         self.assertEqual([portal["key"] for portal in result["portals"]], ["lawyer", "finance_admin", "investigation"])
         self.assertEqual(result["portals"][0]["items"], legacy_items)
+
+    async def test_ipr_warning_count_only_mine_and_unprocessed(self):
+        # 501209：非诉期限预警 = 发给我、状态不是“已处理”的预警。
+        from datetime import date
+        from app.core.dashboard_portals import _extra_count
+        from app.models import IprCaseWarning, IprCaseWarningRule
+        async with self.sessions() as db:
+            case = BusinessRecord(module="ipr_case", serial_no="HZPI2600001", title="专利甲", status="在办", owner="admin", data={})
+            rule = IprCaseWarningRule(name="期限前7天", created_by="admin", updated_by="admin")
+            db.add_all([case, rule]); await db.flush()
+            for index, (recipient, status) in enumerate([("admin", "未读"), ("admin", "已读"), ("admin", "已处理"), ("lawyer1", "未读")]):
+                db.add(IprCaseWarning(rule_id=rule.id, case_record_id=case.id, due_date=date(2026, 11, 10), recipient=recipient,
+                                      source_key=f"k{index}", status=status))
+            await db.commit()
+            self.assertEqual(await _extra_count("ipr-warning", ADMIN, db), 2)
+        routes = {key: route for key, _, route, *_ in __import__("app.core.dashboard_portals", fromlist=["PORTAL_ITEMS"]).PORTAL_ITEMS}
+        self.assertEqual(routes["ipr-warning"], "ipr-warnings")
+        self.assertEqual(routes["invoice-pending"], "finance-invoice-pending")
+        self.assertEqual(routes["payment-waiting"], "finance-payment-waiting")
+        self.assertEqual(routes["payment-audit"], "finance-payment-audit")
+
+    async def test_invoice_pending_count_equals_list_total(self):
+        # 501209：待开票格子的数字 = 开票管理“待处理”列表总数；没有权限计 0，不报错。
+        from app.areas.finance.router import list_invoice_applications
+        from app.core.dashboard_portals import _extra_count
+        async with self.sessions() as db:
+            db.add_all([
+                BusinessRecord(module="invoice", serial_no=f"INV-1209-{index}", title="开票", status=status, owner="lawyer1", data={"amount": 100})
+                for index, status in enumerate(["待审批", "已审批", "已开票"])
+            ])
+            await db.commit()
+            listed = await list_invoice_applications(
+                scope="pending", customer="", application_no="", invoice_type="", invoice_title="", invoice_no="", invoice_status="",
+                invoiced_from=None, invoiced_to=None, case_no="", applicant="", page=1, page_size=1, identity=ADMIN, db=db,
+            )
+            self.assertGreater(listed["total"], 0)
+            self.assertEqual(await _extra_count("invoice-pending", ADMIN, db), listed["total"])
+            self.assertEqual(await _extra_count("invoice-pending", LAWYER, db), 0)
 
     async def test_lawyer_role_sees_lawyer_portal_only(self):
         async with self.sessions() as db:
