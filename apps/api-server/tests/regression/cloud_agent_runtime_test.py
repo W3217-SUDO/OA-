@@ -277,3 +277,11 @@ def test_harness_network_failure_returns_error_instead_of_failing_turn():
     finally:
         harness.datapro = original
     assert result["isError"] is True and "连接失败" in result["message"]
+
+
+def test_cloud_prompt_keeps_deliverables_out_of_sandbox():
+    from app.cloud_agent.runtime import system_prompt
+
+    prompt = system_prompt()
+    assert "不要在沙箱里生成要交给用户的 Word" in prompt and "把完整正文直接写在本次回答里" in prompt
+    assert "mcp__oa__" not in prompt and "普通写入参数齐全即直接执行" in prompt  # OA 业务规则仍随云端一起生效
