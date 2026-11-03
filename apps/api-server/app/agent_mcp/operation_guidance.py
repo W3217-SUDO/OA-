@@ -325,7 +325,8 @@ _CASE_INFO_EDIT_PATHS = {
     "/cases/batch-update", "/cases/phase-change", "/cases/execution-status", "/cases/batch-fees", "/finance/fees", "/finance/fees/{fee_id}",
 }
 _CASE_FILE_SEGMENTS = ("documents", "attachments", "ai-space", "document-folders", "word-templates", "word-editor", "libreoffice",
-                       "duplicate", "merge", "archive", "unarchive", "close", "creation", "complete-creation", "assign")
+                       "duplicate", "merge", "archive", "unarchive", "close", "creation", "complete-creation", "assign",
+                       "business-info", "due-diligence")
 
 
 def is_case_info_edit(method: str, path: str) -> bool:
