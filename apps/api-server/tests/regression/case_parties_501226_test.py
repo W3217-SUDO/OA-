@@ -131,7 +131,7 @@ class CasePartyDocumentTest(CasePartiesTest):
         self.assertIn("与现登记名称“上饶市广信区有明眼镜店”不一致", report)
         conclusion, _notes = case_parties._suability({**detail, "status": "注销", "cancel_date": "2025-02-02"}, "广信区有明眼镜店")
         self.assertIn("不能直接作为被告", conclusion)
-        conclusion, _notes = case_parties._suability({**detail, "status": "存续", "revoke_date": ""}, "上饶市广信区有明眼镜店")
+        conclusion, _notes = case_parties._suability({**detail, "status": "存续", "revoke_date": "", "abnormal": False}, "上饶市广信区有明眼镜店")
         self.assertIn("可以作为被告", conclusion)
 
     async def test_document_needs_business_info_and_saves_to_case(self):
