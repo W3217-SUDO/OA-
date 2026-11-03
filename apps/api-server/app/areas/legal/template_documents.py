@@ -24,10 +24,13 @@ WORD_NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 SLOT = re.compile(r"\{\{([a-z_]+)\}\}")
 
 
-def _replace_slots(paragraph, values: dict) -> None:
+def _replace_slots(paragraph, values: dict, pattern=SLOT) -> None:
+    """把段落里的占位符换成值；占位符被 Word 拆成多段文字也能换，保留原字体段落。"""
     nodes = paragraph.xpath(".//w:t", namespaces=WORD_NS)
     text = "".join(node.text or "" for node in nodes)
-    for match in reversed(list(SLOT.finditer(text))):
+    for match in reversed(list(pattern.finditer(text))):
+        if match.group(1) not in values:
+            continue
         value = str(values[match.group(1)])
         start, stop = match.span()
         offset = 0

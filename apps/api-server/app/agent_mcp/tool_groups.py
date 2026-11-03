@@ -189,7 +189,8 @@ def classify_tool(route, method: str) -> tuple[str, str | None]:
     platform = {
         "reports": "reporting", "notifications": "notifications_feedback", "feedback": "notifications_feedback",
         "system": "system_parameters", "external-credentials": "system_parameters", "records": "system_parameters", "audit": "system_parameters", "search": "system_parameters",
-        "agent": "ai_documents_skills", "agent-admin": "ai_documents_skills", "templates": "ai_documents_skills", "capability-market": "ai_documents_skills",
+        "agent": "ai_documents_skills", "agent-admin": "ai_documents_skills", "templates": "ai_documents_skills",
+        "case-word-templates": "ai_documents_skills", "capability-market": "ai_documents_skills",
     }
     if root in platform:
         return "25", platform[root]

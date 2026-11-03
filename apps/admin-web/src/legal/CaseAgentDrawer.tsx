@@ -4,6 +4,7 @@ import { StatusTag } from "../components/common/StatusTag";
 import {
 CloseOutlined,
 DownOutlined,
+FileWordOutlined,
 FolderOpenOutlined,
 FolderOutlined,
 InfoCircleOutlined,
@@ -20,6 +21,8 @@ import { useEffect, useState } from "react";
 import { AgentOperationPreview, agentOperationName, hasAgentOperationPreview } from "../AgentOperationPreview";
 import { AgentToolResult } from "../AgentToolResult";
 import { NO_AGENT_SKILL_OPTION } from "../agentSkillRouting";
+import { api } from "../api";
+import { CaseWordTemplateModal, matchWordTemplate, type WordTemplate } from "./CaseWordTemplateModal";
 import type { ClipboardEvent,Key,PointerEvent as ReactPointerEvent } from "react";
 import {
 AGENT_DOCUMENT_LIMIT,
@@ -138,6 +141,22 @@ export const CaseAgentDrawer = ({
 }: CaseAgentDrawerProps) => {
   const [activeAction, setActiveAction] = useState<CaseAgentAction | null>(null);
   useEffect(() => { setActiveAction(null); }, [agentCase?.id, agentOpen]);
+  // 按固定模板生成文书（陶国南 11-03）：说“生成撤诉申请书”或点按钮，打开模板填字段，不让智能体改写正文。
+  const [wordTemplates, setWordTemplates] = useState<WordTemplate[]>([]);
+  const [wordTemplate, setWordTemplate] = useState<{ open: boolean; id?: string }>({ open: false });
+  useEffect(() => {
+    if (!agentOpen) return;
+    api.get<{ items: WordTemplate[] }>("/case-word-templates").then(({ data }) => setWordTemplates(data.items)).catch(() => setWordTemplates([]));
+  }, [agentOpen]);
+  const sendOrGenerate = (preset?: string) => {
+    const hit = matchWordTemplate(preset ?? agentInput, wordTemplates);
+    if (hit && !agentScreenshots.length) {
+      if (preset === undefined) setAgentInput("");
+      setWordTemplate({ open: true, id: hit.id });
+      return Promise.resolve();
+    }
+    return sendCaseAgentMessage(preset);
+  };
   const decideActiveAction = async (decision: "approved" | "rejected") => {
     if (!activeAction || agentDecisionLoading) return;
     await decideCaseAgentAction(activeAction, decision);
@@ -231,7 +250,7 @@ export const CaseAgentDrawer = ({
           <div ref={agentMessagesEndRef} />
         </div>
         {!agentLoading && !agentState?.messages?.length && agentStatus?.ready && <div className="case-agent-suggestions">
-          {quickPrompts.map((text) => <Button key={text} size="small" onClick={() => void sendCaseAgentMessage(text)}>{text}</Button>)}
+          {quickPrompts.map((text) => <Button key={text} size="small" onClick={() => void sendOrGenerate(text)}>{text}</Button>)}
         </div>}
         <div className="case-agent-composer">
           {agentMaterialPickerOpen && <div className="case-agent-material-tree" aria-label="从案件文件夹选择本轮材料">
@@ -254,6 +273,8 @@ export const CaseAgentDrawer = ({
           {agentScreenshots.length ? <div className="case-agent-composer-attachments" aria-label="待发送截图">{agentScreenshots.map((item) => <div key={item.id}><Image src={item.preview_url} alt={item.name} preview /><span title={item.name}>{item.name}</span><Button type="text" icon={<CloseOutlined />} title="移除截图" onClick={() => removeAgentScreenshot(item)} /></div>)}</div> : null}
           <input ref={agentScreenshotInputRef} hidden type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" onChange={(event) => void uploadCaseAgentScreenshot(event.target.files?.[0])} />
           <Button className="case-agent-composer-upload" type="text" icon={<PaperClipOutlined />} title="上传截图" loading={agentScreenshotUploading} disabled={agentLoading || !agentStatus?.ready || agentScreenshots.length >= 4} onClick={() => agentScreenshotInputRef.current?.click()} />
+          <Button className="case-agent-composer-upload" type="text" icon={<FileWordOutlined />} title="按模板生成文书" aria-label="按模板生成文书"
+            disabled={!agentCase} onClick={() => setWordTemplate({ open: true })} />
           <Input.TextArea
             value={agentInput}
             autoSize={{ minRows: 2, maxRows: 5 }}
@@ -264,12 +285,14 @@ export const CaseAgentDrawer = ({
             onPressEnter={(event) => {
               if (!event.shiftKey) {
                 event.preventDefault();
-                void sendCaseAgentMessage();
+                void sendOrGenerate();
               }
             }}
           />
-          <Button type="primary" icon={agentSending && !agentInput.trim() && !agentScreenshots.length ? <StopOutlined /> : <SendOutlined />} disabled={agentLoading || !agentStatus?.ready || (!agentSending && !agentInput.trim() && !agentScreenshots.length)} title={agentSending && !agentInput.trim() && !agentScreenshots.length ? "停止生成" : agentSending ? "发送引导并打断当前生成" : "发送"} onClick={() => agentSending && !agentInput.trim() && !agentScreenshots.length ? stopCaseAgentResponse() : void sendCaseAgentMessage()} />
+          <Button type="primary" icon={agentSending && !agentInput.trim() && !agentScreenshots.length ? <StopOutlined /> : <SendOutlined />} disabled={agentLoading || !agentStatus?.ready || (!agentSending && !agentInput.trim() && !agentScreenshots.length)} title={agentSending && !agentInput.trim() && !agentScreenshots.length ? "停止生成" : agentSending ? "发送引导并打断当前生成" : "发送"} onClick={() => agentSending && !agentInput.trim() && !agentScreenshots.length ? stopCaseAgentResponse() : void sendOrGenerate()} />
         </div>
+        <CaseWordTemplateModal caseId={agentCase?.id ?? null} open={wordTemplate.open} templateId={wordTemplate.id} canSave
+          onClose={() => setWordTemplate({ open: false })} />
       </div>
     </CaseAgentDock>
   );

@@ -516,6 +516,8 @@ app.include_router(data_query_router)
 app.include_router(case_statistics_router)
 app.include_router(stage_export_router)
 app.include_router(contract_template_exports_router)
+from app.areas.legal.case_word_templates import router as case_word_templates_router  # noqa: E402  按固定模板生成文书
+app.include_router(case_word_templates_router)
 app.exception_handler(RequestValidationError)(request_validation_error_handler)
 from starlette.exceptions import HTTPException as _StarletteHTTPException  # noqa: E402
 from app.core.permission_denied_log import permission_denied_handler  # noqa: E402
