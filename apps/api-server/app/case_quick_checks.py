@@ -2,7 +2,7 @@
 
 系统先按固定规则把检查结果算好放进案件空间（case_check），智能体照此汇报，不靠模型自己推断：
 a. 案件要素是否齐全，阶段和已上传文书是否对得上；
-b. 紧急、多次延期的案件任务；案件日志和流转 60 日内没有记录的，提醒“案件 N 日未有状态变化”（思法汇成 11-03 12:59）；
+b. 紧急、多次延期的案件任务；当前阶段停留超过预期天数的（陶国南 11-03 14:01，天数在系统参数“案件阶段”里配）；案件日志和流转 60 日内没有记录的，提醒“案件 N 日未有状态变化”（思法汇成 11-03 12:59）；
 c. 合同、委托书、律师费、发票（框架合作合同前期不提醒建费用，判决后提醒执行或催收）；
 d. 律师证扫描件不是必备项，只在提交法院的阶段提醒一并提交。
 """
@@ -142,8 +142,22 @@ def _case_idle(case: dict, case_last_activity: str | None, today: date) -> dict 
     return {"idle_days": days, "last_activity": last.isoformat(), "message": f"案件 {days} 日未有状态变化"}
 
 
+def _stage_overdue(stage: dict | None, today: date) -> dict | None:
+    """陶国南 11-03 14:01：在当前阶段停留超过预期天数才提醒；天数在系统参数“案件阶段”里配置，没配不提醒。"""
+    stage = stage or {}
+    entered, limit = _date(stage.get("entered_at")), stage.get("expected_days")
+    if not entered or not limit:
+        return None
+    days = (today - entered).days
+    if days <= limit:
+        return None
+    name = _text(stage.get("name"))
+    return {"stage": name, "days": days, "expected_days": limit, "entered_at": entered.isoformat(),
+            "message": f"案件在{name}阶段已 {days} 天，超过预期 {days - limit} 天，请尽快完成本阶段事项"}
+
+
 def build_case_check(context: dict, *, postpones: dict[int, int] | None = None, case_last_activity: str | None = None,
-                     today: date | None = None) -> dict:
+                     stage: dict | None = None, today: date | None = None) -> dict:
     today = today or date.today()
     case = context.get("case") or {}
     phase = _phase_code(case)
@@ -155,13 +169,14 @@ def build_case_check(context: dict, *, postpones: dict[int, int] | None = None, 
         "a_case_elements": {"missing": _missing_fields(case, context.get("people") or [], _filed(case, phase)),
                             "stage_document_mismatch": _stage_mismatch(phase, phase_name, names)},
         "b_tasks": {**_task_flags(context.get("tasks") or [], postpones or {}, today),
-                    "case_idle": _case_idle(case, case_last_activity, today)},
+                    "case_idle": _case_idle(case, case_last_activity, today),
+                    "stage_overdue": _stage_overdue(stage, today)},
         "c_contract_and_fees": _billing(context, phase, names),
         "d_lawyer_license": _lawyer_license(phase, names),
     }
     elements, tasks = result["a_case_elements"], result["b_tasks"]
     result["issue_count"] = (len(elements["missing"]) + len(elements["stage_document_mismatch"]) + len(tasks["urgent"])
-                             + len(tasks["postponed"]) + (1 if tasks["case_idle"] else 0)
+                             + len(tasks["postponed"]) + (1 if tasks["case_idle"] else 0) + (1 if tasks["stage_overdue"] else 0)
                              + len(result["c_contract_and_fees"]) + len(result["d_lawyer_license"]))
     return result
 
@@ -169,7 +184,7 @@ def build_case_check(context: dict, *, postpones: dict[int, int] | None = None, 
 QUICK_COMMAND_RULES = (
     "用户发“归纳案件情况”时，只汇报案件空间里 case_check 查到的问题（陶国南 11-03 13:37：只说发现的问题，没有问题就是好事）："
     "a 案件要素缺哪些（逐项列出并提醒补齐），阶段与文书不合逻辑的提醒更新；"
-    "b 紧急任务（逾期或 3 天内到期）提醒尽快处理，case_idle 不为空时按其 message 提醒“案件 N 日未有状态变化”，多次延期（3 次及以上）的任务提醒按时真实完成、不要一再拖延；"
+    "b 紧急任务（逾期或 3 天内到期）提醒尽快处理，case_idle 不为空时按其 message 提醒“案件 N 日未有状态变化”，stage_overdue 不为空时按其 message 提醒阶段超期，多次延期（3 次及以上）的任务提醒按时真实完成、不要一再拖延；"
     "c 合同、委托书、律师费、发票的问题（框架合作合同前期不提醒建费用，判决后提醒执行或催收）；"
     "d 律师证只在提交法院时提醒。"
     "列表为空、查过没问题的项一律不写，不要写“无”“阶段与文书匹配”“合同齐全”之类；"

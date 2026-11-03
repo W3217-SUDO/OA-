@@ -229,6 +229,12 @@ export function SystemParameterManagement({
           width: 140,
           render: (_, r) => r.extra.case_type || "—",
         },
+        {
+          title: "预期停留天数",
+          key: "expectedDays",
+          width: 120,
+          render: (_, r) => (r.extra.expected_days ? `${r.extra.expected_days} 天` : "—"),
+        },
         { title: "排序号", dataIndex: "sort_order", width: 80 },
         ...auditColumns,
         actionColumn,

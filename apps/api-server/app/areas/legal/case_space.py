@@ -435,7 +435,28 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
     if source_case_nos:
         stamps.append(await db.scalar(select(func.max(LegacyCaseLog.CreateTime)).where(LegacyCaseLog.CaseNo.in_(source_case_nos))))
     case_last_activity = max((str(item.isoformat() if hasattr(item, "isoformat") else item)[:10] for item in stamps if item), default=None)
-    context["case_check"] = build_case_check(context, postpones=postpones, case_last_activity=case_last_activity)
+    # 陶国南 11-03 14:01：当前阶段停留超过“系统参数 › 案件阶段”里的预期天数要提醒。
+    from app.core.case_phase_expected_days import expected_days
+    from app.models import LegacyCasePhaseHistory, SystemParameter
+    phase_code = str(case_data.get("case_phase_id") or "").strip()
+    phase_rows = list((await db.scalars(select(SystemParameter).where(
+        SystemParameter.category == "case_phase", SystemParameter.is_active.is_(True),
+        or_(SystemParameter.code == phase_code, SystemParameter.name == case_record.status),
+    ))).all())
+    phase_row = (next((item for item in phase_rows if phase_code and item.code == phase_code), None)
+                 or next((item for item in phase_rows if (item.extra or {}).get("case_type") == case_data.get("case_type")), None)
+                 or next(iter(phase_rows), None))
+    stage_entered_at = str(case_data.get("phase_changed_at") or "")[:10] or None
+    if not stage_entered_at and phase_code:
+        legacy_entered = await db.scalar(select(func.max(LegacyCasePhaseHistory.legacy_created_at)).where(
+            LegacyCasePhaseHistory.case_record_id == case_record.id, LegacyCasePhaseHistory.legacy_phase_code == phase_code,
+            LegacyCasePhaseHistory.is_active != "F"))
+        stage_entered_at = legacy_entered.date().isoformat() if legacy_entered else None
+    if not stage_entered_at and case_record.created_at:
+        stage_entered_at = case_record.created_at.date().isoformat()
+    stage = {"name": case_record.status, "entered_at": stage_entered_at,
+             "expected_days": expected_days(phase_row.extra if phase_row else None)}
+    context["case_check"] = build_case_check(context, postpones=postpones, case_last_activity=case_last_activity, stage=stage)
     return context
 
 

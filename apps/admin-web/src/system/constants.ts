@@ -52,6 +52,7 @@ export const extraFields: Record<string, { key: string; label: string }[]> = {
   case_phase: [
     { key: "parent_code", label: "上级阶段Id" },
     { key: "case_type", label: "案件类型" },
+    { key: "expected_days", label: "预期停留天数" },
   ],
   notary_office: [{ key: "number_template", label: "公证号模板" }],
   cause: [{ key: "parent_code", label: "上级案由Id" }],

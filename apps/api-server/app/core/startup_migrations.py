@@ -225,6 +225,11 @@ def _apply_incoming_business_type(connection: Connection, _upgrade_schema: Calla
         connection.execute(text("ALTER TABLE incoming_payments ADD COLUMN business_type VARCHAR(8)"))
 
 
+def _apply_case_phase_expected_days(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    from app.core.case_phase_expected_days import upgrade_case_phase_expected_days
+    upgrade_case_phase_expected_days(connection)
+
+
 def _run_versioned_schema_migrations(
     connection: Connection,
     upgrade_schema: Callable[[Connection], None],
@@ -267,6 +272,8 @@ def _run_versioned_schema_migrations(
         # 应收合同按合同找案件的表达式索引（陶威 11-01：工作台慢）。
         ("business_record_contract_link_indexes_v1", _apply_contract_link_indexes),
         ("incoming_payment_business_type_v1", _apply_incoming_business_type),
+        # 501222：案件阶段预期停留天数按陶国南 11-03 给的天数预填一次，之后在系统参数里改。
+        ("case_phase_expected_days_v1", _apply_case_phase_expected_days),
     )
     for revision, migration in revisions:
         if connection.execute(

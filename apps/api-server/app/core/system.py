@@ -403,6 +403,11 @@ async def _validate_parameter_references(category: str, extra: dict, db: AsyncSe
             if not isinstance(value, list) or any(not isinstance(code, str) or not code.strip() for code in value):
                 raise HTTPException(status_code=422, detail=f"知识产权案件文件类型的 {key} 必须为代码数组")
         return
+    if category == "case_phase":
+        raw = str((extra or {}).get("expected_days") or "").strip()
+        if raw and (not raw.isdigit() or not 1 <= int(raw) <= 3650):
+            raise HTTPException(status_code=422, detail="预期停留天数请填 1 到 3650 的整数，空着表示不提醒")
+        return
     if category == "payment_type":
         required = {"nature": "付款性质", "payee": "收款单位", "account_bank": "开户行", "account": "账号信息"}
         missing = [label for key, label in required.items() if not str((extra or {}).get(key) or "").strip()]
