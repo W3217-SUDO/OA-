@@ -139,6 +139,34 @@ class CaseSpaceContextContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result["agent"]["enabled"])
         self.assertTrue(result["agent"]["write_requires_approval"])
 
+    async def test_stage_overdue_from_legacy_history_and_switch(self):
+        # 501222：旧系统迁来的案件按旧系统阶段记录算进入时间；“旧系统迁来的案件也提醒”关掉后不提醒。
+        from datetime import datetime
+        from sqlalchemy import update
+        from app.models import LegacyCasePhaseHistory, SystemConfig, SystemParameter
+        async with self.sessions() as db:
+            case = await self._seed(db)
+            case_id = case.id
+            data = {key: value for key, value in (case.data or {}).items() if key not in {"phase_changed_at", "phase_visits"}}
+            await db.execute(update(BusinessRecord.__table__).where(BusinessRecord.__table__.c.id == case_id).values(
+                status="文书准备", data={**data, "case_phase_id": "101011"}))
+            db.add_all([
+                SystemParameter(category="case_phase", code="101011", name="文书准备", extra={"case_type": "民事争议", "expected_days": 60}),
+                LegacyCasePhaseHistory(legacy_phase_id=9001, case_record_id=case_id, legacy_phase_code="101011", is_active="T",
+                                       legacy_created_at=datetime(2026, 1, 1, 9, 0)),
+            ])
+            await db.commit()
+            db.expire_all()
+            result = await get_case_space_context(case_id, {"username": "lawyer", "role": "user"}, db)
+            overdue = result["case_check"]["b_tasks"]["stage_overdue"]
+            self.assertEqual(overdue["entered_at"], "2026-01-01")
+            self.assertIn("案件在文书准备阶段已", overdue["message"])
+            db.add(SystemConfig(key="case_stage_overdue", label="案件阶段超期提醒", group="业务配置", value={"remind_legacy_cases": False}))
+            await db.commit()
+            db.expire_all()
+            result = await get_case_space_context(case_id, {"username": "lawyer", "role": "user"}, db)
+            self.assertIsNone(result["case_check"]["b_tasks"]["stage_overdue"], "关掉开关后旧系统迁来的案件不提醒")
+
     async def test_context_rejects_user_without_case_visibility(self):
         async with self.sessions() as db:
             case = await self._seed(db)

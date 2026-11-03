@@ -539,6 +539,9 @@ def _validate_system_config(key: str, value: dict) -> dict:
         if set(value) != required or not isinstance(value["maintenance_mode"], bool) or not isinstance(value["page_size"], int) or not 10 <= value["page_size"] <= 200 or not isinstance(value["attachment_limit_mb"], int) or not 1 <= value["attachment_limit_mb"] <= 100:
             raise HTTPException(status_code=422, detail="系统配置字段或数值范围无效")
         if not str(value["system_name"]).strip() or not str(value["default_department"]).strip(): raise HTTPException(status_code=422, detail="系统名称和默认部门必填")
+    elif key == "case_stage_overdue":
+        if set(value) != {"remind_legacy_cases"} or not isinstance(value["remind_legacy_cases"], bool):
+            raise HTTPException(status_code=422, detail="案件阶段超期提醒配置无效")
     elif key == "investigation_assignment":
         if set(value) != {"supervisor_username"} or not isinstance(value["supervisor_username"], str):
             raise HTTPException(status_code=422, detail="调查任务分配人配置无效")

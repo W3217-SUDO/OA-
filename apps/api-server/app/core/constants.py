@@ -520,6 +520,11 @@ DEFAULT_SYSTEM_CONFIGS = {
         "label": "系统配置", "group": "运行配置", "description": "网页端显示与业务运行参数。",
         "value": {"system_name": "申浩律师协作平台", "default_department": "上海分所", "page_size": 20, "attachment_limit_mb": 20, "maintenance_mode": False},
     },
+    "case_stage_overdue": {
+        "label": "案件阶段超期提醒", "group": "业务配置",
+        "description": "案件智能体“归纳案件情况”按系统参数“案件阶段”的预期停留天数提醒超期；关闭“旧系统迁来的案件”后，只提醒在新系统里进入当前阶段的案件。",
+        "value": {"remind_legacy_cases": True},
+    },
     "investigation_assignment": {
         "label": "调查任务分配人", "group": "业务配置", "description": "合同新建调查任务时固定流转到该调查主管，由其再分配调查子任务。",
         "value": {"supervisor_username": ""},

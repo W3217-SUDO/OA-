@@ -27,6 +27,8 @@ export function SystemConfigList({ configs }: SystemConfigListProps) {
   const [autoReviewSaving, setAutoReviewSaving] = useState(false);
   const [autoReviewOverride, setAutoReviewOverride] = useState<SystemConfig | null>(null);
   const [staffOverride, setStaffOverride] = useState<SystemConfig | null>(null);
+  const [stageOverdueOverride, setStageOverdueOverride] = useState<SystemConfig | null>(null);
+  const [stageOverdueSaving, setStageOverdueSaving] = useState(false);
   const [staffVisible, setStaffVisible] = useState(false);
   const [staffSaving, setStaffSaving] = useState(false);
   const [userOptions, setUserOptions] = useState<{ label: string; value: string }[]>([]);
@@ -38,7 +40,22 @@ export function SystemConfigList({ configs }: SystemConfigListProps) {
   useEffect(() => {
     setAutoReviewOverride(null);
     setStaffOverride(null);
+    setStageOverdueOverride(null);
   }, [configs]);
+
+  // 501222：旧系统迁来、在新系统没改过阶段的案件是否也提醒阶段超期。
+  const saveStageOverdue = async (remindLegacyCases: boolean) => {
+    setStageOverdueSaving(true);
+    try {
+      const { data } = await api.patch<SystemConfig>("/system/configs/case_stage_overdue", { value: { remind_legacy_cases: remindLegacyCases } });
+      setStageOverdueOverride(data);
+      message.success("配置已保存");
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "案件阶段超期提醒配置保存失败");
+    } finally {
+      setStageOverdueSaving(false);
+    }
+  };
 
   const saveAutoReview = async (enabled: boolean) => {
     setAutoReviewSaving(true);
@@ -131,6 +148,20 @@ export function SystemConfigList({ configs }: SystemConfigListProps) {
                     <Space>
                       <span>已配置 {count} 家公司</span>
                       <Button size="small" onClick={() => void openStaff(row)}>配置人员</Button>
+                    </Space>
+                  );
+                }
+                if (row.key === "case_stage_overdue") {
+                  const current = stageOverdueOverride || row;
+                  return (
+                    <Space>
+                      <span>旧系统迁来的案件也提醒</span>
+                      <Switch
+                        aria-label="旧系统迁来的案件也提醒阶段超期"
+                        checked={current.value?.remind_legacy_cases !== false}
+                        loading={stageOverdueSaving}
+                        onChange={(checked) => void saveStageOverdue(checked)}
+                      />
                     </Space>
                   );
                 }
