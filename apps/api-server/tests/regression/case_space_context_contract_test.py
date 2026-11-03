@@ -167,6 +167,29 @@ class CaseSpaceContextContractTest(unittest.IsolatedAsyncioTestCase):
             result = await get_case_space_context(case_id, {"username": "lawyer", "role": "user"}, db)
             self.assertIsNone(result["case_check"]["b_tasks"]["stage_overdue"], "关掉开关后旧系统迁来的案件不提醒")
 
+    async def test_stage_entered_falls_back_to_last_legacy_change(self):
+        # 旧系统记录里没有当前阶段时，取最后一次阶段变化时间，仍算旧系统迁来的案件。
+        from datetime import datetime
+        from sqlalchemy import update
+        from app.models import LegacyCasePhaseHistory, SystemParameter
+        async with self.sessions() as db:
+            case = await self._seed(db)
+            case_id = case.id
+            data = {key: value for key, value in (case.data or {}).items() if key not in {"phase_changed_at", "phase_visits"}}
+            await db.execute(update(BusinessRecord.__table__).where(BusinessRecord.__table__.c.id == case_id).values(
+                status="文书准备", data={**data, "case_phase_id": "101011"}))
+            db.add_all([
+                SystemParameter(category="case_phase", code="101011", name="文书准备", extra={"expected_days": 60}),
+                LegacyCasePhaseHistory(legacy_phase_id=9101, case_record_id=case_id, legacy_phase_code="101010", is_active="T",
+                                       legacy_created_at=datetime(2026, 3, 2, 23, 30)),
+                LegacyCasePhaseHistory(legacy_phase_id=9102, case_record_id=case_id, legacy_phase_code="101001", is_active="T",
+                                       legacy_created_at=datetime(2026, 2, 1, 9, 0)),
+            ])
+            await db.commit()
+            db.expire_all()
+            result = await get_case_space_context(case_id, {"username": "lawyer", "role": "user"}, db)
+            self.assertEqual(result["case_check"]["b_tasks"]["stage_overdue"]["entered_at"], "2026-03-02")
+
     async def test_context_rejects_user_without_case_visibility(self):
         async with self.sessions() as db:
             case = await self._seed(db)

@@ -448,10 +448,13 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
                  or next(iter(phase_rows), None))
     stage_entered_at = str(case_data.get("phase_changed_at") or "")[:10] or None
     from_legacy = False  # 进入时间取自旧系统阶段记录（旧系统迁来、在新系统没改过阶段）
-    if not stage_entered_at and phase_code:
+    if not stage_entered_at:
+        # 旧系统阶段记录（legacy_created_at 是不带时区的北京时间，只取日期）：取进入当前阶段的最后一条；
+        # 旧系统记录里没有当前阶段的（约 354 件），取最后一次阶段变化的时间。
+        legacy_filter = (LegacyCasePhaseHistory.case_record_id == case_record.id, LegacyCasePhaseHistory.is_active != "F")
         legacy_entered = await db.scalar(select(func.max(LegacyCasePhaseHistory.legacy_created_at)).where(
-            LegacyCasePhaseHistory.case_record_id == case_record.id, LegacyCasePhaseHistory.legacy_phase_code == phase_code,
-            LegacyCasePhaseHistory.is_active != "F"))
+            *legacy_filter, LegacyCasePhaseHistory.legacy_phase_code == phase_code)) if phase_code else None
+        legacy_entered = legacy_entered or await db.scalar(select(func.max(LegacyCasePhaseHistory.legacy_created_at)).where(*legacy_filter))
         stage_entered_at = legacy_entered.date().isoformat() if legacy_entered else None
         from_legacy = bool(legacy_entered)
     if not stage_entered_at and case_record.created_at:
