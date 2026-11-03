@@ -773,6 +773,63 @@
   .ai-chat-page.is-desktop-workspace .assistant-composer .assistant-stop.ant-btn:disabled {
     cursor: wait;
   }
+
+  /* 陶威 11-03：左侧栏撑满高度。个人空间最近会话往下撑满，能放几条放几条，超出才滚动；
+     展开案件空间时按 3:1 分剩余高度（正在用的空间多）；“刷新智能体”“返回工作台”固定在底部。只用 flex，兼容钉钉 Chrome 100。 */
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-sidebar {
+    overflow: hidden;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-navigation {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-navigation > *,
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-history.is-in-space > * {
+    flex-shrink: 0;
+  }
+
+  /* 正在用的空间（最近会话）占三份，案件空间列表占一份；各有最小高度，谁都不会被压没。 */
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-history.is-in-space {
+    flex: 3 1 0;
+    min-height: 120px;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-history.is-in-space > .assistant-conversation-list {
+    flex: 1 1 0;
+    flex-shrink: 1;
+    min-height: 44px;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-projects.is-expanded {
+    flex: 1 1 0;
+    min-height: 96px;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-projects.is-expanded > .assistant-workspace-project-list {
+    flex: 1 1 0;
+    flex-shrink: 1;
+    max-height: none;
+  }
+
+  /* 打开的是某个案件空间时，它的最近会话在案件列表里：按内容高度显示（最多约 8 条），整个案件列表滚动。 */
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-project-list .assistant-workspace-history.is-in-space {
+    min-height: 0;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-project-list .assistant-workspace-history.is-in-space > .assistant-conversation-list {
+    flex: none;
+    max-height: 360px;
+  }
+
+  .ai-chat-page.is-desktop-workspace .assistant-workspace-footer {
+    margin-top: auto;
+  }
 }
 
 @media (min-width: 992px) and (pointer: coarse) {

@@ -670,7 +670,7 @@ test("fixed task conversation sends one dated summary per day (501147)", () => {
   assert.deepEqual(AGENT_TASK_ENTRIES.find((item) => item.key === "intake").quickCommands.map((item) => item.label).join(), "查询今日收文", "收文助手有固定指令（tgn 22:27）");
 });
 
-test("sidebar shows the 5 latest conversations and opens the full searchable history (501147)", async () => {
+test("sidebar lists recent conversations to fill the column (陶威 11-03) and opens the full searchable history (501147)", async () => {
   const modal = { confirm() {} };
   const { ConversationManager } = loadModule("../personal-agent/ConversationManager.tsx", {
     antd: {
@@ -688,14 +688,14 @@ test("sidebar shows the 5 latest conversations and opens the full searchable his
     onCreate: async () => {}, onSelect: async () => {}, onDelete: async () => {}, onRename: async () => {},
   })); });
   const titles = () => renderer.root.findAllByType("b").map((item) => item.props.children);
-  assert.deepEqual(titles(), ["会话0", "会话1", "会话2", "会话3", "会话4"], "侧栏只列最近 5 条");
+  assert.deepEqual(titles(), ["会话0", "会话1", "会话2", "会话3", "会话4", "会话5", "会话6"], "侧栏列出最近会话，撑满左侧栏，超出滚动");
   const all = renderer.root.findAllByType("button").find((item) => item.props.className === "assistant-history-all");
   assert.equal([].concat(all.props.children).join(""), "全部历史会话（7）");
   await act(async () => { all.props.onClick(); });
   assert.ok(renderer.root.findAllByType("modal").some((item) => item.props.title === "全部历史会话" && item.props.open));
-  assert.equal(titles().length, 12, "弹窗列出全部 7 条");
+  assert.equal(titles().length, 14, "弹窗列出全部 7 条");
   await act(async () => { renderer.root.findByType("search").props.onChange({ target: { value: "会话6" } }); });
-  assert.deepEqual(titles().slice(5), ["会话6"], "按名称搜索");
+  assert.deepEqual(titles().slice(7), ["会话6"], "按名称搜索");
   await act(async () => { renderer.unmount(); });
 });
 

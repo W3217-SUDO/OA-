@@ -101,8 +101,8 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
       {!items.length && (loading ? <div className="assistant-conversation-loading" role="status" aria-live="polite" aria-label="正在加载对话"><Spin size="small" /><span>正在加载对话</span></div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无对话" />)}
       {rowsOf(items)}
   </>;
-  // 501147：侧栏只显示最近 5 条，其余在“全部历史会话”里，可搜索、重命名、删除。
-  const recentLimit = 5;
+  // 陶威 11-03：侧栏最近会话撑满左侧栏，能放几条放几条（超出滚动）；“全部历史会话”里可搜索、重命名、删除。
+  const recentLimit = 50;
   const keyword = historyKeyword.trim().toLowerCase();
   const filtered = keyword ? items.filter((item) => item.title.toLowerCase().includes(keyword)) : items;
   const sidebarList = <>

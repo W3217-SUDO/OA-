@@ -46,7 +46,7 @@ export function ConversationWorkspaceNavigation({ workspace, history, onOpenCase
   return <>
     <Button type="text" className="assistant-workspace-personal-entry" icon={caret(personalActive && !collapsed.personal)} aria-current={personalActive ? "page" : undefined} aria-expanded={personalActive ? !collapsed.personal : false} disabled={busy} onClick={() => openSpace("personal", personalActive, PERSONAL_CONVERSATION_WORKSPACE)}>个人空间</Button>
     {personalActive && !collapsed.personal && history}
-    <div className="assistant-workspace-projects">
+    <div className={`assistant-workspace-projects${expanded ? " is-expanded" : ""}`}>
       <div className="assistant-workspace-project-heading">
         <Button type="text" icon={caret(expanded)} aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>案件空间</Button>
         <Tooltip title={workspace.loadError ? "工作区加载失败，请先重试" : canUseCases ? "选择案件空间" : "当前没有案件访问权限"}><Button type="text" icon={<FolderAddOutlined />} aria-label="选择案件空间" disabled={busy || !!workspace.loadError || !canUseCases} onClick={() => setSelectorOpen(true)} /></Tooltip>
