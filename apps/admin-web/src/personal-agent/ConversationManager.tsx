@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { POPUP_WIDTH } from "../components/common/popupSize";
-import { Button, Drawer, Empty, Input, Modal, Spin, Tooltip, message } from "antd";
+import { Button, Drawer, Empty, Input, Modal, Tooltip, message } from "antd";
 import { DeleteOutlined, EditOutlined, FolderOpenOutlined, HistoryOutlined, LoadingOutlined, MessageOutlined, PlusOutlined, UnorderedListOutlined } from "@ant-design/icons";
 import { errorText, type WorkspaceConversation } from "./types";
 import type { CaseAgentConversationSummary } from "./types";
@@ -107,7 +107,7 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
         <Tooltip title={runningIds.includes(item.id) ? "请先停止该对话的回答" : "删除对话"}><Button type="text" danger icon={<DeleteOutlined />} aria-label={`删除对话：${item.title}`} disabled={busy || runningIds.includes(item.id)} onClick={() => remove(item)} /></Tooltip>
       </div>)}</div>;
   const list = <>
-      {!items.length && (loading ? <div className="assistant-conversation-loading" role="status" aria-live="polite" aria-label="正在加载对话"><Spin size="small" /><span>正在加载对话</span></div> : <Empty image={<AgentMascot pose="tablet" height={72} />} description="暂无对话" />)}
+      {!items.length && (loading ? <div className="assistant-conversation-loading" role="status" aria-live="polite" aria-label="正在加载对话"><AgentMascot pose="laptop" height={40} bob /><span>正在加载对话</span></div> : <Empty image={<AgentMascot pose="sleep" height={72} />} description="暂无对话" />)}
       {rowsOf(items)}
   </>;
   // 陶威 11-03：侧栏最近会话撑满左侧栏，能放几条放几条（超出滚动）；“全部历史会话”里可搜索、重命名、删除。
@@ -115,7 +115,7 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
   const keyword = historyKeyword.trim().toLowerCase();
   const filtered = keyword ? items.filter((item) => item.title.toLowerCase().includes(keyword)) : items;
   const sidebarList = <>
-      {!items.length && (loading ? <div className="assistant-conversation-loading" role="status" aria-live="polite" aria-label="正在加载对话"><Spin size="small" /><span>正在加载对话</span></div> : <Empty image={<AgentMascot pose="tablet" height={72} />} description="暂无对话" />)}
+      {!items.length && (loading ? <div className="assistant-conversation-loading" role="status" aria-live="polite" aria-label="正在加载对话"><AgentMascot pose="laptop" height={40} bob /><span>正在加载对话</span></div> : <Empty image={<AgentMascot pose="sleep" height={72} />} description="暂无对话" />)}
       {/* 当前会话不在前 50 条里：放到最上面并标“当前会话”。 */}
       {activeId && items.findIndex((item) => item.id === activeId) >= recentLimit && <div className="assistant-current-outside">当前会话（较早）</div>}
       {rowsOf(items.findIndex((item) => item.id === activeId) >= recentLimit
@@ -125,7 +125,7 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
   const historyModal = () => <Modal title="全部历史会话" width={POPUP_WIDTH.md} open={historyOpen} footer={null} onCancel={() => setHistoryOpen(false)} destroyOnHidden>
     <Input.Search allowClear placeholder="按名称搜索" aria-label="搜索历史会话" value={historyKeyword} onChange={(event) => setHistoryKeyword(event.target.value)} />
     <div className="assistant-history-all-list">
-      {!filtered.length ? <Empty image={keyword ? Empty.PRESENTED_IMAGE_SIMPLE : <AgentMascot pose="tablet" height={72} />} description={keyword ? "没有找到匹配的会话" : "暂无对话"} /> : rowsOf(filtered, () => setHistoryOpen(false))}
+      {!filtered.length ? <Empty image={<AgentMascot pose={keyword ? "sorry" : "sleep"} height={72} />} description={keyword ? "没有找到匹配的会话" : "暂无对话"} /> : rowsOf(filtered, () => setHistoryOpen(false))}
     </div>
   </Modal>;
   const renameModal = <Modal title="重命名对话" width={POPUP_WIDTH.sm} open={!!renaming} okText="保存" cancelText="取消" confirmLoading={savingTitle}

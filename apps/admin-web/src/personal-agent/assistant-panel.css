@@ -249,3 +249,4 @@
 .ai-chat-page.is-desktop-workspace .assistant-empty-mascot{align-self:flex-start;margin-left:-6px}
 .assistant-thinking .agent-mascot{margin-right:6px}
 @media (prefers-reduced-motion:reduce){.agent-mascot-lid,.agent-mascot.is-bob{animation:none}}
+.ant-empty .agent-mascot{display:block;margin:0 auto}

@@ -7,6 +7,7 @@ import { buildAgentDocumentTree } from "../legal/constants";
 import type { CaseAgentDocument } from "../legal/types";
 import { errorText, type Material, type WorkspaceCase } from "./types";
 import { useVisibleWorkspaceCases } from "./useVisibleWorkspaceCases";
+import AgentMascot from "./AgentMascot";
 import "./workspace-context.css";
 
 type Props = { mode: "case" | "materials" | null; onClose: () => void; selectedCase: WorkspaceCase | null; onCase: (item: WorkspaceCase | null) => void; selectedMaterials: Material[]; onMaterials: (items: Material[]) => void; privateCount: number; onSelection?: (item: WorkspaceCase, materials: Material[]) => void };
@@ -64,7 +65,7 @@ export function CaseMaterialsPicker({ mode, onClose, selectedCase, onCase, selec
             if (onSelection) { setSelectionCase(item); setChecked([]); setDocuments([]); setSelectionMode("materials"); }
             else { onCase(item); onClose(); }
           }}><FolderOpenOutlined /><div><b>{item.serial_no}</b><span>{item.title}</span></div></button>)}
-          {!currentLoading && !cases.items.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无可访问的案件" />}
+          {!currentLoading && !cases.items.length && <Empty image={<AgentMascot pose="sorry" height={72} />} description="暂无可访问的案件" />}
         </> : <>
           {onSelection && <div className="workspace-section-heading"><Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setSelectionMode("case")}>重新选案</Button><span>{activeCase?.title}</span></div>}
           <div className="workspace-section-heading"><span><FileOutlined /> 已选择 {checked.length} 份</span><Space><Button type="text" size="small" onClick={() => updateChecked(documents.map((item) => item.id))}>全选</Button><Button type="text" size="small" onClick={() => setChecked([])}>清空</Button></Space></div>

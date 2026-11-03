@@ -359,7 +359,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
                       ? <ToolOutput content={item.content} />
                       : item.content
                       ? <MessageText content={item.content} />
-                      : (thinking ? <span className="assistant-thinking" role="status" title={progressText}><AgentMascot pose="float" height={30} bob /><span>{progressText}</span></span> : "")}
+                      : (thinking ? <span className="assistant-thinking" role="status" title={progressText}><AgentMascot pose="think" height={30} bob /><span>{progressText}</span></span> : "")}
                     {item.role === "assistant" && <AgentToolResult result={item.tool_result} />}
                     {item.role === "assistant" && !thinking && <ToolTrace trace={item.tool_trace} />}
                     {item.stopped && <span className="assistant-stopped">{item.content ? "已停止，已保留生成内容" : "已停止"}</span>}

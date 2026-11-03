@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Alert, Button, Empty, Input, Modal, Spin } from "antd";
 import { FolderOpenOutlined, SearchOutlined } from "@ant-design/icons";
 import { useVisibleWorkspaceCases } from "./useVisibleWorkspaceCases";
+import AgentMascot from "./AgentMascot";
 import { errorText, type WorkspaceCase } from "./types";
 
 type Props = { open: boolean; onClose: () => void; onSelect: (item: WorkspaceCase) => Promise<void>; blocked?: boolean; title?: string };
@@ -25,7 +26,7 @@ export function CaseWorkspaceSelector({ open, onClose, onSelect, blocked = false
     <Spin spinning={cases.loading || selecting}>
       <div className="workspace-picker-content">
         {!cases.error && cases.items.map((item) => <button type="button" className="workspace-case-option" key={item.id} disabled={selecting || blocked} onClick={() => void select(item)}><FolderOpenOutlined /><div><b>{item.serial_no}</b><span>{item.title}</span></div></button>)}
-        {!cases.loading && !cases.error && !cases.items.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无可访问的案件" />}
+        {!cases.loading && !cases.error && !cases.items.length && <Empty image={<AgentMascot pose="sorry" height={72} />} description="暂无可访问的案件" />}
       </div>
     </Spin>
   </Modal>;
