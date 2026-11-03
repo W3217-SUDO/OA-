@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import re
+from app.case_quick_checks import QUICK_COMMAND_RULES
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any, AsyncIterator, Callable, TypedDict
@@ -226,7 +227,9 @@ def build_case_model_messages(
     from .agent_mcp.model_context import MODEL_QUERY_RULES, model_result_view
     prioritized_snapshot = {
         "document_readings": snapshot.get("document_readings") or [],
-        **{key: value for key, value in snapshot.items() if key != "document_readings"},
+        # 501222：检查结果放前面，长案件截断时也保得住。
+        "case_check": snapshot.get("case_check") or {},
+        **{key: value for key, value in snapshot.items() if key not in {"document_readings", "case_check"}},
     }
     context = json.dumps(model_result_view(prioritized_snapshot, 80_000), ensure_ascii=False, default=str)
     skill_prompt = f"当前启用技能：{skill.name}。{skill.instruction}\n\n" if skill else ""
@@ -241,7 +244,7 @@ def build_case_model_messages(
                 "不要回答不能创建 Word；用户点击前端确认后可将完整正文生成 .docx 并保存到当前案件的案件智能体文件夹。"
                 "生成正文不等于保存文档；保存案件智能体文件夹草稿和转入正式案件目录都必须由用户点击前端确认。"
                 "不能自动保存，不能把聊天中的‘同意’当成前端确认。"
-                f"{RESPONSE_STYLE_RULES}{DOCUMENT_READING_RULES}"
+                f"{RESPONSE_STYLE_RULES}{DOCUMENT_READING_RULES}{QUICK_COMMAND_RULES}"
                 "系统只提供 oa_list_tool_groups、oa_search_tools 与 oa_call_tool 三个工具门面。"
                 "先用 oa_list_tool_groups 按业务发现组，再用 oa_search_tools 携带已发现的 group_id 组内搜索；"
                 "25 组必须同时选择返回的 subgroup_id。跨组流程先发现目标组再搜索，不枚举全部工具。"

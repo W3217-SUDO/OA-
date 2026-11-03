@@ -26,7 +26,7 @@ MATERIALS = [
     ("license", "原告营业执照", True, ["营业执照"]),
     ("identity", "法定代表人身份证明", True, ["身份证明"]),
     ("law-firm-letter", "律师事务所函", True, ["所函", "律师事务所函"]),
-    ("lawyer-license", "律师证复印件", True, ["律师证"]),
+    ("lawyer-license", "律师证复印件", False, ["律师证"]),  # 501222：不是必备项，提交法院时再提醒
     ("defendant-profile", "被告主体信息", True, ["被告主体", "企业信用", "工商内档"]),
     ("evidence-index", "证据目录", True, ["证据目录"]),
     ("evidence", "完整证据材料", True, ["证据材料", "公证书", "时间戳"]),
@@ -42,7 +42,7 @@ CONTRACT_MATERIALS = [
     ("license", "原告主体资格证明", True, ["营业执照", "身份证"]),
     ("identity", "法定代表人身份证明", True, ["身份证明"]),
     ("law-firm-letter", "律师事务所函", True, ["所函", "律师事务所函"]),
-    ("lawyer-license", "律师证复印件", True, ["律师证"]),
+    ("lawyer-license", "律师证复印件", False, ["律师证"]),  # 501222：不是必备项，提交法院时再提醒
     ("defendant-profile", "被告主体信息", True, ["被告主体", "企业信用", "工商内档"]),
     ("contract", "合同文本", True, ["合同", "协议", "订单"]),
     ("performance", "履行凭证", True, ["发票", "送货单", "收货", "对账", "付款", "收款", "转账", "验收", "结算单"]),
@@ -57,7 +57,7 @@ CIVIL_MATERIALS = [
     ("complaint", "起诉状", True, ["起诉状", "诉状"]),
     ("license", "原告主体资格证明", True, ["营业执照", "身份证"]),
     ("law-firm-letter", "律师事务所函", True, ["所函", "律师事务所函"]),
-    ("lawyer-license", "律师证复印件", True, ["律师证"]),
+    ("lawyer-license", "律师证复印件", False, ["律师证"]),  # 501222：不是必备项，提交法院时再提醒
     ("defendant-profile", "被告主体信息", True, ["被告主体", "企业信用", "工商内档", "身份信息"]),
     ("evidence-index", "证据目录", True, ["证据目录"]),
     ("evidence", "证据材料", True, ["证据"]),

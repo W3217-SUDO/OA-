@@ -398,6 +398,21 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
         },
     }
     context["standard_workflow"] = build_case_workflow_guide(context)
+    # 501222（陶国南 11-03 12:50）：“归纳案件情况 / 优先待办事项”的检查结果由系统按固定规则先算好。
+    from app.case_quick_checks import build_case_check
+    task_ids = [item.id for item in tasks]
+    postpones: dict[int, int] = {}
+    last_activity: dict[int, str] = {}
+    if task_ids:
+        for record_id, action, comment, created_at in (await db.execute(select(
+            WorkflowEvent.record_id, WorkflowEvent.action, WorkflowEvent.comment, WorkflowEvent.created_at,
+        ).where(WorkflowEvent.record_id.in_(task_ids)))).all():
+            if "截止日期：" in str(comment or ""):
+                postpones[record_id] = postpones.get(record_id, 0) + 1
+            stamp = created_at.isoformat() if created_at else ""
+            if stamp > last_activity.get(record_id, ""):
+                last_activity[record_id] = stamp
+    context["case_check"] = build_case_check(context, postpones=postpones, last_activity=last_activity)
     return context
 
 
