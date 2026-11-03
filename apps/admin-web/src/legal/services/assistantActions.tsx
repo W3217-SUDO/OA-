@@ -261,10 +261,11 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
             }
         }
     };
-    const decideCaseAgentAction = async (action: CaseAgentAction, decision: "approved" | "rejected") => {
+    /** 成功返回空串；失败返回原因，卡片保留并显示（501298）。 */
+    const decideCaseAgentAction = async (action: CaseAgentAction, decision: "approved" | "rejected"): Promise<string> => {
         const { agentCase, agentDecisionLoading, setAgentDecisionLoading, setAgentState, agentId, conversationId } = context;
         if (!agentCase || agentDecisionLoading)
-            return;
+            return "";
         setAgentDecisionLoading(action.id);
         try {
             const { data } = await api.post(`/case-spaces/${agentCase.id}/agent/actions/${action.id}/decision`, {
@@ -280,9 +281,12 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
             if (decision === "approved" && executed?.status === "approved" && context.viewingCounselCase?.id === agentCase.id && context.refreshCounselCase) {
                 void context.refreshCounselCase(agentCase.id).catch(() => message.warning("修改已执行，案件详情刷新失败，请手动刷新"));
             }
+            return "";
         }
         catch (error: any) {
-            message.error(agentOperationError(error, "审批操作失败"));
+            const reason = agentOperationError(error, "审批操作失败");
+            message.error(reason);
+            return reason;
         }
         finally {
             setAgentDecisionLoading("");

@@ -1,6 +1,5 @@
 import { POPUP_WIDTH } from "../components/common/popupSize";
 import { CaseAgentDock } from "./CaseAgentDock";
-import { StatusTag } from "../components/common/StatusTag";
 import {
 CheckOutlined,
 CloseOutlined,
@@ -19,6 +18,7 @@ StopOutlined,
 import { Alert,Button,Dropdown,Image,Input,message,Modal,Popover,Select,Space,Tag,Tooltip,Tree } from "antd";
 import "../agentPending.css";
 import "../composerSingleBox.css";
+import { actionResultLine, mergeByTime } from "../agentActionResult";
 import { useEffect, useState } from "react";
 import { AgentOperationPreview, agentOperationName, hasAgentOperationPreview } from "../AgentOperationPreview";
 import { AgentToolResult } from "../AgentToolResult";
@@ -71,7 +71,7 @@ interface CaseAgentDrawerProps {
   createCaseConversation: (title: string) => Promise<unknown>;
   agentState: CaseAgentState | null;
   agentDecisionLoading: string;
-  decideCaseAgentAction: (action: CaseAgentAction, decision: "approved" | "rejected") => Promise<unknown>;
+  decideCaseAgentAction: (action: CaseAgentAction, decision: "approved" | "rejected") => Promise<string | void>;
   restoreCaseAgentAction: (action: CaseAgentAction) => Promise<unknown>;
   counselDetailCapabilities: CaseDetailCapabilities;
   agentHistoryExpanded: boolean;
@@ -161,11 +161,24 @@ export const CaseAgentDrawer = ({
     }
     return sendCaseAgentMessage(preset);
   };
+  // 501298：确认或驳回成功后卡片收起，对话里留一行结果；失败的留在卡片里写明原因。
+  const [decisionFailures, setDecisionFailures] = useState<Record<string, string>>({});
   const decideActiveAction = async (decision: "approved" | "rejected") => {
     if (!activeAction || agentDecisionLoading) return;
-    await decideCaseAgentAction(activeAction, decision);
+    const failure = await decideCaseAgentAction(activeAction, decision);
+    setDecisionFailures((current) => {
+      const next = { ...current };
+      if (failure) next[activeAction.id] = failure; else delete next[activeAction.id];
+      return next;
+    });
     setActiveAction(null);
   };
+  const waitingActions = (agentState?.pending_actions || []).filter((action) => action.status === "pending");
+  const decidedActions = (agentState?.pending_actions || []).filter((action) => actionResultLine(action.status, action.summary));
+  const shownMessages = (agentHistoryExpanded ? agentState?.messages : agentState?.messages?.slice(-8)) || [];
+  const firstShownAt = !agentHistoryExpanded && (agentState?.messages?.length || 0) > 8 ? shownMessages[0]?.created_at : undefined;
+  const timeline = mergeByTime(shownMessages, decidedActions.filter((action) => !firstShownAt || !action.decided_at || Date.parse(action.decided_at) >= Date.parse(firstShownAt)),
+    (item) => item.created_at, (action) => action.decided_at || action.requested_at);
   const actionDisabled = (action: CaseAgentAction) => Boolean(agentDecisionLoading) || (action.type !== "mcp.call" && !counselDetailCapabilities.can_write);
   const selectedSkill = (agentStatus?.skills || []).find((item) => item.id === agentSkillId);
   const quickPrompts = selectedSkill?.quick_prompts?.length
@@ -216,23 +229,21 @@ export const CaseAgentDrawer = ({
           </Popover>
         </div>
         {!agentLoading && !agentStatus?.ready && <Alert type="warning" showIcon title="案件智能体暂未就绪" description="请检查模型与 DPH 运行环境后重试。" />}
-        {agentState?.pending_actions?.length ? <section className={`case-agent-actions${agentState.pending_actions.some((action) => action.status === "pending") ? " agent-pending-card" : ""}`}>
+        {waitingActions.length ? <section className="case-agent-actions agent-pending-card">
           <div className="case-agent-section-title agent-pending-title">
-            {agentState.pending_actions.some((action) => action.status === "pending") && <Tag className="agent-pending-tag">待确认</Tag>}
+            <Tag className="agent-pending-tag">待确认</Tag>
             待审批操作
           </div>
           <Alert type="info" showIcon title="写入须人工确认后执行，原业务权限与审批规则不变。" />
-          {[...agentState.pending_actions].reverse().map((action) => <div className="case-agent-action" key={action.id}>
+          {[...waitingActions].reverse().map((action) => <div className="case-agent-action" key={action.id}>
             <div>
               <strong>{action.summary}</strong>
               <span>{agentOperationName(action)}</span>
+              {decisionFailures[action.id] && <div className="agent-action-failure" role="alert">未执行：{decisionFailures[action.id]}</div>}
             </div>
-            {action.status === "pending" ? <Space>
+            <Space>
               <Button size="small" className="agent-btn-confirm" icon={<CheckOutlined />} disabled={actionDisabled(action)} loading={agentDecisionLoading === action.id} onClick={() => setActiveAction(action)}>查看并确认</Button>
-            </Space> : <Space>
-              <StatusTag status={action.status} tone={action.status === "approved" ? "success" : action.status === "restored" ? "processing" : "danger"} label={action.status === "approved" ? "已批准" : action.status === "restored" ? "已恢复" : "已驳回"} />
-              {action.status === "approved" && action.type.endsWith(".delete") && <Button size="small" loading={agentDecisionLoading === action.id} onClick={() => void restoreCaseAgentAction(action)}>恢复</Button>}
-            </Space>}
+            </Space>
           </div>)}
         </section> : null}
         <Modal open={Boolean(activeAction)} title="案件智能体操作确认" width={POPUP_WIDTH.md} maskClosable={!agentDecisionLoading} onCancel={() => { if (!agentDecisionLoading) setActiveAction(null); }} footer={activeAction ? [
@@ -248,10 +259,20 @@ export const CaseAgentDrawer = ({
             <span>智能体仅使用你有权查看的案件空间数据。</span>
           </div>}
           {!agentHistoryExpanded && (agentState?.messages?.length || 0) > 8 && <Button className="case-agent-history-toggle" type="link" size="small" onClick={() => setAgentHistoryExpanded(true)}>查看更早记录</Button>}
-          {(agentHistoryExpanded ? agentState?.messages : agentState?.messages?.slice(-8))?.map((item, index) => <div className={`case-agent-message case-agent-message-${item.role}`} key={item.id || `${item.role}-${index}`}>
+          {timeline.map((row) => {
+            if (row.kind === "action") {
+              const action = row.item, line = actionResultLine(action.status, action.summary)!;
+              return <div key={`action-${action.id}`} className={`agent-action-result is-${line.tone}`} role="status">
+                {line.tone === "done" ? <CheckOutlined /> : <CloseOutlined />}<span title={line.text}>{line.text}</span>
+                {action.status === "approved" && action.type.endsWith(".delete") && <Button type="link" size="small" loading={agentDecisionLoading === action.id} onClick={() => void restoreCaseAgentAction(action)}>恢复</Button>}
+              </div>;
+            }
+            const item = row.item, index = row.index;
+            return <div className={`case-agent-message case-agent-message-${item.role}`} key={item.id || `${item.role}-${index}`}>
             <div className="case-agent-message-meta">{item.role === "user" ? "我" : "案件智能体"}{item.created_at ? ` · ${item.created_at.replace("T", " ").slice(0, 16)}` : ""}</div>
             <div className="case-agent-bubble">{item.attachments?.length ? <div className="case-agent-message-attachments">{item.attachments.map((attachment) => attachment.preview_url ? <figure key={attachment.id}><Image src={attachment.preview_url} alt={attachment.name} preview /><figcaption>{attachment.name}</figcaption></figure> : <Tag key={attachment.id}>{attachment.name}</Tag>)}</div> : null}{item.content}</div>
-          </div>)}
+          </div>;
+          })}
           {(agentLoading || agentSending) && <div className="case-agent-thinking"><AgentMascot pose="think" height={30} bob /> {agentSending ? "正在分析案件空间..." : "正在载入会话..."}</div>}
           <AgentToolResult result={[agentState?.structured_results, ...(agentState?.pending_actions || []).filter((item) => item.status === "approved").map((item) => item.execution_result)]} />
           <div ref={agentMessagesEndRef} />

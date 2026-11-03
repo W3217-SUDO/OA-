@@ -20,3 +20,15 @@
 :root[data-theme="dark"] .ant-btn.agent-btn-confirm:not(:disabled):hover { border-color: #597ef7; background: #263a72; color: #f0f5ff; }
 :root[data-theme="dark"] .ant-btn.agent-btn-cancel { border-color: #434343; background: #303030; color: #f0f0f0; }
 :root[data-theme="dark"] .ant-btn.agent-btn-cancel:not(:disabled):hover { background: #3a3a3a; color: #ffffff; }
+
+/* 501298：处理完的操作在对话里只留一行结果。 */
+.agent-action-result { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 6px auto 12px; padding: 4px 12px; max-width: 100%; border-radius: 999px; background: #f6ffed; color: #389e0d; font-size: 12px; line-height: 20px; }
+.agent-action-result > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-action-result.is-rejected { background: #f5f5f5; color: #8c8c8c; }
+.agent-action-result.is-restored { background: #e6f4ff; color: #1677ff; }
+.agent-action-result .ant-btn { height: 20px; padding: 0 4px; font-size: 12px; }
+.agent-action-failure { margin-top: 6px; color: #cf1322; font-size: 12px; }
+:root[data-theme="dark"] .agent-action-result { background: #162312; color: #95de64; }
+:root[data-theme="dark"] .agent-action-result.is-rejected { background: #262626; color: #a6a6a6; }
+:root[data-theme="dark"] .agent-action-result.is-restored { background: #111a2c; color: #69b1ff; }
+:root[data-theme="dark"] .agent-action-failure { color: #ff7875; }

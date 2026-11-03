@@ -27,6 +27,7 @@ import { COURT_INTAKE_SKILL, NEW_CONVERSATION_COMMANDS, taskEntryForSkill } from
 import "./assistant-panel.css";
 import "../agentPending.css";
 import "../composerSingleBox.css";
+import { actionResultLine } from "../agentActionResult";
 
 export type { AssistantSuggestion };
 
@@ -221,7 +222,10 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   const currentCaseProject = currentProject?.kind === "case" && currentProject.serial_no ? currentProject : undefined;
   const decisionBusy = loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId;
   const connectionActions = caseSession ? [] : workspace.visibleActions.filter((item) => item.type === "personal_mcp.connect" && item.status === "pending");
-  const ordinaryActions = workspace.visibleActions.filter((item) => item.type !== "personal_mcp.connect" || item.status !== "pending");
+  const allOrdinaryActions = workspace.visibleActions.filter((item) => item.type !== "personal_mcp.connect" || item.status !== "pending");
+  // 501298（陶国南 11-04 07:31）：执行成功、已驳回的操作不再留在待确认卡片里，对话里只留一行结果；失败的仍在卡片里写明原因。
+  const ordinaryActions = allOrdinaryActions.filter((item) => !!workspace.decisionFailures[item.id] || !actionResultLine(item.status, item.summary));
+  const finishedActions = allOrdinaryActions.filter((item) => !workspace.decisionFailures[item.id] && !!actionResultLine(item.status, item.summary));
   const dismiss = async (action: PendingAction) => {
     setDismissalError("");
     try { await workspace.dismissAction(action); }
@@ -229,7 +233,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   };
   const dismissVisible = async () => {
     setDismissalError("");
-    try { await workspace.dismissActions(ordinaryActions); }
+    try { await workspace.dismissActions(allOrdinaryActions); }
     catch (error) { setDismissalError(errorText(error, "操作状态收起失败")); }
   };
   const reopen = async (detail: ConfirmationDetail) => {
@@ -387,6 +391,10 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
                 </div>
               );
             })}
+            {finishedActions.map((action) => { const line = actionResultLine(action.status, action.summary)!; return <div key={`result-${action.id}`} className={`agent-action-result is-${line.tone}`} role="status">
+              {line.tone === "done" ? <CheckOutlined /> : <CloseOutlined />}<span title={line.text}>{line.text}</span>
+              <Button type="link" size="small" onClick={() => { setHistoryAction(null); setActiveAction(action); }}>查看</Button>
+            </div>; })}
             {connectionActions.map((action) => <McpConnectionTurn key={`${displayedState.conversation_id}:${action.id}`} action={action} busy={decisionBusy} blocked={!!workspace.decisionFailures[action.id]} onDecide={decide} />)}
           </div>
           {awayFromBottom && <button type="button" className="assistant-jump" onClick={followBottom}>回到最新回答</button>}
