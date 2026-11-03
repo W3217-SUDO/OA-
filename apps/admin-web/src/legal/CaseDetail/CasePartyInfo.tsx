@@ -51,6 +51,15 @@ function CasePartyInfoModal({ caseId, name, onClose }: { caseId: number; name: s
     } catch (failure) { message.error(errorText(failure, "查询工商信息失败")); }
     finally { setQuerying(false); }
   };
+  const [saving, setSaving] = useState("");
+  const saveDocument = async (kind: "basic" | "due_diligence") => {
+    setSaving(kind);
+    try {
+      const { data } = await api.post<{ file: { original_name?: string; name?: string } }>(`/cases/${caseId}/parties/documents`, { name, kind });
+      message.success(`已存到案件空间：${data.file.original_name || data.file.name || ""}`);
+    } catch (failure) { message.error(errorText(failure, "生成失败")); }
+    finally { setSaving(""); }
+  };
   const confirmRefresh = () => Modal.confirm({
     title: "重新查询工商信息？", content: "会再调用一次企查查企业工商信息接口，计费 0.20 元。", okText: "重新查询", cancelText: "取消",
     onOk: () => query(true),
@@ -80,7 +89,11 @@ function CasePartyInfoModal({ caseId, name, onClose }: { caseId: number; name: s
             : <Button size="small" type="primary" loading={querying} onClick={() => void query(false)}>查询工商信息</Button>}
         </Space>
         {info.business
-          ? <>{rowsView(info.business.rows)}<div style={{ marginTop: 4, color: "#888" }}>查询时间 {time(info.business.queried_at)}，以后查看不再计费</div></>
+          ? <>{rowsView(info.business.rows)}<div style={{ marginTop: 4, color: "#888" }}>查询时间 {time(info.business.queried_at)}，以后查看不再计费</div>
+            <Space wrap style={{ marginTop: 12 }}>
+              <Button loading={saving === "basic"} onClick={() => void saveDocument("basic")}>保存{info.role}基本信息到案件空间</Button>
+              <Button loading={saving === "due_diligence"} onClick={() => void saveDocument("due_diligence")}>生成尽职调查报告</Button>
+            </Space></>
           : <Alert type="info" showIcon title="还没有查过。点“查询工商信息”会调用一次企查查企业工商信息接口（0.20 元），查到后存进系统，以后谁再看都不再计费。" />}
       </div>}
     </Space>}

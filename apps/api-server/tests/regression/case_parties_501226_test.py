@@ -106,3 +106,47 @@ class CasePartiesTest(unittest.IsolatedAsyncioTestCase):
                     await case_parties.get_case_party_info(self.case.id, "别的公司", LAWYER, db)
                 self.assertEqual(caught.exception.status_code, 404)
         self.assertEqual(self.calls, [])
+
+
+class CasePartyDocumentTest(CasePartiesTest):
+    def _text(self, content: bytes) -> str:
+        from io import BytesIO
+        from docx import Document
+        document = Document(BytesIO(content))
+        return "\n".join([p.text for p in document.paragraphs] + [c.text for t in document.tables for r in t.rows for c in r.cells])
+
+    async def test_basic_and_report_docx(self):
+        detail = {**qcc._detail({**FULL_410, "Status": "吊销，未注销", "RevokeInfo": {"RevokeDate": "2025-01-01", "RevokeReason": "未年报"}}),
+                  "queried_at": "2026-11-03T14:30:00"}
+        basic = self._text(case_parties.render_party_docx(self.case, "广信区有明眼镜店", "被告", "basic", detail))
+        self.assertIn("被告基本信息：广信区有明眼镜店", basic)
+        self.assertIn("92361121MA00000000", basic)
+        report = self._text(case_parties.render_party_docx(self.case, "广信区有明眼镜店", "被告", "due_diligence", detail))
+        self.assertIn("已吊销：2025-01-01，未年报", report)
+        self.assertIn("本报告未核查的事项", report)
+        self.assertIn("失信被执行人", report)
+
+    async def test_document_needs_business_info_and_saves_to_case(self):
+        saved = []
+
+        async def fake_save(db, identity, **kwargs):
+            saved.append(kwargs)
+            raise RuntimeError("stop")
+
+        async with self.sessions() as db:
+            with patch("app.core.permissions._ensure_record_module", self._case), \
+                 patch("app.core.permissions._require_case_attachment_upload_access", self._allow), \
+                 patch("app.core.generated_file_storage.save_generated_file", fake_save):
+                body = case_parties.PartyDocumentInput(name="广信区有明眼镜店", kind="basic")
+                with self.assertRaises(HTTPException) as caught:
+                    await case_parties.save_case_party_document(self.case.id, body, LAWYER, db)
+                self.assertEqual(caught.exception.status_code, 409)
+                await case_parties.query_case_party_business_info(self.case.id, case_parties.PartyLookupInput(name="广信区有明眼镜店"), LAWYER, db)
+                with self.assertRaises(RuntimeError):
+                    await case_parties.save_case_party_document(self.case.id, case_parties.PartyDocumentInput(name="广信区有明眼镜店", kind="due_diligence"), LAWYER, db)
+        self.assertEqual(saved[0]["name"], "HZMS2600441_被告尽职调查报告_广信区有明眼镜店.docx")
+        self.assertEqual(saved[0]["source_kind"], "case_draft")
+        self.assertEqual(len(self.calls), 1, "生成文档不调接口")
+
+    async def _allow(self, *args):
+        return None
