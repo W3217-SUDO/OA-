@@ -321,16 +321,16 @@ def render_due_diligence(record, name: str, role: str, detail: dict, risk: dict 
     brand = document.add_table(rows=1, cols=2)
     mark_cell, name_cell = brand.rows[0].cells
     mark_cell.text = ""
-    mark_cell.paragraphs[0].add_run().add_picture(BytesIO(MARK), height=Cm(1.7))
+    mark_cell.paragraphs[0].add_run().add_picture(BytesIO(MARK), height=Cm(1.2))
     mark_cell.vertical_alignment = name_cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
     name_cell.text = ""
     title_line = name_cell.paragraphs[0]
     title_line.paragraph_format.space_after = Pt(0)
-    _font(title_line.add_run(FIRM), 20, bold=True, color=INK)
+    _font(title_line.add_run(FIRM), 14, bold=True, color=INK)
     english = name_cell.add_paragraph()
     english.paragraph_format.space_after = Pt(0)
-    _font(english.add_run("SHANGHAI HUZHI LAW FIRM"), 9, color=GREY)
-    _widths(brand, [1.7, Report.WIDTH - 1.7])
+    _font(english.add_run("SHANGHAI HUZHI LAW FIRM"), 7.5, color=GREY)
+    _widths(brand, [1.25, Report.WIDTH - 1.25])
     rule = report.text("", after=0)
     properties = rule._p.get_or_add_pPr()
     border = OxmlElement("w:pBdr")
