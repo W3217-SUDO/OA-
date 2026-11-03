@@ -33,22 +33,22 @@ function load(env) {
   const output = ts.transpileModule(fs.readFileSync(entry, "utf8"), { compilerOptions, fileName: entry }).outputText;
   const module = { exports: {} };
   const component = name => ({ children, ...props }) => React.createElement(name, props, children);
-  const deps = { antd: { Button: component("button"), Tooltip: ({ children }) => children }, "@ant-design/icons": new Proxy({}, { get: () => "icon" }), "react-dom": { createPortal: node => node } };
+  const deps = { antd: { Button: component("button"), Tooltip: ({ children }) => children, ConfigProvider: ({ children }) => children }, "@ant-design/icons": new Proxy({}, { get: () => "icon" }), "react-dom": { createPortal: node => node } };
   vm.runInNewContext(output, { module, exports: module.exports, require: s => deps[s] ?? createRequire(entry)(s), JSON, Math, Number, ...env }, { filename: entry });
   return module.exports;
 }
 
 const pointer = (x, y) => ({ button: 0, clientX: x, clientY: y, preventDefault() {}, target: { closest: () => null } });
-const KEY = "oa.caseAgentWindow.v3.tgn";
+const KEY = "oa.caseAgentWindow.v4.tgn";
 const style = renderer => renderer.root.findByProps({ "aria-label": "案件智能体" }).props.style;
 const render = async (Dock, props) => { let renderer; await act(async () => { renderer = create(React.createElement(Dock, { open: true, title: "案件智能体", onClose() {}, ...props }, "内容")); }); return renderer; };
 
-test("打开时浮在右下角，宽 2/9、高约 70%，不压缩案件页", async () => {
+test("打开时浮在右下角，宽 2/9、高约 85%，不压缩案件页", async () => {
   const env = environment();
   const { CaseAgentDock } = load(env);
   const renderer = await render(CaseAgentDock);
   assert.equal(renderer.root.findByProps({ "aria-label": "案件智能体" }).props.className, "case-agent-dock is-floating");
-  assert.deepEqual({ ...style(renderer) }, { left: 1384, top: 319, width: 400, height: 665 }, "1800×1000：宽 400（2/9），高 665（去掉顶栏的 70%），右下各留 16");
+  assert.deepEqual({ ...style(renderer) }, { left: 1384, top: 176, width: 400, height: 808 }, "1800×1000：宽 400（2/9），高 808（去掉顶栏的 85%），右下各留 16");
   assert.equal(env.classes.size, 0, "不给案件页加任何让位样式");
   await act(async () => { renderer.unmount(); });
 });
@@ -60,14 +60,14 @@ test("拖动、调大小始终留在可视区内，不会掉到页面底下", as
   const header = () => renderer.root.findByType("header");
   // 往右下猛拖：窗口贴住右下边，不出屏幕。
   await act(async () => { header().props.onPointerDown(pointer(1500, 340)); env.fire("pointermove", { clientX: 3000, clientY: 3000 }); env.fire("pointerup", {}); });
-  assert.deepEqual({ ...style(renderer) }, { left: 1400, top: 335, width: 400, height: 665 });
+  assert.deepEqual({ ...style(renderer) }, { left: 1400, top: 192, width: 400, height: 808 });
   // 往左上猛拖：不盖住顶栏，不出左边。
   await act(async () => { header().props.onPointerDown(pointer(1500, 340)); env.fire("pointermove", { clientX: -3000, clientY: -3000 }); env.fire("pointerup", {}); });
-  assert.deepEqual({ ...style(renderer) }, { left: 0, top: 50, width: 400, height: 665 });
-  assert.deepEqual(JSON.parse(env.store.get(KEY)), { x: 0, y: 50, w: 400, h: 665 }, "松手后记住位置");
+  assert.deepEqual({ ...style(renderer) }, { left: 0, top: 50, width: 400, height: 808 });
+  assert.deepEqual(JSON.parse(env.store.get(KEY)), { x: 0, y: 50, w: 400, h: 808 }, "松手后记住位置");
   // 右下角拉大：不超过可视区。
   const corner = renderer.root.findByProps({ "aria-label": "拖动调整智能体大小" });
-  await act(async () => { corner.props.onPointerDown(pointer(400, 715)); env.fire("pointermove", { clientX: 5000, clientY: 5000 }); env.fire("pointerup", {}); });
+  await act(async () => { corner.props.onPointerDown(pointer(400, 858)); env.fire("pointermove", { clientX: 5000, clientY: 5000 }); env.fire("pointerup", {}); });
   assert.deepEqual({ ...style(renderer) }, { left: 0, top: 50, width: 1800, height: 950 });
   // 浏览器窗口变小：窗口一起收进可视区。
   env.window.innerWidth = 1200; env.window.innerHeight = 700;
@@ -81,7 +81,7 @@ test("记住的位置在屏幕外就回到右下角；再点“案件智能体�
   env.store.set(KEY, JSON.stringify({ x: 100, y: 2400, w: 500, h: 600 }));
   const { CaseAgentDock } = load(env);
   const renderer = await render(CaseAgentDock, { revealKey: 1 });
-  assert.deepEqual({ ...style(renderer) }, { left: 1384, top: 319, width: 400, height: 665 }, "旧位置在屏幕外，重置到右下角");
+  assert.deepEqual({ ...style(renderer) }, { left: 1384, top: 176, width: 400, height: 808 }, "旧位置在屏幕外，重置到右下角");
   env.store.set(KEY, JSON.stringify({ x: 200, y: 100, w: 500, h: 600 }));
   await act(async () => { renderer.update(React.createElement(CaseAgentDock, { open: true, title: "案件智能体", onClose() {}, revealKey: 2 }, "内容")); });
   assert.deepEqual({ ...style(renderer) }, { left: 200, top: 100, width: 500, height: 600 }, "在屏幕内的旧位置照用");

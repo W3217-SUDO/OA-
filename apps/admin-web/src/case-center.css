@@ -799,12 +799,12 @@
 }
 /* 501165（tgn 11-03）：案件智能体是浮在案件页上的窗口（挂在 body 下 fixed 定位，始终在可视区内），不压缩案件页。
    不用 :has / color-mix / dvh，兼容钉钉内核 Chrome 100。 */
-.case-agent-dock{position:fixed;z-index:990;display:flex;flex-direction:column;min-width:0;background:var(--oa-surface);border:1px solid var(--oa-border);border-radius:10px;box-shadow:0 12px 32px rgba(15,23,42,.18);overflow:hidden}
+.case-agent-dock{position:fixed;z-index:1010;display:flex;flex-direction:column;min-width:0;background:var(--oa-surface);border:1px solid var(--oa-border);border-radius:10px;box-shadow:0 12px 32px rgba(15,23,42,.18);overflow:hidden}
 .case-agent-dock.is-maximized{border-radius:0;box-shadow:none}
 .case-agent-dock.is-mobile{top:0;right:0;bottom:0;left:0;z-index:1000;border:0;border-radius:0}
-.case-agent-dock-header{display:flex;flex:none;align-items:center;justify-content:space-between;gap:8px;min-height:48px;padding:8px 8px 8px 16px;background:var(--oa-fill);border-bottom:1px solid var(--oa-border);cursor:move;user-select:none;touch-action:none}
+.case-agent-dock-header{display:flex;flex:none;align-items:center;justify-content:space-between;gap:8px;min-height:40px;padding:4px 6px 4px 12px;background:var(--oa-fill);border-bottom:1px solid var(--oa-border);cursor:move;user-select:none;touch-action:none}
 .case-agent-dock.is-maximized .case-agent-dock-header,.case-agent-dock.is-mobile .case-agent-dock-header{cursor:default}
-.case-agent-dock-title{flex:1;min-width:0;overflow:hidden;font-size:15px;font-weight:600;text-overflow:ellipsis;white-space:nowrap}
+.case-agent-dock-title{flex:1;min-width:0;overflow:hidden;font-size:14px;font-weight:600;text-overflow:ellipsis;white-space:nowrap}
 .case-agent-dock-title .anticon{margin-right:8px;color:var(--oa-primary)}
 .case-agent-dock-actions{display:flex;flex:none;align-items:center;gap:2px}
 .case-agent-dock-body{flex:1;min-height:0;overflow:hidden;background:var(--oa-fill)}
@@ -814,5 +814,22 @@
 .case-agent-dock-resize.is-top{top:0;right:16px;bottom:auto;left:16px;width:auto;height:6px;cursor:ns-resize}
 .case-agent-dock-resize.is-corner{top:auto;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize}
 .case-agent-dock-resize.is-left:hover::after,.case-agent-dock-resize.is-left:active::after{content:"";position:absolute;top:0;bottom:0;left:0;width:2px;background:var(--oa-primary)}
-.case-agent-dock-tab{position:fixed;z-index:990;top:40%;right:0;display:flex;flex-direction:column;align-items:center;gap:6px;width:36px;padding:12px 0;border:1px solid var(--oa-border);border-right:0;border-radius:8px 0 0 8px;background:var(--oa-surface);color:var(--oa-primary);box-shadow:-4px 0 12px rgba(15,23,42,.1);cursor:pointer;writing-mode:vertical-rl;font-size:13px;letter-spacing:2px}
+.case-agent-dock-tab{position:fixed;z-index:1010;top:40%;right:0;display:flex;flex-direction:column;align-items:center;gap:6px;width:36px;padding:12px 0;border:1px solid var(--oa-border);border-right:0;border-radius:8px 0 0 8px;background:var(--oa-surface);color:var(--oa-primary);box-shadow:-4px 0 12px rgba(15,23,42,.1);cursor:pointer;writing-mode:vertical-rl;font-size:13px;letter-spacing:2px}
 .case-agent-dock-tab .anticon{writing-mode:horizontal-tb}
+/* 501170（tgn 08:30）：小窗口里头部一行小工具，对话区占大部分高度，输入框完整显示。 */
+.case-agent-dock .case-agent-panel{display:flex;flex-direction:column;height:100%;min-height:0}
+.case-agent-toolbar{display:flex;flex:none;align-items:center;gap:4px;min-width:0;padding:4px 6px;background:var(--oa-surface);border-bottom:1px solid var(--oa-border)}
+.case-agent-toolbar>.ant-btn{flex:none;width:28px;min-width:28px;height:28px;padding:0;color:var(--oa-text-2)}
+.case-agent-toolbar>.ant-btn:hover{color:var(--oa-primary)}
+.case-agent-toolbar>.ant-btn.case-agent-composer-material-trigger{width:auto;min-width:28px;padding:0 4px}
+.case-agent-toolbar>.ant-btn.is-warning{color:#d48806}
+.case-agent-toolbar-select{flex:1 1 0;min-width:0}
+.case-agent-status-popover{display:flex;flex-direction:column;align-items:flex-start;gap:8px;max-width:260px}
+.case-agent-dock .case-agent-messages{flex:1 1 auto;min-height:0;padding:12px}
+.case-agent-dock .case-agent-actions{flex:none;max-height:30%;overflow:auto}
+.case-agent-dock .case-agent-suggestions{flex:none;padding:0 12px 8px}
+.case-agent-dock .case-agent-composer{flex:none;gap:6px;padding:6px 8px 8px;box-shadow:none}
+.case-agent-dock .case-agent-composer textarea{padding:6px 10px}
+.case-agent-dock .case-agent-material-tree{max-height:40vh;overflow:auto}
+.case-agent-dock .case-agent-empty{padding:16px 0}
+.case-agent-dock .case-agent-empty{min-height:0}

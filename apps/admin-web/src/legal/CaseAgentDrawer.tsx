@@ -5,13 +5,15 @@ import {
 CloseOutlined,
 FolderOpenOutlined,
 FolderOutlined,
+InfoCircleOutlined,
 PaperClipOutlined,
+PlusOutlined,
 ReloadOutlined,
 RobotOutlined,
 SendOutlined,
 StopOutlined,
 } from "@ant-design/icons";
-import { Alert,Button,Image,Input,message,Modal,Select,Space,Tag,Tree } from "antd";
+import { Alert,Button,Image,Input,message,Modal,Popover,Select,Space,Tag,Tooltip,Tree } from "antd";
 import { useEffect, useState } from "react";
 import { AgentOperationPreview, agentOperationName, hasAgentOperationPreview } from "../AgentOperationPreview";
 import { AgentToolResult } from "../AgentToolResult";
@@ -142,29 +144,28 @@ export const CaseAgentDrawer = ({
       onClose={closeCaseAgent}
     >
       <div className="case-agent-panel" data-testid="case-agent-panel">
-        <div className="case-agent-status">
-          <Space className="case-agent-status-badges" size={[6, 6]} wrap>
-            <Tag color={agentStatus?.ready ? "success" : "warning"}>{agentStatus?.ready ? "服务正常" : agentLoading && !agentStatus ? "正在检查服务" : "服务未就绪"}</Tag>
-            <Tag>{agentStatus?.model || (agentLoading ? "正在读取配置" : "模型未配置")}</Tag>
-            <Tag color={agentStatus?.checkpoint_backend === "postgresql" ? "blue" : "default"}>案件独立记忆</Tag>
-            {agentStatus?.write_requires_approval && <Tag color="gold">人工审批</Tag>}
-          </Space>
-          <Space className="case-agent-selector-row" wrap size={6} style={{ marginTop: 8, width: "100%" }}>
-            <Button size="small" icon={<FolderOpenOutlined />} onClick={openAgentFolder}>案件智能体文件夹</Button>
-            <Select aria-label="案件会话" style={{ minWidth: 180, flex: 1 }} value={conversationId || undefined} options={agentConversations.map((item) => ({ value: item.id, label: item.title }))} onChange={switchCaseConversation} placeholder="选择会话" />
-            <Button size="small" onClick={() => { const value = window.prompt("新会话名称", "新会话"); if (value?.trim()) void createCaseConversation(value.trim()); }}>新建会话</Button>
-          </Space>
-          <Button className="case-agent-refresh" type="text" size="small" icon={<ReloadOutlined />} loading={agentLoading} title="刷新智能体状态" onClick={() => agentCase && void loadCaseAgent(agentCase)} />
-        </div>
-        <div className="case-agent-skill-select">
-          <span>办公技能</span>
-          <Select
-            value={agentSkillId}
-            allowClear
-            onChange={value => setAgentSkillId(value ?? "")}
-            options={[NO_AGENT_SKILL_OPTION, ...(agentStatus?.skills || []).map((item) => ({ value: item.id, label: `${item.name}${item.available ? "" : "（待配置）"}`, disabled: !item.available }))]}
-          />
-          <small>{(agentStatus?.skills || []).find((item) => item.id === agentSkillId)?.description || "选择本轮对话使用的办公技能"}</small>
+        {/* 501170（tgn 08:30）：小窗口里头部只留一行小工具：文件夹、会话、新建会话、办公技能、案件材料；
+            服务状态、模型、记忆和审批说明收进“ⓘ”，把高度留给对话。 */}
+        <div className="case-agent-toolbar" role="toolbar" aria-label="案件智能体工具">
+          <Tooltip title="案件智能体文件夹"><Button type="text" size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体文件夹" onClick={openAgentFolder} /></Tooltip>
+          <Select size="small" className="case-agent-toolbar-select" aria-label="案件会话" popupMatchSelectWidth={false} value={conversationId || undefined} options={agentConversations.map((item) => ({ value: item.id, label: item.title }))} onChange={switchCaseConversation} placeholder="选择会话" />
+          <Tooltip title="新建会话"><Button type="text" size="small" icon={<PlusOutlined />} aria-label="新建会话" onClick={() => { const value = window.prompt("新会话名称", "新会话"); if (value?.trim()) void createCaseConversation(value.trim()); }} /></Tooltip>
+          <Tooltip title={(agentStatus?.skills || []).find((item) => item.id === agentSkillId)?.description || "选择本轮对话使用的办公技能"}>
+            <Select size="small" className="case-agent-toolbar-select" aria-label="办公技能" popupMatchSelectWidth={false} value={agentSkillId} allowClear onChange={value => setAgentSkillId(value ?? "")}
+              options={[NO_AGENT_SKILL_OPTION, ...(agentStatus?.skills || []).map((item) => ({ value: item.id, label: `${item.name}${item.available ? "" : "（待配置）"}`, disabled: !item.available }))]} />
+          </Tooltip>
+          <Tooltip title="选择随本轮问题发送的案件材料"><Button type="text" size="small" className="case-agent-composer-material-trigger" icon={agentMaterialPickerOpen ? <FolderOpenOutlined /> : <FolderOutlined />} aria-label="案件材料" aria-expanded={agentMaterialPickerOpen} onClick={toggleAgentMaterialPicker}>{agentDocumentIds.length ? agentDocumentIds.length : null}</Button></Tooltip>
+          <Popover trigger="click" placement="bottomRight" title="智能体状态" content={<div className="case-agent-status-popover">
+            <Space size={[6, 6]} wrap>
+              <Tag color={agentStatus?.ready ? "success" : "warning"}>{agentStatus?.ready ? "服务正常" : agentLoading && !agentStatus ? "正在检查服务" : "服务未就绪"}</Tag>
+              <Tag>{agentStatus?.model || (agentLoading ? "正在读取配置" : "模型未配置")}</Tag>
+              <Tag color={agentStatus?.checkpoint_backend === "postgresql" ? "blue" : "default"}>案件独立记忆</Tag>
+              {agentStatus?.write_requires_approval && <Tag color="gold">人工审批</Tag>}
+            </Space>
+            <Button size="small" icon={<ReloadOutlined />} loading={agentLoading} onClick={() => agentCase && void loadCaseAgent(agentCase)}>刷新智能体状态</Button>
+          </div>}>
+            <Button type="text" size="small" icon={<InfoCircleOutlined />} aria-label="智能体状态" className={agentStatus && !agentStatus.ready ? "is-warning" : undefined} />
+          </Popover>
         </div>
         {!agentLoading && !agentStatus?.ready && <Alert type="warning" showIcon title="案件智能体暂未就绪" description="请检查模型与 DPH 运行环境后重试。" />}
         {agentState?.pending_actions?.length ? <section className="case-agent-actions">
@@ -220,13 +221,11 @@ export const CaseAgentDrawer = ({
             {agentDocumentsLoading ? <div className="case-agent-material-loading">正在加载案件材料...</div> : <Tree checkable selectable={false} defaultExpandAll checkedKeys={agentDocumentIds.map((id) => `document:${id}`)} treeData={buildAgentDocumentTree(agentDocuments)} onCheck={updateAgentDocumentSelection} />}
             <small>仅发送本轮勾选且当前账号有权查看的材料，最多 {AGENT_DOCUMENT_LIMIT} 份。</small>
           </div>}
-          <div className="case-agent-composer-materials" aria-label="随本轮问题发送的案件材料">
-            <Button type="text" size="small" className="case-agent-composer-material-trigger" icon={agentMaterialPickerOpen ? <FolderOpenOutlined /> : <FolderOutlined />} aria-expanded={agentMaterialPickerOpen} onClick={toggleAgentMaterialPicker}>案件材料</Button>
+          {!!agentDocumentIds.length && <div className="case-agent-composer-materials" aria-label="随本轮问题发送的案件材料">
             <div className="case-agent-composer-material-tags">
               {agentDocuments.filter((item) => agentDocumentIds.includes(item.id)).map((item) => <Tag key={item.id} closable title={item.original_name} onClose={(event) => { event.preventDefault(); setAgentDocumentIds((current) => current.filter((id) => id !== item.id)); }}>{item.original_name}</Tag>)}
-              {!agentDocumentIds.length && <span>选择后随本轮问题一起发送</span>}
             </div>
-          </div>
+          </div>}
           {agentScreenshots.length ? <div className="case-agent-composer-attachments" aria-label="待发送截图">{agentScreenshots.map((item) => <div key={item.id}><Image src={item.preview_url} alt={item.name} preview /><span title={item.name}>{item.name}</span><Button type="text" icon={<CloseOutlined />} title="移除截图" onClick={() => removeAgentScreenshot(item)} /></div>)}</div> : null}
           <input ref={agentScreenshotInputRef} hidden type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" onChange={(event) => void uploadCaseAgentScreenshot(event.target.files?.[0])} />
           <Button className="case-agent-composer-upload" type="text" icon={<PaperClipOutlined />} title="上传截图" loading={agentScreenshotUploading} disabled={agentLoading || !agentStatus?.ready || agentScreenshots.length >= 4} onClick={() => agentScreenshotInputRef.current?.click()} />

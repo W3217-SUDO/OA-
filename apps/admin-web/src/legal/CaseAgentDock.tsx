@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Button, Tooltip } from "antd";
+import { Button, ConfigProvider, Tooltip } from "antd";
 import { CloseOutlined, CompressOutlined, ExpandOutlined, MenuFoldOutlined, RobotOutlined } from "@ant-design/icons";
 
 // 501165（tgn 11-03）：案件智能体是浮在案件页上面的窗口，遮挡没关系，不压缩案件页。
 // 打开时在右下角，宽 2/9、高约可视区 70%；可拖动、调大小、放大、收起；每人上次的大小和位置记在本机。
 // 窗口挂到 body 下用 fixed 定位跟视口走，拖动和窗口缩放时始终夹在可视区内，不会掉到页面底下（tgn 08:06）。手机全屏。
 export const WINDOW_DEFAULT_WIDTH = 2 / 9;
-export const WINDOW_DEFAULT_HEIGHT = 0.7;
+export const WINDOW_DEFAULT_HEIGHT = 0.85; // 501170（tgn 08:30）：对话区太小，默认再调高
 export const WINDOW_MIN_WIDTH = 320;
 export const WINDOW_MIN_HEIGHT = 320;
 const TOPBAR = 50;
@@ -20,8 +20,8 @@ type Viewport = { width: number; height: number };
 const storageKey = () => {
   try {
     const user = JSON.parse(localStorage.getItem("user") || "null");
-    return `oa.caseAgentWindow.v3.${user?.username || "anonymous"}`;
-  } catch { return "oa.caseAgentWindow.v3.anonymous"; }
+    return `oa.caseAgentWindow.v4.${user?.username || "anonymous"}`;
+  } catch { return "oa.caseAgentWindow.v4.anonymous"; }
 };
 
 export function defaultRect(viewport: Viewport): WindowRect {
@@ -136,7 +136,8 @@ export function CaseAgentDock({ open, title, onClose, children, revealKey = 0 }:
         <Tooltip title="关闭"><Button type="text" size="small" icon={<CloseOutlined />} aria-label="关闭案件智能体" onClick={onClose} /></Tooltip>
       </span>
     </header>
-    <div className="case-agent-dock-body">{children}</div>
+    {/* 501170：窗口层级高于案件详情（antd 抽屉 1000），窗口里弹出的确认框、下拉也要再高一层，否则被窗口自己盖住。 */}
+    <div className="case-agent-dock-body"><ConfigProvider theme={{ token: { zIndexPopupBase: 1100 } }}>{children}</ConfigProvider></div>
     {!mobile && !maximized && <>
       <div className="case-agent-dock-resize is-left" role="separator" aria-label="拖动调整智能体宽度" onPointerDown={resize("left")} />
       <div className="case-agent-dock-resize is-right" role="separator" aria-label="拖动调整智能体右边" onPointerDown={resize("right")} />
