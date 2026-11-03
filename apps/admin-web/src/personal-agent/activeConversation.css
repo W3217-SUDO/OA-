@@ -1,0 +1,33 @@
+/* 陶威 11-03：智能体中心左栏当前会话、当前任务入口高亮（浅色底 + 左侧色条 + 加粗）。钉钉 Chrome 100：不用 :has、color-mix。 */
+.assistant-conversation-row.is-current-conversation,
+.ai-chat-page.is-desktop-workspace .assistant-conversation-row.is-current-conversation,
+.workspace-conversation-row.is-current-conversation {
+  background: #e6f4ec;
+  box-shadow: inset 3px 0 0 #1f8a4c;
+}
+.assistant-conversation-row.is-current-conversation:hover,
+.ai-chat-page.is-desktop-workspace .assistant-conversation-row.is-current-conversation:hover,
+.workspace-conversation-row.is-current-conversation:hover { background: #d9eee2; }
+.is-current-conversation .assistant-conversation-select b,
+.is-current-conversation .workspace-conversation-select b,
+.ai-chat-page.is-desktop-workspace .is-current-conversation .assistant-conversation-select b { color: #175d45; font-weight: 600; }
+.is-current-conversation .assistant-conversation-select > .anticon,
+.ai-chat-page.is-desktop-workspace .is-current-conversation .assistant-conversation-select > .anticon { color: #1f8a4c; }
+
+.assistant-task-group > .ant-btn.is-current-entry,
+.assistant-task-group > .ant-btn.is-current-entry:not(:disabled):hover,
+.ai-chat-page.is-desktop-workspace .assistant-task-group > .ant-btn.is-current-entry { background: #e6f4ec; box-shadow: inset 3px 0 0 #1f8a4c; color: #175d45; font-weight: 600; }
+.assistant-task-group-list button.is-active,
+.assistant-task-group-list button.is-active:hover:not(:disabled) { background: #e6f4ec; box-shadow: inset 3px 0 0 #1f8a4c; color: #175d45; font-weight: 600; }
+
+.assistant-current-outside { flex: none; padding: 2px 10px; color: #1f8a4c; font-size: 12px; }
+
+:root[data-theme="dark"] .assistant-conversation-row.is-current-conversation,
+:root[data-theme="dark"] .ai-chat-page.is-desktop-workspace .assistant-conversation-row.is-current-conversation,
+:root[data-theme="dark"] .workspace-conversation-row.is-current-conversation,
+:root[data-theme="dark"] .assistant-task-group > .ant-btn.is-current-entry,
+:root[data-theme="dark"] .ai-chat-page.is-desktop-workspace .assistant-task-group > .ant-btn.is-current-entry,
+:root[data-theme="dark"] .assistant-task-group-list button.is-active { background: #173326; box-shadow: inset 3px 0 0 #49aa6f; color: #b7ebc8; }
+:root[data-theme="dark"] .is-current-conversation .assistant-conversation-select b,
+:root[data-theme="dark"] .ai-chat-page.is-desktop-workspace .is-current-conversation .assistant-conversation-select b { color: #b7ebc8; }
+:root[data-theme="dark"] .assistant-current-outside { color: #73d13d; }

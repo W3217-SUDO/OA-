@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button, Tooltip } from "antd";
 import { ArrowLeftOutlined, DownOutlined, FolderOpenOutlined, RightOutlined, InboxOutlined, ReloadOutlined, ScheduleOutlined, SolutionOutlined } from "@ant-design/icons";
 import { ConfirmationHistory } from "./ConfirmationHistory";
@@ -39,6 +39,11 @@ export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPers
   const current = workspace.currentWorkspace;
   const caseProject = current?.kind === "case" ? workspace.workspaceProjects.find((item) => item.kind === "case" && item.case_id === current.case_id) : undefined;
   const historyTitle = current?.kind === "case" ? `${caseProject?.serial_no || "案件空间"} · 最近会话` : "个人空间 · 最近会话";
+  // 陶威 11-03：进入任务会话时，上面对应的入口（任务处理/收文助手/客户与合同）高亮并展开。
+  const activeId = workspace.state.conversation_id;
+  const activeSkill = (workspace.conversations || []).find((item) => item.id === activeId)?.skill_id;
+  const activeEntry = (workspace.taskEntries || []).find((entry) => entry.skillId === activeSkill)?.key;
+  useEffect(() => { if (activeEntry) setExpanded((keys) => keys.includes(activeEntry) ? keys : [...keys, activeEntry]); }, [activeEntry, activeId]);
   const busy = workspace.loading || workspace.stopping || workspace.uploading || !!workspace.decisionId || workspace.conversationBusy;
   return <aside className="assistant-workspace-sidebar" aria-label="AI 工作区导航">
     <div className="assistant-workspace-brand">
@@ -72,6 +77,7 @@ export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPers
               .sort((left, right) => updatedAt(right.updated_at) - updatedAt(left.updated_at));
             return <div key={entry.key} className="assistant-task-group">
               <Button type="text" icon={TASK_ICONS[entry.key]} title={`${entry.label}的历史会话`} aria-expanded={open}
+                className={activeEntry === entry.key ? "is-current-entry" : undefined} aria-current={activeEntry === entry.key ? "page" : undefined}
                 onClick={() => setExpanded((current) => open ? current.filter((key) => key !== entry.key) : [...current, entry.key])}>
                 <span className="assistant-task-group-label">{entry.label}</span>
                 {!!items.length && <span className="assistant-task-group-count">{items.length}</span>}

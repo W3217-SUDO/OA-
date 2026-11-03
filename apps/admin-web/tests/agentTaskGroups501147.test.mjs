@@ -58,9 +58,11 @@ test("左侧固定任务展开为会话归集，最新在上，点会话只进�
   let renderer;
   await act(async () => { renderer = create(React.createElement(AssistantWorkspaceSidebar, { workspace, name: "AI助手", onOpenPersonalSpace() {}, onReopenConfirmation: async () => {}, onStartIntake: () => started.push("intake"), onStartTask: id => started.push(id), onOpenTaskConversation: (id, skill) => opened.push([id, skill]) })); });
   const group = label => renderer.root.findAllByType("button").find(item => [].concat(item.props.children).some(child => child?.props?.children === label));
-  assert.equal(renderer.root.findAllByType("ul").length, 0, "默认收起");
-  await act(async () => { group("任务处理").props.onClick(); });
-  assert.equal(started.length, 0, "点左侧不自动发“我今日的任务”");
+  // 陶威 11-03：当前会话属于“任务处理”，进来就展开并高亮这一项；其他入口仍默认收起。
+  assert.equal(renderer.root.findAllByType("ul").length, 1, "只展开当前会话所在的入口");
+  assert.equal(group("任务处理").props.className, "is-current-entry");
+  assert.equal(group("收文助手").props.className, undefined);
+  assert.equal(started.length, 0, "左侧不自动发“我今日的任务”");
   assert.equal(group("任务处理").props["aria-expanded"], true);
   const rows = () => renderer.root.findByProps({ "aria-label": "任务处理会话" }).findAllByType("li").map(item => item.findByType("button"));
   assert.deepEqual(rows().map(item => item.findByType("span").props.children), ["任务处理 11-02", "任务处理"], "只列这一类，最新在上");

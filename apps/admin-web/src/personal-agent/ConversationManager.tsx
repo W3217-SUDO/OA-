@@ -1,9 +1,10 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { POPUP_WIDTH } from "../components/common/popupSize";
 import { Button, Drawer, Empty, Input, Modal, Spin, Tooltip, message } from "antd";
 import { DeleteOutlined, EditOutlined, FolderOpenOutlined, HistoryOutlined, LoadingOutlined, MessageOutlined, PlusOutlined, UnorderedListOutlined } from "@ant-design/icons";
 import { errorText, type WorkspaceConversation } from "./types";
 import type { CaseAgentConversationSummary } from "./types";
+import "./activeConversation.css";
 
 type Props = {
   items: WorkspaceConversation[];
@@ -90,7 +91,14 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
     },
     });
   };
-  const rowsOf = (rows: WorkspaceConversation[], afterSelect?: () => void) => <div className={listClassName}>{rows.map((item) => <div className={`${rowClassName}${item.id === activeId ? " active" : ""}`} key={item.id}>
+  // 陶威 11-03：当前正在看的会话整行高亮；切换或新建后滚到它，看得出自己在哪个会话。
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!activeId) return;
+    const row = sidebarRef.current?.querySelector<HTMLElement>(".is-current-conversation");
+    try { row?.scrollIntoView({ block: "nearest" }); } catch { /* 老内核不支持参数时不滚 */ }
+  }, [activeId, items.length]);
+  const rowsOf = (rows: WorkspaceConversation[], afterSelect?: () => void, ref?: typeof sidebarRef) => <div className={listClassName} ref={ref}>{rows.map((item) => <div className={`${rowClassName}${item.id === activeId ? " active is-current-conversation" : ""}`} key={item.id}>
         <button type="button" className={selectClassName} aria-current={item.id === activeId ? "true" : undefined} disabled={busy} onClick={() => void run(async () => { await onSelect(item.id); afterSelect?.(); }, presentation === "drawer")}>
           {runningIds.includes(item.id) ? <LoadingOutlined /> : <MessageOutlined />}<span><b title={item.title}>{item.title}</b><small>{runningIds.includes(item.id) ? "正在回答" : `${item.updated_at ? new Date(item.updated_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) + " · " : ""}${item.message_count} 条消息`}</small></span>
         </button>
@@ -107,7 +115,10 @@ export function ConversationManager({ items, activeId, busy, loading = false, ru
   const filtered = keyword ? items.filter((item) => item.title.toLowerCase().includes(keyword)) : items;
   const sidebarList = <>
       {!items.length && (loading ? <div className="assistant-conversation-loading" role="status" aria-live="polite" aria-label="正在加载对话"><Spin size="small" /><span>正在加载对话</span></div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无对话" />)}
-      {rowsOf(items.slice(0, recentLimit))}
+      {/* 当前会话不在前 50 条里：放到最上面并标“当前会话”。 */}
+      {activeId && items.findIndex((item) => item.id === activeId) >= recentLimit && <div className="assistant-current-outside">当前会话（较早）</div>}
+      {rowsOf(items.findIndex((item) => item.id === activeId) >= recentLimit
+        ? [items.find((item) => item.id === activeId)!, ...items.slice(0, recentLimit)] : items.slice(0, recentLimit), undefined, sidebarRef)}
       {items.length > 0 && <Button type="link" icon={<UnorderedListOutlined />} className="assistant-history-all" onClick={() => { setHistoryKeyword(""); setHistoryOpen(true); }}>全部历史会话（{items.length}）</Button>}
   </>;
   const historyModal = () => <Modal title="全部历史会话" width={POPUP_WIDTH.md} open={historyOpen} footer={null} onCancel={() => setHistoryOpen(false)} destroyOnHidden>
