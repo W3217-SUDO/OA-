@@ -16,7 +16,8 @@ class CaseAssignmentInput(BaseModel):
 
 
 class CaseHearingLawyerInput(BaseModel):
-    hearing_lawyer: str = Field(min_length=1, max_length=128)
+    hearing_lawyer: str = Field(default="", max_length=128)
+    hearing_lawyers: list[str] | None = Field(default=None, max_length=20)  # 开庭律师可多人（501293）
     comment: str = Field(default="", max_length=500)
 
 
@@ -296,9 +297,7 @@ class CaseNormalBasicInput(BaseModel):
     assistant: str = Field(default="", max_length=128)
     assistants: list[str] | None = Field(default=None, max_length=20)
     business_owner: str = Field(default="", max_length=128)
-    business_owners: list[str] | None = Field(default=None, max_length=20)
     investigator: str = Field(default="", max_length=128)
-    investigators: list[str] | None = Field(default=None, max_length=20)
     investigation_clue_ids: list[int] = Field(default_factory=list, max_length=50)
     right_type: str = Field(default="", max_length=128)
     source_person: str = Field(default="", max_length=128)

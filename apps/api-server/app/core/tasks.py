@@ -426,6 +426,7 @@ async def _sync_notifications(identity: dict, db: AsyncSession) -> None:
         responsible = {
             case_record.owner,
             str(hearing.hearing_lawyer or "").strip(),
+            *split_case_people(case_data.get("hearing_lawyer_usernames")),
             str(case_data.get("assistant_username") or case_data.get("assistant") or "").strip(),
             *split_case_people(case_data.get("investigator_usernames") or case_data.get("investigator_username") or case_data.get("investigator")),
             *(str(value).strip() for value in (case_data.get("handling_lawyer_usernames") or []) if str(value).strip()),

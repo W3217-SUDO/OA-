@@ -7,7 +7,7 @@ from app.core.dependencies import AsyncSession, BusinessRecord, HTTPException, U
 # 知识产权案件是代理人、撰稿人、处理人、提交人、案件管理人等）。
 CASE_MEMBER_FIELDS = (
     "case_lawyer", "lawyer", "lawyer_username", "handling_lawyer_usernames", "handling_lawyers",
-    "hearing_lawyer", "hearing_lawyer_username", "court_lawyer", "court_lawyer_username",
+    "hearing_lawyer", "hearing_lawyer_username", "hearing_lawyer_usernames", "court_lawyer", "court_lawyer_username",
     "assistant", "assistant_username", "assistant_usernames",
     "source_person", "source_person_username", "source_owner", "business_owner",
     "customer_manager", "customer_managers", "investigator", "investigator_username", "investigator_usernames",

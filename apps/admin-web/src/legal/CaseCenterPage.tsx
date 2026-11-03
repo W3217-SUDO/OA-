@@ -105,8 +105,12 @@ normalizeFeeSubtypeForScope
 import {
 CASE_EXECUTION_STATUSES,
 prioritizeCaseAssistantSelection,
-splitCasePeople
+clueInvestigatorRows,
+resolveStoredCasePeople,
+splitCasePeople,
+type CaseClueInvestigator
 } from "../caseSecondBatchParity";
+import { CaseClueInvestigatorList } from "./CaseClueInvestigatorList";
 import { buildWarehouseLocationOptions,resolveCaseWarehouseLocationIds } from "../caseWarehouseLocationParity.mjs";
 import {
 buildCaseUnarchiveReviewPayload,
@@ -2071,7 +2075,11 @@ export default function CaseCenterPage({
     const capability = viewingCounselCase?.id === row.id ? counselDetailCapabilities : getCaseCapability(row);
     if (!capability.can_edit_hearing_lawyer) return message.warning("当前账号无权查看或修改该案件");
     if (ARCHIVE_LOCKED_STATUSES.includes(row.status)) return message.warning("归档中的案件不能修改开庭律师");
-    caseHearingLawyerForm.setFieldsValue({ hearing_lawyer: row.data.hearing_lawyer || "", comment: "" });
+    caseHearingLawyerForm.setFieldsValue({
+      hearing_lawyers: resolveStoredCasePeople(resolveCasePersonValues, isCasePersonOption,
+        splitCasePeople(row.data.hearing_lawyer_usernames || row.data.hearing_lawyer_username), splitCasePeople(row.data.hearing_lawyers || row.data.hearing_lawyer)),
+      comment: "",
+    });
     setEditingCaseHearingLawyer(row);
   };
 
@@ -2873,7 +2881,8 @@ export default function CaseCenterPage({
     setCaseCommissionRows((rows) => rows.map((row) => {
       if (row.client_key !== clientKey) return row;
       const reference = commissionAmountForBase(row, value);
-      return { ...row, base_amount: value, reference_commission: reference, actual_amount: reference };
+      // 多人分的调查、开庭提成由人工填写，改基数不覆盖实际金额（501293）
+      return { ...row, base_amount: value, reference_commission: reference, actual_amount: row.manual_amount ? row.actual_amount : reference };
     }));
   };
   const selectCaseCommissionTemplate = (clientKey: string, previewKey: string) => {
@@ -2897,7 +2906,7 @@ export default function CaseCenterPage({
       if (field === "base_amount") {
         return rows.map((row) => {
           const reference = commissionAmountForBase(row, first.base_amount);
-          return { ...row, base_amount: first.base_amount, reference_commission: reference, actual_amount: reference };
+          return { ...row, base_amount: first.base_amount, reference_commission: reference, actual_amount: row.manual_amount ? row.actual_amount : reference };
         });
       }
       return rows.map((row) => ({ ...row, [field]: first[field] }));
@@ -4518,15 +4527,22 @@ export default function CaseCenterPage({
           <div className="form-grid">
             <Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item>
             <Form.Item label="律师助理" name="assistants" normalize={prioritizeCaseAssistantSelection}><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="可选择多人；最新选择的助理排在最前" /></Form.Item>
-            <Form.Item label="调查员" name="investigators" extra="默认按关联调查线索的调查员带出，可多选"><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="可选择多人" /></Form.Item>
-            {isCivilCaseType(editingNormalCase?.data.case_type) && <Form.Item label="案源人" name="business_owners"><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="可选择多人" /></Form.Item>}
+            <Form.Item label="调查员" name="investigator_clues" extra="按关联调查线索带出，每条线索一人；调查员不对请在线索里修改">
+              <CaseClueInvestigatorList />
+            </Form.Item>
+            {isCivilCaseType(editingNormalCase?.data.case_type) && <Form.Item label="案源人" name="business_owner"><KeywordPersonSelect allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>}
             {editingNormalCase?.data.case_type === "行政案件及国家赔偿" && <Form.Item label="权利类型" name="right_type"><Select allowClear options={rightTypeOptions}/></Form.Item>}
           </div>
           <Form.Item label="关联调查线索" name="investigation_clue_ids"><CaseClueSelect caseId={editingNormalCase?.id} onPickRows={(rows, allKnown) => {
-            // 改了关联线索：调查员按线索的调查员重新带出（同一人一次）；有线索不在候选里时保留已选的人
-            const picked = resolveCasePersonValues(splitCasePeople(rows.map((row) => row.data?.investigator_usernames?.length ? row.data.investigator_usernames : row.owner)));
-            const current = allKnown ? [] : (normalCaseEditForm.getFieldValue("investigators") || []);
-            normalCaseEditForm.setFieldsValue({ investigators: [...new Set([...current, ...picked])] });
+            // 改了关联线索：调查员按每条线索的调查员重新带出（不去重）；有线索不在候选里时沿用原来那条的调查员
+            const previous: CaseClueInvestigator[] = normalCaseEditForm.getFieldValue("investigator_clues") || [];
+            const ids: number[] = normalCaseEditForm.getFieldValue("investigation_clue_ids") || [];
+            const known = new Map(rows.map((row) => [Number(row.id), row]));
+            normalCaseEditForm.setFieldsValue({ investigator_clues: ids.flatMap((id) => {
+              const row = known.get(Number(id));
+              if (!row) return allKnown ? [] : previous.filter((item) => Number(item.clue_id) === Number(id));
+              return clueInvestigatorRows(row, (value) => casePersonDisplayName(value));
+            }) });
           }} /></Form.Item>
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
@@ -4627,8 +4643,8 @@ export default function CaseCenterPage({
       </Modal>
       <Modal width={POPUP_WIDTH.sm} open={Boolean(editingCaseHearingLawyer)} title={`修改开庭律师：${editingCaseHearingLawyer?.serial_no || ""}`} okText="确定" cancelText="取消" onOk={saveCaseHearingLawyer} onCancel={()=>setEditingCaseHearingLawyer(null)} destroyOnHidden>
         <Form form={caseHearingLawyerForm} layout="vertical">
-          <Form.Item label="开庭律师" name="hearing_lawyer" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}>
-            <KeywordPersonSelect allowClear showSearch optionFilterProp="label" options={caseLawyerOptions} placeholder="输入关键词选择在职律师" notFoundContent="暂无在职律师；请先在人事中心创建并启用律师账号" />
+          <Form.Item label="开庭律师" name="hearing_lawyers" extra="可选择多人，第一位为主开庭律师" rules={[{required:true,type:"array",min:1,message:"请选择系统已创建的在职律师"}]}>
+            <KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions} placeholder="输入关键词选择在职律师" notFoundContent="暂无在职律师；请先在人事中心创建并启用律师账号" />
           </Form.Item>
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3} /></Form.Item>
         </Form>

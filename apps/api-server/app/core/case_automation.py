@@ -218,22 +218,22 @@ async def _apply_phase_rules(case_record: BusinessRecord, sources: RuleSources, 
                 str((sources.current_clues[number].data or {}).get("notary_institution") or "").strip()
                 for number in clue_numbers if number in sources.current_clues
             ]
-            if any(str(evidence.NotaryOrganization or "").strip() in TIMESTAMP_ORGANIZATIONS for _, evidence in evidence_rows) or any(
-                method in TIMESTAMP_ORGANIZATIONS for method in current_methods
-            ):
-                investigator = await resolve_automatic_task_user(
-                    (case_record.data or {}).get("investigator_usernames")
-                    or split_case_people((case_record.data or {}).get("investigator_username"))
-                    or next((
-                        (sources.current_clues[number].data or {}).get("collected_by")
-                        for number in clue_numbers if number in sources.current_clues
-                        and (sources.current_clues[number].data or {}).get("collected_by")
-                    ), "")
-                    or _reference_list(next((clue.Investigators or clue.InvestigatorNames for clue, _ in evidence_rows if clue.Investigators or clue.InvestigatorNames), "")), db,
-                )
+            # 交接时间戳文件派给用了时间戳的那条线索的调查员；几条线索调查员不同的各派各的（陶国南 501293）
+            timestamp_clues = [
+                number for number in clue_numbers
+                if any(str(evidence.NotaryOrganization or "").strip() in TIMESTAMP_ORGANIZATIONS for _, evidence in sources.clue_evidence.get(number, []))
+                or (number in sources.current_clues and str((sources.current_clues[number].data or {}).get("notary_institution") or "").strip() in TIMESTAMP_ORGANIZATIONS)
+            ]
+            assigned: set[str] = set()
+            for index, number in enumerate(timestamp_clues):
+                investigator = await resolve_automatic_task_user(_clue_investigators(number, sources), db)
+                key = investigator.username if investigator else ""
+                if index and key in assigned:
+                    continue
+                assigned.add(key)
                 await _create(case_record, db, number=2, title="交接时间戳文件", owner=investigator,
                     initiator=assistant, description="完成时间戳文件交接", trigger_at=phase_start,
-                    source=source, days=10)
+                    source=source if not index else f"{source}:clue:{number}", days=10)
             if any(
                 str(evidence.NotaryOrganization or "").strip()
                 and str(evidence.NotaryOrganization or "").strip() not in TIMESTAMP_ORGANIZATIONS
@@ -287,6 +287,19 @@ def _advance_due_notary_review(case_record: BusinessRecord, sources: RuleSources
     ))
 
 
+def _clue_investigators(clue_no: str, sources: RuleSources) -> list[str]:
+    """某条线索的调查员（501293：线索的任务派给该线索的调查员）：线索调查员 → 取证人 → 线索负责人 → 旧系统线索调查员。"""
+    current = sources.current_clues.get(clue_no)
+    data = (current.data or {}) if current else {}
+    people = split_case_people(data.get("investigator_usernames")) or split_case_people(data.get("collected_by"))
+    if not people and current is not None:
+        people = split_case_people(current.owner)
+    if not people:
+        people = next((_reference_list(clue.Investigators or clue.InvestigatorNames)
+                       for clue, _ in sources.clue_evidence.get(clue_no, []) if clue.Investigators or clue.InvestigatorNames), [])
+    return people
+
+
 async def _apply_evidence_rules(case_record: BusinessRecord, sources: RuleSources, db: AsyncSession, today: date) -> None:
     data = case_record.data or {}
     _, assistant, hearing_lawyer = await _people(case_record, db)
@@ -302,9 +315,7 @@ async def _apply_evidence_rules(case_record: BusinessRecord, sources: RuleSource
             certificate_received = _certificate_received(evidence, current_data, clue_no, sources)
             in_stock = evidence.EvidenceStatus == 20 or str(current_data.get("evidence_status") or "").strip() in {"已入库", "已重新入库"}
             if notary_date and today > notary_date + timedelta(days=60) and not (certificate_received and in_stock):
-                investigator = await resolve_automatic_task_user(
-                    current_data.get("collected_by") or _reference_list(legacy_clue.Investigators or legacy_clue.InvestigatorNames), db,
-                )
+                investigator = await resolve_automatic_task_user(_clue_investigators(clue_no, sources), db)
                 await _create(case_record, db, number=10, title="跟进公证书", owner=investigator,
                     initiator=None, description="本案公证超过60日，抓紧催公证书和证物入库",
                     trigger_at=notary_date + timedelta(days=61),
@@ -316,7 +327,7 @@ async def _apply_evidence_rules(case_record: BusinessRecord, sources: RuleSource
         certificate_received = bool(current_data.get("certificate_no") or clue_no in sources.certificate_upload_clues)
         in_stock = str(current_data.get("evidence_status") or "").strip() in {"已入库", "已重新入库"}
         if method and method not in TIMESTAMP_ORGANIZATIONS and notary_date and today > notary_date + timedelta(days=60) and not (certificate_received and in_stock):
-            investigator = await resolve_automatic_task_user(current_data.get("collected_by"), db)
+            investigator = await resolve_automatic_task_user(_clue_investigators(clue_no, sources), db)
             await _create(case_record, db, number=10, title="跟进公证书", owner=investigator,
                 initiator=None, description="本案公证超过60日，抓紧催公证书和证物入库",
                 trigger_at=notary_date + timedelta(days=61),

@@ -28,14 +28,22 @@ test("账号都对得上系统人员时按账号回显，否则按姓名回显",
   assert.deepEqual(parity.resolveStoredCasePeople(resolve, (v) => options.has(v), ["sugq", "gone"], ["苏贵全", "离职员工"]), ["sugq", "离职员工"]);
 });
 
-test("保存时带上多选的调查员、案源人", () => {
-  const payload = parity.normalizeCaseEditPayload({ customer_record_id: 1, handling_lawyers: ["shenjf"], investigators: ["sugq", "yuxd"], business_owners: ["wengjie"] }, "normal");
-  assert.deepEqual(payload.investigators, ["sugq", "yuxd"]);
-  assert.deepEqual(payload.business_owners, ["wengjie"]);
+test("迁移数据：线索号与“苏贵全,苏贵全,苏贵全”逐条对上，不去重", () => {
+  assert.deepEqual(parity.storedClueInvestigators({ investigation_clue_nos: ["M1", "M2", "M3"], investigator: "苏贵全,苏贵全,苏贵全" }),
+    [{ clue_no: "M1", name: "苏贵全" }, { clue_no: "M2", name: "苏贵全" }, { clue_no: "M3", name: "苏贵全" }]);
+  const saved = [{ clue_no: "M1", username: "sugq", name: "苏贵全" }];
+  assert.deepEqual(parity.storedClueInvestigators({ investigator_clues: saved }), saved);
 });
 
-test("修改窗口：调查员、案源人多选，改线索带出线索调查员", () => {
-  assert.match(page, /label="调查员" name="investigators"[^>]*><KeywordPersonSelect mode="multiple"/);
-  assert.match(page, /label="案源人" name="business_owners"><KeywordPersonSelect mode="multiple"/);
+test("线索调查员：有 investigator_usernames 用它，否则用线索负责人", () => {
+  const name = (value) => ({ sugq: "苏贵全", yuxd: "虞向东" }[value] || value);
+  assert.deepEqual(parity.clueInvestigatorRows({ id: 1, serial_no: "M1", owner: "sugq", data: {} }, name), [{ clue_id: 1, clue_no: "M1", username: "sugq", name: "苏贵全" }]);
+  assert.deepEqual(parity.clueInvestigatorRows({ id: 2, serial_no: "M2", owner: "sugq", data: { investigator_usernames: ["yuxd"] } }, name).map((row) => row.name), ["虞向东"]);
+});
+
+test("修改窗口：调查员按线索只读显示，案源人单选，开庭律师多选", () => {
+  assert.match(page, /label="调查员" name="investigator_clues"[\s\S]*?<CaseClueInvestigatorList \/>/);
+  assert.match(page, /label="案源人" name="business_owner"><KeywordPersonSelect allowClear/);
+  assert.match(page, /label="开庭律师" name="hearing_lawyers"[^>]*>\s*<KeywordPersonSelect mode="multiple"/);
   assert.match(page, /CaseClueSelect caseId=\{editingNormalCase\?\.id\} onPickRows=/);
 });
