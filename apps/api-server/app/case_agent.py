@@ -62,6 +62,14 @@ DOCUMENT_READING_RULES = (
     "不得在 document_readings 已有正文或视觉页时回答‘只看到了附件清单’。"
 )
 
+# 501289（陶国南 11-03 21:56）：改案件信息只看案件基本信息，不先读文档，更快。
+CASE_INFO_EDIT_RULES = (
+    "修改、编辑或新建案件信息时（基本信息、开庭律师、当事人信息、法院信息、公证信息、诉讼/判决金额、变更阶段、提醒、案件事件、"
+    "内部费用、案件费用等），只依据上面的当前案件空间数据（案件基本信息）和对应的修改接口；"
+    "不要读取案件文档、文书、附件或 AI 空间文件，也不要为此再查询整个案件空间或搜索文档类工具。"
+    "只有用户明确要求按某份文件内容填写时，才读取那一份文件。"
+)
+
 _MODEL_CHUNK_CALLBACK: ContextVar[Callable[[str], None] | None] = ContextVar("model_chunk_callback", default=None)
 
 _CASE_SELECTION: ContextVar[dict[str, Any] | None] = ContextVar("oa_case_selection", default=None)
@@ -244,7 +252,7 @@ def build_case_model_messages(
                 "不要回答不能创建 Word；用户点击前端确认后可将完整正文生成 .docx 并保存到当前案件的案件智能体文件夹。"
                 "生成正文不等于保存文档；保存案件智能体文件夹草稿和转入正式案件目录都必须由用户点击前端确认。"
                 "不能自动保存，不能把聊天中的‘同意’当成前端确认。"
-                f"{RESPONSE_STYLE_RULES}{DOCUMENT_READING_RULES}{QUICK_COMMAND_RULES}"
+                f"{RESPONSE_STYLE_RULES}{DOCUMENT_READING_RULES}{CASE_INFO_EDIT_RULES}{QUICK_COMMAND_RULES}"
                 "系统只提供 oa_list_tool_groups、oa_search_tools 与 oa_call_tool 三个工具门面。"
                 "先用 oa_list_tool_groups 按业务发现组，再用 oa_search_tools 携带已发现的 group_id 组内搜索；"
                 "25 组必须同时选择返回的 subgroup_id。跨组流程先发现目标组再搜索，不枚举全部工具。"

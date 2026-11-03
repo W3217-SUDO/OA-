@@ -314,7 +314,30 @@ def get_operation_guidance(route: APIRoute, method: str) -> dict:
         guidance.update(deepcopy(_GUIDANCE[key]))
         guidance["documentation_status"] = "source_verified"
         guidance["documentation_gaps"] = ["仅核实本说明列明的用途和边界；参数逐字段覆盖另见 parameter_documentation，不代表全流程验收。"]
+    if is_case_info_edit(method, path):
+        guidance["prerequisites"] = [*guidance.get("prerequisites", []), CASE_INFO_EDIT_PREREQUISITE]
     return guidance
+
+
+# 501289（陶国南 11-03 21:56）：案件信息的修改/新建只需案件基本信息，不用先读案件文档；写进工具说明，智能体搜到工具就能看到。
+CASE_INFO_EDIT_PREREQUISITE = "只需案件基本信息（案件详情或案件空间摘要），不用读取案件文档、文书或附件；用户明确要求按某份文件填写时才读那份文件。"
+_CASE_INFO_EDIT_PATHS = {
+    "/cases/batch-update", "/cases/phase-change", "/cases/execution-status", "/cases/batch-fees", "/finance/fees", "/finance/fees/{fee_id}",
+}
+_CASE_FILE_SEGMENTS = ("documents", "attachments", "ai-space", "document-folders", "word-templates", "word-editor", "libreoffice",
+                       "duplicate", "merge", "archive", "unarchive", "close", "creation", "complete-creation", "assign")
+
+
+def is_case_info_edit(method: str, path: str) -> bool:
+    """案件信息类写接口：案件下的修改/新建（基本信息、律师、当事人、法院、公证、金额、阶段、提醒、事件、费用等），不含文档、归档、合并等。"""
+    if method.upper() not in {"POST", "PUT", "PATCH"}:
+        return False
+    if path in _CASE_INFO_EDIT_PATHS:
+        return True
+    parts = path.strip("/").split("/")
+    if len(parts) < 3 or parts[0] != "cases" or parts[1] != "{case_id}":
+        return False
+    return not any(segment in _CASE_FILE_SEGMENTS for segment in parts[2:]) and parts[2] not in {"commission-preview"}
 
 
 def parameter_documentation(schema: dict) -> dict:
