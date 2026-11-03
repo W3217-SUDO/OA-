@@ -19,7 +19,7 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from app.harness_agent.lease import session_lease
-from app.harness_agent.skills import RESOURCE_TOOL, SCRIPT_TOOL, WorkspaceTools, definitions, native_name
+from app.harness_agent.skills import CODE_TOOL, RESOURCE_TOOL, SCRIPT_TOOL, WEB_TOOL, WorkspaceTools, definitions, native_name
 
 from .client import ArkClient, ArkError
 from .config import CloudSettings
@@ -30,19 +30,25 @@ TURN_SECONDS = 300
 TOOLSET = "agent_toolset_20260916"
 SANDBOX_TOOLS = ("bash", "read", "write", "edit", "glob", "grep", "web_fetch", "web_search")
 ENVIRONMENT_NAME = "huzhi-oa-cloud"
-SYSTEM = (
-    "你是沪知律所 OA 的智能体。每条用户消息里 [SYSTEM] 段落是 OA 给出的本轮规则和业务数据，必须遵守；[USER] 段落是用户原话。\n"
-    "OA 的案件、客户、合同、财务等业务数据只能通过 OA 工具（自定义工具）查询和修改，结果以工具返回为准，"
-    "工具失败或被拒绝时如实说明，不得声称已执行。\n"
-    "你有一个云端沙箱（bash、读写文件、联网搜索、读网页），可用于计算、整理资料和查公开信息；沙箱里没有 OA 数据库、凭据和内网，"
-    "不要尝试在沙箱里登录或访问 OA。\n"
-    "技能：需要时先用 harness_read_skill_resource 读取技能的 SKILL.md（path 填 SKILL.md），按其中的步骤执行；"
-    "技能包里的脚本用 harness_run_skill_script 运行。\n"
+CLOUD_RULES = (
+    "\n云端运行补充：每条用户消息里 [SYSTEM] 段落是 OA 给出的本轮规则和业务数据，必须遵守；[USER] 段落是用户原话。"
+    "OA 的工具都以自定义工具提供，按工具名直接调用。技能目录在 [SYSTEM] 段落里，加载技能就是用 harness_read_skill_resource 读取它的 SKILL.md。"
+    "你另有一个云端沙箱（bash、读写文件、读网页），里面没有 OA 数据库、凭据和内网，不要在里面登录或访问 OA；临时计算、整理资料可以用它或 harness_run_code。"
     "专业资料：查法条、判例、企业工商和风险时用 volc_professional_data（权威库），引用法条和案号前可用它做法律幻觉校验；"
-    "查最新公开信息用 doubao_search（没有这个工具时用 web_search）。这两个工具按次计费，不要重复查同一问题。\n"
+    "查最新公开信息用 doubao_search（没有这个工具时用 web_search 或 harness_web_fetch）。这两个工具按次计费，不要重复查同一问题。"
     "长期记忆：挂载了记忆库时，用户明确要求记住的事写入记忆库；历史信息相关时先检索记忆库。记忆不是最新业务事实，"
     "权限、金额、状态仍须查询 OA。不得保存密钥、密码或整段原始聊天；用户要求遗忘时删除对应记忆。"
 )
+
+
+def system_prompt() -> str:
+    """和 DSH 共用同一套 OA 业务规则（harness_agent.runtime.oa_persona），只把 DSH 专有的说法换成云端的。"""
+    from app.harness_agent.runtime import oa_persona
+
+    persona = oa_persona().replace("mcp__oa__", "").replace(
+        "技能使用 skill 加载；", "技能用 harness_read_skill_resource 读取其 SKILL.md 加载；").replace(
+        "DSH 插件提供的原生工具直接按工具名调用；", "")
+    return persona + CLOUD_RULES
 
 
 def _state_root() -> Path:
@@ -85,7 +91,7 @@ def agent_body(model: str, schemas: list[dict], *, web_search: bool = True) -> d
     enabled = [name for name in SANDBOX_TOOLS if web_search or name != "web_search"]
     sandbox = {"type": TOOLSET, "default_config": {"enabled": False, "permission_policy": {"type": "always_allow"}},
                "configs": [{"name": name, "enabled": True} for name in enabled]}
-    return {"model": {"id": model}, "system": SYSTEM, "tools": [sandbox, *[custom_tool(item) for item in schemas]]}
+    return {"model": {"id": model}, "system": system_prompt(), "tools": [sandbox, *[custom_tool(item) for item in schemas]]}
 
 
 async def _agent(client: ArkClient, cloud: CloudSettings, schemas: list[dict]) -> str:
@@ -300,8 +306,10 @@ async def run(messages, on_delta, *, tools, schema, identity, db, workspace, con
     _, _, home = workspace_paths(identity["username"], workspace, conversation)
     delegate = HarnessTools(tools, cloud.plan_key) if cloud.plan_key else tools
     guarded = WorkspaceTools(delegate, identity, db, on_progress)
-    schemas = [*schema, RESOURCE_TOOL, SCRIPT_TOOL, *harness_schemas(datapro=cloud.datapro, search=cloud.doubao_search)]
-    catalog = skill_catalog(await definitions(identity, db))
+    # 工具和 DSH 时一个不少：OA 业务工具、技能资料/脚本、运行代码、读网页，再加 Agent Plan 的 Harness。
+    schemas = [*schema, RESOURCE_TOOL, SCRIPT_TOOL, CODE_TOOL, WEB_TOOL, *harness_schemas(datapro=cloud.datapro, search=cloud.doubao_search)]
+    from app.harness_agent.native_plugin_skills import definitions as plugin_definitions
+    catalog = skill_catalog([*await definitions(identity, db), *plugin_definitions()])
     try:
         async with asyncio.timeout(TURN_SECONDS):
             with session_lease(home / "cloud.lock"):
