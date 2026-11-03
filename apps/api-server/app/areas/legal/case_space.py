@@ -294,11 +294,17 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
         user = users_by_username.get(raw.casefold()) or users_by_name.get(raw.casefold())
         return {"role": role, "username": user.username if user else "", "name": user.display_name if user else raw}
 
+    # 501222：经办、开庭律师按案件详情页同一规则取（账号字段优先；没填开庭律师时取第一位经办律师）。
+    from app.core.cases import _case_commission_person_tokens
+    handling_tokens = _case_commission_person_tokens(case_data, ("handling_lawyer_usernames", "handling_lawyer_username", "handling_lawyers"))
+    hearing_tokens = _case_commission_person_tokens(case_data, (
+        "hearing_lawyer_usernames", "hearing_lawyer_username", "court_lawyer_username", "hearing_lawyers", "hearing_lawyer", "court_lawyer",
+    )) or handling_tokens[:1]
     people_values = [
         person("案件负责人", case_record.owner),
-        *[person("经办律师", item) for item in list(case_data.get("handling_lawyers") or [])],
+        *[person("经办律师", item) for item in handling_tokens],
         person("律师助理", case_data.get("assistant") or case_data.get("assistant_username")),
-        person("开庭律师", case_data.get("hearing_lawyer")),
+        *[person("开庭律师", item) for item in hearing_tokens],
         person("客户管理人", case_data.get("customer_manager")),
         person("案源人", case_data.get("business_owner") or case_data.get("source_person")),
         person("调查员", case_data.get("investigator")),

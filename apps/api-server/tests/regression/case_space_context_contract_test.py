@@ -129,6 +129,9 @@ class CaseSpaceContextContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({item["original_name"] for item in result["documents"]}, {"证据.pdf", "合同.pdf"})
         self.assertEqual({item["type"] for item in result["deadlines"]}, {"案件提醒", "开庭排期", "案件任务"})
         self.assertIn({"role": "案件负责人", "username": "lawyer", "name": "范文玲"}, result["people"])
+        # 501222：没填开庭律师时和案件详情页一样取第一位经办律师，不再提示“未指定开庭律师”。
+        self.assertIn({"role": "开庭律师", "username": "lawyer", "name": "范文玲"}, result["people"])
+        self.assertNotIn("开庭律师", result["case_check"]["a_case_elements"]["missing"])
         self.assertEqual(result["relationships"]["clues"][0]["serial_no"], "XS-SPACE-001")
         self.assertEqual(result["relationships"]["investigations"][0]["serial_no"], "DC-SPACE-001")
         self.assertIn("converted_to_case", {item["type"] for item in result["relationships"]["edges"]})
