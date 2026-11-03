@@ -1481,6 +1481,19 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
                 message.error(error?.response?.data?.detail || "法院信息更新失败");
         }
     };
+    // 501289（陶国南 11-03 21:31）：人工修改后正在看的案件详情马上显示新内容；这几处保存原来只刷新了列表。
+    const refreshViewingCase = async (caseIds: number[]) => {
+        const { viewingCounselCase, setViewingCounselCase } = context;
+        if (!viewingCounselCase || !caseIds.includes(viewingCounselCase.id))
+            return;
+        try {
+            const { data } = await api.get(`/records/${viewingCounselCase.id}/shell`);
+            setViewingCounselCase((current) => current && current.id === data?.id ? { ...current, ...data, data: { ...current.data, ...(data?.data || {}) } } : current);
+        }
+        catch {
+            message.warning("已保存，案件详情刷新失败，请手动刷新");
+        }
+    };
     const saveProgress = async () => {
         const { progressEditing, progressForm, setProgressEditing, load } = context;
         if (!progressEditing)
@@ -1490,6 +1503,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             await api.post(`/cases/${progressEditing.id}/progress`, buildCaseProgressPayload(v));
             message.success("案件进展已保存，阶段已按要素自动更新");
             setProgressEditing(null);
+            void refreshViewingCase([progressEditing.id]);
             load();
         }
         catch (error: any) {
@@ -1507,6 +1521,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             setExecutionStatusEditing(null);
             executionStatusForm.resetFields();
             setSelectedCaseKeys([]);
+            void refreshViewingCase(executionStatusEditing.map((row) => row.id));
             await load();
         }
         catch (error: any) {

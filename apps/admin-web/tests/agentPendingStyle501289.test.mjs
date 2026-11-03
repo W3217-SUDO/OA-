@@ -33,3 +33,10 @@ test("批准并执行成功后马上刷新正在看的案件详情（501289 补�
   assert.match(page, /const refreshCounselCase = async \(caseId: number\) => \{\n    const \{ data \} = await api\.get\(`\/records\/\$\{caseId\}\/shell`\);/);
   assert.match(page, /selectCounselDocCategory,\n    refreshCounselCase,\n  \}\);/);
 });
+
+test("人工保存案件进展、执行状态后也马上刷新正在看的案件详情（501289 21:31）", () => {
+  const actions = read("../src/legal/services/workflowActions.tsx");
+  assert.match(actions, /const refreshViewingCase = async \(caseIds: number\[\]\) =>/);
+  assert.match(actions, /void refreshViewingCase\(\[progressEditing\.id\]\);/);
+  assert.match(actions, /void refreshViewingCase\(executionStatusEditing\.map\(\(row\) => row\.id\)\);/);
+});
