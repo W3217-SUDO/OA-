@@ -53,7 +53,12 @@ def _doc_names(documents: list[dict]) -> list[str]:
     return [_text(item.get("name") or item.get("original_name") or item.get("filename") or item.get("title")) for item in documents]
 
 
-def _missing_fields(case: dict, people: list[dict]) -> list[str]:
+def _filed(case: dict, phase: str) -> bool:
+    # 调度转陶国南 11-03 13:37“只说发现的问题”：没立案时法院信息、法院案号本来就不可能有，立案后才查。
+    return phase not in EARLY_PHASES | {"filing"} or "已立案" in _text(case.get("status"))
+
+
+def _missing_fields(case: dict, people: list[dict], filed: bool = True) -> list[str]:
     roles = {_text(item.get("role")) for item in people if _text(item.get("name"))}
     checks = [
         ("案件当事人", _field(case, "plaintiff", "plaintiffs", "defendant", "defendants", "parties")),
@@ -61,8 +66,8 @@ def _missing_fields(case: dict, people: list[dict]) -> list[str]:
         ("经办律师", "经办律师" in roles or _field(case, "handling_lawyers", "handling_lawyer_usernames")),
         ("开庭律师", "开庭律师" in roles or _field(case, "hearing_lawyer", "court_lawyer")),
         ("律师助理", "律师助理" in roles or _field(case, "assistant", "assistant_username", "case_assistant")),
-        ("法院信息", _field(case, "court", "first_court_name", "first_instance_court", "court_name")),
-        ("法院案号", _field(case, "court_case_no", "first_court_case_no", "first_instance_case_no")),
+        ("法院信息", _field(case, "court", "first_court_name", "first_instance_court", "court_name") or not filed),
+        ("法院案号", _field(case, "court_case_no", "first_court_case_no", "first_instance_case_no") or not filed),
     ]
     return [name for name, value in checks if not value]
 
@@ -147,7 +152,7 @@ def build_case_check(context: dict, *, postpones: dict[int, int] | None = None, 
     result = {
         "generated_on": today.isoformat(),
         "rules": {"urgent_days": URGENT_DAYS, "stale_days": STALE_DAYS, "postpone_limit": POSTPONE_LIMIT},
-        "a_case_elements": {"missing": _missing_fields(case, context.get("people") or []),
+        "a_case_elements": {"missing": _missing_fields(case, context.get("people") or [], _filed(case, phase)),
                             "stage_document_mismatch": _stage_mismatch(phase, phase_name, names)},
         "b_tasks": {**_task_flags(context.get("tasks") or [], postpones or {}, today),
                     "case_idle": _case_idle(case, case_last_activity, today)},
