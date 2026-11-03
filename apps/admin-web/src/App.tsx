@@ -1932,7 +1932,7 @@ export default function App() {
   const currentPageLabel = resolveWorkspacePageLabel(active, effectiveMenuItems, personalAgentName);
   const sideMenuItems = filterMenuByGrantedKeys(effectiveMenuItems, grantedMenuKeys, !isNarrowViewport);
   // 501295：侧栏里“问题反馈”紧跟在“工作台”后面（只改显示位置，不进菜单权限）。
-  const sidebarMenuItems = withFeedbackMenu(sideMenuItems, permissionAdministrator);
+  const sidebarMenuItems = withFeedbackMenu(sideMenuItems, permissionAdministrator, isNarrowViewport);
   const sidebarReloadableItems = menuItemsWithDoubleClickReload(sidebarMenuItems, (item) => {
     navigate(String(item.key));
     setWorkspaceReloadKey((value) => value + 1);
