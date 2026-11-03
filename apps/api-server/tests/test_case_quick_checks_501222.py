@@ -2,7 +2,7 @@
 import unittest
 from datetime import date
 
-from app.case_quick_checks import build_case_check
+from app.case_quick_checks import QUICK_COMMAND_RULES, build_case_check
 from app.case_workflow_rules import build_case_workflow_guide
 
 TODAY = date(2026, 11, 3)
@@ -30,7 +30,9 @@ class CaseQuickChecksTest(unittest.TestCase):
         check = build_case_check(ctx, today=TODAY)
         self.assertEqual(check["a_case_elements"]["missing"], ["案件当事人", "案由", "经办律师", "开庭律师", "律师助理", "法院信息", "法院案号"])
         self.assertIn("已上传判决书", check["a_case_elements"]["stage_document_mismatch"][0])
-        complete = build_case_check(context(), today=TODAY)
+        complete = build_case_check(context(), case_last_activity="2026-11-01", today=TODAY)
+        self.assertEqual(complete["issue_count"], 0, "全部没问题时只给一句结论")
+        self.assertGreater(check["issue_count"], 0)
         self.assertEqual(complete["a_case_elements"]["missing"], [])
         self.assertEqual(complete["a_case_elements"]["stage_document_mismatch"], [])
 
@@ -63,6 +65,11 @@ class CaseQuickChecksTest(unittest.TestCase):
         self.assertEqual(build_case_check(filing, today=TODAY)["d_lawyer_license"], ["提交法院（立案、开庭）时请把律师证一并提交法院"])
         guide = context()["standard_workflow"]
         self.assertFalse(next(item for item in guide["materials"] if item["code"] == "lawyer-license")["required"], "律师证不是必备项")
+
+    def test_rules_only_report_found_problems(self):
+        self.assertIn("查过没问题的项一律不写", QUICK_COMMAND_RULES)
+        self.assertIn("未发现需要处理的问题", QUICK_COMMAND_RULES)
+        self.assertNotIn("写“无”。", QUICK_COMMAND_RULES)
 
 
 if __name__ == "__main__":

@@ -144,7 +144,7 @@ def build_case_check(context: dict, *, postpones: dict[int, int] | None = None, 
     phase = _phase_code(case)
     phase_name = (context.get("standard_workflow") or {}).get("current_phase", {}).get("name") or phase
     names = _doc_names(context.get("documents") or [])
-    return {
+    result = {
         "generated_on": today.isoformat(),
         "rules": {"urgent_days": URGENT_DAYS, "stale_days": STALE_DAYS, "postpone_limit": POSTPONE_LIMIT},
         "a_case_elements": {"missing": _missing_fields(case, context.get("people") or []),
@@ -154,13 +154,20 @@ def build_case_check(context: dict, *, postpones: dict[int, int] | None = None, 
         "c_contract_and_fees": _billing(context, phase, names),
         "d_lawyer_license": _lawyer_license(phase, names),
     }
+    elements, tasks = result["a_case_elements"], result["b_tasks"]
+    result["issue_count"] = (len(elements["missing"]) + len(elements["stage_document_mismatch"]) + len(tasks["urgent"])
+                             + len(tasks["postponed"]) + (1 if tasks["case_idle"] else 0)
+                             + len(result["c_contract_and_fees"]) + len(result["d_lawyer_license"]))
+    return result
 
 
 QUICK_COMMAND_RULES = (
-    "用户发“归纳案件情况”时，按案件空间里 case_check 的四部分逐项汇报："
+    "用户发“归纳案件情况”时，只汇报案件空间里 case_check 查到的问题（陶国南 11-03 13:37：只说发现的问题，没有问题就是好事）："
     "a 案件要素缺哪些（逐项列出并提醒补齐），阶段与文书不合逻辑的提醒更新；"
     "b 紧急任务（逾期或 3 天内到期）提醒尽快处理，case_idle 不为空时按其 message 提醒“案件 N 日未有状态变化”，多次延期（3 次及以上）的任务提醒按时真实完成、不要一再拖延；"
     "c 合同、委托书、律师费、发票的问题（框架合作合同前期不提醒建费用，判决后提醒执行或催收）；"
-    "d 律师证只在提交法院时提醒。没有问题的部分写“无”。"
+    "d 律师证只在提交法院时提醒。"
+    "列表为空、查过没问题的项一律不写，不要写“无”“阶段与文书匹配”“合同齐全”之类；"
+    "issue_count 为 0 时只回一句“未发现需要处理的问题”。"
     "用户发“优先待办事项”时，只从 case_check 里挑最重要的 5 件以内，按 1、2、3、4、5 依次一句话列出，不展开解释。"
 )
