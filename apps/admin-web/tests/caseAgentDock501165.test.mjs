@@ -184,6 +184,7 @@ test("501185（陶国南 11:26）：右侧小按钮活起来——呼吸光、�
   };
   assert.deepEqual(await tab({ tabEffect: "breathe" }), { className: "case-agent-dock-tab is-breathe", dot: 0 });
   assert.deepEqual(await tab({ tabEffect: "blink" }), { className: "case-agent-dock-tab is-blink", dot: 0 });
-  assert.deepEqual(await tab({ tabEffect: "alert" }), { className: "case-agent-dock-tab is-breathe", dot: 0 }, "平时只轻呼吸");
-  assert.deepEqual(await tab({ tabEffect: "alert", tabAlert: true }), { className: "case-agent-dock-tab is-breathe has-alert", dot: 1 }, "有临期提醒时红点跳动");
+  // 陶国南 11:55：C 之外再加 B 的眨眼点头。
+  assert.deepEqual(await tab({ tabEffect: "alert" }), { className: "case-agent-dock-tab is-breathe is-blink", dot: 0 }, "平时呼吸光加眨眼点头");
+  assert.deepEqual(await tab({ tabEffect: "alert", tabAlert: true }), { className: "case-agent-dock-tab is-breathe is-blink has-alert", dot: 1 }, "有临期提醒时红点跳动");
 });

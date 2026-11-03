@@ -146,7 +146,8 @@ export function CaseAgentDock({ open, title, onClose, children, revealKey = 0, i
   const anchor = <span ref={anchorRef} hidden aria-hidden="true" className="case-agent-dock-anchor" />;
   const alert = tabEffect === "alert" && tabAlert;
   const tab = (onClick: () => void) => createPortal(<button type="button"
-    className={`case-agent-dock-tab is-${tabEffect === "alert" ? "breathe" : tabEffect}${alert ? " has-alert" : ""}`}
+    // 陶国南 11:55：C 的呼吸光和红点之外，再加上 B 的机器人眨眼点头，头像放大。
+    className={`case-agent-dock-tab ${tabEffect === "alert" ? "is-breathe is-blink" : `is-${tabEffect}`}${alert ? " has-alert" : ""}`}
     aria-label="展开案件智能体" title={alert ? "案件有临期或逾期提醒，点开智能体看看" : "展开案件智能体"} onClick={onClick}>
     <RobotOutlined />{alert && <i className="case-agent-dock-tab-dot" aria-hidden="true" />}<span>案件智能体</span>
   </button>, document.body);

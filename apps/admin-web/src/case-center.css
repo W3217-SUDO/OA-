@@ -847,3 +847,9 @@
 .case-agent-dock-tab{position:fixed}
 .case-agent-dock-tab-dot{position:absolute;top:6px;left:6px;width:8px;height:8px;border-radius:50%;background:#ff4d4f;box-shadow:0 0 0 2px #fff}
 @media (prefers-reduced-motion:reduce){.case-agent-dock-tab,.case-agent-dock-tab>.anticon{animation:none!important}}
+/* 501185（陶国南 11-03 11:55）：动静要明显——机器人头像放大一倍，小按钮加宽。 */
+.case-agent-dock-tab{width:44px;gap:8px;padding:12px 0;writing-mode:horizontal-tb}
+.case-agent-dock-tab>span{writing-mode:vertical-rl;letter-spacing:2px}
+.case-agent-dock-tab>.anticon{font-size:24px}
+.case-agent-dock-tab-dot{top:4px;left:4px;width:10px;height:10px}
+@media (prefers-reduced-motion:reduce){.case-agent-dock-tab,.case-agent-dock-tab>.anticon{animation:none!important}}
