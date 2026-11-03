@@ -3,6 +3,7 @@
 文件夹里放：
 - 个案结算表：按 shenhe 给的“结算提成表”原件（settlement_sheet_template）填数；
 - 法院文书：案件附件里文件名（或文件类型）是判决书、裁定书、调解书、和解协议的；
+  另放本案全部诉讼费缴费凭证、有公证费的放公证费发票，不受“上次结算已放过”限制（BUG20261103011，fanyuxing 11-03）；
 - 票据：诉讼费、保全费放缴费支付凭证（案件票据文件），公证费放公证处发票（案件发票/票据文件）；
   公证服务费、律师费发票不放。同一案件上一次回款之前已产生的成本，上一次结算已放过，不再放。
 """
@@ -32,6 +33,9 @@ MAX_TOTAL_BYTES = 500 * 1024 * 1024
 DOWNLOAD_CONCURRENCY = 4
 VOID_STATUSES = {"已作废", "已删除", "已取消", "已回收"}
 COURT_DOCUMENT_PATTERN = re.compile(r"判决书|裁定书|调解书|和解协议")
+LITIGATION_FEES = ("一审诉讼费", "二审诉讼费", "再审诉讼费", "诉讼费")
+LITIGATION_VOUCHER_NAME = re.compile(r"诉讼费.*(收据|凭证|发票)|(收据|凭证|发票).*诉讼费")
+NOTARY_INVOICE_NAME = re.compile(r"公证.*发票|发票.*公证")
 
 # 个案结算表“发生成本/结案成本”九行：表上的名称 → 新系统费用名称
 COST_ROWS = (
@@ -166,6 +170,32 @@ def _dedupe_rights_holder(fees: list[BusinessRecord], attachment_names: dict[int
     return kept
 
 
+def court_folder_extras(case_attachments: list, fees: list, attachments_by_record: dict) -> list[tuple[str, object]]:
+    """“法院文书”文件夹里另放的诉讼费缴费凭证和公证费发票：（文件名, 附件）。"""
+    out: list[tuple[str, object]] = []
+    seen: set[int] = set()
+
+    def add(name: str, item) -> None:
+        if item.id not in seen:
+            seen.add(item.id)
+            out.append((name, item))
+
+    has_notary = any(fee.title == "公证费" for fee in fees)
+    for fee in fees:
+        for item in attachments_by_record.get(fee.id, []):
+            if fee.title in LITIGATION_FEES and item.category in ("案件票据文件", "案件发票文件"):
+                add(f"诉讼费凭证_{_safe_name(fee.title)}_{_safe_name(item.original_name)}", item)
+            elif fee.title == "公证费" and item.category == "案件发票文件":
+                add(f"公证费发票_{_safe_name(item.original_name)}", item)
+    for item in case_attachments:
+        name = item.original_name or ""
+        if LITIGATION_VOUCHER_NAME.search(name) and "通知书" not in name:
+            add(f"诉讼费凭证_{_safe_name(name)}", item)
+        elif has_notary and NOTARY_INVOICE_NAME.search(name):
+            add(f"公证费发票_{_safe_name(name)}", item)
+    return out
+
+
 async def _previous_receipt_dates(db, case_nos: set[str]) -> dict[str, list[date]]:
     """每个案件所有回款的到账日期（用来判断哪些成本上一次结算已经放过票据）。"""
     out: dict[str, list[date]] = {}
@@ -289,6 +319,8 @@ async def build_settlement_package(rows: list[dict], identity: dict, db, export_
             for item in attachments_by_record.get(case.id, []) if case else []:
                 if COURT_DOCUMENT_PATTERN.search(item.original_name or "") or (item.file_type_code and item.file_type_code in court_codes):
                     entries.append((f"{folder}/法院文书/{_safe_name(item.original_name)}", item))
+            for name, item in court_folder_extras(attachments_by_record.get(case.id, []) if case else [], fees, attachments_by_record):
+                entries.append((f"{folder}/法院文书/{name}", item))
             # 上一次回款（到账日期早于本次）之前已产生的成本，上次结算已放过票据
             earlier = [day for day in receipt_dates.get(case_no, []) if received_day and day < received_day]
             cutoff = max(earlier) if earlier else None
