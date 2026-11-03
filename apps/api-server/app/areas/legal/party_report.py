@@ -518,3 +518,67 @@ def render_due_diligence(record, name: str, role: str, detail: dict, risk: dict 
     report.text(f"{FIRM}", size=10, bold=True, color=GREEN_DARK, align=WD_ALIGN_PARAGRAPH.RIGHT, after=0)
     report.text(f"{today.year} 年 {today.month} 月 {today.day} 日", size=10, color=INK, align=WD_ALIGN_PARAGRAPH.RIGHT)
     return report.save()
+
+
+# ---------- 企业基本信息表（供法院立案用，陶国南 11-04）：不要封面、目录，只放工商登记信息 ----------
+SHEET_FIELDS = [  # （字段, 栏目, 没有值时是否也列出“—”）：法院立案常用的固定栏目都列，其余有值才列
+    ("name", "企业名称", True), ("credit_code", "统一社会信用代码", True), ("legal_representative", "法定代表人", True),
+    ("econ_kind", "企业类型", True), ("registered_capital", "注册资本", True), ("paid_in_capital", "实缴资本", True),
+    ("established_date", "成立日期", True), ("term", "营业期限", True), ("registration_authority", "登记机关", True),
+    ("approved_date", "核准日期", True), ("status", "经营状态", True), ("registered_address", "住所", True),
+    ("business_scope", "经营范围", True), ("former_names", "曾用名", False), ("registration_no", "注册号", False),
+    ("org_code", "组织机构代码", False), ("designated_representatives", "委派代表", False),
+    ("cancel", "注销信息", False), ("revoke", "吊销信息", False),
+]
+
+
+def render_company_sheet(detail: dict, *, business_rows: list[dict], source: str = "企查查企业工商信息", today: date | None = None) -> bytes:
+    today = today or date.today()
+    from app.areas.legal.report_logo import MARK
+
+    values = {row["key"]: row["value"] for row in business_rows}
+    person = "个体" in str(detail.get("econ_kind") or detail.get("organization_type") or "")
+    rows = []
+    for key, label, always in SHEET_FIELDS:
+        value = values.get(key, "")
+        if key == "legal_representative" and person:
+            label = "经营者"
+        if value or always:
+            rows.append((label, value or "—"))
+
+    report = Report()
+    document = report.document
+    section = document.sections[0]
+    section.top_margin, section.bottom_margin = Cm(2.2), Cm(2.0)
+    header = section.header.paragraphs[0]
+    header.add_run().add_picture(BytesIO(MARK), height=Cm(0.38))
+    _font(header.add_run(f" {FIRM}"), 9, color=GREEN_DARK, bold=True)
+    properties = header._p.get_or_add_pPr()
+    border = OxmlElement("w:pBdr")
+    bottom = OxmlElement("w:bottom")
+    for key, value in (("val", "single"), ("sz", "6"), ("space", "4"), ("color", GREEN)):
+        bottom.set(qn(f"w:{key}"), value)
+    border.append(bottom)
+    properties.append(border)
+    queried = str(detail.get("queried_at") or "")[:10] or f"{today:%Y-%m-%d}"
+    footer = section.footer.paragraphs[0]
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _font(footer.add_run(f"数据来源：{source}，查询日期 {queried}；以国家企业信用信息公示系统公示为准    第 "), 8, color=GREY)
+    _field(footer, "PAGE")
+    _font(footer.add_run(" 页"), 8, color=GREY)
+
+    title = report.text("企业基本信息表", size=18, bold=True, color=INK, align=WD_ALIGN_PARAGRAPH.CENTER, after=14)
+    title.paragraph_format.space_before = Pt(6)
+    table = document.add_table(rows=0, cols=2)
+    _borders(table, "8C9AA8", 6)
+    for label, value in rows:
+        cells = table.add_row().cells
+        _shade(cells[0], GREEN_LIGHT)
+        _cell_text(cells[0], label, size=10.5, bold=True, color=GREEN_DARK, align=WD_ALIGN_PARAGRAPH.CENTER)
+        _cell_text(cells[1], value, size=10.5)
+        for cell in cells:
+            for paragraph in cell.paragraphs:
+                paragraph.paragraph_format.space_before = Pt(4)
+                paragraph.paragraph_format.space_after = Pt(4)
+    _widths(table, [3.8, Report.WIDTH - 3.8])
+    return report.save()
