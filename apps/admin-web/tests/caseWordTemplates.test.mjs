@@ -43,7 +43,15 @@ test("生成弹窗：字段可改，缺字段不能保存，预览后确认才�
 test("智能体设置有“文书模板”标签：上传、替换文件、停用、常用选项、逻辑删除", () => {
   assert.match(read("../src/AgentAdminPage.tsx"), /\{ key: "word-templates", label: "文书模板"/);
   const admin = read("../src/capability-market/CaseWordTemplatesAdmin.tsx");
-  for (const call of ['api.post("/case-word-templates", form)', "api.put(`/case-word-templates/${target.id}/file`, form)",
+  for (const call of ['api.post<WordTemplate>("/case-word-templates", form)', "api.put<WordTemplate>(`/case-word-templates/${target.id}/file`, form)",
     "api.patch(`/case-word-templates/${item.id}`, { is_active: checked })", "api.delete(`/case-word-templates/${item.id}`)"]) assert.ok(admin.includes(call), call);
   assert.doesNotMatch(read("../src/case-center.css").split("按模板生成文书（陶国南 11-03）")[1], /color-mix\(|:has\(|@container|dvh/);
+});
+
+test("上传范本后核对“识别到的字段 → 案件里哪一项”，对不上的设成生成时手填", () => {
+  const admin = read("../src/capability-market/CaseWordTemplatesAdmin.tsx");
+  assert.match(admin, /api\.patch\(`\/case-word-templates\/\$\{mappingFor\.id\}`, \{ mapping \}\)/);
+  assert.match(admin, /\{ value: MANUAL, label: "生成时手填" \}/);
+  assert.match(admin, /if \(created\) openMapping\(created\);/, "上传后直接打开核对");
+  assert.match(admin, /要替换的文字加下划线，紧跟着用括号写说明/);
 });

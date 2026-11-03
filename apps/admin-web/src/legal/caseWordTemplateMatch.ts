@@ -1,4 +1,5 @@
-export type WordTemplate = { id: string; name: string; builtin: boolean; is_active: boolean; fields: string[]; options: Record<string, string[]> };
+export type WordTemplateSlot = { index: number | null; kind: "underline" | "placeholder"; sample: string; note: string; source: "case" | "manual"; key: string };
+export type WordTemplate = { id: string; name: string; builtin: boolean; is_active: boolean; fields: string[]; options: Record<string, string[]>; slots?: WordTemplateSlot[] };
 
 /** 从一句话里找出要生成的模板，例如“生成撤诉申请书”“帮我出一份撤诉申请书”；不是生成文书的话交给智能体正常回答。 */
 export function matchWordTemplate(text: string, templates: WordTemplate[]): WordTemplate | null {

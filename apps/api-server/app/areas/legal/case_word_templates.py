@@ -35,7 +35,6 @@ router = APIRouter(prefix=settings.api_prefix)
 CONFIG_KEY = "case_word_templates"
 DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 TEMPLATE_CATEGORY = "案件文书模板"
-GENERATED_CATEGORY = "案件生成文书"
 PLACEHOLDER = re.compile(r"\{([一-龥A-Za-z0-9_（）()]{1,20})\}")
 MAX_TEMPLATE_BYTES = 10 * 1024 * 1024
 SPLIT = re.compile(r"[,，、;；\n]+")
@@ -54,6 +53,7 @@ class TemplateUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=60)
     is_active: bool | None = None
     options: dict[str, list[str]] | None = None
+    mapping: dict[str, dict[str, str]] | None = None  # 下划线序号 → {"source": "case", "field": 法院} 或 {"source": "manual", "label": 撤诉理由}
 
 
 class GenerateInput(BaseModel):
@@ -111,32 +111,138 @@ async def _template_bytes(item: dict, db: AsyncSession) -> bytes:
     return await run_in_threadpool((TEMPLATE_ROOT / item["file"]).read_bytes)
 
 
-def placeholders(content: bytes) -> list[str]:
-    """按出现顺序列出模板里的占位字段（同一段文字被 Word 拆开也能识别）。"""
-    found: list[str] = []
+W = "{%s}" % WORD_NS["w"]
+NOTE = re.compile(r"[（(][^（）()]*[）)]\s*")
+# 按说明文字猜对应案件里的哪一项；猜不到的设成“生成时手填”，管理员可以在模板页改。
+FIELD_HINTS = (
+    (("法院案号", "案号"), "法院案号"), (("开庭律师", "出庭律师", "代理律师", "代理人"), "开庭律师"), (("经办律师", "承办律师"), "经办律师"),
+    (("律师助理", "助理"), "律师助理"), (("第三人",), "第三人"), (("原告",), "原告"), (("被告",), "被告"), (("案由",), "案由"),
+    (("法院",), "法院"), (("客户",), "客户名称"), (("案件编号",), "案件编号"), (("生成当日", "当日", "今天", "日期"), "生成日期"),
+)
+
+
+def suggest_field(note: str, sample: str) -> str | None:
+    text = note or sample
+    return next((field for keys, field in FIELD_HINTS if any(key in text for key in keys)), None)
+
+
+def _run_text(run) -> str:
+    return "".join(node.text or "" for node in run.findall(W + "t"))
+
+
+def _underlined(run) -> bool:
+    mark = run.find(f"{W}rPr/{W}u")
+    return mark is not None and mark.get(W + "val") != "none"
+
+
+def _segments(paragraph) -> list[list]:
+    """连续带下划线的文字是一段要替换的内容（Word 常把一段拆成好几截）。"""
+    segments, current = [], []
+    for run in paragraph.iter(W + "r"):
+        text = _run_text(run)
+        if not text:
+            continue  # 书签、换行之类不打断
+        if _underlined(run):
+            current.append(run)
+        elif current:
+            segments.append(current)
+            current = []
+    if current:
+        segments.append(current)
+    return segments
+
+
+def _split_segment(text: str) -> list[tuple[str, str]]:
+    """一段下划线文字拆成若干（示例文字, 括号说明）；例如“甲公司（原告名称）侵权纠纷（案由）”。
+    括号里只有数字的（如案号里的“（2022）”）是示例本身；几个括号连在一起时只有最后一个是说明
+    （如“某商贸中心（个体工商户）（被告名称）”）。"""
+    matches = list(NOTE.finditer(text))
+    slots, last = [], 0
+    for position, match in enumerate(matches):
+        inner = match.group(0).strip()[1:-1].strip()
+        followed = position + 1 < len(matches) and matches[position + 1].start() == match.end()
+        if not re.search(r"[^\d\s]", inner) or followed:
+            continue
+        slots.append((text[last:match.start()], inner))
+        last = match.end()
+    if text[last:].strip():
+        slots.append((text[last:], ""))
+    return slots
+
+
+def _xml_parts(source: ZipFile) -> list[str]:
+    return sorted(name for name in source.namelist() if name.startswith("word/") and name.endswith(".xml"))
+
+
+def scan(content: bytes) -> list[dict]:
+    """识别模板里要替换的地方：带下划线的文字（后面括号是说明），以及 {字段} 写法。"""
+    slots: list[dict] = []
     try:
         with ZipFile(BytesIO(content)) as source:
-            for name in source.namelist():
-                if name.startswith("word/") and name.endswith(".xml"):
-                    root = etree.fromstring(source.read(name))
-                    for paragraph in root.xpath("//w:p", namespaces=WORD_NS):
-                        text = "".join(node.text or "" for node in paragraph.xpath(".//w:t", namespaces=WORD_NS))
-                        found.extend(match.group(1) for match in PLACEHOLDER.finditer(text))
+            for name in _xml_parts(source):
+                payload = source.read(name)
+                if b"<w:p" not in payload:
+                    continue
+                for paragraph in etree.fromstring(payload).iter(W + "p"):
+                    for segment in _segments(paragraph):
+                        for sample, note in _split_segment("".join(_run_text(run) for run in segment)):
+                            slots.append({"index": len([x for x in slots if x["kind"] == "underline"]), "kind": "underline",
+                                          "sample": sample.strip(), "note": note, "suggest": suggest_field(note, sample)})
+                    text = "".join(node.text or "" for node in paragraph.iter(W + "t"))
+                    for match in PLACEHOLDER.finditer(text):
+                        key = match.group(1)
+                        slots.append({"index": None, "kind": "placeholder", "sample": match.group(0), "note": key,
+                                      "suggest": key if key in AUTO_FIELDS else None})
     except (BadZipFile, KeyError, etree.XMLSyntaxError) as exc:
         raise HTTPException(422, "不是有效的 Word 文件（.docx）") from exc
-    return list(dict.fromkeys(found))
+    return slots
 
 
-def fill(content: bytes, values: dict) -> bytes:
-    """只替换占位字段，其余内容、字体、段落原样保留。"""
+def resolve_slots(slots: list[dict], mapping: dict | None) -> list[dict]:
+    """每个识别到的地方对应案件里哪一项（或生成时手填）；管理员改过的以改过的为准。"""
+    mapping = mapping or {}
+    result = []
+    for slot in slots:
+        chosen = mapping.get(str(slot["index"])) if slot["kind"] == "underline" else None
+        if chosen and chosen.get("source") == "case" and chosen.get("field") in AUTO_FIELDS:
+            source, key = "case", chosen["field"]
+        elif chosen and chosen.get("source") == "manual" and str(chosen.get("label") or "").strip():
+            source, key = "manual", str(chosen["label"]).strip()
+        elif slot["suggest"]:
+            source, key = "case", slot["suggest"]
+        else:
+            source, key = "manual", slot["note"] or slot["sample"] or "待填写"
+        result.append({**slot, "source": source, "key": key})
+    return result
+
+
+def fill(content: bytes, slots: list[dict], values: dict) -> bytes:
+    """下划线那段换成值并去掉下划线，括号说明删掉；{字段} 换成值；其余文字、字体、段落一律不动。"""
+    keys = [slot["key"] for slot in slots if slot["kind"] == "underline"]
+    placeholder_values = {slot["note"]: values.get(slot["key"], "") for slot in slots if slot["kind"] == "placeholder"}
+    position = 0
     output = BytesIO()
     with ZipFile(BytesIO(content)) as source, ZipFile(output, "w", ZIP_DEFLATED) as target:
+        parts = set(_xml_parts(source))
         for item in source.infolist():
             payload = source.read(item.filename)
-            if item.filename.startswith("word/") and item.filename.endswith(".xml") and b"{" in payload:
+            if item.filename in parts and b"<w:p" in payload:
                 root = etree.fromstring(payload)
-                for paragraph in root.xpath("//w:p", namespaces=WORD_NS):
-                    _replace_slots(paragraph, values, PLACEHOLDER)
+                for paragraph in root.iter(W + "p"):
+                    for segment in _segments(paragraph):
+                        count = len(_split_segment("".join(_run_text(run) for run in segment)))
+                        text = "".join(str(values.get(key, "")) for key in keys[position:position + count])
+                        position += count
+                        nodes = [node for run in segment for node in run.findall(W + "t")]
+                        nodes[0].text = text
+                        nodes[0].set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+                        for node in nodes[1:]:
+                            node.text = ""
+                        for run in segment:
+                            mark = run.find(f"{W}rPr/{W}u")
+                            if mark is not None:
+                                mark.getparent().remove(mark)
+                    _replace_slots(paragraph, placeholder_values, PLACEHOLDER)
                 payload = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
             target.writestr(item, payload)
     return output.getvalue()
@@ -148,11 +254,16 @@ def paragraphs(content: bytes) -> list[str]:
     return [paragraph.text for paragraph in Document(BytesIO(content)).paragraphs]
 
 
-def _public(item: dict, fields: list[str] | None = None) -> dict:
-    result = {key: item.get(key) for key in ("id", "name", "builtin", "is_active", "options", "updated_by", "updated_at")}
+def field_keys(slots: list[dict]) -> list[str]:
+    return list(dict.fromkeys(slot["key"] for slot in slots))
+
+
+def _public(item: dict, slots: list[dict] | None = None) -> dict:
+    result = {key: item.get(key) for key in ("id", "name", "builtin", "is_active", "updated_by", "updated_at")}
     result["options"] = item.get("options") or {}
-    if fields is not None:
-        result["fields"] = fields
+    if slots is not None:
+        result["slots"] = slots
+        result["fields"] = field_keys(slots)
     return result
 
 
@@ -225,15 +336,16 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
     }
 
 
-async def _fields(record: BusinessRecord, item: dict, content: bytes, db: AsyncSession, overrides: dict[str, str]) -> list[dict]:
+async def _fields(record: BusinessRecord, item: dict, content: bytes, db: AsyncSession, overrides: dict[str, str]) -> tuple[list[dict], list[dict]]:
     auto = await case_field_values(record, db)
+    slots = resolve_slots(scan(content), item.get("mapping"))
+    sources = {slot["key"]: slot["source"] for slot in slots}
     result = []
-    for key in placeholders(content):
-        automatic = key in AUTO_FIELDS
-        value = str(overrides.get(key, auto.get(key, "") if automatic else "")).strip()
-        result.append({"key": key, "value": value, "source": "case" if automatic else "manual", "missing": not value,
+    for key in field_keys(slots):
+        value = str(overrides.get(key, auto.get(key, "") if sources[key] == "case" else "")).strip()
+        result.append({"key": key, "value": value, "source": sources[key], "missing": not value,
                        "options": (item.get("options") or {}).get(key, [])})
-    return result
+    return result, slots
 
 
 async def _case(case_id: int, identity: dict, db: AsyncSession, *, write: bool) -> BusinessRecord:
@@ -250,9 +362,9 @@ async def _render(case_id: int, template_id: str, body: GenerateInput, identity:
     if not item.get("is_active", True):
         raise HTTPException(409, "这个文书模板已停用")
     content = await _template_bytes(item, db)
-    fields = await _fields(record, item, content, db, body.values)
+    fields, slots = await _fields(record, item, content, db, body.values)
     missing = [field["key"] for field in fields if field["missing"]]
-    return record, item, fields, missing, content
+    return record, item, fields, missing, content, slots
 
 
 # ---------- 接口：模板管理 ----------
@@ -271,20 +383,20 @@ async def list_templates(identity: dict = Depends(current_identity), db: AsyncSe
     for item in _merged(value):
         if not admin and not item.get("is_active", True):
             continue
-        items.append(_public(item, placeholders(await _template_bytes(item, db))))
+        items.append(_public(item, resolve_slots(scan(await _template_bytes(item, db)), item.get("mapping"))))
     return {"items": items, "can_manage": admin, "auto_fields": list(AUTO_FIELDS)}
 
 
-async def _store_template_file(upload: UploadFile, identity: dict, db: AsyncSession) -> tuple[FileAttachment, list[str]]:
+async def _store_template_file(upload: UploadFile, identity: dict, db: AsyncSession) -> tuple[FileAttachment, list[dict]]:
     name = upload.filename or "模板.docx"
     if not name.lower().endswith(".docx"):
         raise HTTPException(422, "请上传 Word 文件（.docx）；.doc 请先另存为 .docx")
     content = await upload.read(MAX_TEMPLATE_BYTES + 1)
     if len(content) > MAX_TEMPLATE_BYTES:
         raise HTTPException(413, "模板文件不能超过 10MB")
-    fields = placeholders(content)
+    fields = scan(content)
     if not fields:
-        raise HTTPException(422, "模板里没有找到占位字段，请用 {法院}{原告}{被告} 这样的写法标出要替换的地方")
+        raise HTTPException(422, "模板里没有找到要替换的地方：请把要替换的文字加下划线，后面用括号写说明，例如“上海市浦东新区人民法院（哪个法院）”")
     stored_name = f"{uuid4().hex}.docx"
     path = UPLOAD_ROOT / stored_name
     await run_in_threadpool(path.write_bytes, content)
@@ -302,11 +414,11 @@ async def create_template(name: str = Form(..., min_length=1, max_length=60), fi
     record, value = await _config(db, lock=True)
     if any(item["name"] == name.strip() for item in _merged(value)):
         raise HTTPException(409, "已有同名模板")
-    attachment, fields = await _store_template_file(file, identity, db)
+    attachment, slots = await _store_template_file(file, identity, db)
     item = {"id": "t-" + uuid4().hex[:10], "name": name.strip(), "attachment_id": attachment.id, "is_active": True,
-            "options": {}, "updated_by": identity["username"], "updated_at": _now()}
+            "options": {}, "mapping": {}, "updated_by": identity["username"], "updated_at": _now()}
     await _save(db, record, {**value, "items": [*value.get("items", []), item]})
-    return _public({"builtin": False, **item}, fields)
+    return _public({"builtin": False, **item}, resolve_slots(slots, {}))
 
 
 @router.put("/case-word-templates/{template_id}/file")
@@ -316,23 +428,30 @@ async def replace_template_file(template_id: str, file: UploadFile = File(...), 
     _require_template_admin(identity)
     await _template(db, template_id)
     record, value = await _config(db, lock=True)
-    attachment, fields = await _store_template_file(file, identity, db)
-    item = await _update(db, record, value, template_id, {"attachment_id": attachment.id}, identity)
-    return _public(item, fields)
+    attachment, slots = await _store_template_file(file, identity, db)
+    # 换了文件，字段位置可能变了：对应关系重新按说明识别，管理员再核对。
+    item = await _update(db, record, value, template_id, {"attachment_id": attachment.id, "mapping": {}}, identity)
+    return _public(item, resolve_slots(slots, {}))
 
 
 @router.patch("/case-word-templates/{template_id}")
 async def update_template(template_id: str, body: TemplateUpdate, identity: dict = Depends(current_identity),
                           db: AsyncSession = Depends(get_db)):
-    """改名、停用/启用、维护常用选项（如撤诉理由）。"""
+    """改名、停用/启用、维护常用选项（如撤诉理由）、改“识别到的字段 → 案件里哪一项”。"""
     _require_template_admin(identity)
     await _template(db, template_id)
     record, value = await _config(db, lock=True)
     changes = body.model_dump(exclude_none=True)
     if "options" in changes:
         changes["options"] = {key: [text.strip() for text in items if text.strip()][:30] for key, items in changes["options"].items()}
+    if "mapping" in changes:
+        for slot in changes["mapping"].values():
+            if slot.get("source") == "case" and slot.get("field") not in AUTO_FIELDS:
+                raise HTTPException(422, "对应的案件信息不在可选范围内")
+            if slot.get("source") == "manual" and not str(slot.get("label") or "").strip():
+                raise HTTPException(422, "生成时手填的字段要写一个名称")
     item = await _update(db, record, value, template_id, changes, identity)
-    return _public(item, placeholders(await _template_bytes(item, db)))
+    return _public(item, resolve_slots(scan(await _template_bytes(item, db)), item.get("mapping")))
 
 
 @router.delete("/case-word-templates/{template_id}")
@@ -386,8 +505,8 @@ def _docx_response(content: bytes, filename: str) -> Response:
 async def preview_document(case_id: int, template_id: str, body: GenerateInput, identity: dict = Depends(current_identity),
                            db: AsyncSession = Depends(get_db)):
     """列出字段（系统取的值、缺哪些）和替换后的正文，不保存。"""
-    record, item, fields, missing, content = await _render(case_id, template_id, body, identity, db, write=False)
-    filled = fill(content, {field["key"]: field["value"] or "【" + field["key"] + "待填写】" for field in fields})
+    record, item, fields, missing, content, slots = await _render(case_id, template_id, body, identity, db, write=False)
+    filled = fill(content, slots, {field["key"]: field["value"] or "【" + field["key"] + "待填写】" for field in fields})
     return {"template": _public(item), "fields": fields, "missing": missing, "paragraphs": paragraphs(filled),
             "filename": f"{record.serial_no}-{item['name']}.docx"}
 
@@ -396,37 +515,31 @@ async def preview_document(case_id: int, template_id: str, body: GenerateInput, 
 async def download_preview(case_id: int, template_id: str, body: GenerateInput, identity: dict = Depends(current_identity),
                            db: AsyncSession = Depends(get_db)):
     """下载预览用的 Word，不保存到案件。"""
-    record, item, fields, missing, content = await _render(case_id, template_id, body, identity, db, write=False)
+    record, item, fields, missing, content, slots = await _render(case_id, template_id, body, identity, db, write=False)
     if missing:
         raise HTTPException(422, "还缺：" + "、".join(missing))
-    return _docx_response(fill(content, {field["key"]: field["value"] for field in fields}), f"{record.serial_no}-{item['name']}.docx")
+    return _docx_response(fill(content, slots, {field["key"]: field["value"] for field in fields}), f"{record.serial_no}-{item['name']}.docx")
 
 
 @router.post("/cases/{case_id}/documents/word-templates/{template_id}/generate", status_code=status.HTTP_201_CREATED)
 async def generate_document(case_id: int, template_id: str, body: GenerateInput, identity: dict = Depends(current_identity),
                             db: AsyncSession = Depends(get_db)):
-    """确认后生成 Word 存进案件空间文档（和“生成案件文书”同一种存法）。"""
+    """确认后生成 Word 存进案件空间（和分支3 501226 同一种存法：统一存储写 OSS、回读校验后才建附件）。"""
+    from app.core.cases import _case_ai_draft_name
+    from app.core.generated_file_storage import save_generated_file
     from app.core.storage import _attachment_dict
-    record, item, fields, missing, content = await _render(case_id, template_id, body, identity, db, write=True)
+    record, item, fields, missing, content, slots = await _render(case_id, template_id, body, identity, db, write=True)
     if missing:
         raise HTTPException(422, "还缺：" + "、".join(missing) + "，补齐后再生成")
-    document = fill(content, {field["key"]: field["value"] for field in fields})
-    stored_name = f"{uuid4().hex}.docx"
-    path = UPLOAD_ROOT / stored_name
-    await run_in_threadpool(path.write_bytes, document)
-    name = f"{record.serial_no}-{item['name']}-{datetime.now():%Y%m%d%H%M%S}.docx"
-    attachment = FileAttachment(record_id=record.id, category=GENERATED_CATEGORY, original_name=name, stored_name=stored_name,
-                                content_type=DOCX_TYPE, size=len(document), path=str(path), uploader=identity["username"],
-                                remark=f"按模板生成：{item['name']}")
-    try:
-        db.add(attachment)
-        await db.flush()
-        db.add(WorkflowEvent(record_id=record.id, action="按模板生成文书", from_status=record.status, to_status=record.status,
-                             operator=identity["username"], comment=f"{item['name']}｜附件 {name}"))
-        await db.commit()
-        await db.refresh(attachment)
-    except Exception:
-        await db.rollback()
-        await run_in_threadpool(path.unlink, missing_ok=True)
-        raise
-    return {"attachment": _attachment_dict(attachment, record), "fields": fields}
+    document = fill(content, slots, {field["key"]: field["value"] for field in fields})
+    safe = "".join(char for char in item["name"] if char not in '\\/:*?"<>|')[:60]
+    filename = _case_ai_draft_name(f"{record.serial_no}_{safe}_{datetime.now():%Y%m%d%H%M%S}.docx")
+
+    async def on_available(session, attachment):
+        attachment.remark = f"按模板生成：{item['name']}"
+        session.add(WorkflowEvent(record_id=record.id, action="按模板生成文书", from_status=record.status, to_status=record.status,
+                                  operator=identity["username"], comment=f"{item['name']}｜{filename}"))
+
+    result = await save_generated_file(db, identity, name=filename, content=document, content_type=DOCX_TYPE,
+                                       source_kind="case_word_template", case_record=record, on_available=on_available)
+    return {"attachment": _attachment_dict(result["attachment"], record), "fields": fields}

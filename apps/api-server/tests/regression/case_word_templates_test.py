@@ -45,6 +45,9 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
         self.storage = patch.object(storage, "UPLOAD_ROOT", Path(self.temp.name))
         self.upload.start()
         self.storage.start()
+        self.saved = []
+        self.generated = patch("app.core.generated_file_storage.save_generated_file", self._fake_save)
+        self.generated.start()
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
         async with self.engine.begin() as connection:
@@ -75,6 +78,18 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
         app.dependency_overrides[current_identity] = lambda: self.identity
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://word.test")
 
+    async def _fake_save(self, db, identity, *, name, content, content_type, source_kind, case_record=None, on_available=None, **_):
+        """代替统一存储（OSS）：按分支3 的约定记录参数，建附件后调用 on_available。"""
+        path = Path(self.temp.name) / name
+        path.write_bytes(content)
+        attachment = FileAttachment(record_id=case_record.id, category="AI空间", original_name=name, stored_name=name,
+                                    content_type=content_type, size=len(content), path=str(path), uploader=identity["username"], remark="")
+        db.add(attachment)
+        await on_available(db, attachment)
+        await db.commit()
+        self.saved.append({"name": name, "source_kind": source_kind, "content_type": content_type})
+        return {"attachment": attachment}
+
     async def _db(self):
         async with self.sessions() as db:
             yield db
@@ -85,6 +100,7 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
         await self.engine.dispose()
         self.upload.stop()
         self.storage.stop()
+        self.generated.stop()
         self.temp.cleanup()
 
     def url(self, template_id: str, action: str) -> str:
@@ -114,12 +130,16 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             attachment = await db.scalar(select(FileAttachment).where(FileAttachment.record_id == self.case_id))
             event = await db.scalar(select(WorkflowEvent).where(WorkflowEvent.record_id == self.case_id))
-        self.assertEqual((attachment.category, attachment.remark), ("案件生成文书", "按模板生成：撤诉申请书"))
+        self.assertEqual((attachment.category, attachment.remark), ("AI空间", "按模板生成：撤诉申请书"), "和 501226 同一种存法")
+        self.assertEqual(self.saved[0]["source_kind"], "case_word_template")
+        self.assertTrue(self.saved[0]["name"].startswith("GDMS2100456_撤诉申请书_"))
         self.assertEqual(event.action, "按模板生成文书")
         body = texts(Path(attachment.path).read_bytes())
         self.assertEqual(body[2], "上海市浦东新区人民法院：")
         self.assertEqual(body[3], "原告青岛尚美数智科技集团有限公司与被告甲店、北京三快在线科技有限公司侵害商标权纠纷一案，即贵院受理的（2022）沪0115民初5795号案件，"
-                                  "因原被告之间已达成和解并履行，现原告申请撤回对甲店、北京三快在线科技有限公司的起诉。望法院准许。", "只替换字段，正文不改")
+                                  "因原被告之间已达成和解并履行，现原告申请撤回对甲店、北京三快在线科技有限公司的起诉。望法院准许。", "下划线换成案件信息，括号说明去掉，正文不改")
+        saved = Document(BytesIO(Path(attachment.path).read_bytes()))
+        self.assertFalse(any(run.underline for paragraph in saved.paragraphs for run in paragraph.runs if run.text), "替换后去掉下划线")
         self.assertEqual(body[7], "代理人：沈建锋")
         self.assertRegex(body[8], r"^日  期：\d{4}年\d{1,2}月\d{1,2}日$")
         self.assertFalse(any("{" in text for text in body))
@@ -167,6 +187,35 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(next(item for item in config.value["items"] if item["id"] == template_id)["deleted_at"], "删除只做逻辑删除")
         self.assertEqual(len(files), 2, "旧模板文件保留")
 
+    async def test_underlined_template_upload_recognizes_fields_and_mapping_can_change(self):
+        self.identity = ADMIN
+        document = Document()
+        paragraph = document.add_paragraph("致")
+        for text, underline in (("某某法院", True), ("（哪个法院）", True), ("：请", False), ("宁阳恒汇商贸中心（个体工商户）", True), ("（被告名称）", True),
+                                ("于", False), ("2026年1月1日", True), ("（付款日期）", True), ("付款。", False)):
+            paragraph.add_run(text).underline = underline
+        output = BytesIO()
+        document.save(output)
+        created = await self.client.post(API + "/case-word-templates", data={"name": "催款函"},
+                                         files={"file": ("催款函.docx", output.getvalue(), module.DOCX_TYPE)})
+        self.assertEqual(created.status_code, 201, created.text)
+        body = created.json()
+        self.assertEqual([(slot["sample"], slot["note"], slot["source"], slot["key"]) for slot in body["slots"]],
+                         [("某某法院", "哪个法院", "case", "法院"), ("宁阳恒汇商贸中心（个体工商户）", "被告名称", "case", "被告"),
+                          ("2026年1月1日", "付款日期", "case", "生成日期")], "按说明自动对应；“日期”先猜成生成日期")
+        changed = await self.client.patch(f"{API}/case-word-templates/{body['id']}", json={"mapping": {"2": {"source": "manual", "label": "付款日期"}}})
+        self.assertEqual([slot["key"] for slot in changed.json()["slots"]], ["法院", "被告", "付款日期"], "对不上的改成生成时手填")
+        self.assertEqual((await self.client.patch(f"{API}/case-word-templates/{body['id']}",
+                                                  json={"mapping": {"0": {"source": "case", "field": "不存在"}}})).status_code, 422)
+        self.identity = LAWYER
+        preview = (await self.client.post(self.url(body["id"], "preview"), json={"values": {"付款日期": "2026年12月1日"}})).json()
+        self.assertEqual(preview["paragraphs"][0], "致上海市浦东新区人民法院：请甲店、北京三快在线科技有限公司于2026年12月1日付款。")
+
+    def test_note_rules(self):
+        self.assertEqual(module._split_segment("（2022）沪0115民初5795号（法院案号）"), [("（2022）沪0115民初5795号", "法院案号")], "只有数字的括号是示例本身")
+        self.assertEqual(module._split_segment("甲公司（原告名称）侵权纠纷（案由） "), [("甲公司", "原告名称"), ("侵权纠纷", "案由")])
+        self.assertEqual(module._split_segment(" 年  月  日（生成当日）"), [(" 年  月  日", "生成当日")])
+
     def test_fill_keeps_runs_split_by_word(self):
         document = Document()
         paragraph = document.add_paragraph()
@@ -175,8 +224,9 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
             run.bold = part == "{法"
         output = BytesIO()
         document.save(output)
-        self.assertEqual(module.placeholders(output.getvalue()), ["法院", "原告"])
-        filled = Document(BytesIO(module.fill(output.getvalue(), {"法院": "上海知识产权法院", "原告": "甲公司"})))
+        slots = module.resolve_slots(module.scan(output.getvalue()), {})
+        self.assertEqual(module.field_keys(slots), ["法院", "原告"])
+        filled = Document(BytesIO(module.fill(output.getvalue(), slots, {"法院": "上海知识产权法院", "原告": "甲公司"})))
         self.assertEqual(filled.paragraphs[0].text, "致上海知识产权法院：甲公司")
         self.assertTrue(filled.paragraphs[0].runs[1].bold, "替换后保留原来的字体格式")
 
