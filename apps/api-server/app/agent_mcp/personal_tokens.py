@@ -20,7 +20,7 @@ from app.data_models.mcp_tokens import McpAccessToken, McpCallLog
 logger = logging.getLogger(__name__)
 TOKEN_PREFIX = "oamcp_"
 DEFAULT_DAYS = 30
-MAX_DAYS = 90
+MAX_DAYS = 30  # 陶威 11-03 11:33 定：电脑连接 OA 令牌有效期上限从 90 天降到 30 天
 MAX_ACTIVE_PER_USER = 5
 RATE_LIMIT_PER_MINUTE = 120
 WRITE_RATE_LIMIT_PER_MINUTE = 30  # 写入类调用，每分钟上限；写入没有服务端人工确认，上限更低

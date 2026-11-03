@@ -139,7 +139,7 @@ async def download_tool_resource(resource_id: str, _=Depends(current_identity)):
 class AccessTokenInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=100)
-    days: int = Field(default=30, ge=1, le=90)
+    days: int = Field(default=30, ge=1, le=30)  # 上限 30 天（陶威 11-03），与 personal_tokens.MAX_DAYS 一致
 
 
 def _require_admin(identity: dict) -> None:
