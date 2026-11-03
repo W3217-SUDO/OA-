@@ -6,6 +6,7 @@ import { api } from "../api";
 import { agentOperationMessage, readableValue } from "../AgentOperationPreview";
 import { ConfirmationHistoryDetails } from "./ConfirmationHistoryDetails";
 import { errorText, type ConfirmationDetail, type ConfirmationHistoryPage, type ConfirmationRecord, type ConfirmationStatus } from "./types";
+import AgentMascot from "./AgentMascot";
 import "./confirmation-history.css";
 
 const STATUS_LABELS: Record<ConfirmationStatus, string> = {
@@ -64,7 +65,7 @@ export function ConfirmationHistory({ onReopen, busy = false }: { onReopen?: (de
       {error && <Alert type="error" showIcon title="历史确认记录加载失败" description={error} action={<Button onClick={() => setRefresh((value) => value + 1)}>重试</Button>} />}
       <div className="confirmation-history-content" aria-busy={loading}>
         {loading ? <div className="confirmation-history-loading" role="status"><Spin /><span>正在加载确认记录</span></div> : data && <>
-          {!data.items.length ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={status ? "此状态下暂无确认记录" : "暂无历史确认记录"} /> : <ol className="confirmation-history-list">
+          {!data.items.length ? <Empty image={<AgentMascot pose="tablet" height={72} />} description={status ? "此状态下暂无确认记录" : "暂无历史确认记录"} /> : <ol className="confirmation-history-list">
             {data.items.map((item) => <li key={`${item.source}:${item.id}`}>
               <div className="confirmation-history-record-heading"><Tag color={STATUS_COLORS[item.status]}>{STATUS_LABELS[item.status]}</Tag><strong>{item.summary}</strong></div>
               <dl className="confirmation-history-metadata">

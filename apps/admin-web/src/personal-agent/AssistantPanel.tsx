@@ -5,6 +5,7 @@ import { ApiOutlined, ArrowLeftOutlined, BarChartOutlined, LaptopOutlined, Arrow
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
 import { TaskEntryCards } from "./TaskEntryCards";
 import AgentAvatar from "./AgentAvatar";
+import AgentMascot from "./AgentMascot";
 import { AgentToolResult } from "../AgentToolResult";
 import { ToolTrace } from "./ToolTrace";
 import { ConversationManager } from "./ConversationManager";
@@ -309,7 +310,8 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         <Alert className="assistant-alert" type="warning" showIcon title="个人智能体暂未就绪，请检查当前 OA 配置的大模型服务" />
       )}
       {!hasDisplayedMessages && !mcp.open && <div className={`assistant-empty-state${logoSrc ? " has-logo" : ""}`}>
-        {logoSrc && <img className="assistant-empty-logo" src={logoSrc} alt="" width={56} height={56} />}
+        {/* 智能体中心首页欢迎：全身招手形象，会眨眼（陶威 11-03）。 */}
+        {logoSrc && <AgentMascot pose="wave" height={128} blink className="assistant-empty-mascot" />}
         {intakeMode ? <div className="assistant-workspace-greeting"><h1>收文助手</h1><p>把法院送达短信或链接粘贴到下面，我会自动下载文书、匹配案件、收文入库并回填法院案号和开庭；缴费通知会先问你再提交缴纳。</p></div>
           : activeTaskEntry ? <div className="assistant-workspace-greeting"><h1>{activeTaskEntry.label}</h1><p>{activeTaskEntry.greeting}</p></div>
           : desktopWorkspace ? <div className="assistant-workspace-greeting"><h1>今天想处理什么？</h1>
@@ -356,7 +358,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
                       ? <ToolOutput content={item.content} />
                       : item.content
                       ? <MessageText content={item.content} />
-                      : (thinking ? <span className="assistant-thinking" role="status" title={progressText}><span>{progressText}</span></span> : "")}
+                      : (thinking ? <span className="assistant-thinking" role="status" title={progressText}><AgentMascot pose="float" height={30} bob /><span>{progressText}</span></span> : "")}
                     {item.role === "assistant" && <AgentToolResult result={item.tool_result} />}
                     {item.role === "assistant" && !thinking && <ToolTrace trace={item.tool_trace} />}
                     {item.stopped && <span className="assistant-stopped">{item.content ? "已停止，已保留生成内容" : "已停止"}</span>}

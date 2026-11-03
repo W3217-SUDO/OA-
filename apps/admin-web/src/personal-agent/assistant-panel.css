@@ -237,3 +237,15 @@
 .assistant-settings-trigger { font-weight: 500; }
 /* 501147：固定会话的输入提示 */
 .assistant-task-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 6px; padding: 6px 10px; border-radius: 6px; background: var(--ant-color-info-bg, #e6f4ff); color: var(--ant-color-text-secondary, #555); font-size: 13px; }
+/* 智能体全身形象（AgentMascot）：眨眼用一层和脸同色的眼皮从上往下合一下；悬浮款轻轻上下浮动。 */
+.agent-mascot{position:relative;display:inline-block;flex:none;line-height:0}
+.agent-mascot>img{display:block;width:100%;height:100%;object-fit:contain;user-select:none}
+.agent-mascot-lid{position:absolute;border-radius:50%;background:#ebf8f1;border-bottom:2px solid #0d3528;transform:scaleY(0);transform-origin:50% 0;animation:agent-mascot-blink 4.6s ease-in-out infinite}
+.agent-mascot-lid+.agent-mascot-lid{animation-delay:.03s}
+@keyframes agent-mascot-blink{0%,92%,100%{transform:scaleY(0)}95%{transform:scaleY(1)}}
+.agent-mascot.is-bob{animation:agent-mascot-bob 2.4s ease-in-out infinite}
+@keyframes agent-mascot-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+.assistant-empty-mascot{align-self:center}
+.ai-chat-page.is-desktop-workspace .assistant-empty-mascot{align-self:flex-start;margin-left:-6px}
+.assistant-thinking .agent-mascot{margin-right:6px}
+@media (prefers-reduced-motion:reduce){.agent-mascot-lid,.agent-mascot.is-bob{animation:none}}
