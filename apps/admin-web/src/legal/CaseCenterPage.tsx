@@ -1340,12 +1340,14 @@ export default function CaseCenterPage({
     return normalized;
   };
 
+  // 501294：/cases/{id}/relations 返回 clues/clue_total，/cases/{id}/clues 返回 items/total/page/page_size/pages，两种都认。
+  // 之前只认前一种，线索页签用 /clues 查回来的三条线索被当成空，一直显示“没有查询到关联线索”。
   const applyCounselDetailCluePageState = (payload: any, fallbackPage: number, fallbackPageSize: number) => {
-    const items = Array.isArray(payload?.clues) ? payload.clues : [];
-    const total = Number(payload?.clue_total ?? items.length) || 0;
-    const page = Math.max(1, Number(payload?.clue_page ?? fallbackPage) || fallbackPage);
-    const pageSize = Math.max(1, Number(payload?.clue_page_size ?? fallbackPageSize) || fallbackPageSize);
-    const pages = Math.max(0, Number(payload?.clue_pages ?? Math.ceil(total / pageSize)) || 0);
+    const items = Array.isArray(payload?.clues) ? payload.clues : Array.isArray(payload?.items) ? payload.items : [];
+    const total = Number(payload?.clue_total ?? payload?.total ?? items.length) || 0;
+    const page = Math.max(1, Number(payload?.clue_page ?? payload?.page ?? fallbackPage) || fallbackPage);
+    const pageSize = Math.max(1, Number(payload?.clue_page_size ?? payload?.page_size ?? fallbackPageSize) || fallbackPageSize);
+    const pages = Math.max(0, Number(payload?.clue_pages ?? payload?.pages ?? Math.ceil(total / pageSize)) || 0);
     setCounselDetailClues(items);
     setCounselDetailClueTotal(total);
     setCounselDetailCluePage(page);

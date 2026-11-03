@@ -811,7 +811,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
         if (!id && serialNo && viewingCounselCase) {
             try {
                 const { data } = await api.get(`/cases/${viewingCounselCase.id}/clues`, { params: { keyword: serialNo, page: 1, page_size: 20 } });
-                id = (Array.isArray(data?.clues) ? data.clues : []).find((item: CaseRow) => item.serial_no === serialNo)?.id;
+                id = (Array.isArray(data?.items) ? data.items : []).find((item: CaseRow) => item.serial_no === serialNo)?.id;
             }
             catch { /* 查不到就按未关联提示 */ }
         }

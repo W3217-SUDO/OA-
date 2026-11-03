@@ -34,5 +34,13 @@ test("打开详情时线索页签单独查本案线索；按线索号兜底查�
   const actions = read("../src/legal/services/workflowActions.tsx");
   assert.match(actions, /void context\.loadCounselDetailCluesPage\(row, 1, 10, ""\)/);
   assert.match(actions, /api\.get\(`\/cases\/\$\{viewingCounselCase\.id\}\/clues`, \{ params: \{ keyword: serialNo/);
+  assert.match(actions, /Array\.isArray\(data\?\.items\) \? data\.items : \[\]/, "/clues 返回的是 items");
   assert.match(read("../src/legal/CaseDetail/CaseDetailHeader.tsx"), /caseClueLinks\(viewingCase\.data\)\.map\(\(clue, index\) =>/);
+});
+
+test("线索页签认 /cases/{id}/clues 的返回（items/total/page/page_size/pages），不再当成空（501294 第二次）", () => {
+  const page = read("../src/legal/CaseCenterPage.tsx");
+  assert.match(page, /Array\.isArray\(payload\?\.clues\) \? payload\.clues : Array\.isArray\(payload\?\.items\) \? payload\.items : \[\]/);
+  assert.match(page, /Number\(payload\?\.clue_total \?\? payload\?\.total \?\? items\.length\)/);
+  assert.match(page, /payload\?\.clue_pages \?\? payload\?\.pages/);
 });
