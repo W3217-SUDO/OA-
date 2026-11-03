@@ -74,21 +74,21 @@ class CaseDeadlineAndPhaseAutoTest(unittest.IsolatedAsyncioTestCase):
                 record.data = {**record.data, "phase_changed_at": entered}
             await db.commit()
             self.assertEqual(await apply_civil_case_phase_rules(db, now=datetime(2026, 11, 3, 0, 10, tzinfo=BEIJING)), 0)
-            self.assertEqual(await apply_civil_case_phase_rules(db, now=now), 3)
+            self.assertEqual(await apply_civil_case_phase_rules(db, now=now), 2)
             await db.commit()
             self.assertEqual(await apply_civil_case_phase_rules(db, now=now + timedelta(hours=1)), 0)
             phases = {record.id: (record.status, record.data["case_phase_id"]) for record in (await db.scalars(select(BusinessRecord))).all()}
             self.assertEqual(phases[1], ("一审庭后待判", 101018))
             self.assertEqual(phases[2], ("二审庭后待判", 102016))
-            self.assertEqual(phases[3], ("新案待分配", 101010))
+            self.assertEqual(int(phases[3][1]), 101002)  # 新案满 30 天这条 11-03 暂停
             self.assertEqual((await db.get(BusinessRecord, 1)).data["case_phase_parameter_id"], 172)
             self.assertEqual(int(phases[4][1]), 101002)
             self.assertEqual(phases[5][1], 101005)
             self.assertEqual(phases[7][1], 101005)
             events = (await db.scalars(select(WorkflowEvent))).all()
             self.assertEqual({(event.record_id, event.operator, event.action) for event in events},
-                             {(1, "system", "自动修改案件阶段"), (2, "system", "自动修改案件阶段"), (3, "system", "自动修改案件阶段")})
-            self.assertEqual((await db.scalar(select(SystemConfig).where(SystemConfig.key == "case_phase_auto_last_run"))).value["changed"], 3)
+                             {(1, "system", "自动修改案件阶段"), (2, "system", "自动修改案件阶段")})
+            self.assertEqual((await db.scalar(select(SystemConfig).where(SystemConfig.key == "case_phase_auto_last_run"))).value["changed"], 2)
 
 
 if __name__ == "__main__":

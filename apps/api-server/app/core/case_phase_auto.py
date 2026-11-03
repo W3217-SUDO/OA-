@@ -21,6 +21,9 @@ OPERATOR = "system"
 FIRST_DONE, SECOND_DONE, RETRIAL_DONE = 101018, 102016, 103014
 NEW_CASE, NEW_CASE_UNASSIGNED = 101002, 101010
 NEW_CASE_WAIT_DAYS = 30
+# 11-03 暂停第 4 条：生产 101002 是“审核公证书”，旧系统作业并没有把满 30 天的这些案件改走（HZMS2600367 8-7 起一直在），
+# 照这条会把 6 件审核公证书误改成新案待分配。旧作业真实条件确认前不改，只跑法定届满日三条。
+NEW_CASE_RULE_ENABLED = False
 LAWFUL_DAY_RULES = (
     (("first_instance_lawful_day", "first_intance_lawful_day"), FIRST_DONE, "一审法定届满日到期"),
     (("second_instance_lawful_day", "second_intance_lawful_day"), SECOND_DONE, "二审法定届满日到期"),
@@ -65,7 +68,7 @@ def target_phase(record, today):
     for keys, phase_id, rule in LAWFUL_DAY_RULES:
         if any(_day(data.get(key)) == today for key in keys) and (target or current) != phase_id:
             target, reason = phase_id, rule
-    if target is None and current == NEW_CASE:
+    if target is None and NEW_CASE_RULE_ENABLED and current == NEW_CASE:
         entered = _entered_at(record, data)
         if entered and (today - entered).days >= NEW_CASE_WAIT_DAYS:
             target, reason = NEW_CASE_UNASSIGNED, f"新案满 {NEW_CASE_WAIT_DAYS} 天"
@@ -98,7 +101,7 @@ async def apply_civil_case_phase_rules(db, *, now=None, force=False):
     candidates = (await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == "case",
         or_(*(BusinessRecord.data[key].as_string().startswith(today.isoformat()) for key in lawful_keys),
-            BusinessRecord.data["case_phase_id"].as_string() == str(NEW_CASE)),
+            *([BusinessRecord.data["case_phase_id"].as_string() == str(NEW_CASE)] if NEW_CASE_RULE_ENABLED else [])),
     ))).all()
     phases, changed = {}, 0
     for record in candidates:
