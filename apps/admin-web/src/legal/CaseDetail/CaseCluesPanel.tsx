@@ -24,6 +24,17 @@ interface CaseCluesPanelProps {
   onCreateTask: (caseRow: CaseRow, clues: CaseRow[]) => void;
 }
 
+type ClueEvidence = { id: number; certificate_no?: string; certificate_status?: string; certificate_stored_at?: string; item_count?: string; warehouse_name?: string; warehouse_location?: string; evidence_status?: string };
+type ClueEvidenceRow = { row_key: string; clue: CaseRow; evidence?: ClueEvidence };
+
+/** 与旧系统一致，一个证物一行；没有证物的线索也显示一行（501294）。 */
+export const clueEvidenceRows = (clues: CaseRow[]): ClueEvidenceRow[] => clues.flatMap((clue) => {
+  const evidences = ((clue as CaseRow & { evidences?: ClueEvidence[] }).evidences || []);
+  return evidences.length
+    ? evidences.map((evidence) => ({ row_key: `${clue.id}-${evidence.id}`, clue, evidence }))
+    : [{ row_key: `${clue.id}`, clue }];
+});
+
 export const CaseCluesPanel = ({
   clues,
   pagination,
@@ -44,6 +55,7 @@ export const CaseCluesPanel = ({
 }: CaseCluesPanelProps) => {
   const [selectedClues, setSelectedClues] = useState<CaseRow[]>([]);
   useEffect(() => { setSelectedClues([]); }, [viewingCase?.id]);
+  const rows = clueEvidenceRows(clues);
   return (<div className="case-legacy-tab-panel">
     <Space wrap style={{ marginBottom: 10 }}>
       <Input.Search
@@ -71,20 +83,21 @@ export const CaseCluesPanel = ({
       <Button icon={<ReloadOutlined />} loading={loading} onClick={() => viewingCase && void onRefresh(viewingCase, cluePage, cluePageSize)
         .catch((error: any) => message.error(error?.response?.data?.detail || "关联线索加载失败"))}>刷新</Button>
     </Space>
-    <Table rowKey="id" rowSelection={{ selectedRowKeys: selectedClues.map(item => item.id), preserveSelectedRowKeys: true, onChange: (_, rows) => setSelectedClues(rows) }} size="small" tableLayout="fixed" loading={loading} pagination={pagination} scroll={{x:1800}} dataSource={clues} locale={{ emptyText: "没有查询到关联线索" }} columns={[
-      {title:"序号",width:65,align:"center",render:(_:unknown,_row:CaseRow,index:number)=>(cluePage-1)*cluePageSize+index+1},
-      {title:"线索号",dataIndex:"serial_no",width:155,render:(value:string,row:CaseRow)=><Button type="link" className="case-cell-link" onClick={()=>onOpenClue(row)}>{value||"—"}</Button>},
-      {title:"调查时间",width:150,render:(_:unknown,row:CaseRow)=>String(row.data.investigated_at||row.data.collected_at||row.data.investigation_time||row.data.investigation_date||"").replace("T"," ").slice(0,19)||"—"},
-      {title:"店铺名称",width:180,ellipsis:true,render:(_:unknown,row:CaseRow)=>row.data.shop_name||row.data.store_name||row.title||"—"},
-      {title:"店铺地址",width:250,ellipsis:true,render:(_:unknown,row:CaseRow)=>row.data.shop_address||row.data.address||row.data.location_address||"—"},
-      {title:"公证书号",width:180,render:(_:unknown,row:CaseRow)=>row.data.certificate_no||row.data.notary_no||"—"},
-      {title:"公证书状态",width:120,render:(_:unknown,row:CaseRow)=>row.data.certificate_status||row.data.notary_status||"—"},
-      {title:"公证书入库时间",width:150,render:(_:unknown,row:CaseRow)=>String(row.data.certificate_stored_at||row.data.notary_stored_at||row.data.storage_date||"").replace("T"," ").slice(0,19)||"—"},
-      {title:"件数",width:80,align:"right",render:(_:unknown,row:CaseRow)=>row.data.item_count??row.data.evidence_count??row.data.quantity??"—"},
-      {title:"仓库名称",width:130,render:(_:unknown,row:CaseRow)=>row.data.warehouse_name||row.data.warehouse||"—"},
-      {title:"仓库位置",width:120,render:(_:unknown,row:CaseRow)=>row.data.warehouse_location||row.data.storage_location||row.data.location||"—"},
-      {title:"证物状态",width:110,render:(_:unknown,row:CaseRow)=>row.data.evidence_status||row.data.warehouse_status||"—"},
-      {title:"操作",width:90,fixed:"right",render:(_:unknown,row:CaseRow)=><Button type="link" onClick={()=>void onOpenClueWorkspace(row)}>查看</Button>},
+    <Table rowKey="row_key" rowSelection={{ selectedRowKeys: rows.filter(row => selectedClues.some(item => item.id === row.clue.id)).map(row => row.row_key), preserveSelectedRowKeys: true, onChange: (_, picked) => setSelectedClues([...new Map(picked.map(row => [row.clue.id, row.clue])).values()]) }} size="small" tableLayout="fixed" loading={loading} pagination={pagination} scroll={{x:1800}} dataSource={rows} locale={{ emptyText: "没有查询到关联线索" }} columns={[
+      {title:"序号",width:65,align:"center",render:(_:unknown,_row:ClueEvidenceRow,index:number)=>(cluePage-1)*cluePageSize+index+1},
+      {title:"线索号",width:155,render:(_:unknown,row:ClueEvidenceRow)=><Button type="link" className="case-cell-link" onClick={()=>onOpenClue(row.clue)}>{row.clue.serial_no||"—"}</Button>},
+      {title:"调查时间",width:150,render:(_:unknown,{clue}:ClueEvidenceRow)=>String(clue.data.investigated_at||clue.data.collected_at||clue.data.investigation_time||clue.data.investigation_date||"").replace("T"," ").slice(0,19)||"—"},
+      {title:"店铺名称",width:180,ellipsis:true,render:(_:unknown,{clue}:ClueEvidenceRow)=>clue.data.shop_name||clue.data.store_name||clue.title||"—"},
+      // 与旧系统一致：没有地址的线上店铺显示店铺链接
+      {title:"店铺地址",width:250,ellipsis:true,render:(_:unknown,{clue}:ClueEvidenceRow)=>clue.data.shop_address||clue.data.address||clue.data.location_address||clue.data.store_url||clue.data.legacy_record?.StoreUrl||"—"},
+      {title:"公证书号",width:180,render:(_:unknown,{clue,evidence}:ClueEvidenceRow)=>evidence?.certificate_no||clue.data.certificate_no||clue.data.notary_no||"—"},
+      {title:"公证书状态",width:120,render:(_:unknown,{clue,evidence}:ClueEvidenceRow)=>evidence?.certificate_status||clue.data.certificate_status||clue.data.notary_status||"—"},
+      {title:"公证书入库时间",width:150,render:(_:unknown,{clue,evidence}:ClueEvidenceRow)=>String(evidence?.certificate_stored_at||clue.data.certificate_stored_at||clue.data.notary_stored_at||clue.data.storage_date||"").replace("T"," ").slice(0,19)||"—"},
+      {title:"件数",width:80,align:"right",render:(_:unknown,{clue,evidence}:ClueEvidenceRow)=>evidence?.item_count||clue.data.item_count||clue.data.evidence_count||clue.data.quantity||"—"},
+      {title:"仓库名称",width:130,render:(_:unknown,{clue,evidence}:ClueEvidenceRow)=>evidence?.warehouse_name||clue.data.warehouse_name||clue.data.warehouse||"—"},
+      {title:"仓库位置",width:120,render:(_:unknown,{clue,evidence}:ClueEvidenceRow)=>evidence?.warehouse_location||clue.data.warehouse_location||clue.data.storage_location||clue.data.location||"—"},
+      {title:"证物状态",width:110,render:(_:unknown,{clue,evidence}:ClueEvidenceRow)=>evidence?.evidence_status||clue.data.evidence_status||clue.data.warehouse_status||"—"},
+      {title:"操作",width:90,fixed:"right",render:(_:unknown,row:ClueEvidenceRow)=><Button type="link" onClick={()=>void onOpenClueWorkspace(row.clue)}>查看</Button>},
     ]}/>
     {capabilities.can_create_case_task&&<div className="case-legacy-bottom-actions"><Button onClick={()=>{ if (!selectedClues.length) return message.warning("请先选择线索信息"); if (viewingCase) onCreateTask(viewingCase, selectedClues); }}>发布任务</Button></div>}
   </div>);

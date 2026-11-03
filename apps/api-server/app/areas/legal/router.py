@@ -492,7 +492,47 @@ async def list_case_clues(
     total = len(clues)
     start = (page - 1) * page_size
     items = await _record_dicts_for_identity(clues[start:start + page_size], identity, db)
+    await _attach_clue_evidences(items, db)
     return {"items": items, "total": total, "page": page, "page_size": page_size, "pages": (total + page_size - 1) // page_size if total else 0}
+
+
+# 旧系统证物的公证书状态（NcStatus）：20 是导入公证书文件时置的“已入库”；30、40 旧系统名称待确认（501294）
+LEGACY_NC_STATUS_LABELS = {"20": "已入库"}
+
+
+async def _attach_clue_evidences(items: list[dict], db: AsyncSession) -> None:
+    """案件详情“线索信息”与旧系统一致按证物逐行显示（501294）：公证书号、公证书状态、入库时间、件数、仓库、库位、证物状态在证物上，不在线索上。"""
+    ids = [int(item["id"]) for item in items]
+    nos = [str(item.get("serial_no") or "") for item in items if item.get("serial_no")]
+    if not ids:
+        return
+    evidences = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "evidence", BusinessRecord.deleted_at.is_(None),
+        or_(BusinessRecord.data["clue_record_id"].as_integer().in_(ids), BusinessRecord.data["clue_no"].as_string().in_(nos)),
+    ).order_by(BusinessRecord.id))).all()
+    by_clue: dict[int, list[dict]] = {}
+    no_to_id = {str(item.get("serial_no") or ""): int(item["id"]) for item in items}
+    for evidence in evidences:
+        data = evidence.data or {}
+        legacy = data.get("legacy_record") or {}
+        clue_id = int(data.get("clue_record_id") or 0) if str(data.get("clue_record_id") or "").isdigit() else no_to_id.get(str(data.get("clue_no") or ""), 0)
+        if clue_id not in no_to_id.values():
+            clue_id = no_to_id.get(str(data.get("clue_no") or ""), 0)
+        if not clue_id:
+            continue
+        nc_status = str(legacy.get("NcStatus") if legacy.get("NcStatus") is not None else data.get("nc_status") or "").strip()
+        by_clue.setdefault(clue_id, []).append({
+            "id": evidence.id, "serial_no": evidence.serial_no,
+            "certificate_no": data.get("certificate_no") or data.get("notarial_no") or data.get("notary_no") or "",
+            "certificate_status": LEGACY_NC_STATUS_LABELS.get(nc_status, f"旧系统状态{nc_status}" if nc_status else ""),
+            "certificate_stored_at": data.get("nc_inbound_date") or "",
+            "item_count": legacy.get("InvoiceNo") or data.get("invoice_no") or "",
+            "warehouse_name": data.get("warehouse") or data.get("warehouse_name") or "",
+            "warehouse_location": data.get("storage_location_name") or data.get("storage_location") or data.get("location") or "",
+            "evidence_status": data.get("evidence_status") or evidence.status or "",
+        })
+    for item in items:
+        item["evidences"] = by_clue.get(int(item["id"]), [])
 
 
 @router.get(f"{settings.api_prefix}/cases/{{case_id}}/relations")
