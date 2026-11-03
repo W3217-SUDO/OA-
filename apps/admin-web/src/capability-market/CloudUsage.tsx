@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Button, Modal, Select, Space, Table, Tag } from "antd";
+import { Alert, Button, Modal, Select, Space, Tag } from "antd";
 import { BarChartOutlined, ReloadOutlined } from "@ant-design/icons";
 import { api } from "../api";
+import Table from "../components/ResizableTable";
+import { POPUP_WIDTH } from "../components/common/popupSize";
 import { errorText } from "../personal-agent/types";
 import "./dsh-plugin-center.css";
 
@@ -93,7 +95,7 @@ export function CloudUsage({ active }: { active: boolean }) {
         { title: "合计", dataIndex: "total_yuan", render: value => <strong>{yuan(value)}</strong>, defaultSortOrder: "descend", sorter: (a, b) => a.total_yuan - b.total_yuan },
         { title: "最近使用", dataIndex: "last_time", render: value => String(value || "").slice(5, 16).replace("T", " ") },
       ]} />
-    <Modal title={person ? `${person.display_name} · ${month} 调用明细` : ""} open={!!person} footer={null} width={960} onCancel={() => setPerson(null)} destroyOnHidden>
+    <Modal title={person ? `${person.display_name} · ${month} 调用明细` : ""} open={!!person} footer={null} width={POPUP_WIDTH.lg} onCancel={() => setPerson(null)} destroyOnHidden>
       <Table<UsageRecord> rowKey="time" size="small" loading={recordsLoading} dataSource={records} pagination={{ pageSize: 20 }} scroll={{ x: 820 }}
         columns={[
           { title: "时间", dataIndex: "time", render: value => String(value).slice(5, 19).replace("T", " ") },
