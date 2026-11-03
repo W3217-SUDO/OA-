@@ -1,6 +1,6 @@
 """陶威 11-02 同意：案件期限按未完成任务现算；民事案件每天凌晨自动改阶段（旧系统 P_Legal_Case_AutoUpdate）。"""
 import unittest
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -45,10 +45,11 @@ class CaseDeadlineAndPhaseAutoTest(unittest.IsolatedAsyncioTestCase):
         from app.core.case_phase_auto import apply_civil_case_phase_rules
         now = datetime(2026, 11, 3, 0, 40, tzinfo=BEIJING)
         async with self.sessions() as db:
-            for phase_id, code, name in ((101018, "first_done", "一审庭后待判"), (102016, "second_done", "二审庭后待判"),
-                                         (103014, "retrial_done", "再审庭后待判"), (101010, "new_unassigned", "新案待分配"),
-                                         (101002, "new_case", "新案")):
-                db.add(SystemParameter(id=phase_id, category="case_phase", code=code, name=name, is_active=True))
+            # 和生产一样：系统参数 id 另编，code 是旧阶段号；另有同名的内置阶段（11-03 生产按参数 id 查不到，整轮失败）。
+            db.add(SystemParameter(id=74, category="case_phase", code="FIRST_POST_HEARING", name="一审庭后待判", is_active=True, extra={"case_type": "民事争议"}))
+            for param_id, code, name in ((172, "101018", "一审庭后待判"), (185, "102016", "二审庭后待判"),
+                                         (195, "103014", "再审庭后待判"), (164, "101010", "新案待分配"), (160, "101002", "新案")):
+                db.add(SystemParameter(id=param_id, category="case_phase", code=code, name=name, is_active=True, extra={"case_type": "民事争议"}))
             civil = {"case_type_id": "110", "case_type": "民事争议"}
             db.add_all([
                 BusinessRecord(id=1, module="case", serial_no="AJ1", title="一审到期", status="一审已立案", owner="a",
@@ -80,6 +81,7 @@ class CaseDeadlineAndPhaseAutoTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(phases[1], ("一审庭后待判", 101018))
             self.assertEqual(phases[2], ("二审庭后待判", 102016))
             self.assertEqual(phases[3], ("新案待分配", 101010))
+            self.assertEqual((await db.get(BusinessRecord, 1)).data["case_phase_parameter_id"], 172)
             self.assertEqual(int(phases[4][1]), 101002)
             self.assertEqual(phases[5][1], 101005)
             self.assertEqual(phases[7][1], 101005)
