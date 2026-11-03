@@ -246,7 +246,18 @@
 .agent-mascot.is-bob{animation:agent-mascot-bob 2.4s ease-in-out infinite}
 @keyframes agent-mascot-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
 .assistant-empty-mascot{align-self:center}
-.ai-chat-page.is-desktop-workspace .assistant-empty-mascot{align-self:flex-start;margin-left:-6px}
 .assistant-thinking .agent-mascot{margin-right:6px}
 @media (prefers-reduced-motion:reduce){.agent-mascot-lid,.agent-mascot.is-bob{animation:none}}
 .ant-empty .agent-mascot{display:block;margin:0 auto}
+/* 问候语和小机器人一组：机器人在左、问候语做成它说的对话气泡，气泡尖角指向机器人。 */
+.assistant-greeting-hero{display:flex;align-items:flex-start;gap:6px;padding-left:2px}
+.assistant-greeting-hero .assistant-greeting-mascot{flex:none}
+.assistant-workspace-greeting .assistant-greeting-hero .assistant-greeting-bubble{position:relative;align-self:center;margin:0 0 18px 10px;padding:10px 22px;border:1px solid var(--oa-border,#e5e7eb);border-radius:20px;background:var(--oa-surface,#fff);box-shadow:0 6px 18px rgba(15,23,42,.06);animation:assistant-greeting-pop .45s ease-out .15s both}
+.assistant-workspace-greeting .assistant-greeting-hero .assistant-greeting-bubble::before{content:"";position:absolute;left:-8px;top:50%;width:14px;height:14px;margin-top:-7px;border-left:1px solid var(--oa-border,#e5e7eb);border-bottom:1px solid var(--oa-border,#e5e7eb);background:inherit;transform:rotate(45deg)}
+@keyframes assistant-greeting-pop{from{opacity:0;transform:translateX(-6px) scale(.96)}to{opacity:1;transform:none}}
+.assistant-greeting-hero .agent-mascot>img{transform-origin:50% 90%;animation:assistant-greeting-wave 3.2s ease-in-out infinite}
+@keyframes assistant-greeting-wave{0%,70%,100%{transform:rotate(0)}76%{transform:rotate(-4deg)}82%{transform:rotate(3deg)}88%{transform:rotate(-2deg)}}
+@media (prefers-reduced-motion:reduce){.assistant-workspace-greeting .assistant-greeting-hero .assistant-greeting-bubble,.assistant-greeting-hero .agent-mascot>img{animation:none}}
+/* 智能体头像图标（AgentIcon）：和原来的图标对齐。 */
+.agent-avatar{display:inline-block;flex:none;object-fit:contain;vertical-align:middle}
+.anticon.agent-icon{display:inline-flex;align-items:center;justify-content:center;line-height:0}

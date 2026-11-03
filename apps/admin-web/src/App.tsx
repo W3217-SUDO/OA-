@@ -93,6 +93,7 @@ import AiChatPage from "./personal-agent/AiChatPage";
 import { PersonalWorkspaceProvider } from "./personal-agent/PersonalWorkspaceProvider";
 import "./personal-agent/mobile-chat-layout.css";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
+import { AgentIcon } from "./personal-agent/AgentAvatar";
 import { ROUTE_RESET_EVENT } from "./routeReset";
 
 function reloadAppShell() {
@@ -251,7 +252,7 @@ const menuItems: NavItem[] = [
   },
   {
     key: "agent-center",
-    icon: <RobotOutlined />,
+    icon: <AgentIcon size={16} />,
     label: "智能体设置",
   },
   {
@@ -722,7 +723,7 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
     name === "dashboard" ? (
       <DashboardOutlined />
     ) : name === "robot" ? (
-      <RobotOutlined />
+      <AgentIcon size={16} />
     ) : name === "team" ? (
       <TeamOutlined />
     ) : name === "search" ? (
@@ -1576,7 +1577,7 @@ export default function App() {
         .map((item) => item.children ? { ...item, children: removePersonalAgent(item.children) } : item);
       return removePersonalAgent(items).flatMap((item) => item.key === "dashboard" ? [
         { ...item, label: "工作台" },
-        { key: "ai-chat", icon: <RobotOutlined />, label: "智能体中心" },
+        { key: "ai-chat", icon: <AgentIcon size={16} />, label: "智能体中心" },
       ] : [item]);
     },
     [menuConfig, isNarrowViewport],

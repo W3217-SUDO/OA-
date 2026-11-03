@@ -109,6 +109,10 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   const hasDisplayedMessages = displayedState.messages.length > 0;
   const sendBlocked = caseSession ? caseSession.loading || caseSession.sending || composing : loading || !!loadError || !status?.ready || workspace.conversationBusy || workspace.uploading || !!workspace.decisionId || stopping || composing;
   const progressText = (workspace.progress || "正在思考").replace(/[.\u2026]+$/, "");
+  // 智能体中心问候：招手的小机器人在左，问候语是它说的话（对话气泡）；没有品牌形象时只显示标题。
+  const greetingHero = (title: string) => logoSrc
+    ? <div className="assistant-greeting-hero"><AgentMascot pose="wave" height={120} blink className="assistant-greeting-mascot" /><h1 className="assistant-greeting-bubble">{title}</h1></div>
+    : <h1>{title}</h1>;
   const followBottom = useCallback(() => {
     const element = threadRef.current;
     stickToBottom.current = true;
@@ -311,11 +315,11 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         <Alert className="assistant-alert" type="warning" showIcon title="个人智能体暂未就绪，请检查当前 OA 配置的大模型服务" />
       )}
       {!hasDisplayedMessages && !mcp.open && <div className={`assistant-empty-state${logoSrc ? " has-logo" : ""}`}>
-        {/* 智能体中心首页欢迎：全身招手形象，会眨眼（陶威 11-03）。 */}
-        {logoSrc && <AgentMascot pose="wave" height={128} blink className="assistant-empty-mascot" />}
-        {intakeMode ? <div className="assistant-workspace-greeting"><h1>收文助手</h1><p>把法院送达短信或链接粘贴到下面，我会自动下载文书、匹配案件、收文入库并回填法院案号和开庭；缴费通知会先问你再提交缴纳。</p></div>
-          : activeTaskEntry ? <div className="assistant-workspace-greeting"><h1>{activeTaskEntry.label}</h1><p>{activeTaskEntry.greeting}</p></div>
-          : desktopWorkspace ? <div className="assistant-workspace-greeting"><h1>今天想处理什么？</h1>
+        {/* 手机端首页：全身招手形象放在建议上方；桌面端放在问候语左边、问候语做成它说的话（陶威 11-03）。 */}
+        {logoSrc && !desktopWorkspace && !intakeMode && !activeTaskEntry && <AgentMascot pose="wave" height={128} blink className="assistant-empty-mascot" />}
+        {intakeMode ? <div className="assistant-workspace-greeting">{greetingHero("收文助手")}<p>把法院送达短信或链接粘贴到下面，我会自动下载文书、匹配案件、收文入库并回填法院案号和开庭；缴费通知会先问你再提交缴纳。</p></div>
+          : activeTaskEntry ? <div className="assistant-workspace-greeting">{greetingHero(activeTaskEntry.label)}<p>{activeTaskEntry.greeting}</p></div>
+          : desktopWorkspace ? <div className="assistant-workspace-greeting">{greetingHero("今天想处理什么？")}
             <TaskEntryCards entries={workspace.taskEntries || []} disabled={sending || sendBlocked} onStart={startTask} commands={NEW_CONVERSATION_COMMANDS} onCommand={submit} /></div>
           : <AssistantStart suggestions={suggestions} disabled={sending} onPick={submit} taskEntries={workspace.taskEntries || []} onStartTask={startTask} />}
         {!desktopWorkspace && !intakeMode && !activeTaskEntry && <div className="assistant-mobile-empty">

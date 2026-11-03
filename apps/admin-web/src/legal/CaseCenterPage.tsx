@@ -22,7 +22,6 @@ InfoCircleOutlined,
 MinusCircleOutlined,
 PlusOutlined,
 ReloadOutlined,
-RobotOutlined,
 RightOutlined,
 UpOutlined,
 UploadOutlined
@@ -256,6 +255,7 @@ import { CaseAgentDrawer } from "./CaseAgentDrawer";
 import { CaseCreateWizard } from "./CaseCreateWizard";
 import { CauseSearchInput } from "./CauseSearchInput";
 import { CaseOperationsMenu } from "./CaseOperationsMenu";
+import { AgentIcon } from "../personal-agent/AgentAvatar";
 import {
 CaseCaseTasksPanel,
 CaseCluesPanel,
@@ -4053,7 +4053,7 @@ export default function CaseCenterPage({
         onClose={() => isCaseDetailView ? returnToCaseList() : setViewingCounselCase(null)}
         extra={viewingCounselCase&&<Space wrap>
           {isCaseDetailView && <Button data-testid="case-detail-back" onClick={returnToCaseList}>返回案件列表</Button>}
-          <Button type="primary" icon={<RobotOutlined />} onClick={() => openCaseAgent(viewingCounselCase)}>案件智能体</Button>
+          <Button type="primary" icon={<AgentIcon size={18} />} onClick={() => openCaseAgent(viewingCounselCase)}>案件智能体</Button>
           <Dropdown
             trigger={["click"]}
             placement="bottomRight"

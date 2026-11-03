@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import AssistantPanel from "./AssistantPanel";
 import { usePersonalWorkspaceContext } from "./PersonalWorkspaceProvider";
+import { AGENT_HEAD_SRC } from "./AgentAvatar";
 import "./ai-chat-page.css";
 
 type Props = {
@@ -25,7 +26,7 @@ export default function AiChatPage({ onReturnWorkbench, focusRequested, onFocusH
     <div className={`ai-chat-page${desktop ? " is-desktop-workspace" : ""}`} aria-label={name}>
       <AssistantPanel
         name={name}
-        logoSrc="/assets/ai-assistant-logo.png"
+        logoSrc={AGENT_HEAD_SRC}
         returnLabel="返回工作台"
         onReturnOverview={onReturnWorkbench}
         workspace={workspace}

@@ -6,7 +6,6 @@ FileWordOutlined,
 FolderOpenOutlined,
 FolderOutlined,
 PlusCircleFilled,
-RobotOutlined,
 UpOutlined,
 } from "@ant-design/icons";
 import { Alert,Button,Dropdown,Select,Space,Tag } from "antd";
@@ -16,6 +15,7 @@ import { useId, useState, type Key } from "react";
 import { dispatchCaseDocumentGenerationMenuClick } from "../../caseDocumentGenerationActions.mjs";
 import { getLegacyCaseDocumentGenerationItems } from "../constants";
 import type { AttachmentRow,CaseDetailCapabilities,CaseDocumentFolderEditor,CaseRow } from "../types";
+import { AgentIcon } from "../../personal-agent/AgentAvatar";
 import type { CaseDocumentTreeItem } from "../services/legacyCaseDocumentFolders";
 
 interface CaseDocumentsPanelProps {
@@ -130,7 +130,7 @@ export const CaseDocumentsPanel = ({
             aria-expanded={item.type==="group"?(expandedCounselDocGroups[item.category] ?? item.depth !== undefined):undefined}
           >
             <span className="case-doc-caret" aria-hidden="true">{item.type==="group"?((expandedCounselDocGroups[item.category] ?? item.depth !== undefined)?"▾":"▸"):""}</span>
-            {item.category==="AI空间"?<RobotOutlined className="case-doc-icon"/>:item.type==="group"&&(expandedCounselDocGroups[item.category] ?? item.depth !== undefined)?<FolderOpenOutlined className="case-doc-icon"/>:<FolderOutlined className="case-doc-icon"/>}
+            {item.category==="AI空间"?<span className="case-doc-icon"><AgentIcon size={15} /></span>:item.type==="group"&&(expandedCounselDocGroups[item.category] ?? item.depth !== undefined)?<FolderOpenOutlined className="case-doc-icon"/>:<FolderOutlined className="case-doc-icon"/>}
             <span>{item.label}</span>
           </button>
           {counselDetailCapabilities.can_manage_document&&((item.category==="案件文档全部"&&item.type!=="overview")||item.legacyTypeId===7)&&(

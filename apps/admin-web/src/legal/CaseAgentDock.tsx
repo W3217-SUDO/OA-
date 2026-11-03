@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Button, ConfigProvider, Tooltip } from "antd";
-import { CloseOutlined, CompressOutlined, ExpandOutlined, MenuFoldOutlined, RobotOutlined } from "@ant-design/icons";
+import { AgentIcon } from "../personal-agent/AgentAvatar";
+import { CloseOutlined, CompressOutlined, ExpandOutlined, MenuFoldOutlined } from "@ant-design/icons";
 
 // 501165（tgn 11-03）：案件智能体是浮在案件页上面的窗口，遮挡没关系，不压缩案件页。
 // 打开时在右下角，宽 2/9、高约可视区 70%；可拖动、调大小、放大、收起；每人上次的大小和位置记在本机。
@@ -149,7 +150,7 @@ export function CaseAgentDock({ open, title, onClose, children, revealKey = 0, i
     // 陶国南 11:55：C 的呼吸光和红点之外，再加上 B 的机器人眨眼点头，头像放大。
     className={`case-agent-dock-tab ${tabEffect === "alert" ? "is-breathe is-blink" : `is-${tabEffect}`}${alert ? " has-alert" : ""}`}
     aria-label="展开案件智能体" title={alert ? "案件有临期或逾期提醒，点开智能体看看" : "展开案件智能体"} onClick={onClick}>
-    <RobotOutlined />{alert && <i className="case-agent-dock-tab-dot" aria-hidden="true" />}<span>案件智能体</span>
+    <AgentIcon size={26} />{alert && <i className="case-agent-dock-tab-dot" aria-hidden="true" />}<span>案件智能体</span>
   </button>, document.body);
   if (!open) {
     if (!idleTab || viewport.mobile || !onExpandIdle) return null;

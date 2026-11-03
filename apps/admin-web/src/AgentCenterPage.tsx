@@ -1,7 +1,7 @@
 import { POPUP_WIDTH } from "./components/common/popupSize";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type Key } from "react";
 import { Button, Empty, Image, Input, List, message, Modal, Select, Space, Spin, Tag, Tree } from "antd";
-import { AppstoreAddOutlined, CheckCircleOutlined, CloseOutlined, FolderOpenOutlined, FolderOutlined, PaperClipOutlined, ReloadOutlined, RobotOutlined, SendOutlined, StopOutlined } from "@ant-design/icons";
+import { AppstoreAddOutlined, CheckCircleOutlined, CloseOutlined, FolderOpenOutlined, FolderOutlined, PaperClipOutlined, ReloadOutlined, SendOutlined, StopOutlined } from "@ant-design/icons";
 import { api, AUTH_EXPIRED_EVENT } from "./api";
 import { AgentMessageContent } from "./AgentMessageContent";
 import { AgentOperationPreview, agentOperationError, hasAgentOperationPreview, responseErrorMessage, type AgentActionPreview } from "./AgentOperationPreview";
@@ -14,6 +14,7 @@ import type { CaseAgentDocument } from "./legal/types";
 import { skillChoiceLabel } from "./personal-agent/skillScope";
 import { SkillManager } from "./personal-agent/SkillManager";
 import type { WorkspaceSkill } from "./personal-agent/types";
+import AgentMascot from "./personal-agent/AgentMascot";
 import "./agent-center.css";
 
 type CaseOption = { id: number; serial_no: string; title: string; customer: string; status: string };
@@ -412,9 +413,9 @@ export default function AgentCenterPage({ onOpenPersonalAgent, onOpenCaseAgentFo
             const container = event.currentTarget;
             followResponseRef.current = container.scrollHeight - container.scrollTop - container.clientHeight < 48;
           }}>
-            {!agentLoading && !state?.messages?.length && <div className="agent-global-empty"><RobotOutlined /><strong>开始分析当前业务空间</strong><span>回答会综合关联的客户、合同、案件、线索、调查和财务数据。</span></div>}
+            {!agentLoading && !state?.messages?.length && <div className="agent-global-empty"><AgentMascot pose="wave" height={110} blink /><strong>开始分析当前业务空间</strong><span>回答会综合关联的客户、合同、案件、线索、调查和财务数据。</span></div>}
             {state?.messages?.map((item, index) => <div key={item.id || index} className={`agent-global-message agent-global-message-${item.role}`}><small>{item.role === "user" ? "我" : "智能体"}</small><div>{item.attachments?.length ? <div className="agent-message-attachments">{item.attachments.map((attachment) => attachment.preview_url ? <figure key={attachment.id}><Image src={attachment.preview_url} alt={attachment.name} preview /><figcaption>{attachment.name}</figcaption></figure> : <Tag key={attachment.id}>{attachment.name}</Tag>)}</div> : null}{item.role === "assistant" ? <AgentMessageContent content={item.content} /> : item.content}</div></div>)}
-            {(agentLoading || sending) && <div className="agent-global-loading"><RobotOutlined /> {sending ? "正在分析关联业务数据..." : "正在加载会话..."}</div>}
+            {(agentLoading || sending) && <div className="agent-global-loading"><AgentMascot pose="laptop" height={32} bob /> {sending ? "正在分析关联业务数据..." : "正在加载会话..."}</div>}
             <AgentToolResult result={[state?.structured_results, ...(state?.pending_actions || []).filter((item) => item.status === "approved").map((item) => item.execution_result)]} />
             <div ref={messagesEndRef} />
           </div>

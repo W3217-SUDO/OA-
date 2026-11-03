@@ -1,13 +1,14 @@
-import { RobotOutlined, SafetyCertificateOutlined, SolutionOutlined, UserOutlined } from "@ant-design/icons";
+import { SafetyCertificateOutlined, SolutionOutlined, UserOutlined } from "@ant-design/icons";
 import { beijingTime } from "./time";
 import type { ReactNode } from "react";
 import FeedbackAttachments from "./FeedbackAttachments";
 import FeedbackEventImage from "./FeedbackEventImage";
 import { feedbackEventHasMessage, feedbackSpeaker, feedbackSpeakerName, feedbackStatusText, isFeedbackStatusEvent, type FeedbackSpeaker } from "./chat";
+import { AgentIcon } from "../personal-agent/AgentAvatar";
 import type { FeedbackEvent } from "./types";
 
 const AVATAR_ICONS: Record<FeedbackSpeaker, ReactNode> = {
-  reporter: <UserOutlined />, admin: <SafetyCertificateOutlined />, bot: <RobotOutlined />, assignee: <SolutionOutlined />,
+  reporter: <UserOutlined />, admin: <SafetyCertificateOutlined />, bot: <AgentIcon size={18} />, assignee: <SolutionOutlined />,
 };
 
 // 处理记录里的一条：状态变化是居中小灰条；回复（以及状态变化附带的说明、截图）是气泡，提交人在右、处理方在左。

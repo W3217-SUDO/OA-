@@ -13,7 +13,6 @@ MessageOutlined,
 PaperClipOutlined,
 PlusOutlined,
 ReloadOutlined,
-RobotOutlined,
 SendOutlined,
 StopOutlined,
 } from "@ant-design/icons";
@@ -31,6 +30,8 @@ import {
 AGENT_DOCUMENT_LIMIT,
 buildAgentDocumentTree,
 } from "./constants";
+import { AgentIcon } from "../personal-agent/AgentAvatar";
+import AgentMascot from "../personal-agent/AgentMascot";
 import type {
 CaseAgentAction,
 CaseAgentAttachment,
@@ -178,7 +179,7 @@ export const CaseAgentDrawer = ({
       idleTab={agentIdleTab}
       onExpandIdle={openIdleAgent}
       tabAlert={agentTabAlert}
-      title={<span><RobotOutlined /> 案件智能体：{agentCase?.serial_no || ""}</span>}
+      title={<span><AgentIcon size={20} /> 案件智能体：{agentCase?.serial_no || ""}</span>}
       onClose={closeCaseAgent}
     >
       <div className="case-agent-panel" data-testid="case-agent-panel">
@@ -242,7 +243,7 @@ export const CaseAgentDrawer = ({
         </Modal>
         <div className="case-agent-messages" aria-live="polite">
           {!agentLoading && !agentState?.messages?.length && <div className="case-agent-empty">
-            <div className="case-agent-empty-icon"><RobotOutlined /></div>
+            <AgentMascot pose="wave" height={110} blink className="case-agent-empty-mascot" />
             <strong>可以开始分析这个案件</strong>
             <span>智能体仅使用你有权查看的案件空间数据。</span>
           </div>}
@@ -251,7 +252,7 @@ export const CaseAgentDrawer = ({
             <div className="case-agent-message-meta">{item.role === "user" ? "我" : "案件智能体"}{item.created_at ? ` · ${item.created_at.replace("T", " ").slice(0, 16)}` : ""}</div>
             <div className="case-agent-bubble">{item.attachments?.length ? <div className="case-agent-message-attachments">{item.attachments.map((attachment) => attachment.preview_url ? <figure key={attachment.id}><Image src={attachment.preview_url} alt={attachment.name} preview /><figcaption>{attachment.name}</figcaption></figure> : <Tag key={attachment.id}>{attachment.name}</Tag>)}</div> : null}{item.content}</div>
           </div>)}
-          {(agentLoading || agentSending) && <div className="case-agent-thinking"><RobotOutlined /> {agentSending ? "正在分析案件空间..." : "正在载入会话..."}</div>}
+          {(agentLoading || agentSending) && <div className="case-agent-thinking"><AgentMascot pose="think" height={30} bob /> {agentSending ? "正在分析案件空间..." : "正在载入会话..."}</div>}
           <AgentToolResult result={[agentState?.structured_results, ...(agentState?.pending_actions || []).filter((item) => item.status === "approved").map((item) => item.execution_result)]} />
           <div ref={agentMessagesEndRef} />
         </div>

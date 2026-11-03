@@ -1,9 +1,10 @@
 import { ToolOutput } from "./ToolOutput";
 import { ToolTrace } from "./ToolTrace";
 import { Button, Tooltip } from "antd";
-import { CopyOutlined, FileWordOutlined, FolderOpenOutlined, PaperClipOutlined, RobotOutlined } from "@ant-design/icons";
+import { CopyOutlined, FileWordOutlined, FolderOpenOutlined, PaperClipOutlined } from "@ant-design/icons";
 import { AgentMessageContent } from "../AgentMessageContent";
 import { AgentToolResult } from "../AgentToolResult";
+import AgentAvatar from "./AgentAvatar";
 import { workspaceDocumentSaveTarget, type Material, type WorkspaceMessage } from "./types";
 
 type Props = {
@@ -26,7 +27,7 @@ export function ConversationMessage({ item, generating, readingMaterials, progre
   const assistant = item.role === "assistant";
   const documentTarget = workspaceDocumentSaveTarget(item);
   return <article className={`personal-message ${item.role}${item.failed ? " failed" : ""}`}>
-    {assistant && <div className="workspace-message-avatar" aria-hidden="true"><RobotOutlined /></div>}
+    {assistant && <div className="workspace-message-avatar" aria-hidden="true"><AgentAvatar size={28} /></div>}
     <div className="workspace-message-main">
       <div className="workspace-message-heading">
         <span>{assistant ? "办公助手" : "我"}</span>
