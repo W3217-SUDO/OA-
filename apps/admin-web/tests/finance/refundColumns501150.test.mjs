@@ -20,7 +20,9 @@ test("合一栏上原告下被告，操作列靠右收窄、进度时长放宽",
   const widths = columns.slice(columns.indexOf("const refundColumnWidths"), columns.indexOf("};", columns.indexOf("const refundColumnWidths")));
   const width = (name) => Number(new RegExp(`${name}: (\\d+)`).exec(widths)[1]);
   assert.ok(width("操作") < 100);
-  assert.ok(width("进度及时长") >= 200);
+  assert.ok(width("进度及时长") >= 140 && width("进度及时长") <= 160);
+  assert.ok(width("费用类型") <= 90);
+  assert.match(widths, /"开庭律师\/律师助理": 110,/);
   assert.match(columns, /header === "进度及时长" \? \(<div className="finance-party-stack finance-stack-nowrap">\s*<span><i>进度<\/i>\{context\.cellValue\(row, "退费进度"\)[^\n]*\n\s*<span><i>时长<\/i>\{row\.data\?\.refund_progress_days == null \? "—" : `\$\{row\.data\.refund_progress_days\} 天`\}/);
   const view = fs.readFileSync(new URL("../../src/finance/FinanceOriginalRoutesView.tsx", import.meta.url), "utf8");
   assert.match(view, /x: isFeeQueryRoute \|\| isRefundCaseFeeRoute\s*\? originalColumns\.reduce/);
