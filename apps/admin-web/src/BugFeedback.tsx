@@ -4,7 +4,7 @@ import { AuditOutlined, QuestionCircleOutlined } from "@ant-design/icons";
 import { FEEDBACK_CENTER_ROUTE, FEEDBACK_ROUTE } from "./feedback/navigation";
 
 // 问题反馈入口放在哪（501295，陶国南 11-03）：系统试运行期间天天要用——
-// "tab"：顶部栏“工作台”页签右边固定一个“问题反馈”页签（21:34 改成这样），管理员的“问题处理中心”在左侧菜单“工作台”下面；
+// "tab"：顶部栏“工作台”页签右边固定一个“问题反馈”页签（21:34 改成这样），左侧菜单“工作台”下面也保留（管理员另有“问题处理中心”）；
 // "top"：左侧菜单“工作台”下面紧挨着；"bottom"：侧栏左下角（系统稳定后改回这个）。
 // 只是显示位置，菜单权限和角色权限树不受影响。
 export const FEEDBACK_MENU_PLACEMENT: "tab" | "top" | "bottom" = "tab";
@@ -15,7 +15,8 @@ type FeedbackMenuItem = { key: string; label: string; icon?: ReactNode };
 export function withFeedbackMenu<T extends FeedbackMenuItem>(items: T[], administrator: boolean): T[] {
   if (FEEDBACK_MENU_PLACEMENT === "bottom") return items;
   const entries = [
-    ...(FEEDBACK_MENU_PLACEMENT === "top" ? [{ key: FEEDBACK_ROUTE, label: "问题反馈", icon: <QuestionCircleOutlined /> }] : []),
+    // 顶部页签在手机上不显示，左侧菜单里也保留一个（调度 11-03 21:3x：默认保留，请陶国南定）。
+    { key: FEEDBACK_ROUTE, label: "问题反馈", icon: <QuestionCircleOutlined /> },
     ...(administrator ? [{ key: FEEDBACK_CENTER_ROUTE, label: "问题处理中心", icon: <AuditOutlined /> }] : []),
   ] as T[];
   const rest = items.filter((item) => item.key !== FEEDBACK_ROUTE && item.key !== FEEDBACK_CENTER_ROUTE);
