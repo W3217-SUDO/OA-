@@ -75,11 +75,11 @@ _CONTRACT_CAUSE = ("合同", "借贷", "借款", "买卖", "租赁", "承揽", "
 
 
 def case_kind(case: dict[str, Any]) -> str:
-    """按案由（没有时看案件类型）判断用哪本手册；案由没填的沿用知识产权手册，不改变原来的行为。"""
+    """按案由判断用哪本手册；案由没填的用通用诉讼流程，并提醒确认案由（思法汇成 11-03 10:47）。"""
     data = case.get("data") or {}
     cause = _text(data.get("cause_or_charge") or data.get("cause"))
     if not cause:
-        return "ipr"
+        return "civil"
     if any(word in cause for word in _IPR_CAUSE):
         return "ipr"
     if "劳动" not in cause and any(word in cause for word in _CONTRACT_CAUSE):
@@ -319,7 +319,9 @@ def build_case_workflow_guide(snapshot: dict[str, Any], reference_date: date | N
     return {
         "schema_version": "1.0",
         "manual": {"name": manual["name"], "version": manual["version"], "case_kind": manual["case_kind"],
-                   "cause": _text((case.get("data") or {}).get("cause_or_charge")), "kind": kind},
+                   "cause": _text((case.get("data") or {}).get("cause_or_charge")), "kind": kind,
+                   **({"cause_missing": True, "notice": "本案未填写案由，暂按民商事通用流程；请先提醒用户确认并补填案由，补填后按对应手册检查。"}
+                      if not _text((case.get("data") or {}).get("cause_or_charge") or (case.get("data") or {}).get("cause")) else {})},
         "generated_at": datetime.now().astimezone().isoformat(),
         "current_phase": next(item for item in phase_items if item["state"] == "current"),
         "phases": phase_items,

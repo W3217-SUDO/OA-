@@ -29,10 +29,18 @@ class CaseManualByCauseTest(unittest.TestCase):
     def test_kind_by_cause(self):
         cases = {"民间借贷纠纷": "contract", "建设工程施工合同纠纷": "contract", "十、合同纠纷": "contract",
                  "劳动合同纠纷": "civil", "十七、劳动争议": "civil", "离婚纠纷": "civil", "机动车交通事故责任纠纷": "civil",
-                 "": "ipr", None: "ipr"}
+                 "": "civil", None: "civil"}
         for cause, kind in cases.items():
             self.assertEqual(case_kind({"data": {"cause_or_charge": cause}}), kind, cause)
         self.assertEqual(guide_for("离婚纠纷")["manual"]["name"], "民商事诉讼案件通用办案流程")
+
+    def test_missing_cause_uses_general_flow_and_asks_to_confirm(self):
+        """思法汇成 11-03 10:47：案由没填的，提醒确认案由，否则适用通用诉讼流程。"""
+        manual = guide_for("")["manual"]
+        self.assertEqual(manual["name"], "民商事诉讼案件通用办案流程")
+        self.assertTrue(manual["cause_missing"])
+        self.assertIn("确认并补填案由", manual["notice"])
+        self.assertNotIn("cause_missing", guide_for("买卖合同纠纷")["manual"])
 
 
 if __name__ == "__main__":
