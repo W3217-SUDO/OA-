@@ -4273,7 +4273,8 @@ export default function CaseCenterPage({
       </Modal>
       {/* 501185（陶国南 11-03 11:11）：平时进入案件详情，右侧默认显示收起状态的案件智能体，点了才展开；从智能体中心案件空间进来、或点“案件智能体”按钮时直接展开。 */}
       <CaseAgentDrawer {...agentDrawerProps} counselDetailCapabilities={counselDetailCapabilities}
-        agentIdleTab={Boolean(viewingCounselCase)} openIdleAgent={() => { if (viewingCounselCase) openCaseAgent(viewingCounselCase); }} />
+        agentIdleTab={Boolean(viewingCounselCase)} openIdleAgent={() => { if (viewingCounselCase) openCaseAgent(viewingCounselCase); }}
+        agentTabAlert={Boolean(viewingCounselCase) && counselReminders.some((item) => { const deadline = String(item.data?.deadline || "").slice(0, 10); return !!deadline && deadline <= dayjs().add(7, "day").format("YYYY-MM-DD"); })} />
       <Modal
         open={Boolean(attachmentPreview)}
         title={`在线查看：${attachmentPreview?.name || ""}`}

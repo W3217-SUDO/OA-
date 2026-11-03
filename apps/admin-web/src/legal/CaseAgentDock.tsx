@@ -13,6 +13,9 @@ export const WINDOW_MIN_HEIGHT = 320;
 const TOPBAR = 50;
 const MARGIN = 16;
 const MOBILE_QUERY = "(max-width: 767px)";
+/** 501185（陶国南 11-03 11:26）：右侧收起的小按钮“活起来”。breathe=呼吸光，blink=机器人眨眼点头，alert=平时轻呼吸、案件有临期提醒时红点跳动。 */
+export type CaseAgentTabEffect = "breathe" | "blink" | "alert";
+export const CASE_AGENT_TAB_EFFECT: CaseAgentTabEffect = "alert";
 
 export type WindowRect = { x: number; y: number; w: number; h: number };
 type Viewport = { width: number; height: number };
@@ -64,9 +67,11 @@ type Props = { open: boolean; title: ReactNode; onClose: () => void; children: R
   /** 每次点“案件智能体”加一：窗口已打开也重新显示并拉回可视区。 */
   revealKey?: number;
   /** 501185（陶国南 11-03 11:11）：案件详情打开着、智能体没开时，右侧默认显示收起状态的小按钮，点了才展开（手机不显示）。 */
-  idleTab?: boolean; onExpandIdle?: () => void };
+  idleTab?: boolean; onExpandIdle?: () => void;
+  /** 案件有已逾期或 7 天内到期的提醒（方案 C 的红点）。 */
+  tabAlert?: boolean; tabEffect?: CaseAgentTabEffect };
 
-export function CaseAgentDock({ open, title, onClose, children, revealKey = 0, idleTab = false, onExpandIdle }: Props) {
+export function CaseAgentDock({ open, title, onClose, children, revealKey = 0, idleTab = false, onExpandIdle, tabAlert = false, tabEffect = CASE_AGENT_TAB_EFFECT }: Props) {
   const [viewport, setViewport] = useState(readViewport);
   const [rect, setRect] = useState<WindowRect>(() => visibleRect(readRect(), viewport));
   const [collapsed, setCollapsed] = useState(false);
@@ -139,17 +144,19 @@ export function CaseAgentDock({ open, title, onClose, children, revealKey = 0, i
 
   if (typeof document === "undefined") return null;
   const anchor = <span ref={anchorRef} hidden aria-hidden="true" className="case-agent-dock-anchor" />;
+  const alert = tabEffect === "alert" && tabAlert;
+  const tab = (onClick: () => void) => createPortal(<button type="button"
+    className={`case-agent-dock-tab is-${tabEffect === "alert" ? "breathe" : tabEffect}${alert ? " has-alert" : ""}`}
+    aria-label="展开案件智能体" title={alert ? "案件有临期或逾期提醒，点开智能体看看" : "展开案件智能体"} onClick={onClick}>
+    <RobotOutlined />{alert && <i className="case-agent-dock-tab-dot" aria-hidden="true" />}<span>案件智能体</span>
+  </button>, document.body);
   if (!open) {
     if (!idleTab || viewport.mobile || !onExpandIdle) return null;
     if (hostHidden) return anchor;
-    return <>{anchor}{createPortal(<button type="button" className="case-agent-dock-tab" aria-label="展开案件智能体" title="展开案件智能体" onClick={onExpandIdle}>
-      <RobotOutlined /><span>案件智能体</span>
-    </button>, document.body)}</>;
+    return <>{anchor}{tab(onExpandIdle)}</>;
   }
   if (hostHidden) return anchor;
-  if (collapsed) return <>{anchor}{createPortal(<button type="button" className="case-agent-dock-tab" aria-label="展开案件智能体" title="展开案件智能体" onClick={() => setCollapsed(false)}>
-    <RobotOutlined /><span>案件智能体</span>
-  </button>, document.body)}</>;
+  if (collapsed) return <>{anchor}{tab(() => setCollapsed(false))}</>;
 
   const mobile = viewport.mobile;
   const style = mobile ? undefined

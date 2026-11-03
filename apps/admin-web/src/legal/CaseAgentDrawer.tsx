@@ -45,6 +45,8 @@ interface CaseAgentDrawerProps {
   /** 501185：案件详情打开着时，智能体没开也在右侧显示收起状态的小按钮。 */
   agentIdleTab?: boolean;
   openIdleAgent?: () => void;
+  /** 501185：案件有已逾期或 7 天内到期的提醒。 */
+  agentTabAlert?: boolean;
   closeCaseAgent: () => void;
   agentCase: CaseRow | null;
   agentDrawerWidth: number;
@@ -93,6 +95,7 @@ export const CaseAgentDrawer = ({
   agentRevealKey,
   agentIdleTab,
   openIdleAgent,
+  agentTabAlert,
   closeCaseAgent,
   agentCase,
   agentStatus,
@@ -152,6 +155,7 @@ export const CaseAgentDrawer = ({
       revealKey={agentRevealKey}
       idleTab={agentIdleTab}
       onExpandIdle={openIdleAgent}
+      tabAlert={agentTabAlert}
       title={<span><RobotOutlined /> 案件智能体：{agentCase?.serial_no || ""}</span>}
       onClose={closeCaseAgent}
     >

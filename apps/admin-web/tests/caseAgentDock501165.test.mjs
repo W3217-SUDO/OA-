@@ -170,3 +170,20 @@ test("501185（陶国南 11:11）：平时进案件详情，右侧默认显示�
   assert.equal(renderer.root.findAllByProps({ "aria-label": "展开案件智能体" }).length, 0, "手机不显示右侧小按钮");
   await act(async () => { renderer.unmount(); });
 });
+
+test("501185（陶国南 11:26）：右侧小按钮活起来——呼吸光、眨眼、有临期提醒时红点", async () => {
+  const env = environment();
+  const { CaseAgentDock } = load(env);
+  const tab = async (props) => {
+    let renderer;
+    await act(async () => { renderer = create(React.createElement(CaseAgentDock, { open: false, idleTab: true, onExpandIdle() {}, title: "案件智能体", onClose() {}, ...props }, "内容")); });
+    const button = renderer.root.findByProps({ "aria-label": "展开案件智能体" });
+    const result = { className: button.props.className, dot: button.findAll(node => node.props?.className === "case-agent-dock-tab-dot").length };
+    await act(async () => { renderer.unmount(); });
+    return result;
+  };
+  assert.deepEqual(await tab({ tabEffect: "breathe" }), { className: "case-agent-dock-tab is-breathe", dot: 0 });
+  assert.deepEqual(await tab({ tabEffect: "blink" }), { className: "case-agent-dock-tab is-blink", dot: 0 });
+  assert.deepEqual(await tab({ tabEffect: "alert" }), { className: "case-agent-dock-tab is-breathe", dot: 0 }, "平时只轻呼吸");
+  assert.deepEqual(await tab({ tabEffect: "alert", tabAlert: true }), { className: "case-agent-dock-tab is-breathe has-alert", dot: 1 }, "有临期提醒时红点跳动");
+});
