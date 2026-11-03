@@ -3,9 +3,11 @@ import { CaseAgentDock } from "./CaseAgentDock";
 import { StatusTag } from "../components/common/StatusTag";
 import {
 CloseOutlined,
+DownOutlined,
 FolderOpenOutlined,
 FolderOutlined,
 InfoCircleOutlined,
+MessageOutlined,
 PaperClipOutlined,
 PlusOutlined,
 ReloadOutlined,
@@ -13,7 +15,7 @@ RobotOutlined,
 SendOutlined,
 StopOutlined,
 } from "@ant-design/icons";
-import { Alert,Button,Image,Input,message,Modal,Popover,Select,Space,Tag,Tooltip,Tree } from "antd";
+import { Alert,Button,Dropdown,Image,Input,message,Modal,Popover,Select,Space,Tag,Tooltip,Tree } from "antd";
 import { useEffect, useState } from "react";
 import { AgentOperationPreview, agentOperationName, hasAgentOperationPreview } from "../AgentOperationPreview";
 import { AgentToolResult } from "../AgentToolResult";
@@ -33,6 +35,9 @@ CaseAgentStatus,
 CaseDetailCapabilities,
 CaseRow
 } from "./types";
+
+// 新建会话的默认名称：会话 + 当前日期时间，不再让用户先起名。
+export const caseConversationTitle = (now = new Date()) => `会话 ${now.getMonth() + 1}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
 interface CaseAgentDrawerProps {
   agentOpen: boolean;
@@ -148,8 +153,17 @@ export const CaseAgentDrawer = ({
             服务状态、模型、记忆和审批说明收进“ⓘ”，把高度留给对话。 */}
         <div className="case-agent-toolbar" role="toolbar" aria-label="案件智能体工具">
           <Tooltip title="案件智能体文件夹"><Button type="text" size="small" icon={<FolderOpenOutlined />} aria-label="案件智能体文件夹" onClick={openAgentFolder} /></Tooltip>
-          <Select size="small" className="case-agent-toolbar-select" aria-label="案件会话" popupMatchSelectWidth={false} value={conversationId || undefined} options={agentConversations.map((item) => ({ value: item.id, label: item.title }))} onChange={switchCaseConversation} placeholder="选择会话" />
-          <Tooltip title="新建会话"><Button type="text" size="small" icon={<PlusOutlined />} aria-label="新建会话" onClick={() => { const value = window.prompt("新会话名称", "新会话"); if (value?.trim()) void createCaseConversation(value.trim()); }} /></Tooltip>
+          {/* tgn 08:33：“新会话”和“新建会话”合成一个“会话”入口：点开新建或切换；新建不再弹名称输入框（钉钉里会被拦下，看着没反应）。 */}
+          <Dropdown trigger={["click"]} menu={{
+            selectable: true, selectedKeys: conversationId ? [String(conversationId)] : [],
+            items: [{ key: "new", icon: <PlusOutlined />, label: "新建会话" }, ...(agentConversations.length ? [{ type: "divider" as const }] : []),
+              ...agentConversations.map((item) => ({ key: String(item.id), label: item.title }))],
+            onClick: ({ key }) => key === "new" ? void createCaseConversation(caseConversationTitle()) : switchCaseConversation(Number(key)),
+          }}>
+            <Button size="small" className="case-agent-conversation-trigger" icon={<MessageOutlined />} aria-label="会话">
+              <span>{agentConversations.find((item) => item.id === conversationId)?.title || "会话"}</span><DownOutlined />
+            </Button>
+          </Dropdown>
           <Tooltip title={(agentStatus?.skills || []).find((item) => item.id === agentSkillId)?.description || "选择本轮对话使用的办公技能"}>
             <Select size="small" className="case-agent-toolbar-select" aria-label="办公技能" popupMatchSelectWidth={false} value={agentSkillId} allowClear onChange={value => setAgentSkillId(value ?? "")}
               options={[NO_AGENT_SKILL_OPTION, ...(agentStatus?.skills || []).map((item) => ({ value: item.id, label: `${item.name}${item.available ? "" : "（待配置）"}`, disabled: !item.available }))]} />

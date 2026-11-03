@@ -176,10 +176,16 @@ export function useCaseAgentWorkspace({
     void loadCaseAgent(agentCase, false, agentId, nextConversationId);
   };
   const createCaseConversation = async (title: string) => {
-    if (!agentCase || !agentId) return;
-    const { data } = await api.post(`/case-spaces/${agentCase.id}/agents/${agentId}/conversations`, { title });
-    setAgentConversations((items) => [data, ...items]);
-    switchCaseConversation(Number(data.id));
+    // 501170（tgn 08:33）：以前智能体没载入完时点了没反应，现在明确提示；失败也提示。
+    if (!agentCase || !agentId) { message.warning("案件智能体还在载入，请稍候再新建会话"); return; }
+    try {
+      const { data } = await api.post(`/case-spaces/${agentCase.id}/agents/${agentId}/conversations`, { title });
+      setAgentConversations((items) => [data, ...items]);
+      switchCaseConversation(Number(data.id));
+      message.success("已新建会话");
+    } catch {
+      message.error("新建会话失败，请稍后重试");
+    }
   };
   const closeCaseAgent = () => {
     activeAgentLoadRequestRef.current?.abort();

@@ -833,3 +833,6 @@
 .case-agent-dock .case-agent-material-tree{max-height:40vh;overflow:auto}
 .case-agent-dock .case-agent-empty{padding:16px 0}
 .case-agent-dock .case-agent-empty{min-height:0}
+.case-agent-toolbar>.case-agent-conversation-trigger{display:inline-flex;flex:1 1 0;width:auto;height:28px;color:var(--oa-text);align-items:center;gap:4px;min-width:0;max-width:none;padding:0 6px}
+.case-agent-conversation-trigger>span:not(.ant-btn-icon){flex:1;min-width:0;overflow:hidden;text-align:left;text-overflow:ellipsis;white-space:nowrap}
+.case-agent-conversation-trigger .anticon-down{font-size:10px;color:var(--oa-text-2)}
