@@ -104,3 +104,26 @@ test("手机全屏", async () => {
   assert.equal(renderer.root.findAllByProps({ "aria-label": "收起" }).length, 0);
   await act(async () => { renderer.unmount(); });
 });
+
+test("501170：所在案件详情页退到后台（回列表、切页签）时窗口跟着藏起来，回来再出现", async () => {
+  const env = environment();
+  const classes = new Set(["workspace-page"]);
+  let notify = null;
+  const page = { classList: { contains: c => classes.has(c) } };
+  class FakeObserver { constructor(cb) { notify = cb; } observe() {} disconnect() {} }
+  const { CaseAgentDock } = load({ ...env, MutationObserver: FakeObserver });
+  let renderer;
+  await act(async () => {
+    renderer = create(React.createElement(CaseAgentDock, { open: true, title: "案件智能体", onClose() {} }, "内容"),
+      { createNodeMock: element => element.type === "span" ? { closest: selector => selector === ".workspace-page" ? page : null } : null });
+  });
+  const visible = () => renderer.root.findAllByProps({ "aria-label": "案件智能体" }).length === 1;
+  assert.equal(visible(), true, "详情页在前台时显示");
+  classes.add("is-cached");
+  await act(async () => { notify(); });
+  assert.equal(visible(), false, "回到列表后，详情页的智能体窗口不留在列表上");
+  classes.delete("is-cached");
+  await act(async () => { notify(); });
+  assert.equal(visible(), true, "回到这个案件详情页，窗口原样出现");
+  await act(async () => { renderer.unmount(); });
+});

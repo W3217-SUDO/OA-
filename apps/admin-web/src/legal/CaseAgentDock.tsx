@@ -71,6 +71,19 @@ export function CaseAgentDock({ open, title, onClose, children, revealKey = 0 }:
   const [maximized, setMaximized] = useState(false);
   const rectRef = useRef(rect);
   rectRef.current = rect;
+  // 501170（tgn 08:46）：窗口只跟着它所在的案件详情页显示。详情页退到后台（回列表、切页签）时，
+  // 页签外层带 is-cached，窗口一起藏起来；回到这个详情页再原样出现。窗口挂在 body 下，所以要从页内的锚点判断。
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const [hostHidden, setHostHidden] = useState(false);
+  useEffect(() => {
+    const page = anchorRef.current?.closest(".workspace-page");
+    if (!page || typeof MutationObserver === "undefined") return;
+    const check = () => setHostHidden(page.classList.contains("is-cached"));
+    check();
+    const observer = new MutationObserver(check);
+    observer.observe(page, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, [open]);
 
   // 打开或再次点“案件智能体”：展开、取消放大，位置不在可视区就回到右下角。
   useEffect(() => {
@@ -116,16 +129,18 @@ export function CaseAgentDock({ open, title, onClose, children, revealKey = 0 }:
   });
 
   if (!open || typeof document === "undefined") return null;
-  if (collapsed) return createPortal(<button type="button" className="case-agent-dock-tab" aria-label="展开案件智能体" title="展开案件智能体" onClick={() => setCollapsed(false)}>
+  const anchor = <span ref={anchorRef} hidden aria-hidden="true" className="case-agent-dock-anchor" />;
+  if (hostHidden) return anchor;
+  if (collapsed) return <>{anchor}{createPortal(<button type="button" className="case-agent-dock-tab" aria-label="展开案件智能体" title="展开案件智能体" onClick={() => setCollapsed(false)}>
     <RobotOutlined /><span>案件智能体</span>
-  </button>, document.body);
+  </button>, document.body)}</>;
 
   const mobile = viewport.mobile;
   const style = mobile ? undefined
     : maximized ? { top: TOPBAR, right: 0, bottom: 0, left: 0 }
     : { top: rect.y, left: rect.x, width: rect.w, height: rect.h };
   const className = `case-agent-dock${mobile ? " is-mobile" : maximized ? " is-maximized" : " is-floating"}`;
-  return createPortal(<section className={className} style={style} role="dialog" aria-modal={false} aria-label="案件智能体">
+  return <>{anchor}{createPortal(<section className={className} style={style} role="dialog" aria-modal={false} aria-label="案件智能体">
     <header className="case-agent-dock-header" onPointerDown={mobile ? undefined : moveWindow}>
       <span className="case-agent-dock-title">{title}</span>
       <span className="case-agent-dock-actions">
@@ -144,5 +159,5 @@ export function CaseAgentDock({ open, title, onClose, children, revealKey = 0 }:
       <div className="case-agent-dock-resize is-top" role="separator" aria-label="拖动调整智能体高度" onPointerDown={resize("top")} />
       <div className="case-agent-dock-resize is-corner" role="separator" aria-label="拖动调整智能体大小" onPointerDown={resize("corner")} />
     </>}
-  </section>, document.body);
+  </section>, document.body)}</>;
 }
