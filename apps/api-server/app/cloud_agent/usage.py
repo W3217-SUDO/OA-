@@ -111,6 +111,27 @@ class TurnUsage:
         }
 
 
+NOTE = ("费用按火山公开单价估算：模型按 token（区分高峰/空闲、命中缓存），运行时 0.5 元/小时，专业数据集和豆包搜索按套餐 AFP 折算"
+        "（1 AFP≈0.002 元）。不含赠送的免费额度，实际以火山账单为准。")
+
+
+def parse_month(value: str | None) -> str:
+    from fastapi import HTTPException
+
+    month = value or datetime.now(BEIJING).strftime("%Y-%m")
+    if len(month) != 7 or month[4] != "-" or not (month[:4] + month[5:]).isdigit():
+        raise HTTPException(422, "月份格式应为 YYYY-MM")
+    return month
+
+
+def person_view(username: str, month: str, directory: Path | None = None) -> dict:
+    """某一个人自己的月度汇总和每轮明细（个人页和管理员页共用同一套算法）。"""
+    rows = [row for row in read_month(month, directory) if row.get("username") == username]
+    people = summarize(rows)["people"]
+    return {"month": month, "summary": people[0] if people else None, "records": list(reversed(rows))[:300],
+            "total_records": len(rows), "note": NOTE}
+
+
 def _directory() -> Path:
     from app.harness_agent.runtime import storage_root
 

@@ -424,3 +424,12 @@ async def personal_agent_action_decision(action_id: str, body: PersonalActionDec
                                  conversation_id=body.conversation_id,
                                  mcp_credential=body.mcp_credential.get_secret_value() if body.mcp_credential else None)
     return {**result, "state": await project_personal_actions(result["state"], safe_identity, db)}
+
+
+@router.get(f"{settings.api_prefix}/personal-agent/cloud-usage")
+async def my_cloud_usage(month: str | None = None, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """我的智能体用量（陶国南 11-03 提）：只返回当前登录人自己的数据，不接受用户名参数，看不到别人。"""
+    from app.cloud_agent.usage import parse_month, person_view
+
+    safe_identity = await personal_identity(identity, db)
+    return person_view(safe_identity["username"], parse_month(month))

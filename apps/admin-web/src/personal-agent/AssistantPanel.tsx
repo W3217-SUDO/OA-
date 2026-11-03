@@ -1,7 +1,7 @@
 import { ToolOutput } from "./ToolOutput";
 import { forwardRef, useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
 import { Alert, Button, Dropdown, Input, List, Tag, Tooltip, message } from "antd";
-import { ApiOutlined, ArrowLeftOutlined, LaptopOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, ExperimentOutlined, FileWordOutlined, FolderOpenOutlined, ReloadOutlined, RobotOutlined, SettingOutlined } from "@ant-design/icons";
+import { ApiOutlined, ArrowLeftOutlined, BarChartOutlined, LaptopOutlined, ArrowUpOutlined, CheckOutlined, CloseOutlined, ExperimentOutlined, FileWordOutlined, FolderOpenOutlined, ReloadOutlined, RobotOutlined, SettingOutlined } from "@ant-design/icons";
 import AssistantStart, { shortcuts, type AssistantSuggestion } from "./AssistantStart";
 import { TaskEntryCards } from "./TaskEntryCards";
 import AgentAvatar from "./AgentAvatar";
@@ -17,6 +17,7 @@ import { PersonalAiSpace } from "./PersonalAiSpace";
 import { CaseAgentFileFolderModal } from "./CaseAgentFileFolderModal";
 import { PersonalMcpConnectionCard } from "./PersonalMcpConnectionCard";
 import { LocalAgentAccess } from "./LocalAgentAccess";
+import { MyAgentUsage } from "./MyAgentUsage";
 import { McpConnectionTurn } from "./McpConnectionTurn";
 import { agentOperationMessage, responseErrorMessage, userFacingAgentText } from "../AgentOperationPreview";
 import { errorText, mentionedCaseSerial, workspaceDocumentSaveTarget, type CaseAgentConversationSummary, type ConfirmationDetail, type PendingAction, type WorkspaceMessage, type WorkspaceState } from "./types";
@@ -81,6 +82,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
   const [personalSpaceOpen, setPersonalSpaceOpen] = useState(false);
   const [caseAgentFolderOpen, setCaseAgentFolderOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
+  const [usageOpen, setUsageOpen] = useState(false);
   // 陶国南 11-03 07:22：电脑连接 OA 收进右上角“设置”，只有能用个人令牌的人才显示。
   const [localAccessOpen, setLocalAccessOpen] = useState(false);
   const [localAccessAvailable, setLocalAccessAvailable] = useState(false);
@@ -262,6 +264,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         {desktopWorkspace && <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items: [
           ...(onOpenAgentCenter ? [{ key: "agent", icon: <RobotOutlined />, label: "智能体设置", onClick: onOpenAgentCenter }] : []),
           { key: "memory", icon: <SettingOutlined />, label: "记忆管理", onClick: () => setMemoryOpen(true) },
+          { key: "usage", icon: <BarChartOutlined />, label: "我的用量", onClick: () => setUsageOpen(true) },
           { key: "skills", icon: <ExperimentOutlined />, label: "导入技能", disabled: loading || workspace.conversationBusy || workspace.uploading, onClick: () => workspaceToolsRef.current?.importSkills() },
           { key: "mcp", icon: <ApiOutlined />, label: "MCP 连接", onClick: mcp.show },
           ...(localAccessAvailable ? [{ key: "local", icon: <LaptopOutlined />, label: "电脑连接 OA", onClick: () => setLocalAccessOpen(true) }] : []),
@@ -269,6 +272,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         {!desktopWorkspace && <div className="assistant-bar-actions">
           <Tooltip title="个人 AI 空间"><Button className="personal-ai-space-trigger" type="text" icon={<FolderOpenOutlined />} aria-label="个人 AI 空间" onClick={() => setPersonalSpaceOpen(true)}><span className="personal-ai-space-label">个人 AI 空间</span></Button></Tooltip>
           <ConfirmationHistory onReopen={reopen} busy={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId || workspace.uploading} />
+          <Tooltip title="我的用量"><Button type="text" icon={<BarChartOutlined />} aria-label="我的用量" onClick={() => setUsageOpen(true)} /></Tooltip>
           <Tooltip title="刷新智能体">
             <Button
               className="assistant-refresh"
@@ -497,6 +501,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
       {desktopWorkspace ? <div className="assistant-workspace-main">{content}</div> : content}
       {caseAgentFolderOpen && currentCaseProject?.case_id && <CaseAgentFileFolderModal open caseId={currentCaseProject.case_id} serialNo={currentCaseProject.serial_no} onClose={() => setCaseAgentFolderOpen(false)} />}
       {memoryOpen && <MemoryControlPanel open onClose={() => setMemoryOpen(false)} />}
+      {usageOpen && <MyAgentUsage open onClose={() => setUsageOpen(false)} />}
       {desktopWorkspace && <LocalAgentAccess open={localAccessOpen} onClose={() => setLocalAccessOpen(false)} onAvailable={setLocalAccessAvailable} />}
     </section>
   );

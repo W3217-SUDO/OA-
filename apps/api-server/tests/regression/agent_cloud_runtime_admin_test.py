@@ -91,3 +91,18 @@ class AgentCloudRuntimeAdminTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await self.client.get(API + "/usage", params={"month": "2026/11"})).status_code, 422)
             self.identity = PAGE_ADMIN
             self.assertEqual((await self.client.get(API + "/usage")).status_code, 403)
+
+    async def test_my_usage_only_returns_logged_in_user(self):
+        def row(username, yuan):
+            return {"time": "2026-11-03T10:00:00+08:00", "username": username, "display_name": username, "workspace": "personal",
+                    "ok": True, "input_tokens": 1, "cache_tokens": 1, "output_tokens": 1, "active_seconds": 1, "oa_tools": 2,
+                    "datapro": {}, "searches": 0, "harness_afp": 0, "model_yuan": yuan, "runtime_yuan": 0.0, "harness_yuan": 0.0}
+        rows = [row("cloud-page", 0.02), row("someone-else", 9.99)]
+        self.identity = PAGE_ADMIN  # 普通人（非系统管理员）也能看自己的
+        with patch("app.cloud_agent.usage.read_month", return_value=rows), \
+                patch("app.areas.personal_agent.router.personal_identity", AsyncMock(return_value={"username": "cloud-page"})):
+            data = (await self.client.get(settings.api_prefix + "/personal-agent/cloud-usage",
+                                          params={"month": "2026-11", "username": "someone-else"})).json()
+        self.assertEqual((data["summary"]["turns"], data["summary"]["total_yuan"], data["total_records"]), (1, 0.02, 1))
+        self.assertTrue(all(item["model_yuan"] == 0.02 for item in data["records"]))
+        self.assertIn("估算", data["note"])
