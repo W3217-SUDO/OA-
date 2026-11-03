@@ -1,0 +1,281 @@
+"""当事人风险信息（501226 尽职调查报告的风险部分，陶威 11-03 定先用火山企业风险库试，企查查 736 接入保留）。
+
+两个数据源整理成同一个结构，报告只认这个结构：
+    {"source": "volc"|"qcc736", "source_label": str, "queried_at": iso, "flags": {标记: bool},
+     "sections": {key: {"count": int, "amount": float|None, "items": [{字段: 值}]}}}
+每类只存最新的 ITEM_LIMIT 条明细，条数和金额按全量算。
+"""
+import csv
+import io
+import json
+import re
+from datetime import date
+
+ITEM_LIMIT = 20
+
+# 类目：(标题, [(字段, 表头)])；报告按这个顺序出表。
+SECTIONS = {
+    "executed": ("被执行人", [("date", "立案日期"), ("court", "执行法院"), ("amount", "执行标的(元)")]),
+    "dishonest": ("失信被执行人", [("date", "立案日期"), ("case_no", "案号"), ("court", "执行法院"), ("performance", "履行情况")]),
+    "restricted": ("限制高消费", [("date", "立案日期"), ("court", "法院"), ("reason", "案由"), ("applicant", "申请人")]),
+    "end_execution": ("终结本次执行", [("date", "立案日期"), ("end_date", "终本日期"), ("court", "法院"), ("target", "执行标的(元)"), ("unfulfilled", "未履行(元)")]),
+    "bankruptcy": ("破产重整", [("date", "公开日期"), ("court", "法院"), ("type", "案件类型"), ("applicant", "申请人")]),
+    "auction": ("司法拍卖", [("date", "拍卖时间"), ("item", "标的物"), ("unit", "处置单位")]),
+    "filing": ("立案信息", [("date", "立案日期"), ("court", "法院"), ("reason", "案由"), ("role", "身份"), ("other", "对方")]),
+    "court_notice": ("开庭公告", [("date", "开庭日期"), ("court", "法院"), ("reason", "案由"), ("role", "身份")]),
+    "judgement": ("裁判文书", [("date", "裁判日期"), ("title", "标题"), ("court", "法院"), ("role", "身份")]),
+    "abnormal": ("经营异常", [("date", "列入日期"), ("reason", "列入原因"), ("office", "决定机关"), ("removed", "移出")]),
+    "penalty": ("行政处罚", [("date", "处罚日期"), ("doc_no", "文书号"), ("reason", "事由"), ("office", "处罚机关"), ("amount", "罚款(元)")]),
+    "own_tax": ("欠税", [("date", "发布日期"), ("category", "税种"), ("amount", "欠税金额(元)"), ("balance", "欠税余额(元)")]),
+    "serious_illegal": ("严重违法", [("date", "列入日期"), ("reason", "列入原因"), ("office", "决定机关")]),
+    "pledge": ("股权出质", [("date", "登记日期"), ("pledgor", "出质人"), ("pledgee", "质权人"), ("amount", "出质股权"), ("status", "状态")]),
+    "mortgage": ("动产抵押", [("date", "登记日期"), ("amount", "被担保债权(元)"), ("status", "状态"), ("office", "登记机关")]),
+    "liquidation": ("清算", [("leader", "清算组负责人"), ("member", "清算组成员")]),
+    "partners": ("股东", [("name", "股东"), ("percent", "持股比例"), ("capital", "认缴出资")]),
+    "employees": ("主要人员", [("name", "姓名"), ("job", "职务")]),
+}
+LITIGATION = ("filing", "court_notice", "judgement")
+ENFORCEMENT = ("executed", "dishonest", "restricted", "end_execution", "bankruptcy", "auction")
+OPERATION = ("abnormal", "penalty", "own_tax", "serious_illegal", "pledge", "mortgage", "liquidation")
+SOURCE_LABELS = {"volc": "火山方舟专业数据集·企业风险库", "qcc736": "企查查企业风险扫描"}
+
+
+def _day(value) -> str:
+    text = str(value or "").strip()
+    return text[:10] if re.match(r"\d{4}-\d{2}-\d{2}", text) else ""
+
+
+def _money(value) -> float | None:
+    try:
+        return float(str(value).replace(",", "")) if str(value or "").strip() not in ("", "None", "null") else None
+    except ValueError:
+        return None
+
+
+def _json(value):
+    if isinstance(value, (dict, list)):
+        return value
+    try:
+        return json.loads(value) if value else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _names(value, skip: str = "") -> str:
+    """[{"name": ...}] 或 ["..."] 转成“甲、乙”，去掉本企业。"""
+    items = _json(value)
+    if not isinstance(items, list):
+        return str(value or "").strip()
+    names = [str(item.get("name") if isinstance(item, dict) else item).strip() for item in items]
+    return "、".join(name for name in names if name and name != skip)
+
+
+def _section(items: list[dict], *, amount_key: str = "", latest: bool = False) -> dict:
+    """同一内容的多条（数据源对同一案件、同一笔欠税重复公示）只算一条；latest=True 时金额取最新一条（欠税余额），否则累加。"""
+    unique = {}
+    for item in items:
+        unique.setdefault(json.dumps({k: v for k, v in item.items() if k != "date"} if latest else item, ensure_ascii=False, sort_keys=True), item)
+    items = sorted(unique.values(), key=lambda item: str(item.get("date") or item.get("end_date") or ""), reverse=True)
+    amount = None
+    if amount_key:
+        values = [value for item in items if (value := _money(item.get(amount_key))) is not None]
+        amount = (values[0] if latest else round(sum(values), 2)) if values else None
+    return {"count": len(items), "amount": amount, "items": items[:ITEM_LIMIT]}
+
+
+# ---------- 火山企业风险库 ----------
+
+def csv_rows(text: str) -> list[dict]:
+    """火山 CSV 表头是“中文说明(english_key)”，按括号里的英文键取值。"""
+    reader = csv.reader(io.StringIO(text.lstrip("﻿")))
+    header = next(reader, [])
+    keys = [(found[-1] if (found := re.findall(r"\(([A-Za-z_0-9]+)\)\s*$", column)) else column) for column in header]
+    return [dict(zip(keys, row)) for row in reader]
+
+
+def normalize_volc(summary: dict, judicial: list[dict], risks: list[dict], *, queried_at: str) -> dict:
+    name = str(summary.get("企业名称") or "").strip()
+    buckets: dict[str, dict[str, dict]] = {key: {} for key in SECTIONS}
+
+    def put(key: str, ident: str, item: dict) -> None:
+        if ident and ident not in buckets[key]:
+            buckets[key][ident] = item
+
+    for row in judicial:
+        if row.get("company_executed_id"):
+            detail = _json(row.get("company_executed_content_details")) or {}
+            put("executed", row["company_executed_id"], {"date": _day(detail.get("executed_start_date")), "court": detail.get("executed_court") or "",
+                                                         "case_no": detail.get("executed_case_no") or "", "amount": _money(detail.get("executed_amount"))})
+        if row.get("dishonest_id"):
+            detail = _json(row.get("dishonest_content_details")) or {}
+            put("dishonest", row["dishonest_id"], {"date": _day(detail.get("start_date") or detail.get("dishonest_start_date")),
+                                                   "case_no": detail.get("doc_no") or detail.get("dishonest_doc_no") or "",
+                                                   "court": detail.get("court") or detail.get("dishonest_court") or "",
+                                                   "performance": detail.get("performance") or detail.get("dishonest_performance") or ""})
+        if row.get("sumptuary_restricted_consumption_id"):
+            detail = _json(row.get("sumptuary_restricted_consumption_details")) or {}
+            put("restricted", row["sumptuary_restricted_consumption_id"], {
+                "date": _day(detail.get("limit_consume_start_date")), "court": detail.get("limit_consume_court") or "",
+                "reason": detail.get("limit_consume_case_reason") or "", "applicant": _names(detail.get("limit_consume_applicant_name"))})
+        if row.get("end_execution_case_id"):
+            detail = _json(row.get("end_execution_case_content_detail")) or {}
+            put("end_execution", row["end_execution_case_id"], {
+                "date": _day(detail.get("end_execution_case_filing_date")), "end_date": _day(detail.get("end_execution_end_date")),
+                "court": detail.get("end_execution_court") or "", "target": _money(detail.get("end_execution_enforcement_target")),
+                "unfulfilled": _money(detail.get("end_execution_unfulfilled_amount"))})
+        if row.get("bankruptcy_case_id"):
+            put("bankruptcy", row["bankruptcy_case_id"], {"date": _day(row.get("bankruptcy_publish_date")), "court": row.get("bankruptcy_court") or "",
+                                                         "type": row.get("bankruptcy_case_type") or "", "applicant": _names(row.get("bankruptcy_applicant"), name)})
+        if row.get("judicial_auction_id"):
+            put("auction", row["judicial_auction_id"], {"date": _day(row.get("judicial_auction_time")), "item": (row.get("judicial_auction_item_desc") or "")[:80],
+                                                       "unit": row.get("judicial_auction_disposal_unit") or ""})
+        if row.get("filing_id"):
+            role = row.get("filing_party_role_name") or ""
+            other = row.get("filing_plaintiff") if "被" in role else row.get("filing_defendant")
+            put("filing", row["filing_id"], {"date": _day(row.get("filing_filing_time")), "court": row.get("filing_court") or "",
+                                            "reason": row.get("filing_case_reason") or "", "role": role, "other": _names(other, name)})
+        if row.get("court_notice_id"):
+            put("court_notice", row["court_notice_id"], {"date": _day(row.get("court_notice_hearing_date")), "court": row.get("court_notice_court") or "",
+                                                        "reason": row.get("court_notice_case_reason") or "", "role": row.get("court_notice_party_role_name") or ""})
+        if row.get("judgement_doc_id"):
+            put("judgement", row["judgement_doc_id"], {"date": _day(row.get("judgement_date")), "title": row.get("judgement_doc_title") or "",
+                                                      "court": row.get("judgement_court_name") or "", "role": row.get("judgement_party_role_name") or ""})
+    for row in risks:
+        kind, ident = row.get("risk_type") or "", row.get("id") or row.get("source_id") or ""
+        if row.get("is_delete") == "1":
+            continue
+        if kind == "abnormal":
+            put("abnormal", ident, {"date": _day(row.get("abnormal_put_date")), "reason": row.get("abnormal_put_reason") or "",
+                                    "office": row.get("abnormal_put_department") or "",
+                                    "removed": f"{_day(row.get('abnormal_remove_date'))} {row.get('abnormal_remove_reason') or ''}".strip()})
+        elif kind == "punish":
+            put("penalty", ident, {"date": _day(row.get("punish_decision_date")), "doc_no": row.get("punish_punish_number") or "",
+                                   "reason": row.get("punish_reason") or row.get("punish_illegal_type") or "",
+                                   "office": row.get("punish_department_name") or "", "amount": _money(row.get("punish_penalty_amount"))})
+        elif kind == "own_tax":
+            put("own_tax", ident, {"date": _day(row.get("own_tax_publish_date")), "category": row.get("own_tax_tax_category") or "",
+                                   "amount": _money(row.get("own_tax_amount")), "balance": _money(row.get("own_tax_balance"))})
+        elif kind == "illegal":
+            put("serious_illegal", ident, {"date": _day(row.get("illegal_put_date")), "reason": row.get("illegal_put_reason") or "",
+                                           "office": row.get("illegal_put_department") or ""})
+        elif kind == "pledge":
+            put("pledge", ident, {"date": _day(row.get("pledge_reg_date")), "pledgor": row.get("pledge_pledgor") or "",
+                                  "pledgee": row.get("pledge_pledgee") or "", "amount": row.get("pledge_equity") or "", "status": row.get("pledge_status") or ""})
+        elif kind == "mortgage":
+            put("mortgage", ident, {"date": _day(row.get("mortgage_reg_date")), "amount": _money(row.get("mortgage_amount")),
+                                    "status": row.get("mortgage_status") or "", "office": row.get("mortgage_reg_department") or ""})
+        elif kind == "liquidation":
+            put("liquidation", ident, {"leader": row.get("liquidation_manager") or "", "member": row.get("liquidation_member") or ""})
+        elif kind == "bankruptcy":
+            put("bankruptcy", ident, {"date": _day(row.get("bankruptcy_risk_date")), "court": row.get("bankruptcy_court_name") or "",
+                                      "type": row.get("bankruptcy_case_type") or "", "applicant": row.get("bankruptcy_applicant") or ""})
+    amounts = {"executed": "amount", "end_execution": "unfulfilled", "penalty": "amount", "own_tax": "balance", "mortgage": "amount"}
+    flags = {label: str(summary.get(key)) == "1" for label, key in (
+        ("失信", "是否有失信记录，1有，0无"), ("欠税", "是否有欠税记录，1有，0无"),
+        ("经营异常", "是否有经营异常记录，1有，0无"), ("税收违法", "是否有税收违法记录，1有，0无"))}
+    return {"source": "volc", "source_label": SOURCE_LABELS["volc"], "queried_at": queried_at, "name": name,
+            "credit_code": summary.get("统一社会信用代码") or "", "flags": flags,
+            "industry": "／".join(part for part in (summary.get("一级行业名称"), summary.get("二级行业名称")) if part),
+            "sections": {key: _section(list(items.values()), amount_key=amounts.get(key, ""), latest=key == "own_tax")
+                         for key, items in buckets.items() if items}}
+
+
+# ---------- 企查查 736 企业风险扫描 ----------
+
+def normalize_qcc736(result: dict, *, queried_at: str) -> dict:
+    def rows(key: str) -> list[dict]:
+        value = result.get(key)
+        return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+    sections = {
+        "executed": [{"date": _day(item.get("Liandate")), "court": item.get("ExecuteGov") or "", "case_no": item.get("Anno") or "",
+                      "amount": _money(item.get("Biaodi"))} for item in rows("ZhiXingItems")],
+        "dishonest": [{"date": _day(item.get("Liandate")), "case_no": item.get("Anno") or "", "court": item.get("Executegov") or "",
+                       "performance": item.get("Executestatus") or ""} for item in rows("ShiXinItems")],
+        "abnormal": [{"date": _day(item.get("AddDate")), "reason": item.get("AddReason") or "", "office": item.get("DecisionOffice") or "",
+                      "removed": f"{_day(item.get('RemoveDate'))} {item.get('RomoveReason') or ''}".strip()} for item in rows("Exceptions")],
+        "penalty": [{"date": _day(item.get("PenaltyDate")), "doc_no": item.get("DocNo") or "", "reason": item.get("PenaltyType") or "",
+                     "office": item.get("OfficeName") or "", "amount": None} for item in rows("Penalty")],
+        "pledge": [{"date": _day(item.get("RegDate")), "pledgor": item.get("Pledgor") or "", "pledgee": item.get("Pledgee") or "",
+                    "amount": item.get("PledgedAmount") or "", "status": item.get("Status") or ""} for item in rows("Pledge")],
+        "mortgage": [{"date": _day(item.get("RegisterDate")), "amount": _money(item.get("DebtSecuredAmount")), "status": item.get("Status") or "",
+                      "office": item.get("RegisterOffice") or ""} for item in rows("MPledge")],
+        "partners": [{"name": item.get("StockName") or "", "percent": item.get("StockPercent") or "", "capital": item.get("ShouldCapi") or ""}
+                     for item in rows("Partners")],
+        "employees": [{"name": item.get("Name") or "", "job": item.get("Job") or ""} for item in rows("Employees")],
+    }
+    liquidation = result.get("Liquidation")
+    if isinstance(liquidation, dict) and (liquidation.get("Leader") or liquidation.get("Member")):
+        sections["liquidation"] = [{"leader": liquidation.get("Leader") or "", "member": liquidation.get("Member") or ""}]
+    amounts = {"executed": "amount", "mortgage": "amount"}
+    return {"source": "qcc736", "source_label": SOURCE_LABELS["qcc736"], "queried_at": queried_at, "name": result.get("Name") or "",
+            "credit_code": result.get("CreditCode") or "", "flags": {"失信": bool(sections["dishonest"])}, "industry": "",
+            "sections": {key: _section(items, amount_key=amounts.get(key, "")) for key, items in sections.items() if items}}
+
+
+# ---------- 能不能执行到 ----------
+
+def _yuan(value: float | None) -> str:
+    if value is None:
+        return ""
+    return f"{value / 10000:,.2f} 万元" if value >= 10000 else f"{value:,.2f} 元"
+
+
+def enforceability(risk: dict) -> tuple[str, list[str]]:
+    """按公开的执行、失信、经营风险数据判断胜诉后能不能执行到：结论一句 + 依据几条。"""
+    sections = risk.get("sections") or {}
+    count = lambda key: (sections.get(key) or {}).get("count", 0)  # noqa: E731
+    amount = lambda key: (sections.get(key) or {}).get("amount")  # noqa: E731
+    reasons = []
+    if count("bankruptcy"):
+        reasons.append(f"有破产重整记录 {count('bankruptcy')} 条：进入破产程序后个别执行中止，应向管理人申报债权。")
+    if count("dishonest") or risk.get("flags", {}).get("失信"):
+        reasons.append(f"被列为失信被执行人 {count('dishonest')} 条。" if count("dishonest") else "被列为失信被执行人。")
+    if count("end_execution"):
+        unfulfilled = _yuan(amount("end_execution"))
+        reasons.append(f"终结本次执行 {count('end_execution')} 件{f'，未履行合计 {unfulfilled}' if unfulfilled else ''}：法院已查无可供执行财产。")
+    if count("restricted"):
+        reasons.append(f"被限制高消费 {count('restricted')} 次。")
+    if count("executed"):
+        total = _yuan(amount("executed"))
+        reasons.append(f"被执行人记录 {count('executed')} 条{f'，执行标的累计 {total}' if total else ''}。")
+    if count("auction"):
+        reasons.append(f"有司法拍卖 {count('auction')} 次，名下财产已被处置。")
+    if count("own_tax"):
+        balance = _yuan(amount("own_tax"))
+        reasons.append(f"有欠税公告 {count('own_tax')} 条{f'，最新欠税余额 {balance}' if balance else ''}，税款优先于普通债权。")
+    active_pledge = [item for item in (sections.get("pledge") or {}).get("items", []) if "无效" not in str(item.get("status"))]
+    if active_pledge:
+        reasons.append(f"有有效的股权出质 {len(active_pledge)} 条，股权已设质押。")
+    if count("mortgage"):
+        reasons.append(f"有动产抵押 {count('mortgage')} 条，抵押物上有优先受偿的债权。")
+    if count("abnormal"):
+        reasons.append(f"被列入经营异常名录 {count('abnormal')} 次。")
+    if risk.get("flags", {}).get("税收违法") and not count("serious_illegal"):
+        reasons.append("风险库标记有税收违法记录。")
+    severe = [label for label, hit in (("破产", count("bankruptcy")), ("失信", count("dishonest") or risk.get("flags", {}).get("失信")),
+                                       ("终本", count("end_execution"))) if hit]
+    if severe:
+        conclusion = (f"执行风险高：已有{'、'.join(severe)}记录，胜诉后很可能执行不到。起诉前应先查清财产线索，"
+                      "考虑诉前或诉讼财产保全，或追加股东等责任主体。")
+    elif count("restricted") or count("executed") >= 3:
+        conclusion = "执行风险较高：已有多起被执行或限制高消费记录，偿债能力不足，建议同时申请财产保全。"
+    elif count("executed") or count("own_tax") or active_pledge or count("mortgage"):
+        conclusion = "有一定执行风险：存在被执行、欠税或财产设押记录，建议起诉时关注财产保全。"
+    else:
+        conclusion = "公开数据中未发现被执行、失信、限高、终本、破产记录，执行风险较低。"
+    return conclusion, reasons
+
+
+def item_text(key: str, item: dict) -> list[str]:
+    """一条明细按类目的列顺序转成表格单元格文字。"""
+    cells = []
+    for field, _header in SECTIONS[key][1]:
+        value = item.get(field)
+        cells.append(f"{value:,.2f}" if isinstance(value, float) else str(value or ""))
+    return cells
+
+
+def stale(risk: dict, days: int = 30) -> bool:
+    queried = _day(risk.get("queried_at"))
+    return not queried or (date.today() - date.fromisoformat(queried)).days > days
