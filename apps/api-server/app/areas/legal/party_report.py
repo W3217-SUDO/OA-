@@ -299,8 +299,11 @@ def advice(level: str, detail: dict, risk: dict | None, subject_notes: list[str]
 
 def render_due_diligence(record, name: str, role: str, detail: dict, risk: dict | None, *, risk_note: str,
                          subject: str, subject_notes: list[str], business_rows: list[dict], business_risks: list[str],
-                         not_covered: list[str], business_source: str = "", today: date | None = None) -> bytes:
+                         not_covered: list[str], business_source: str = "", lawyer: str = "", today: date | None = None) -> bytes:
+    """律所固定为上海沪知律师事务所；律师一律是本案开庭律师（没填取第一位经办律师，调用方按 501222 规则给）；
+    出具、落款日期一律是生成当天（陶国南 11-04）。"""
     today = today or date.today()
+    generated = f"{today.year}年{today.month}月{today.day}日"
     report = Report()
     document = report.document
     status = str(detail.get("status") or "")
@@ -350,7 +353,7 @@ def render_due_diligence(record, name: str, role: str, detail: dict, risk: dict 
     _borders(cover, LINE, 4, inside=True)
     for label, value in (("被调查企业", name), ("统一社会信用代码", detail.get("credit_code") or ""),
                          ("所属案件", f"{record.serial_no}  {record.title}"), ("出具单位", FIRM),
-                         ("出具日期", f"{today.year} 年 {today.month} 月 {today.day} 日"), ("报告编号", report_no), ("报告性质", "仅供内部参考")):
+                         ("出具律师", lawyer or "—"), ("出具日期", generated), ("报告编号", report_no), ("报告性质", "仅供内部参考")):
         cells = cover.add_row().cells
         _shade(cells[0], GREEN_LIGHT)
         _cell_text(cells[0], label, size=10, bold=True, color=GREEN_DARK)
@@ -516,5 +519,7 @@ def render_due_diligence(record, name: str, role: str, detail: dict, risk: dict 
                  "本报告仅供本所承办律师内部参考，不构成法律意见，未经许可不得对外提供或引用。"):
         report.bullet(item, color=GREY)
     report.text(f"{FIRM}", size=10, bold=True, color=GREEN_DARK, align=WD_ALIGN_PARAGRAPH.RIGHT, after=0)
-    report.text(f"{today.year} 年 {today.month} 月 {today.day} 日", size=10, color=INK, align=WD_ALIGN_PARAGRAPH.RIGHT)
+    if lawyer:
+        report.text(f"承办律师：{lawyer}", size=10, color=INK, align=WD_ALIGN_PARAGRAPH.RIGHT, after=0)
+    report.text(generated, size=10, color=INK, align=WD_ALIGN_PARAGRAPH.RIGHT)
     return report.save()
