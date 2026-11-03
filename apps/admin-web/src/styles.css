@@ -1398,3 +1398,6 @@ body {
   display: block; position: fixed; top: 0; left: 0; width: 100vw; height: 0; overflow: hidden;
   visibility: hidden; pointer-events: none;
 }
+/* 501295：顶部“工作台”右边固定的“问题反馈”页签，醒目一点。 */
+.feedback-pinned-tab{display:inline-flex;align-items:center;gap:4px;font-weight:600;color:#fa8c16}
+.topbar-workspace-tabs .ant-tabs-tab-active .feedback-pinned-tab{color:inherit}

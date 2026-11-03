@@ -56,6 +56,7 @@ import {
   UnorderedListOutlined,
   UserOutlined,
   QrcodeOutlined,
+  QuestionCircleOutlined,
 } from "@ant-design/icons";
 import { api, AUTH_EXPIRED_EVENT } from "./api";
 import { clearCaseContractContext } from "./caseContractPrefill";
@@ -73,7 +74,7 @@ import "dingtalk-jsapi/entry/union";
 import requestDingTalkAuthCode from "dingtalk-jsapi/api/runtime/permission/requestAuthCode";
 import { getENV as getDingTalkEnvironment } from "dingtalk-jsapi/lib/env";
 import NotificationCenter from "./NotificationCenter";
-import BugFeedback, { withFeedbackMenu } from "./BugFeedback";
+import BugFeedback, { isPinnedFeedbackTab, withFeedbackMenu, withFeedbackTab } from "./BugFeedback";
 import { FEEDBACK_CENTER_ROUTE, FEEDBACK_ROUTE, FEEDBACK_SOURCE_CONTROLS_KEY, FEEDBACK_SOURCE_PAGE_KEY, FEEDBACK_SOURCE_ROUTE_KEY, rememberFeedbackSource, rememberPageControls } from "./feedback/navigation";
 import GlobalSearch from "./GlobalSearch";
 import {
@@ -2174,9 +2175,11 @@ export default function App() {
           activeKey={active}
           onChange={(key) => navigate(key, { reuse: true })}
           onEdit={(target, action) => action === "remove" && closeOpenPage(String(target))}
-          items={visibleOpenPages.map((item) => ({
+          items={withFeedbackTab(visibleOpenPages).map((item) => ({
             key: item.key,
-            label: (
+            label: isPinnedFeedbackTab(item.key) ? (
+              <span className="feedback-pinned-tab"><QuestionCircleOutlined />问题反馈</span>
+            ) : (
               <span
                 onDoubleClick={(event) => {
                   event.preventDefault();
@@ -2188,7 +2191,7 @@ export default function App() {
                 {resolveWorkspacePageLabel(item.key, effectiveMenuItems, personalAgentName)}
               </span>
             ),
-            closable: item.key !== "dashboard",
+            closable: item.key !== "dashboard" && !isPinnedFeedbackTab(item.key),
           }))}
         />
         <div className="mobile-top-title" aria-live="polite">
