@@ -9,7 +9,7 @@ import { api } from "../../api";
 import { clearCaseContractContext } from "../../caseContractPrefill";
 import { rememberCaseDetailTarget } from "../../caseDetailNavigation";
 import { getCaseReminderDateValidationError } from "../../caseFifthBatchParity.mjs";
-import { buildCaseCreatePayload, buildCaseDuplicateRequest, buildCaseExecutionStatusPayload, buildCaseMergePayload, buildCaseProgressPayload, buildClueConversionPayload, getCaseCreateValidationError, getCaseEditValidationError, getCaseMutationBlockReason, getClueConversionIssues, normalizeCaseEditPayload } from "../../caseSecondBatchParity";
+import { buildCaseCreatePayload, buildCaseDuplicateRequest, buildCaseExecutionStatusPayload, buildCaseMergePayload, buildCaseProgressPayload, buildClueConversionPayload, getCaseCreateValidationError, getCaseEditValidationError, getCaseMutationBlockReason, getClueConversionIssues, normalizeCaseEditPayload, resolveStoredCasePeople, splitCasePeople } from "../../caseSecondBatchParity";
 import { buildCaseHearingPayload, buildCaseUnarchiveReviewPayload, getCaseArchiveReviewValidationError, getCaseHearingValidationError, getCaseUnarchiveReviewValidationError } from "../../caseWorkflowFrontendParity.mjs";
 import { formatRequiredDate } from "../../formSafety";
 import { collectCasePartyIdentities } from "../CasePartyIdentityFields";
@@ -170,6 +170,7 @@ export interface CaseWorkflowDependencies {
     readonly normalCaseEditForm: FormInstance<any>;
     readonly resolveCasePersonValues: (sources: unknown) => string[];
     readonly resolveCasePersonValue: (source: string) => string;
+    readonly isCasePersonOption: (value: string) => boolean;
     readonly setEditingNormalCase: React.Dispatch<React.SetStateAction<CaseRow | null>>;
     readonly editingNormalCase: CaseRow | null;
     readonly loadCounselDetailCluesPage: (row: CaseRow, nextPage?: number, nextPageSize?: number, keyword?: string) => Promise<{
@@ -1124,7 +1125,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
         return customerId;
     };
     const openNormalCaseEdit = async (row: CaseRow) => {
-        const { isNormalEditableCase, normalCaseEditForm, resolveCasePersonValues, resolveCasePersonValue, setEditingNormalCase } = context;
+        const { isNormalEditableCase, normalCaseEditForm, resolveCasePersonValues, isCasePersonOption, setEditingNormalCase } = context;
         if (!isNormalEditableCase(row))
             return message.warning("当前案件类型没有普通案件基本信息修改入口");
         const customerRecordId = await ensureCaseCustomerOption(row);
@@ -1134,10 +1135,14 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             title: row.title,
             case_phase: row.status,
             cause_or_charge: row.data.cause_or_charge || "",
-            handling_lawyers: resolveCasePersonValues(row.data.handling_lawyers || []),
-            assistants: resolveCasePersonValues(row.data.assistant_usernames || row.data.assistants || (row.data.assistant ? [row.data.assistant] : [])),
-            business_owner: resolveCasePersonValue(row.data.business_owner || row.data.source_person || ""),
-            investigator: resolveCasePersonValue(row.data.investigator || ""),
+            handling_lawyers: resolveStoredCasePeople(resolveCasePersonValues, isCasePersonOption,
+                splitCasePeople(row.data.handling_lawyer_usernames), splitCasePeople(row.data.handling_lawyers)),
+            assistants: resolveStoredCasePeople(resolveCasePersonValues, isCasePersonOption,
+                splitCasePeople(row.data.assistant_usernames || row.data.assistant_username), splitCasePeople(row.data.assistants || row.data.assistant)),
+            business_owners: resolveStoredCasePeople(resolveCasePersonValues, isCasePersonOption,
+                splitCasePeople(row.data.business_owner_usernames), splitCasePeople(row.data.business_owners || row.data.business_owner || row.data.source_person)),
+            investigators: resolveStoredCasePeople(resolveCasePersonValues, isCasePersonOption,
+                splitCasePeople(row.data.investigator_usernames || row.data.investigator_username), splitCasePeople(row.data.investigators || row.data.investigator)),
             investigation_clue_ids: clueIds,
             right_type: row.data.right_type || "",
             comment: "",

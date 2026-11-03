@@ -2341,7 +2341,7 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     """
     from app.core.cases import (
         _active_case_phase_values, _case_commission_personnel_changed, _case_team_payload, _prioritize_new_case_assistants,
-        _recalculate_case_draft_commissions, _resolve_active_case_people,
+        _recalculate_case_draft_commissions, _resolve_active_case_people, resolve_case_people_keep_legacy, split_case_people,
     )
     from app.core.crm import (
         _customer_or_404,
@@ -2386,8 +2386,13 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     assistant_values, assistant_usernames = _prioritize_new_case_assistants(
         case_data, assistant_values, assistant_usernames,
     )
-    investigator_values, _ = await _resolve_active_case_people([body.investigator.strip()] if body.investigator.strip() else [], db, field_name="调查员")
-    business_owner_values, _ = await _resolve_active_case_people([body.business_owner.strip()] if body.business_owner.strip() else [], db, field_name="案源人")
+    # 调查员、案源人可多选（501293）；已存的旧值（含迁移的多人串、离职人员）对应不上时原样保留
+    previous_investigators = split_case_people(case_data.get("investigators"), case_data.get("investigator_usernames"), case_data.get("investigator"), case_data.get("investigator_username"), case_data.get("investigator_name"))
+    previous_owners = split_case_people(case_data.get("business_owners"), case_data.get("business_owner_usernames"), case_data.get("business_owner"), case_data.get("source_person"), case_data.get("source_person_username"))
+    requested_investigators = body.investigators if body.investigators is not None else split_case_people(body.investigator)
+    requested_owners = body.business_owners if body.business_owners is not None else split_case_people(body.business_owner)
+    investigator_values, investigator_usernames = await resolve_case_people_keep_legacy(requested_investigators, previous_investigators, db, field_name="调查员")
+    business_owner_values, business_owner_usernames = await resolve_case_people_keep_legacy(requested_owners, previous_owners, db, field_name="案源人")
     clue_ids = list(dict.fromkeys(body.investigation_clue_ids))
     clues = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.id.in_(clue_ids), BusinessRecord.module == "clue", BusinessRecord.customer == customer.title,
@@ -2404,8 +2409,12 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
         raise HTTPException(status_code=422, detail="仅行政及国家赔偿案件可以修改权利类型")
     old_summary = f"{case_record.customer}｜{case_record.title}｜{case_record.status}｜{case_data.get('cause_or_charge', '')}"
     previous_status = case_record.status
-    investigator = investigator_values[0] if investigator_values else ""
-    business_owner = business_owner_values[0] if business_owner_values else ""
+    if not requested_investigators and ordered_clues:
+        # 没选调查员时按关联线索的调查员带出（每条线索的调查员，同一人只算一次）
+        clue_people = split_case_people([(item.data or {}).get("investigator_usernames") or item.owner for item in ordered_clues])
+        investigator_values, investigator_usernames = await resolve_case_people_keep_legacy(clue_people, clue_people, db, field_name="调查员")
+    investigator = "、".join(investigator_values)
+    business_owner = "、".join(business_owner_values)
     clue_nos = [item.serial_no for item in ordered_clues]
     case_record.title = title
     case_record.customer = customer.title
@@ -2417,9 +2426,16 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
         "customer_no": customer.serial_no,
         "cause_or_charge": cause_or_charge,
         "right_type": right_type if case_type == "行政案件及国家赔偿" else str(case_data.get("right_type") or ""),
-        "source_person": business_owner or str(case_data.get("source_person") or ""),
-        "business_owner": business_owner or str(case_data.get("business_owner") or ""),
+        "source_person": business_owner,
+        "business_owner": business_owner,
+        "business_owners": business_owner_values,
+        "business_owner_usernames": business_owner_usernames,
+        "source_person_username": ",".join(business_owner_usernames),
         "investigator": investigator,
+        "investigators": investigator_values,
+        "investigator_usernames": investigator_usernames,
+        "investigator_username": ",".join(investigator_usernames),
+        **({"investigator_name": investigator} if "investigator_name" in case_data else {}),
         "investigation_clue_ids": clue_ids,
         "investigation_clue_nos": clue_nos,
         "investigation_clue_id": clue_ids[0] if clue_ids else None,

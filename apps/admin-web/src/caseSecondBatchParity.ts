@@ -91,7 +91,9 @@ export const normalizeCaseEditPayload = (draft: Record<string, unknown>, kind: C
   assistant: text(draft.assistant),
   investigator: text(draft.investigator),
   investigation_clue_ids: idList(draft.investigation_clue_ids),
-  ...(kind === "normal" ? { assistants: list(draft.assistants), business_owner: text(draft.business_owner), right_type: text(draft.right_type) } : {}),
+  ...(kind === "normal" ? { assistants: list(draft.assistants), business_owner: text(draft.business_owner), right_type: text(draft.right_type),
+    ...(Array.isArray(draft.investigators) ? { investigators: list(draft.investigators) } : {}),
+    ...(Array.isArray(draft.business_owners) ? { business_owners: list(draft.business_owners) } : {}) } : {}),
   comment: text(draft.comment),
 });
 
@@ -193,3 +195,13 @@ export const buildCasePaymentContext = ({
   fee_id: Number(feeId) || undefined,
   fee_no: text(feeNo),
 });
+
+/** 迁移数据里多人存成 "sugq,sugq,sugq" 这样的串：拆开去重（501293）。 */
+export const splitCasePeople = (...values: unknown[]): string[] => [...new Set(values.flatMap((value) =>
+  (Array.isArray(value) ? value : [value]).flatMap((item) => String(item ?? "").split(/[,，、;；|]+/)).map((item) => item.trim()).filter(Boolean),
+))];
+
+/** 打开修改窗口时回显已存人员：账号全部对得上系统人员就按账号回显，否则按姓名回显（对不上的原样显示）。 */
+export const resolveStoredCasePeople = (
+  resolve: (sources: unknown) => string[], isOption: (value: string) => boolean, usernames: string[], names: string[],
+): string[] => [...new Set(usernames.length && usernames.every(isOption) ? resolve(usernames) : resolve(names.length ? names : usernames))];

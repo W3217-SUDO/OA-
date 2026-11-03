@@ -10,7 +10,8 @@ CASE_MEMBER_FIELDS = (
     "hearing_lawyer", "hearing_lawyer_username", "court_lawyer", "court_lawyer_username",
     "assistant", "assistant_username", "assistant_usernames",
     "source_person", "source_person_username", "source_owner", "business_owner",
-    "customer_manager", "customer_managers", "investigator", "investigator_username", "case_team_usernames",
+    "customer_manager", "customer_managers", "investigator", "investigator_username", "investigator_usernames",
+    "business_owner_usernames", "case_team_usernames",
     # 知识产权案件
     "agent", "procurator", "writer", "copywriter", "submitter", "officer", "case_manager",
 )

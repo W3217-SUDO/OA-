@@ -11,6 +11,7 @@ from app.core.dependencies import (
     String, SystemParameter, User, WorkflowEvent, date,
     datetime, func, or_, re, select,
 )
+from app.core.case_people import split_case_people
 from app.models_shared import (
     CaseLitigantsInput, CasePhaseChangeInput, CounselCaseSearchInput,
 )
@@ -240,6 +241,32 @@ async def _resolve_active_case_people(values: list[object], db: AsyncSession, *,
     if invalid:
         raise HTTPException(status_code=422, detail=f"{field_name}不存在、已停用或姓名不唯一：{'、'.join(invalid)}")
     return resolved_labels, resolved_usernames
+
+
+async def resolve_case_people_keep_legacy(values: list[str], previous: list[str], db: AsyncSession, *, field_name: str) -> tuple[list[str], list[str]]:
+    """多选人员（BUG20261103 501293）：逐个对应系统在职人员；对应不上但原来就存着的（已离职等）原样保留、不报错。
+
+    返回（显示名列表, 账号列表）；保留的旧值只有显示名、没有账号。"""
+    previous_set = set(previous)
+    names: list[str] = []
+    usernames: list[str] = []
+    invalid: list[str] = []
+    for value in split_case_people(values):
+        try:
+            resolved, accounts = await _resolve_active_case_people([value], db, field_name=field_name)
+        except HTTPException:
+            if value in previous_set:
+                names.append(value)
+                continue
+            invalid.append(value)
+            continue
+        for name, account in zip(resolved, accounts):
+            if account not in usernames:
+                names.append(name)
+                usernames.append(account)
+    if invalid:
+        raise HTTPException(status_code=422, detail=f"{field_name}不是系统在职人员，请从下拉列表选择：{'、'.join(invalid)}")
+    return list(dict.fromkeys(names)), usernames
 
 
 def _case_team_payload(
