@@ -25,6 +25,8 @@ export function useCaseAgentWorkspace({
 }: CaseAgentWorkspaceDependencies) {
   const [agentCase, setAgentCase] = useState<CaseRow | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
+  // 501165（tgn 08:06）：每次点“案件智能体”加一，窗口已打开也重新显示并拉回可视区。
+  const [agentRevealKey, setAgentRevealKey] = useState(0);
   const [agentStatus, setAgentStatus] = useState<CaseAgentStatus | null>(null);
   const [, setAgentCatalog] = useState<CaseAgentSummary[]>([]);
   const [agentConversations, setAgentConversations] = useState<CaseAgentConversation[]>([]);
@@ -156,6 +158,7 @@ export function useCaseAgentWorkspace({
     clearAgentScreenshotPreviews();
     setAgentCase(row);
     setAgentOpen(true);
+    setAgentRevealKey((value) => value + 1);
     setAgentSkillId(preferredSkillId ?? DEFAULT_AGENT_SKILL);
     setAgentStatus(null);
     setAgentState(null);
@@ -231,7 +234,7 @@ export function useCaseAgentWorkspace({
   }, []);
 
   const drawerProps: DrawerProps = {
-    agentOpen, closeCaseAgent, agentCase, agentDrawerWidth, startAgentDrawerResize,
+    agentOpen, agentRevealKey, closeCaseAgent, agentCase, agentDrawerWidth, startAgentDrawerResize,
     agentStatus, agentLoading, agentSending, agentSkillId, setAgentSkillId,
     openAgentFolder, agentConversations, conversationId, switchCaseConversation, createCaseConversation,
     loadCaseAgent: (row: CaseRow, resetMaterials?: boolean) => loadCaseAgent(row, resetMaterials, agentId ?? undefined, conversationId ?? undefined, agentSkillId), agentState, agentDecisionLoading, decideCaseAgentAction,

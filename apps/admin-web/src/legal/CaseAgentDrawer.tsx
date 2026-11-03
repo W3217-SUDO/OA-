@@ -34,6 +34,7 @@ CaseRow
 
 interface CaseAgentDrawerProps {
   agentOpen: boolean;
+  agentRevealKey?: number;
   closeCaseAgent: () => void;
   agentCase: CaseRow | null;
   agentDrawerWidth: number;
@@ -79,6 +80,7 @@ interface CaseAgentDrawerProps {
 
 export const CaseAgentDrawer = ({
   agentOpen,
+  agentRevealKey,
   closeCaseAgent,
   agentCase,
   agentStatus,
@@ -132,9 +134,10 @@ export const CaseAgentDrawer = ({
     ? selectedSkill.quick_prompts
     : ["概括案件现状", "检查最近期限风险", "汇总合同与费用", "列出尚未完成的任务"];
   return (
-    // 501165：停靠在右侧、不遮挡案件信息的面板（可调宽、放大、收起、浮动），替代原来带遮罩的抽屉。
+    // 501165：浮在案件页上的智能体窗口（右下角打开，可拖动、调大小、放大、收起），替代原来带遮罩的抽屉。
     <CaseAgentDock
       open={agentOpen}
+      revealKey={agentRevealKey}
       title={<span><RobotOutlined /> 案件智能体：{agentCase?.serial_no || ""}</span>}
       onClose={closeCaseAgent}
     >

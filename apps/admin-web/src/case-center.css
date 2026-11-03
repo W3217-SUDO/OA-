@@ -797,13 +797,11 @@
   font-size: 12px;
   line-height: 18px;
 }
-/* 501165（tgn 11-03 07:36）：案件智能体停靠在右侧，不遮挡案件信息；默认 2/9 宽，可调宽、放大、收起、浮动。手机全屏。
+/* 501165（tgn 11-03）：案件智能体是浮在案件页上的窗口（挂在 body 下 fixed 定位，始终在可视区内），不压缩案件页。
    不用 :has / color-mix / dvh，兼容钉钉内核 Chrome 100。 */
-body.case-agent-docked .app-body .content{margin-right:var(--case-agent-dock-width,0px);transition:margin-right .12s ease}
-.case-agent-dock{position:fixed;z-index:990;display:flex;flex-direction:column;min-width:0;background:var(--oa-surface);border-left:1px solid var(--oa-border);box-shadow:-6px 0 18px rgba(15,23,42,.08)}
-.case-agent-dock.is-floating{border:1px solid var(--oa-border);border-radius:10px;box-shadow:0 12px 32px rgba(15,23,42,.18);overflow:hidden}
-.case-agent-dock.is-maximized{border-left:0}
-.case-agent-dock.is-mobile{top:0;right:0;bottom:0;left:0;z-index:1000;border:0}
+.case-agent-dock{position:fixed;z-index:990;display:flex;flex-direction:column;min-width:0;background:var(--oa-surface);border:1px solid var(--oa-border);border-radius:10px;box-shadow:0 12px 32px rgba(15,23,42,.18);overflow:hidden}
+.case-agent-dock.is-maximized{border-radius:0;box-shadow:none}
+.case-agent-dock.is-mobile{top:0;right:0;bottom:0;left:0;z-index:1000;border:0;border-radius:0}
 .case-agent-dock-header{display:flex;flex:none;align-items:center;justify-content:space-between;gap:8px;min-height:48px;padding:8px 8px 8px 16px;background:var(--oa-fill);border-bottom:1px solid var(--oa-border);cursor:move;user-select:none;touch-action:none}
 .case-agent-dock.is-maximized .case-agent-dock-header,.case-agent-dock.is-mobile .case-agent-dock-header{cursor:default}
 .case-agent-dock-title{flex:1;min-width:0;overflow:hidden;font-size:15px;font-weight:600;text-overflow:ellipsis;white-space:nowrap}
@@ -812,11 +810,9 @@ body.case-agent-docked .app-body .content{margin-right:var(--case-agent-dock-wid
 .case-agent-dock-body{flex:1;min-height:0;overflow:hidden;background:var(--oa-fill)}
 .case-agent-dock-body>.case-agent-panel{height:100%}
 .case-agent-dock-resize{position:absolute;z-index:2;top:0;bottom:0;width:8px;cursor:ew-resize;touch-action:none}
-.case-agent-dock.is-docked{border-top:1px solid var(--oa-border);border-top-left-radius:10px;overflow:hidden}
-.case-agent-dock-resize.is-top{top:-3px;right:0;bottom:auto;left:0;width:auto;height:8px;cursor:ns-resize}
-.case-agent-dock-resize.is-left{left:-3px}.case-agent-dock-resize.is-right{right:-3px}
+.case-agent-dock-resize.is-left{left:0}.case-agent-dock-resize.is-right{right:0}
+.case-agent-dock-resize.is-top{top:0;right:16px;bottom:auto;left:16px;width:auto;height:6px;cursor:ns-resize}
 .case-agent-dock-resize.is-corner{top:auto;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize}
-.case-agent-dock-resize.is-left:hover::after,.case-agent-dock-resize.is-left:active::after{content:"";position:absolute;top:0;bottom:0;left:3px;width:2px;background:var(--oa-primary)}
+.case-agent-dock-resize.is-left:hover::after,.case-agent-dock-resize.is-left:active::after{content:"";position:absolute;top:0;bottom:0;left:0;width:2px;background:var(--oa-primary)}
 .case-agent-dock-tab{position:fixed;z-index:990;top:40%;right:0;display:flex;flex-direction:column;align-items:center;gap:6px;width:36px;padding:12px 0;border:1px solid var(--oa-border);border-right:0;border-radius:8px 0 0 8px;background:var(--oa-surface);color:var(--oa-primary);box-shadow:-4px 0 12px rgba(15,23,42,.1);cursor:pointer;writing-mode:vertical-rl;font-size:13px;letter-spacing:2px}
 .case-agent-dock-tab .anticon{writing-mode:horizontal-tb}
-@media (max-width:767px){body.case-agent-docked .app-body .content{margin-right:0}}

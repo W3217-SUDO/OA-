@@ -1,4 +1,4 @@
-// 501165（tgn 11-03 07:36）：案件智能体停靠右侧、默认 2/9 宽、不遮挡案件信息；可调宽、放大、收起、浮动；记住布局；手机全屏。
+// 501165（tgn 11-03 08:06）：案件智能体是浮在案件页上的窗口，右下角打开、宽 2/9 高约 70%；拖动始终在可视区内；再点按钮拉回；手机全屏。
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -33,79 +33,74 @@ function load(env) {
   const output = ts.transpileModule(fs.readFileSync(entry, "utf8"), { compilerOptions, fileName: entry }).outputText;
   const module = { exports: {} };
   const component = name => ({ children, ...props }) => React.createElement(name, props, children);
-  const deps = { antd: { Button: component("button"), Tooltip: ({ children }) => children }, "@ant-design/icons": new Proxy({}, { get: () => "icon" }) };
+  const deps = { antd: { Button: component("button"), Tooltip: ({ children }) => children }, "@ant-design/icons": new Proxy({}, { get: () => "icon" }), "react-dom": { createPortal: node => node } };
   vm.runInNewContext(output, { module, exports: module.exports, require: s => deps[s] ?? createRequire(entry)(s), JSON, Math, Number, ...env }, { filename: entry });
   return module.exports;
 }
 
 const pointer = (x, y) => ({ button: 0, clientX: x, clientY: y, preventDefault() {}, target: { closest: () => null } });
-const plain = value => JSON.parse(JSON.stringify(value));
+const KEY = "oa.caseAgentWindow.v3.tgn";
+const style = renderer => renderer.root.findByProps({ "aria-label": "案件智能体" }).props.style;
+const render = async (Dock, props) => { let renderer; await act(async () => { renderer = create(React.createElement(Dock, { open: true, title: "案件智能体", onClose() {}, ...props }, "内容")); }); return renderer; };
 
-test("默认停靠右侧 2/9 宽，左侧页面让出宽度；拖左边缘调宽并记住", async () => {
+test("打开时浮在右下角，宽 2/9、高约 70%，不压缩案件页", async () => {
   const env = environment();
   const { CaseAgentDock } = load(env);
-  let renderer;
-  await act(async () => { renderer = create(React.createElement(CaseAgentDock, { open: true, title: "案件智能体：HZMS2600441", onClose() {} }, React.createElement("panel"))); });
-  const dock = () => renderer.root.findByProps({ "aria-label": "案件智能体" });
-  assert.equal(dock().props.className, "case-agent-dock is-docked");
-  assert.equal(dock().props.style.width, 400, "1800 宽屏幕的 2/9");
-  assert.equal(dock().props.style.right, 0);
-  assert.equal(dock().props.style.bottom, 0, "tgn 07:52：默认放在右下角");
-  assert.equal(dock().props.style.height, 665, "高度约为可视区（去掉顶栏）的 70%");
-  const top = renderer.root.findByProps({ "aria-label": "拖动调整智能体高度" });
-  await act(async () => { top.props.onPointerDown(pointer(1600, 385)); env.fire("pointermove", { clientX: 1600, clientY: 285 }); env.fire("pointerup", {}); });
-  assert.equal(dock().props.style.height, 765, "拖上边缘调高");
-  assert.ok(env.classes.has("case-agent-docked"));
-  assert.equal(env.styleVars["--case-agent-dock-width"], "400px", "案件信息区右边让出同样宽度");
-  const handle = renderer.root.findByProps({ "aria-label": "拖动调整智能体宽度" });
-  await act(async () => { handle.props.onPointerDown(pointer(1400, 500)); env.fire("pointermove", { clientX: 1100, clientY: 500 }); env.fire("pointerup", {}); });
-  assert.equal(dock().props.style.width, 700);
-  assert.equal(plain(JSON.parse(env.store.get("oa.caseAgentDock.v2.tgn"))).mode, "docked");
-  await act(async () => { handle.props.onPointerDown(pointer(1100, 500)); env.fire("pointermove", { clientX: 0, clientY: 500 }); env.fire("pointerup", {}); });
-  assert.equal(dock().props.style.width, 1260, "最大 70%，左侧始终留出案件信息");
+  const renderer = await render(CaseAgentDock);
+  assert.equal(renderer.root.findByProps({ "aria-label": "案件智能体" }).props.className, "case-agent-dock is-floating");
+  assert.deepEqual({ ...style(renderer) }, { left: 1384, top: 319, width: 400, height: 665 }, "1800×1000：宽 400（2/9），高 665（去掉顶栏的 70%），右下各留 16");
+  assert.equal(env.classes.size, 0, "不给案件页加任何让位样式");
   await act(async () => { renderer.unmount(); });
-  assert.equal(env.classes.has("case-agent-docked"), false, "关闭后页面恢复全宽");
 });
 
-test("放大、收起成右侧小按钮、拖出成浮动窗口，下次按上次位置打开", async () => {
+test("拖动、调大小始终留在可视区内，不会掉到页面底下", async () => {
   const env = environment();
   const { CaseAgentDock } = load(env);
-  let renderer;
-  const props = { open: true, title: "案件智能体", onClose() {} };
-  await act(async () => { renderer = create(React.createElement(CaseAgentDock, props, "内容")); });
-  const button = label => renderer.root.findByProps({ "aria-label": label });
-  await act(async () => { button("放大").props.onClick(); });
-  assert.equal(renderer.root.findByProps({ "aria-label": "案件智能体" }).props.className, "case-agent-dock is-maximized");
-  await act(async () => { button("还原").props.onClick(); button("收起").props.onClick(); });
-  assert.equal(renderer.root.findAllByProps({ "aria-label": "案件智能体" }).length, 0);
-  assert.equal(env.classes.has("case-agent-docked"), false, "收起后案件信息占满宽度");
-  await act(async () => { button("展开案件智能体").props.onClick(); });
+  const renderer = await render(CaseAgentDock);
   const header = () => renderer.root.findByType("header");
-  await act(async () => { header().props.onPointerDown(pointer(1500, 70)); env.fire("pointermove", { clientX: 900, clientY: 300 }); env.fire("pointerup", {}); });
-  const dock = renderer.root.findByProps({ "aria-label": "案件智能体" });
-  assert.equal(dock.props.className, "case-agent-dock is-floating");
-  assert.equal(env.classes.has("case-agent-docked"), false, "浮动时不占页面宽度");
-  const saved = JSON.parse(env.store.get("oa.caseAgentDock.v2.tgn"));
-  assert.equal(saved.mode, "floating");
-  assert.deepEqual(plain(saved.float), plain({ x: dock.props.style.left, y: dock.props.style.top, w: dock.props.style.width, h: dock.props.style.height }));
+  // 往右下猛拖：窗口贴住右下边，不出屏幕。
+  await act(async () => { header().props.onPointerDown(pointer(1500, 340)); env.fire("pointermove", { clientX: 3000, clientY: 3000 }); env.fire("pointerup", {}); });
+  assert.deepEqual({ ...style(renderer) }, { left: 1400, top: 335, width: 400, height: 665 });
+  // 往左上猛拖：不盖住顶栏，不出左边。
+  await act(async () => { header().props.onPointerDown(pointer(1500, 340)); env.fire("pointermove", { clientX: -3000, clientY: -3000 }); env.fire("pointerup", {}); });
+  assert.deepEqual({ ...style(renderer) }, { left: 0, top: 50, width: 400, height: 665 });
+  assert.deepEqual(JSON.parse(env.store.get(KEY)), { x: 0, y: 50, w: 400, h: 665 }, "松手后记住位置");
+  // 右下角拉大：不超过可视区。
+  const corner = renderer.root.findByProps({ "aria-label": "拖动调整智能体大小" });
+  await act(async () => { corner.props.onPointerDown(pointer(400, 715)); env.fire("pointermove", { clientX: 5000, clientY: 5000 }); env.fire("pointerup", {}); });
+  assert.deepEqual({ ...style(renderer) }, { left: 0, top: 50, width: 1800, height: 950 });
+  // 浏览器窗口变小：窗口一起收进可视区。
+  env.window.innerWidth = 1200; env.window.innerHeight = 700;
+  await act(async () => { env.fire("resize", {}); });
+  assert.deepEqual({ ...style(renderer) }, { left: 0, top: 50, width: 1200, height: 650 });
   await act(async () => { renderer.unmount(); });
-  let again;
-  await act(async () => { again = create(React.createElement(load(env).CaseAgentDock, props, "内容")); });
-  assert.equal(again.root.findByProps({ "aria-label": "案件智能体" }).props.style.left, saved.float.x, "按上次浮动位置打开");
-  await act(async () => { again.root.findByProps({ "aria-label": "停靠到右侧" }).props.onClick(); });
-  assert.equal(again.root.findByProps({ "aria-label": "案件智能体" }).props.className, "case-agent-dock is-docked");
-  await act(async () => { again.unmount(); });
 });
 
-test("手机全屏，不停靠也不占页面宽度", async () => {
+test("记住的位置在屏幕外就回到右下角；再点“案件智能体”拉回并显示", async () => {
+  const env = environment();
+  env.store.set(KEY, JSON.stringify({ x: 100, y: 2400, w: 500, h: 600 }));
+  const { CaseAgentDock } = load(env);
+  const renderer = await render(CaseAgentDock, { revealKey: 1 });
+  assert.deepEqual({ ...style(renderer) }, { left: 1384, top: 319, width: 400, height: 665 }, "旧位置在屏幕外，重置到右下角");
+  env.store.set(KEY, JSON.stringify({ x: 200, y: 100, w: 500, h: 600 }));
+  await act(async () => { renderer.update(React.createElement(CaseAgentDock, { open: true, title: "案件智能体", onClose() {}, revealKey: 2 }, "内容")); });
+  assert.deepEqual({ ...style(renderer) }, { left: 200, top: 100, width: 500, height: 600 }, "在屏幕内的旧位置照用");
+  await act(async () => { renderer.root.findByProps({ "aria-label": "收起" }).props.onClick(); });
+  assert.equal(renderer.root.findAllByProps({ "aria-label": "案件智能体" }).length, 0);
+  await act(async () => { renderer.update(React.createElement(CaseAgentDock, { open: true, title: "案件智能体", onClose() {}, revealKey: 3 }, "内容")); });
+  assert.equal(renderer.root.findAllByProps({ "aria-label": "案件智能体" }).length, 1, "收起后再点“案件智能体”重新弹出");
+  await act(async () => { renderer.root.findByProps({ "aria-label": "放大" }).props.onClick(); });
+  assert.equal(renderer.root.findByProps({ "aria-label": "案件智能体" }).props.className, "case-agent-dock is-maximized");
+  await act(async () => { renderer.unmount(); });
+});
+
+test("手机全屏", async () => {
   const env = environment({ width: 390, height: 800, mobile: true });
   const { CaseAgentDock } = load(env);
-  let renderer;
-  await act(async () => { renderer = create(React.createElement(CaseAgentDock, { open: true, title: "案件智能体", onClose() {} }, "内容")); });
+  const renderer = await render(CaseAgentDock);
   const dock = renderer.root.findByProps({ "aria-label": "案件智能体" });
   assert.equal(dock.props.className, "case-agent-dock is-mobile");
   assert.equal(dock.props.style, undefined);
   assert.equal(renderer.root.findAllByProps({ "aria-label": "收起" }).length, 0);
-  assert.equal(env.classes.has("case-agent-docked"), false);
   await act(async () => { renderer.unmount(); });
 });
