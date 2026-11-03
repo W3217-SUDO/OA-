@@ -312,15 +312,21 @@ def render_due_diligence(record, name: str, role: str, detail: dict, risk: dict 
     business_source = business_source or (f"企查查企业工商信息（{str(detail.get('queried_at') or '')[:10]} 查询）"
                                           if detail.get("queried_at") else "企查查企业工商信息")
 
-    # ---------- 封面 ----------
-    band = document.add_table(rows=1, cols=1)
-    _borders(band, GREEN, 0)
-    _shade(band.rows[0].cells[0], GREEN)
-    _cell_text(band.rows[0].cells[0], FIRM, size=11, bold=True, color="FFFFFF")
-    band.rows[0].cells[0].paragraphs[0].paragraph_format.space_before = Pt(8)
-    band.rows[0].cells[0].paragraphs[0].paragraph_format.space_after = Pt(8)
-    _widths(band, [Report.WIDTH])
-    for _ in range(5):
+    # ---------- 封面：律所 logo（标志加名称）放左上，下面一条绿线 ----------
+    from app.areas.legal.report_logo import FULL, MARK
+
+    logo = document.add_paragraph()
+    logo.paragraph_format.space_after = Pt(4)
+    logo.add_run().add_picture(BytesIO(FULL), width=Cm(5.2))
+    rule = report.text("", after=0)
+    properties = rule._p.get_or_add_pPr()
+    border = OxmlElement("w:pBdr")
+    bottom = OxmlElement("w:bottom")
+    for key, value in (("val", "single"), ("sz", "12"), ("space", "1"), ("color", GREEN)):
+        bottom.set(qn(f"w:{key}"), value)
+    border.append(bottom)
+    properties.append(border)
+    for _ in range(4):
         report.text("", after=10)
     report.text(f"{role}尽职调查报告", size=28, bold=True, color=GREEN_DARK, after=6)
     report.text("Due Diligence Report", size=12, color=GREY, after=30)
@@ -351,7 +357,8 @@ def render_due_diligence(record, name: str, role: str, detail: dict, risk: dict 
     page_numbers.set(qn("w:start"), "1")
     header = body.header.paragraphs[0]
     header.paragraph_format.tab_stops.add_tab_stop(Cm(Report.WIDTH), WD_TAB_ALIGNMENT.RIGHT)
-    _font(header.add_run(f"{FIRM}  |  {role}尽职调查报告"), 8.5, color=GREEN_DARK, bold=True)
+    header.add_run().add_picture(BytesIO(MARK), height=Cm(0.55))
+    _font(header.add_run(f"  {FIRM}  |  {role}尽职调查报告"), 8.5, color=GREEN_DARK, bold=True)
     _font(header.add_run(f"\t{name}  ·  仅供内部参考"), 8.5, color=GREY)
     properties = header._p.get_or_add_pPr()
     border = OxmlElement("w:pBdr")
