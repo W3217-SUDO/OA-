@@ -121,8 +121,8 @@ async def query_case_party_business_info(case_id: int, body: PartyLookupInput,
 
 
 # ---------- 被告基本信息文档、尽职调查报告（501226 第 3 条） ----------
-# 只用已存的工商信息生成 Word，存到案件 AI 空间，不另外调接口。报告目前只有工商登记部分（方案 A），
-# 涉诉、失信、被执行、股东、经营风险要另买企查查接口，报告里写明“未核查”。
+# 只用已存的工商信息生成 Word，存到案件 AI 空间，不另外调接口。报告目前有工商登记和可诉性判断（陶国南 11-03 定方案 C、
+# 要判断可诉性）；企业风险扫描接口开通前，失信、被执行、股东、经营风险报告里写明“未核查”。
 
 DOCUMENT_KINDS = {"basic": "基本信息", "due_diligence": "尽职调查报告"}
 NOT_COVERED = ["涉诉情况（裁判文书、开庭公告、立案信息）", "失信被执行人", "被执行人", "限制高消费", "股东及出资",
@@ -144,6 +144,37 @@ def _risks(detail: dict) -> list[str]:
     if detail.get("former_names"):
         risks.append("有曾用名，起诉和查询时注意名称变更")
     return risks
+
+
+def _suability(detail: dict, name: str) -> tuple[str, list[str]]:
+    """按工商登记判断能不能把这个主体列为被告：结论一句 + 需要注意的几点。"""
+    from datetime import date
+    status = str(detail.get("status") or "")
+    kind = f"{detail.get('econ_kind') or ''}{detail.get('organization_type') or ''}"
+    registered = str(detail.get("name") or "").strip()
+    notes = []
+    if detail.get("cancel_date") or ("注销" in status and "未注销" not in status):
+        conclusion = "主体已注销，诉讼主体资格已消灭，不能直接作为被告。"
+        notes.append("可视情况起诉清算义务人、清算组成员、股东或投资人（个体户为经营者），需另行核实注销时的清算情况。")
+    elif detail.get("revoke_date") or "吊销" in status:
+        conclusion = "主体已被吊销营业执照但未注销，仍具备诉讼主体资格，可以作为被告。"
+        notes.append("吊销后已不能正常经营，胜诉后执行难度较大，起诉前建议核实财产线索。")
+    elif detail.get("abnormal"):
+        conclusion = f"登记状态为“{status}”，能否作为被告需进一步核实。"
+    else:
+        conclusion = f"登记状态为“{status or '存续'}”，具备被告主体资格，可以作为被告。"
+    if "个体" in kind:
+        operator = detail.get("legal_representative") or "经营者"
+        notes.append(f"个体工商户：有字号的以登记字号为当事人，并在起诉状中注明经营者（{operator}）的基本信息；没有字号的以经营者为当事人。")
+    if "分公司" in registered or "分支" in kind:
+        notes.append("分支机构可以作为当事人，但民事责任由总公司承担，建议同时起诉总公司。")
+    if "合伙" in kind:
+        notes.append("合伙企业：普通合伙人对合伙企业债务承担无限连带责任，可一并列为被告。")
+    if registered and registered != name:
+        notes.append(f"案件里登记的名称“{name}”与现登记名称“{registered}”不一致，起诉时应以现登记名称为准，并注明曾用名。")
+    if detail.get("term_end") and str(detail["term_end"]) < date.today().isoformat():
+        notes.append(f"营业期限已于 {detail['term_end']} 届满，注意核实是否已进入清算。")
+    return conclusion, notes
 
 
 def render_party_docx(record: BusinessRecord, name: str, role: str, kind: str, detail: dict) -> bytes:
@@ -179,9 +210,16 @@ def render_party_docx(record: BusinessRecord, name: str, role: str, kind: str, d
                 run.font.color.rgb = RGBColor(0xC0, 0x00, 0x00)
         else:
             document.add_paragraph("工商登记层面未发现注销、吊销、营业期限届满等异常。")
-        document.add_heading("二、主体工商登记情况", level=2)
+        document.add_heading("二、可诉性判断", level=2)
+        conclusion, notes = _suability(detail, name)
+        document.add_paragraph().add_run(conclusion).bold = True
+        for note in notes:
+            document.add_paragraph(note, style="List Bullet")
+        document.add_paragraph("以上仅按工商登记判断被告主体资格。被告有没有财产、能不能执行到（失信、被执行、经营风险等）待企业风险扫描开通后补充；"
+                               "管辖、诉讼时效、证据是否充分，请承办律师结合案情判断。")
+        document.add_heading("三、主体工商登记情况", level=2)
         table(rows)
-        document.add_heading("三、本报告未核查的事项", level=2)
+        document.add_heading("四、本报告未核查的事项", level=2)
         document.add_paragraph("以下事项需另行开通企查查对应接口或人工核查，本报告未涉及：")
         for item in NOT_COVERED:
             document.add_paragraph(item, style="List Bullet")

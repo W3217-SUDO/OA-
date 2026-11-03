@@ -125,6 +125,14 @@ class CasePartyDocumentTest(CasePartiesTest):
         self.assertIn("已吊销：2025-01-01，未年报", report)
         self.assertIn("本报告未核查的事项", report)
         self.assertIn("失信被执行人", report)
+        self.assertIn("可诉性判断", report)
+        self.assertIn("吊销营业执照但未注销，仍具备诉讼主体资格", report)
+        self.assertIn("注明经营者（王五）", report, "个体户写明经营者")
+        self.assertIn("与现登记名称“上饶市广信区有明眼镜店”不一致", report)
+        conclusion, _notes = case_parties._suability({**detail, "status": "注销", "cancel_date": "2025-02-02"}, "广信区有明眼镜店")
+        self.assertIn("不能直接作为被告", conclusion)
+        conclusion, _notes = case_parties._suability({**detail, "status": "存续", "revoke_date": ""}, "上饶市广信区有明眼镜店")
+        self.assertIn("可以作为被告", conclusion)
 
     async def test_document_needs_business_info_and_saves_to_case(self):
         saved = []
