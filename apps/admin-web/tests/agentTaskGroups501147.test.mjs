@@ -38,14 +38,14 @@ function loadModule(name, dependencies = {}) {
 }
 
 test("左侧固定任务展开为会话归集，最新在上，点会话只进入不发指令", async () => {
-  const opened = [], started = [];
+  const opened = [], started = [], managerItems = [];
   const component = name => ({ children, ...props }) => React.createElement(name, props, children);
   const { AssistantWorkspaceSidebar } = loadModule("AssistantWorkspaceSidebar.tsx", {
     antd: { Button: component("button"), Tooltip: component("tooltip") },
     "@ant-design/icons": new Proxy({}, { get: () => "icon" }),
     "./ConfirmationHistory": { ConfirmationHistory: "confirmation-history" },
     "./ConversationWorkspaceNavigation": { ConversationWorkspaceNavigation: "workspace-navigation" },
-    "./ConversationManager": { ConversationManager: ({ navigation }) => React.createElement("conversation-manager", null, navigation(null)) },
+    "./ConversationManager": { ConversationManager: ({ navigation, items }) => { managerItems.push(items.map(item => item.id)); return React.createElement("conversation-manager", null, navigation(null)); } },
   });
   const entries = [{ key: "tasks", label: "任务处理", skillId: "my-tasks", hint: "" }, { key: "intake", label: "收文助手", skillId: "court-doc-intake", hint: "" }, { key: "customer", label: "客户与合同", skillId: "customer-contract-case", hint: "" }];
   const workspace = { taskEntries: entries, state: { conversation_id: "t-new" }, loading: false, stopping: false, uploading: false, decisionId: null, conversationBusy: false, runningIds: [], workspaceProjects: [], currentWorkspace: { kind: "personal" },
@@ -57,6 +57,8 @@ test("左侧固定任务展开为会话归集，最新在上，点会话只进�
     ] };
   let renderer;
   await act(async () => { renderer = create(React.createElement(AssistantWorkspaceSidebar, { workspace, name: "AI助手", onOpenPersonalSpace() {}, onReopenConfirmation: async () => {}, onStartIntake: () => started.push("intake"), onStartTask: id => started.push(id), onOpenTaskConversation: (id, skill) => opened.push([id, skill]) })); });
+  // 501299：个人空间的最近会话、全部历史会话只放普通对话，任务类会话只在上方栏目里。
+  assert.deepEqual(managerItems.at(-1), ["x"]);
   const group = label => renderer.root.findAllByType("button").find(item => [].concat(item.props.children).some(child => child?.props?.children === label));
   // 陶威 11-03：当前会话属于“任务处理”，进来就展开并高亮这一项；其他入口仍默认收起。
   assert.equal(renderer.root.findAllByType("ul").length, 1, "只展开当前会话所在的入口");

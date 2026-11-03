@@ -44,6 +44,9 @@ export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPers
   const activeSkill = (workspace.conversations || []).find((item) => item.id === activeId)?.skill_id;
   const activeEntry = (workspace.taskEntries || []).find((entry) => entry.skillId === activeSkill)?.key;
   useEffect(() => { if (activeEntry) setExpanded((keys) => keys.includes(activeEntry) ? keys : [...keys, activeEntry]); }, [activeEntry, activeId]);
+  // 501299（陶国南 11-04 07:38）：任务处理、收文助手、客户与合同的会话只在上方对应栏目里列，个人空间只放其他会话，不重复。
+  const taskSkillIds = new Set((workspace.taskEntries || []).map((entry) => entry.skillId));
+  const generalConversations = (workspace.conversations || []).filter((item) => !item.skill_id || !taskSkillIds.has(item.skill_id));
   const busy = workspace.loading || workspace.stopping || workspace.uploading || !!workspace.decisionId || workspace.conversationBusy;
   return <aside className="assistant-workspace-sidebar" aria-label="AI 工作区导航">
     <div className="assistant-workspace-brand">
@@ -52,7 +55,7 @@ export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPers
     </div>
     <ConversationManager
       presentation="sidebar"
-      items={workspace.conversations}
+      items={generalConversations}
       loading={workspace.loading}
       activeId={workspace.state.conversation_id}
       busy={workspace.loading || workspace.conversationBusy}
