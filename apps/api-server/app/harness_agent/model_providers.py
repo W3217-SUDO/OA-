@@ -23,16 +23,23 @@ from app.config import settings
 
 CONFIG_KEY = "agent_model_providers"
 SERVER_ID = "server"
-# 类型 → DSH（pi-ai）的接口协议和默认值；接口地址、模型都可以在页面改。
+# 类型 → DSH（pi-ai）的接口协议和默认值。接口地址、模型、Key 都由管理员自己填、自己改，这里只是预填；
+# models 是下拉里的常用模型，也可以手填任意模型 ID。DSH 支持 OpenAI 兼容（openai-completions）和 Anthropic 格式。
 PROVIDER_TYPES = {
-    "deepseek": {"label": "DeepSeek", "api": "openai-completions", "base_url": "https://api.deepseek.com", "model": "deepseek-chat"},
+    "ark": {"label": "火山方舟（Ark）", "api": "openai-completions", "base_url": "https://ark.cn-beijing.volces.com/api/plan/v3",
+            "model": "ark-code-latest",
+            "models": ["ark-code-latest", "doubao-seed-1-6-250615", "doubao-seed-1-6-thinking-250715", "deepseek-v3-1-250821", "kimi-k2-250905"]},
+    "deepseek": {"label": "DeepSeek", "api": "openai-completions", "base_url": "https://api.deepseek.com", "model": "deepseek-chat",
+                 "models": ["deepseek-chat", "deepseek-reasoner", "deepseek-flash"]},
     "qwen": {"label": "通义千问（阿里云百炼）", "api": "openai-completions",
-             "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "qwen-plus"},
-    "zhipu": {"label": "智谱 GLM", "api": "openai-completions", "base_url": "https://open.bigmodel.cn/api/paas/v4", "model": "glm-4.5"},
-    "moonshot": {"label": "Moonshot（Kimi）", "api": "openai-completions", "base_url": "https://api.moonshot.cn/v1", "model": "kimi-k2-0905-preview"},
-    "ark": {"label": "火山方舟（豆包）", "api": "openai-completions", "base_url": "https://ark.cn-beijing.volces.com/api/v3", "model": ""},
-    "anthropic": {"label": "Anthropic（Claude）", "api": "anthropic-messages", "base_url": "https://api.anthropic.com", "model": "claude-sonnet-5-5"},
-    "openai_compatible": {"label": "其他 OpenAI 兼容接口", "api": "openai-completions", "base_url": "", "model": ""},
+             "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "qwen-plus", "models": ["qwen-plus", "qwen-max", "qwen-turbo"]},
+    "zhipu": {"label": "智谱 GLM", "api": "openai-completions", "base_url": "https://open.bigmodel.cn/api/paas/v4", "model": "glm-4.5",
+              "models": ["glm-4.5", "glm-4.5-air"]},
+    "moonshot": {"label": "Moonshot（Kimi）", "api": "openai-completions", "base_url": "https://api.moonshot.cn/v1",
+                 "model": "kimi-k2-0905-preview", "models": ["kimi-k2-0905-preview", "moonshot-v1-32k"]},
+    "anthropic": {"label": "Anthropic（Claude）", "api": "anthropic-messages", "base_url": "https://api.anthropic.com",
+                  "model": "claude-sonnet-5-5", "models": ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5"]},
+    "openai_compatible": {"label": "其他 OpenAI 兼容接口", "api": "openai-completions", "base_url": "", "model": "", "models": []},
 }
 
 

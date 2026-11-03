@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Button, Empty, Form, Input, Modal, Radio, Select, Space, Tag, message } from "antd";
+import { Alert, AutoComplete, Button, Empty, Form, Input, Modal, Radio, Select, Space, Tag, message } from "antd";
 import { ApiOutlined, DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { api } from "../api";
 import { errorText } from "../personal-agent/types";
 import "./dsh-plugin-center.css";
 
 // 陶威 11-03：智能体设置里配置 DSH 调用的模型服务商，可以切换；Key 加密保存、不回显，只有系统管理员可见。
-export type ProviderType = { value: string; label: string; api: string; base_url: string; model: string };
+export type ProviderType = { value: string; label: string; api: string; base_url: string; model: string; models: string[] };
 export type Provider = {
   id: string; name: string; type: string; base_url: string; model: string; key_set: boolean; key_source: "server" | "page";
   updated_by: string; updated_at: string; verified_at: string; verify_message: string; verify_ok: boolean | null;
@@ -24,6 +24,7 @@ export function DshModelProviders({ active, canManage, onBusy }: { active: boole
   const [editing, setEditing] = useState<Provider | "new" | null>(null);
   const [initial, setInitial] = useState<ProviderForm | undefined>();
   const [form] = Form.useForm<ProviderForm>();
+  const formType = Form.useWatch("type", form);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -131,9 +132,13 @@ export function DshModelProviders({ active, canManage, onBusy }: { active: boole
           <Select options={(state?.types || []).map(item => ({ value: item.value, label: item.label }))} onChange={changeType} />
         </Form.Item>
         <Form.Item name="name" label="名称" rules={[{ required: true, whitespace: true, message: "请填写名称" }]}><Input maxLength={60} /></Form.Item>
-        <Form.Item name="base_url" label="接口地址" rules={[{ required: true, whitespace: true, message: "请填写接口地址" },
+        <Form.Item name="base_url" label="接口地址" extra="预填的是常用地址，可以改成自己的服务器地址。" rules={[{ required: true, whitespace: true, message: "请填写接口地址" },
           { pattern: /^https:\/\/\S+$/, message: "接口地址必须以 https:// 开头" }]}><Input maxLength={300} placeholder="https://" /></Form.Item>
-        <Form.Item name="model" label="默认模型" rules={[{ required: true, whitespace: true, message: "请填写模型名" }]}><Input maxLength={120} /></Form.Item>
+        <Form.Item name="model" label="默认模型" extra="可以从下拉里选常用模型，也可以直接填写任意模型 ID。"
+          rules={[{ required: true, whitespace: true, message: "请填写模型名" }]}>
+          <AutoComplete maxLength={120} placeholder="例如 ark-code-latest" filterOption={false}
+            options={(typeOf(formType || "")?.models || []).map(value => ({ value }))} />
+        </Form.Item>
         <Form.Item name="api_key" label="API Key"
           extra={editingProvider ? (editingProvider.key_source === "server" ? "现在使用服务器配置的 Key；填写后改用这里保存的 Key。" : "已保存的 Key 不显示；留空表示不修改。") : "加密保存，保存后不再显示。"}
           rules={editing === "new" ? [{ required: true, whitespace: true, message: "请填写 API Key" }] : []}>

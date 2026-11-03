@@ -14,6 +14,7 @@ test('服务商可新增、编辑、删除、切换、测试连接；Key 用密�
   const panel = read('../src/capability-market/DshModelProviders.tsx');
   for (const call of ['api.post<ProvidersState>(BASE, body)', 'api.put<ProvidersState>(`${BASE}/', 'api.delete<ProvidersState>(`${BASE}/',
     'api.post<ProvidersState>(`${BASE}/activate`', '`${BASE}/${item.id}/test`']) assert.ok(panel.includes(call), call);
+  assert.match(panel, /<AutoComplete maxLength=\{120\}/);
   assert.match(panel, /<Input\.Password maxLength=\{500\} autoComplete="new-password" visibilityToggle=\{false\} \/>/);
   assert.match(panel, /已保存的 Key 不显示；留空表示不修改。/);
   assert.doesNotMatch(panel, /api_key\s*\}/, '列表不展示 Key 字段');

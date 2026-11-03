@@ -58,6 +58,10 @@ class AgentModelProvidersTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([(item["id"], item["type"], item["model"], item["key_source"], item["key_set"]) for item in data["providers"]],
                          [("server", "deepseek", "deepseek-flash", "server", True)])
         self.assertNotIn(SERVER_KEY, response.text)
+        ark = next(item for item in data["types"] if item["value"] == "ark")
+        self.assertEqual((ark["label"], ark["api"], ark["base_url"], ark["model"]),
+                         ("火山方舟（Ark）", "openai-completions", "https://ark.cn-beijing.volces.com/api/plan/v3", "ark-code-latest"))
+        self.assertIn("ark-code-latest", ark["models"])
         from app.harness_agent.model_providers import active_model
         async with self.sessions() as db:
             active = await active_model(db)
@@ -97,6 +101,22 @@ class AgentModelProvidersTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([item["id"] for item in removed.json()["providers"]], ["server"])
         kept = next(item for item in (await self._stored())["providers"] if item["id"] == provider["id"])
         self.assertTrue(kept["deleted_at"], "删除只做逻辑删除")
+
+    async def test_any_openai_compatible_address_and_model_id(self):
+        # 陶威 11-03：接口地址、模型、Key 都能自己填；模型不限于下拉里的。
+        created = await self.client.post(API, json={"name": "自建网关", "type": "openai_compatible", "base_url": "https://llm.example.com/v1",
+                                                    "model": "my-custom-model-2026", "api_key": PAGE_KEY})
+        item = next(p for p in created.json()["providers"] if p["id"] != "server")
+        self.assertEqual((item["base_url"], item["model"]), ("https://llm.example.com/v1", "my-custom-model-2026"))
+        ark = await self.client.post(API, json={"name": "方舟", "type": "ark", "base_url": "https://ark.cn-beijing.volces.com/api/plan/v3",
+                                                "model": "ark-code-latest", "api_key": PAGE_KEY})
+        ark_id = next(p["id"] for p in ark.json()["providers"] if p["name"] == "方舟")
+        await self.client.post(API + "/activate", json={"id": ark_id})
+        from app.harness_agent.model_providers import active_model, supports_response_modes
+        async with self.sessions() as db:
+            active = await active_model(db)
+        self.assertEqual((active.api, active.base_url), ("openai-completions", "https://ark.cn-beijing.volces.com/api/plan/v3"))
+        self.assertTrue(supports_response_modes(active), "方舟 ark-code-latest 支持快速/深度切换")
 
     async def test_rejects_incomplete_or_insecure_input(self):
         self.assertEqual((await self.client.post(API, json={"name": "x", "type": "deepseek", "base_url": "http://api.deepseek.com",
