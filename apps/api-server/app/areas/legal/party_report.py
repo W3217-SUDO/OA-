@@ -9,7 +9,7 @@ from io import BytesIO
 from docx import Document
 from docx.enum.section import WD_SECTION
 from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK, WD_TAB_ALIGNMENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
@@ -336,11 +336,16 @@ def render_due_diligence(record, name: str, role: str, detail: dict, risk: dict 
         bottom.set(qn(f"w:{key}"), value)
     border.append(bottom)
     properties.append(border)
-    for _ in range(4):
-        report.text("", after=10)
-    report.text(f"{role}尽职调查报告", size=28, bold=True, color=GREEN_DARK, after=6)
-    report.text("Due Diligence Report", size=12, color=GREY, after=30)
-    report.text(name, size=18, bold=True, color=INK, after=40)
+    # 封面只占一页（陶国南 11-04）：不用空段落撑高度，间距用固定的段前距，行距固定单倍，总高约 19cm，留足余量。
+    def cover_line(value: str, size: float, *, before: float, after: float, bold: bool = False, color: str = INK, align=None):
+        paragraph = report.text(value, size=size, bold=bold, color=color, after=after, align=align)
+        paragraph.paragraph_format.space_before = Pt(before)
+        paragraph.paragraph_format.line_spacing = 1.0
+        return paragraph
+
+    cover_line(f"{role}尽职调查报告", 28, before=110, after=4, bold=True, color=GREEN_DARK)
+    cover_line("Due Diligence Report", 12, before=0, after=26, color=GREY)
+    cover_line(name, 18, before=0, after=30, bold=True)
     cover = document.add_table(rows=0, cols=2)
     _borders(cover, LINE, 4, inside=True)
     for label, value in (("被调查企业", name), ("统一社会信用代码", detail.get("credit_code") or ""),
@@ -351,10 +356,8 @@ def render_due_diligence(record, name: str, role: str, detail: dict, risk: dict 
         _cell_text(cells[0], label, size=10, bold=True, color=GREEN_DARK)
         _cell_text(cells[1], value, size=10, bold=label == "报告性质", color="C0392B" if label == "报告性质" else INK)
     _widths(cover, [4.2, Report.WIDTH - 4.2])
-    for _ in range(4):
-        report.text("", after=10)
-    report.text("本报告依据公开数据由系统生成，仅供本所承办律师内部参考，未经许可不得对外提供。", size=8.5, color=GREY,
-                align=WD_ALIGN_PARAGRAPH.CENTER)
+    cover_line("本报告依据公开数据由系统生成，仅供本所承办律师内部参考，未经许可不得对外提供。", 8.5, before=70, after=0, color=GREY,
+               align=WD_ALIGN_PARAGRAPH.CENTER)
 
     # 正文另起一节：封面不带页眉页脚，正文页眉页脚和页码从 1 开始。
     body = document.add_section(WD_SECTION.NEW_PAGE)
@@ -365,11 +368,10 @@ def render_due_diligence(record, name: str, role: str, detail: dict, risk: dict 
         page_numbers = OxmlElement("w:pgNumType")
         body._sectPr.append(page_numbers)
     page_numbers.set(qn("w:start"), "1")
+    # 页眉只放律所：左边小火焰（和一行页眉文字差不多高），紧跟律所名称（陶国南 11-04）。
     header = body.header.paragraphs[0]
-    header.paragraph_format.tab_stops.add_tab_stop(Cm(Report.WIDTH), WD_TAB_ALIGNMENT.RIGHT)
-    header.add_run().add_picture(BytesIO(MARK), height=Cm(0.55))
-    _font(header.add_run(f"  {FIRM}  |  {role}尽职调查报告"), 8.5, color=GREEN_DARK, bold=True)
-    _font(header.add_run(f"\t{name}  ·  仅供内部参考"), 8.5, color=GREY)
+    header.add_run().add_picture(BytesIO(MARK), height=Cm(0.38))
+    _font(header.add_run(f" {FIRM}"), 9, color=GREEN_DARK, bold=True)
     properties = header._p.get_or_add_pPr()
     border = OxmlElement("w:pBdr")
     bottom = OxmlElement("w:bottom")
