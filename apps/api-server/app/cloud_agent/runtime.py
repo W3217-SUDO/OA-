@@ -193,14 +193,12 @@ def content_blocks(messages, *, resumed: bool, catalog: str) -> list[dict]:
 
 
 def _delta_text(event: dict) -> str:
+    # 实测格式（11-03）：{"type": "event_delta", "event_id": ..., "delta": {"type": "content_delta", "content": {"type": "text", "text": ...}}}
     delta = event.get("delta")
-    if isinstance(delta, dict):
-        if isinstance(delta.get("text"), str):
-            return delta["text"]
-        inner = delta.get("delta")
-        if isinstance(inner, dict) and isinstance(inner.get("text"), str):
-            return inner["text"]
-    return event["text"] if isinstance(event.get("text"), str) else ""
+    content = delta.get("content") if isinstance(delta, dict) else None
+    if isinstance(content, dict) and content.get("type") == "text" and isinstance(content.get("text"), str):
+        return content["text"]
+    return ""
 
 
 def _message_text(event: dict) -> str:

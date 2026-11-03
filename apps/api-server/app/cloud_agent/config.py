@@ -15,9 +15,9 @@ from app.harness_agent.model_providers import _unseal
 
 CONFIG_KEY = "agent_cloud_runtime"
 BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
-DEFAULT_MODEL = "deepseek-v4-1-flash-261017"
+DEFAULT_MODEL = "deepseek-v4-1-flash-economy-261017"  # 陶威 11-03 已在方舟开通经济版
 # 控制台“创建 Agent”里能选的常用模型（模型 ID 带版本号，需先在方舟“开通管理”里开通）。
-MODELS = ["deepseek-v4-1-flash-261017", "doubao-seed-2-1-pro-260915", "deepseek-v4-pro-ga-260813",
+MODELS = ["deepseek-v4-1-flash-economy-261017", "deepseek-v4-1-flash-261017", "doubao-seed-2-1-pro-260915", "deepseek-v4-pro-ga-260813",
           "deepseek-v4-flash-ga-260731", "doubao-seed-2-1-lite-260915"]
 
 

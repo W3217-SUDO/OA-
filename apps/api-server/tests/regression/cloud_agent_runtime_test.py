@@ -56,8 +56,8 @@ def test_turn_runs_custom_tool_and_streams_reply():
         {"id": "i1", "type": "session.status_idle", "stop_reason": {"type": "requires_action", "event_ids": ["t1"]}},
     ], [
         {"id": "f1", "type": "event_start", "event": {"id": "m1", "type": "agent.message"}},
-        {"id": "f2", "type": "event_delta", "event_id": "m1", "index": 0, "delta": {"type": "text_delta", "text": "案件"}},
-        {"id": "f3", "type": "event_delta", "event_id": "m1", "index": 0, "delta": {"type": "text_delta", "text": "已立案"}},
+        {"id": "f2", "type": "event_delta", "event_id": "m1", "delta": {"type": "content_delta", "content": {"type": "text", "text": "案件"}, "index": 0}},
+        {"id": "f3", "type": "event_delta", "event_id": "m1", "delta": {"type": "content_delta", "content": {"type": "text", "text": "已立案"}, "index": 0}},
         {"id": "m1", "type": "agent.message", "content": [{"type": "text", "text": "案件已立案。"}]},
         {"id": "u1", "type": "session.usage", "usage": {}},
         {"id": "i2", "type": "session.status_idle", "stop_reason": {"type": "end_turn"}},
