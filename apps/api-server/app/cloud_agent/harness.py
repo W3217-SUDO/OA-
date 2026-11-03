@@ -70,10 +70,10 @@ async def datapro(plan_key: str, arguments: dict) -> dict:
         if not tools:
             raise HTTPException(502, "专业数据集没有返回可用工具")
         tool = next((item for item in tools if "search" in item.name.lower()), tools[0])
-        required = (tool.inputSchema or {}).get("required") or ["query"]
+        required = (tool.input_schema or {}).get("required") or ["query"]
         result = await session.call_tool(tool.name, {required[0]: query.strip()})
     text = "\n".join(getattr(block, "text", "") for block in result.content if getattr(block, "type", "") == "text")
-    if result.isError:
+    if result.is_error:
         return {"isError": True, "message": "专业数据集查询失败", **_clip(text)}
     return _clip(text)
 
