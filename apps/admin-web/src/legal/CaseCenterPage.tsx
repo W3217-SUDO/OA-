@@ -1903,7 +1903,8 @@ export default function CaseCenterPage({
   });
   // 501170（tgn 08:46）：案件智能体属于正在看的这个案件详情；关掉详情或换到别的案件时一起关掉，不留在列表上。
   useEffect(() => {
-    if (agentDrawerProps.agentOpen && agentDrawerProps.agentCase?.id !== viewingCounselCase?.id) agentDrawerProps.closeCaseAgent();
+    // 只在详情关掉时一起关，不按编号比较（避免误关）。
+    if (agentDrawerProps.agentOpen && !viewingCounselCase) agentDrawerProps.closeCaseAgent();
   }, [viewingCounselCase?.id]);
   const routeAgentOpenedRef = useRef(false);
   const routeAiSpaceOpenedRef = useRef(false);

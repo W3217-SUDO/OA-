@@ -109,7 +109,7 @@ test("501170：所在案件详情页退到后台（回列表、切页签）时�
   const env = environment();
   const classes = new Set(["workspace-page"]);
   let notify = null;
-  const page = { classList: { contains: c => classes.has(c) } };
+  const page = { isConnected: true, classList: { contains: c => classes.has(c) } };
   class FakeObserver { constructor(cb) { notify = cb; } observe() {} disconnect() {} }
   const { CaseAgentDock } = load({ ...env, MutationObserver: FakeObserver });
   let renderer;
@@ -125,5 +125,27 @@ test("501170：所在案件详情页退到后台（回列表、切页签）时�
   classes.delete("is-cached");
   await act(async () => { notify(); });
   assert.equal(visible(), true, "回到这个案件详情页，窗口原样出现");
+  await act(async () => { renderer.unmount(); });
+});
+
+test("tgn 09:05：判断不了所在页签时宁可显示；点“案件智能体”一定显示", async () => {
+  const env = environment();
+  const classes = new Set(["workspace-page", "is-cached"]);
+  let notify = null;
+  const page = { isConnected: true, classList: { contains: c => classes.has(c) } };
+  class FakeObserver { constructor(cb) { notify = cb; } observe() {} disconnect() {} }
+  const { CaseAgentDock } = load({ ...env, MutationObserver: FakeObserver });
+  const mock = { createNodeMock: element => element.type === "span" ? { closest: () => page } : null };
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(CaseAgentDock, { open: true, revealKey: 1, title: "案件智能体", onClose() {} }, "内容"), mock); });
+  const visible = () => renderer.root.findAllByProps({ "aria-label": "案件智能体" }).length === 1;
+  assert.equal(visible(), true, "一打开就看到外层是后台样式也照样显示，不误藏");
+  classes.delete("is-cached");
+  await act(async () => { notify(); });
+  classes.add("is-cached");
+  await act(async () => { notify(); });
+  assert.equal(visible(), false, "亲眼看到页签退到后台才藏");
+  await act(async () => { renderer.update(React.createElement(CaseAgentDock, { open: true, revealKey: 2, title: "案件智能体", onClose() {} }, "内容")); });
+  assert.equal(visible(), true, "再点“案件智能体”一定显示");
   await act(async () => { renderer.unmount(); });
 });

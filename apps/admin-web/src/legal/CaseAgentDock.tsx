@@ -73,17 +73,24 @@ export function CaseAgentDock({ open, title, onClose, children, revealKey = 0 }:
   rectRef.current = rect;
   // 501170（tgn 08:46）：窗口只跟着它所在的案件详情页显示。详情页退到后台（回列表、切页签）时，
   // 页签外层带 is-cached，窗口一起藏起来；回到这个详情页再原样出现。窗口挂在 body 下，所以要从页内的锚点判断。
+  // tgn 09:05（钉钉 Mac 客户端打不开）：宁可显示也不误藏——每次打开或点“案件智能体”都先显示，
+  // 只有亲眼看到所在页签从前台变成后台（class 加上 is-cached）才藏，回到前台再显示。
   const anchorRef = useRef<HTMLSpanElement>(null);
   const [hostHidden, setHostHidden] = useState(false);
   useEffect(() => {
+    setHostHidden(false);
+    if (!open) return;
     const page = anchorRef.current?.closest(".workspace-page");
     if (!page || typeof MutationObserver === "undefined") return;
-    const check = () => setHostHidden(page.classList.contains("is-cached"));
-    check();
-    const observer = new MutationObserver(check);
+    let wasCached = page.classList.contains("is-cached");
+    const observer = new MutationObserver(() => {
+      const cached = page.isConnected && page.classList.contains("is-cached");
+      if (cached !== wasCached) setHostHidden(cached);
+      wasCached = cached;
+    });
     observer.observe(page, { attributes: true, attributeFilter: ["class"] });
     return () => observer.disconnect();
-  }, [open]);
+  }, [open, revealKey]);
 
   // 打开或再次点“案件智能体”：展开、取消放大，位置不在可视区就回到右下角。
   useEffect(() => {
@@ -152,7 +159,7 @@ export function CaseAgentDock({ open, title, onClose, children, revealKey = 0 }:
       </span>
     </header>
     {/* 501170：窗口层级高于案件详情（antd 抽屉 1000），窗口里弹出的确认框、下拉也要再高一层，否则被窗口自己盖住。 */}
-    <div className="case-agent-dock-body"><ConfigProvider theme={{ token: { zIndexPopupBase: 1100 } }}>{children}</ConfigProvider></div>
+    <div className="case-agent-dock-body"><ConfigProvider theme={{ token: { zIndexPopupBase: 1600 } }}>{children}</ConfigProvider></div>
     {!mobile && !maximized && <>
       <div className="case-agent-dock-resize is-left" role="separator" aria-label="拖动调整智能体宽度" onPointerDown={resize("left")} />
       <div className="case-agent-dock-resize is-right" role="separator" aria-label="拖动调整智能体右边" onPointerDown={resize("right")} />
