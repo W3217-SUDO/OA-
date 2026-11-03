@@ -35,6 +35,58 @@ MATERIALS = [
     ("evidence-preservation", "证据保全申请书", False, ["证据保全申请"]),
 ]
 
+# 501189（陶国南 11-03 10:18）：按案件实际类型和案由选手册，合同纠纷等不再套用知识产权手册。
+CONTRACT_MATERIALS = [
+    ("authorization", "授权委托书", True, ["授权委托书"]),
+    ("complaint", "起诉状", True, ["起诉状", "诉状"]),
+    ("license", "原告主体资格证明", True, ["营业执照", "身份证"]),
+    ("identity", "法定代表人身份证明", True, ["身份证明"]),
+    ("law-firm-letter", "律师事务所函", True, ["所函", "律师事务所函"]),
+    ("lawyer-license", "律师证复印件", True, ["律师证"]),
+    ("defendant-profile", "被告主体信息", True, ["被告主体", "企业信用", "工商内档"]),
+    ("contract", "合同文本", True, ["合同", "协议", "订单"]),
+    ("performance", "履行凭证", True, ["发票", "送货单", "收货", "对账", "付款", "收款", "转账", "验收", "结算单"]),
+    ("demand", "催告或对账确认", False, ["催告", "催款", "律师函", "对账确认", "确认函"]),
+    ("evidence-index", "证据目录", True, ["证据目录"]),
+    ("preservation", "财产保全申请书", False, ["财产保全申请"]),
+    ("investigation-order", "调查令申请书", False, ["调查令申请"]),
+]
+
+CIVIL_MATERIALS = [
+    ("authorization", "授权委托书", True, ["授权委托书"]),
+    ("complaint", "起诉状", True, ["起诉状", "诉状"]),
+    ("license", "原告主体资格证明", True, ["营业执照", "身份证"]),
+    ("law-firm-letter", "律师事务所函", True, ["所函", "律师事务所函"]),
+    ("lawyer-license", "律师证复印件", True, ["律师证"]),
+    ("defendant-profile", "被告主体信息", True, ["被告主体", "企业信用", "工商内档", "身份信息"]),
+    ("evidence-index", "证据目录", True, ["证据目录"]),
+    ("evidence", "证据材料", True, ["证据"]),
+    ("preservation", "财产保全申请书", False, ["财产保全申请"]),
+    ("investigation-order", "调查令申请书", False, ["调查令申请"]),
+]
+
+MANUALS = {
+    "ipr": {"name": MANUAL_NAME, "version": MANUAL_VERSION, "case_kind": "知识产权纠纷", "materials": MATERIALS},
+    "contract": {"name": "合同纠纷案件办案流程", "version": "2026-11", "case_kind": "合同纠纷", "materials": CONTRACT_MATERIALS},
+    "civil": {"name": "民商事诉讼案件通用办案流程", "version": "2026-11", "case_kind": "其他民商事案件", "materials": CIVIL_MATERIALS},
+}
+_IPR_CAUSE = ("商标", "著作权", "作品", "专利", "不正当竞争", "知名商品", "特有名称", "商业秘密", "知识产权", "植物新品种", "集成电路", "域名", "计算机软件")
+_CONTRACT_CAUSE = ("合同", "借贷", "借款", "买卖", "租赁", "承揽", "欠款", "货款", "保证", "担保")
+
+
+def case_kind(case: dict[str, Any]) -> str:
+    """按案由（没有时看案件类型）判断用哪本手册；案由没填的沿用知识产权手册，不改变原来的行为。"""
+    data = case.get("data") or {}
+    cause = _text(data.get("cause_or_charge") or data.get("cause"))
+    if not cause:
+        return "ipr"
+    if any(word in cause for word in _IPR_CAUSE):
+        return "ipr"
+    if "劳动" not in cause and any(word in cause for word in _CONTRACT_CAUSE):
+        return "contract"
+    return "civil"
+
+
 ROLE_TASKS = {
     "document-preparation": [
         ("文书", "核对卷宗、公证书、发票和系统信息，制作并上传起诉材料"),
@@ -202,10 +254,10 @@ def _deadline_guidance(snapshot: dict[str, Any], today: date) -> tuple[list[dict
     return result, missing_inputs
 
 
-def _material_guidance(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _material_guidance(documents: list[dict[str, Any]], materials: list[tuple] = MATERIALS) -> list[dict[str, Any]]:
     searchable = [f"{_text(item.get('name') or item.get('original_name'))} {_text(item.get('category'))}".casefold() for item in documents]
     result = []
-    for code, name, required, keywords in MATERIALS:
+    for code, name, required, keywords in materials:
         matches = [index for index, value in enumerate(searchable) if any(keyword.casefold() in value for keyword in keywords)]
         result.append({
             "code": code,
@@ -243,12 +295,15 @@ def build_case_workflow_guide(snapshot: dict[str, Any], reference_date: date | N
         for index, phase in enumerate(PHASES)
     ]
     deadlines, missing_inputs = _deadline_guidance(snapshot, today)
-    materials = _material_guidance(snapshot.get("documents") or [])
+    kind = case_kind(case)
+    manual = MANUALS[kind]
+    materials = _material_guidance(snapshot.get("documents") or [], manual["materials"])
     required_materials = [item for item in materials if item["required"]]
     completed_required = len([item for item in required_materials if item["status"] == "uploaded"])
     return {
         "schema_version": "1.0",
-        "manual": {"name": MANUAL_NAME, "version": MANUAL_VERSION},
+        "manual": {"name": manual["name"], "version": manual["version"], "case_kind": manual["case_kind"],
+                   "cause": _text((case.get("data") or {}).get("cause_or_charge")), "kind": kind},
         "generated_at": datetime.now().astimezone().isoformat(),
         "current_phase": next(item for item in phase_items if item["state"] == "current"),
         "phases": phase_items,
