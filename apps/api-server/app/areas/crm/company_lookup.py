@@ -234,18 +234,74 @@ def _search_item(row: dict) -> dict:
             "status": status, "address": row.get("Address") or "", "abnormal": _abnormal(status)}
 
 
+ENT_TYPES = {"0": "大陆企业", "1": "社会组织", "4": "事业单位", "7": "医院", "9": "律师事务所", "10": "学校", "11": "机关单位", "-1": "其他"}
+
+
+def _day(value) -> str:
+    return str(value or "")[:10]
+
+
 def _detail(row: dict) -> dict:
     status = str(row.get("Status") or "")
     contact = row.get("ContactInfo") if isinstance(row.get("ContactInfo"), dict) else {}
+    area = row.get("Area") if isinstance(row.get("Area"), dict) else {}
+    revoke = row.get("RevokeInfo") if isinstance(row.get("RevokeInfo"), dict) else {}
+    names = [item for item in (row.get("OriginalName") or []) if isinstance(item, dict)]
+    delegates = [item for item in (row.get("DesignatedRepresentativeList") or []) if isinstance(item, dict)]
     return {
         "name": row.get("Name") or "", "credit_code": row.get("CreditCode") or "",
         "legal_representative": row.get("OperName") or "", "registered_address": row.get("Address") or "",
         "organization_type": _organization_type(str(row.get("EconKind") or "")), "econ_kind": row.get("EconKind") or "",
         "phone": contact.get("PhoneNumber") or row.get("PhoneNumber") or "",
-        "registered_capital": row.get("RegistCapi") or "", "established_date": str(row.get("StartDate") or "")[:10],
+        "registered_capital": row.get("RegistCapi") or "", "established_date": _day(row.get("StartDate")),
         "status": status, "business_scope": row.get("Scope") or "", "registration_authority": row.get("BelongOrg") or "",
         "abnormal": _abnormal(status),
+        # 501226：410 本来就返回、以前没存的字段，一并存下（不多调接口）。
+        "registration_no": row.get("No") or "", "org_code": row.get("OrgNo") or "",
+        "entity_type": ENT_TYPES.get(str(row.get("EntType") or ""), ""), "paid_in_capital": row.get("RecCap") or "",
+        "term_start": _day(row.get("TermStart")), "term_end": _day(row.get("TermEnd")), "approved_date": _day(row.get("CheckDate")),
+        "former_names": [{"name": item.get("Name") or "", "change_date": _day(item.get("ChangeDate"))} for item in names if item.get("Name")],
+        "designated_representatives": [{"partner": item.get("PartnerName") or "", "delegate": item.get("DelegatedName") or ""} for item in delegates],
+        "listed": str(row.get("IsOnStock") or "") == "1", "stock_number": row.get("StockNumber") or "", "stock_type": row.get("StockType") or "",
+        "province": area.get("Province") or row.get("Province") or "", "city": area.get("City") or "", "county": area.get("County") or "",
+        "area_code": row.get("AreaCode") or "",
+        "cancel_date": _day(revoke.get("CancelDate")), "cancel_reason": revoke.get("CancelReason") or "",
+        "revoke_date": _day(revoke.get("RevokeDate")), "revoke_reason": revoke.get("RevokeReason") or "",
+        "qcc_updated_date": _day(row.get("UpdatedDate")),
     }
+
+
+# 当事人信息窗口、被告基本信息文档按这个顺序显示（空的不显示）。
+BUSINESS_FIELDS = [
+    ("name", "企业名称"), ("credit_code", "统一社会信用代码"), ("registration_no", "注册号"), ("org_code", "组织机构代码"),
+    ("legal_representative", "法定代表人"), ("designated_representatives", "委派代表"), ("econ_kind", "企业类型"),
+    ("entity_type", "企业性质"), ("status", "登记状态"), ("established_date", "成立日期"), ("term", "营业期限"),
+    ("approved_date", "核准日期"), ("registered_capital", "注册资本"), ("paid_in_capital", "实缴资本"),
+    ("registration_authority", "登记机关"), ("region", "所在地区"), ("area_code", "行政区划代码"),
+    ("registered_address", "注册地址"), ("phone", "电话"), ("listing", "上市情况"), ("former_names", "曾用名"),
+    ("cancel", "注销信息"), ("revoke", "吊销信息"), ("business_scope", "经营范围"), ("qcc_updated_date", "企查查更新日期"),
+]
+
+
+def business_rows(detail: dict) -> list[dict]:
+    """把工商信息整理成“栏目 + 内容”，窗口和 Word 文档共用。"""
+    def value(key: str) -> str:
+        if key == "term":
+            start, end = detail.get("term_start") or "", detail.get("term_end") or ""
+            return f"{start or '—'} 至 {end or '无固定期限'}" if start or end else ""
+        if key == "region":
+            return "".join(dict.fromkeys(part for part in (detail.get("province"), detail.get("city"), detail.get("county")) if part))
+        if key == "listing":
+            return f"已上市（{detail.get('stock_type') or ''} {detail.get('stock_number') or ''}）".replace("（ ", "（").replace(" ）", "）") if detail.get("listed") else ""
+        if key == "former_names":
+            return "；".join(f"{item['name']}{'（' + item['change_date'] + ' 变更）' if item.get('change_date') else ''}" for item in detail.get("former_names") or [])
+        if key == "designated_representatives":
+            return "；".join("：".join(part for part in (item.get("partner"), item.get("delegate")) if part) for item in detail.get("designated_representatives") or [])
+        if key in ("cancel", "revoke"):
+            day, reason = detail.get(f"{key}_date") or "", detail.get(f"{key}_reason") or ""
+            return "，".join(part for part in (day, reason) if part)
+        return str(detail.get(key) or "")
+    return [{"key": key, "label": label, "value": text} for key, label in BUSINESS_FIELDS if (text := value(key))]
 
 
 # ---------- 查询接口 ----------
@@ -303,10 +359,17 @@ async def company_detail(keyword: str = Query(min_length=2, max_length=60, descr
                          identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """企查查企业工商信息；同一企业 30 天内用缓存，不重复计费。"""
     await _require_customer_create(identity, db)
+    return await lookup_company(keyword, identity["username"], db)
+
+
+async def lookup_company(keyword: str, username: str, db: AsyncSession, *, refresh: bool = False, aliases: tuple[str, ...] = ()) -> dict:
+    """查企业工商信息（410）：先读缓存，refresh=True 才跳过缓存重新计费查询；
+    查到的同时按关键词、企业名称、信用代码和 aliases（如案件里写的当事人名称）存进企业档案（不过期）。"""
     keyword = keyword.strip()
-    username = identity["username"]
-    cached = await _cached(db, "detail", keyword)
+    cached = None if refresh else await _cached(db, "detail", keyword)
     if cached is not None:
+        for name in set(aliases) - {""}:
+            await _store_profile(db, name, cached)
         await _log(db, username, "detail", keyword, cached=True, count=1)
         await db.commit()
         return {**cached, "cached": True}
@@ -323,13 +386,42 @@ async def company_detail(keyword: str = Query(min_length=2, max_length=60, descr
         await _log(db, username, "detail", keyword, cached=False, count=0)
         await db.commit()
         raise HTTPException(404, "企查查没有查到这家企业的工商信息，请手工填写")
-    detail = {**_detail(result), "source": "企查查", "queried_at": _now().isoformat(timespec="seconds")}
+    detail = {**_detail(result), "source": "企查查", "queried_at": _now().isoformat(timespec="seconds"), "queried_by": username}
     await _store_cache(db, "detail", keyword, detail, DETAIL_CACHE_DAYS)
     if detail["credit_code"] and detail["credit_code"] != keyword:
         await _store_cache(db, "detail", detail["credit_code"], detail, DETAIL_CACHE_DAYS)
+    for name in {keyword, detail["name"], detail["credit_code"], *aliases} - {""}:
+        await _store_profile(db, name, detail)
     await _log(db, username, "detail", keyword, cached=False, count=1)
     await db.commit()
     return {**detail, "cached": False}
+
+
+# ---------- 企业档案（501226） ----------
+# 查到的工商信息按名称、信用代码另存一份，不过期：当事人信息窗口直接显示，谁再看都不再扣费，只有“重新查询”才计费。
+
+def _profile_key(keyword: str) -> str:
+    return "qcc_p_" + hashlib.sha256(keyword.strip().encode()).hexdigest()[:40]
+
+
+async def _store_profile(db: AsyncSession, keyword: str, detail: dict) -> None:
+    key = _profile_key(keyword)
+    record = await _config(db, key) or SystemConfig(key=key, label="企查查企业档案", group="外部接口缓存", value={}, description="")
+    record.value = {"data": detail, "keyword": keyword.strip()[:60]}
+    db.add(record)
+
+
+async def company_profile(db: AsyncSession, *keywords: str) -> dict | None:
+    """按名称或信用代码取已查过的工商信息：先找企业档案，没有再找 30 天缓存（501226 之前查过的只在缓存里）。"""
+    for keyword in [item.strip() for item in keywords if item and item.strip()]:
+        record = await _config(db, _profile_key(keyword))
+        if record and isinstance(record.value.get("data"), dict):
+            return record.value["data"]
+    for keyword in [item.strip() for item in keywords if item and item.strip()]:
+        cached = await _cached(db, "detail", keyword)
+        if isinstance(cached, dict):
+            return cached
+    return None
 
 
 async def find_duplicate_customers(db: AsyncSession, credit_code: str, name: str) -> list[dict]:
