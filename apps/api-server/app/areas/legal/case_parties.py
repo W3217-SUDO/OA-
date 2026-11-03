@@ -190,100 +190,35 @@ def _suability(detail: dict, name: str) -> tuple[str, list[str]]:
 
 
 def render_party_docx(record: BusinessRecord, name: str, role: str, kind: str, detail: dict, risk: dict | None = None,
-                      *, risk_note: str = "风险扫描接口未开通") -> bytes:
-    """基本信息：工商信息表。尽职调查报告：工商登记 + 可诉性；有风险数据时再加涉诉、执行与信用、经营风险和“能不能执行到”。"""
+                      *, risk_note: str = "风险扫描接口未开通", business_source: str = "") -> bytes:
+    """基本信息：工商信息表。尽职调查报告：商务版式（party_report），有风险数据时加涉诉、执行与信用、经营风险和执行可能性。"""
+    from app.areas.crm.company_lookup import business_rows
+
+    rows = business_rows(detail)
+    if kind == "due_diligence":
+        from app.areas.legal.party_report import render_due_diligence
+
+        subject, notes = _suability(detail, name)
+        return render_due_diligence(
+            record, name, role, detail, risk, risk_note=risk_note, subject=subject, subject_notes=notes, business_rows=rows,
+            business_risks=_risks(detail), not_covered=[item for item in NOT_COVERED if not risk or not _covered(item, risk)],
+            business_source=business_source)
+
     from io import BytesIO
     from docx import Document
-    from docx.shared import Pt, RGBColor
-
-    from app.areas.crm.company_lookup import business_rows
-    from app.areas.legal import party_risk
+    from docx.shared import Pt
 
     document = Document()
     document.styles["Normal"].font.size = Pt(10.5)
-    title = f"{role}{DOCUMENT_KINDS[kind]}"
-    document.add_heading(f"{title}：{name}", level=1)
+    document.add_heading(f"{role}{DOCUMENT_KINDS[kind]}：{name}", level=1)
     queried = str(detail.get("queried_at") or "")[:10]
     document.add_paragraph(f"案件：{record.serial_no} {record.title}")
-    sources = [f"工商信息：企查查企业工商信息{f'（{queried} 查询）' if queried else ''}"]
-    if kind == "due_diligence":
-        sources.append(f"风险信息：{risk['source_label']}（{str(risk.get('queried_at') or '')[:10]} 查询）" if risk else f"风险信息：{risk_note}")
-    document.add_paragraph("数据来源：" + "；".join(sources) + "。以国家企业信用信息公示系统、中国执行信息公开网等官方公示为准。")
-
-    def red(paragraph_style: str | None, text: str) -> None:
-        run = document.add_paragraph(style=paragraph_style).add_run(text)
-        run.font.color.rgb = RGBColor(0xC0, 0x00, 0x00)
-
-    def table(rows: list[dict]) -> None:
-        grid = document.add_table(rows=0, cols=2)
-        grid.style = "Table Grid"
-        for row in rows:
-            cells = grid.add_row().cells
-            cells[0].text, cells[1].text = row["label"], row["value"]
-
-    def risk_table(key: str, limit: int = 10) -> None:
-        section = (risk or {}).get("sections", {}).get(key)
-        if not section:
-            return
-        label, columns = party_risk.SECTIONS[key]
-        total = f"，合计 {party_risk._yuan(section['amount'])}" if section.get("amount") else ""
-        shown = min(limit, len(section["items"]))
-        more = f"，下表列最新 {shown} 条" if section["count"] > shown else ""
-        document.add_paragraph().add_run(f"{label}：{section['count']} 条{total}{more}").bold = True
-        grid = document.add_table(rows=1, cols=len(columns))
-        grid.style = "Table Grid"
-        for cell, (_field, header) in zip(grid.rows[0].cells, columns):
-            cell.text = header
-        for item in section["items"][:limit]:
-            for cell, text in zip(grid.add_row().cells, party_risk.item_text(key, item)):
-                cell.text = text
-
-    rows = business_rows(detail)
-    if kind == "basic":
-        table(rows)
-    else:
-        subject, notes = _suability(detail, name)
-        execution, reasons = party_risk.enforceability(risk) if risk else ("", [])
-        document.add_heading("一、结论摘要", level=2)
-        document.add_paragraph().add_run(f"主体资格：{subject}").bold = True
-        if risk:
-            red(None, f"执行可能性：{execution}")
-        for item in _risks(detail):
-            red("List Bullet", item)
-        if not risk:
-            document.add_paragraph(f"{risk_note}，未判断被告有没有财产、能不能执行到。")
-        document.add_heading("二、可诉性判断", level=2)
-        document.add_paragraph().add_run(f"（一）能不能列为被告：{subject}").bold = True
-        for note in notes:
-            document.add_paragraph(note, style="List Bullet")
-        document.add_paragraph().add_run("（二）胜诉后能不能执行到：" + (execution or f"{risk_note}，暂未判断。")).bold = True
-        for reason in reasons:
-            document.add_paragraph(reason, style="List Bullet")
-        document.add_paragraph("以上按公开数据判断，管辖、诉讼时效、证据是否充分，请承办律师结合案情判断。")
-        document.add_heading("三、主体工商登记情况", level=2)
-        table(rows)
-        number = iter(["四", "五", "六", "七"])
-        if risk:
-            sections = risk.get("sections") or {}
-            for heading, keys, empty in (("涉诉情况", party_risk.LITIGATION, "未发现立案、开庭公告和裁判文书记录。"),
-                                         ("执行与信用风险", party_risk.ENFORCEMENT, "未发现被执行、失信、限制高消费、终本、破产和司法拍卖记录。"),
-                                         ("经营风险", party_risk.OPERATION, "未发现经营异常、行政处罚、欠税、严重违法、股权出质、动产抵押和清算记录。")):
-                document.add_heading(f"{next(number)}、{heading}", level=2)
-                if not any(key in sections for key in keys):
-                    document.add_paragraph(empty)
-                for key in keys:
-                    risk_table(key)
-            if "partners" in sections or "employees" in sections:
-                document.add_heading(f"{next(number)}、股东及主要人员", level=2)
-                risk_table("partners", 30)
-                risk_table("employees", 30)
-        missing = [item for item in NOT_COVERED if not risk or not _covered(item, risk)]
-        if missing:
-            document.add_heading(f"{next(number)}、本报告未核查的事项", level=2)
-            document.add_paragraph("以下事项本报告的数据源未覆盖，需另行核查：" if risk else f"{risk_note}，以下事项本报告未涉及：")
-            for item in missing:
-                document.add_paragraph(item, style="List Bullet")
-        document.add_paragraph("本报告由系统按固定模板根据公开数据生成，仅供办案参考，请律师核对后使用。")
+    document.add_paragraph(f"数据来源：企查查企业工商信息{f'（{queried} 查询）' if queried else ''}。以国家企业信用信息公示系统为准。")
+    grid = document.add_table(rows=0, cols=2)
+    grid.style = "Table Grid"
+    for row in rows:
+        cells = grid.add_row().cells
+        cells[0].text, cells[1].text = row["label"], row["value"]
     buffer = BytesIO()
     document.save(buffer)
     return buffer.getvalue()

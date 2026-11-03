@@ -61,8 +61,8 @@ class PartyRiskTest(unittest.TestCase):
         record = SimpleNamespace(serial_no="HZMS1", title="测试")
         detail = {"name": "甲公司", "credit_code": "91320612MA24U8T39J", "status": "存续", "queried_at": "2026-11-03"}
         full = text(case_parties.render_party_docx(record, "甲公司", "被告", "due_diligence", detail, self.risk()))
-        self.assertIn("胜诉后能不能执行到：执行风险高", full)
-        self.assertIn("终结本次执行：1 条", full)
+        self.assertIn("能否执行到：执行风险高", full)
+        self.assertIn("终结本次执行（共 1 条）", full)
         self.assertIn("火山方舟专业数据集", full)
         self.assertNotIn("失信被执行人\n", full.split("本报告未核查的事项")[-1], "火山覆盖的类目不再列为未核查")
         bare = text(case_parties.render_party_docx(record, "甲公司", "被告", "due_diligence", detail))
