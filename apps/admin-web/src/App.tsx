@@ -73,7 +73,7 @@ import "dingtalk-jsapi/entry/union";
 import requestDingTalkAuthCode from "dingtalk-jsapi/api/runtime/permission/requestAuthCode";
 import { getENV as getDingTalkEnvironment } from "dingtalk-jsapi/lib/env";
 import NotificationCenter from "./NotificationCenter";
-import BugFeedback from "./BugFeedback";
+import BugFeedback, { withFeedbackMenu } from "./BugFeedback";
 import { FEEDBACK_CENTER_ROUTE, FEEDBACK_ROUTE, FEEDBACK_SOURCE_CONTROLS_KEY, FEEDBACK_SOURCE_PAGE_KEY, FEEDBACK_SOURCE_ROUTE_KEY, rememberFeedbackSource, rememberPageControls } from "./feedback/navigation";
 import GlobalSearch from "./GlobalSearch";
 import {
@@ -1930,7 +1930,9 @@ export default function App() {
   );
   const currentPageLabel = resolveWorkspacePageLabel(active, effectiveMenuItems, personalAgentName);
   const sideMenuItems = filterMenuByGrantedKeys(effectiveMenuItems, grantedMenuKeys, !isNarrowViewport);
-  const sidebarReloadableItems = menuItemsWithDoubleClickReload(sideMenuItems, (item) => {
+  // 501295：侧栏里“问题反馈”紧跟在“工作台”后面（只改显示位置，不进菜单权限）。
+  const sidebarMenuItems = withFeedbackMenu(sideMenuItems, permissionAdministrator);
+  const sidebarReloadableItems = menuItemsWithDoubleClickReload(sidebarMenuItems, (item) => {
     navigate(String(item.key));
     setWorkspaceReloadKey((value) => value + 1);
   });
@@ -2387,7 +2389,7 @@ export default function App() {
               if (parentRoute) navigate(parentRoute);
             }}
             onClick={({ key }) => {
-              const item = flattenMenu(sideMenuItems).find(entry => entry.key === key);
+              const item = flattenMenu(sidebarMenuItems).find(entry => entry.key === key);
               if (!item || item.disabled) return;
               setCollapsedOpenKeys([]);
               if (item.link_url) {
