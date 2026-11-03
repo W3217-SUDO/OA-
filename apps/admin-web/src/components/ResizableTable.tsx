@@ -388,6 +388,8 @@ function measureLeaves<RecordType extends object>(columns: TableColumnsType<Reco
     const title = typeof column.title === "string" ? column.title.trim() : "";
     const hasRichTitle = Boolean(column.title) && typeof column.title !== "string";
     const isAction = title.includes("操作");
+    // 列 className 带 oa-fit-nowrap 的（如上下两行的“进度及时长”）每行都要一行放下，自适应时从别的列匀宽度。
+    const keepLine = typeof column.className === "string" && column.className.split(/\s+/).includes("oa-fit-nowrap");
     // 写了像素宽度的按声明宽度；没写的（由样式表或表格自动分配）按实际渲染宽度，读不到时按表头估算。
     const headerEstimate = Math.max(80, Math.ceil(textWidth(title)) + pad);
     const renderedWidth = rendered?.header[leafIndex] || 0;
@@ -434,12 +436,12 @@ function measureLeaves<RecordType extends object>(columns: TableColumnsType<Reco
     // 金额、日期、编号至少放下九成数据的整行；文字统一折行（最多两行），最小宽度保证九成数据两行内放下；理想宽度让九成数据一行放下。
     // 人名、状态这类短文字（约五个字以内）不拆行。
     const textMin = wide <= 68 ? Math.ceil(wide) : Math.max(68, Math.ceil(Math.min(Math.max(typical, wide), 180) * 0.5));
-    const contentMin = unbreakable ? Math.ceil(solid || wide) : Math.max(textMin, Math.ceil(solid));
+    const contentMin = unbreakable ? Math.ceil(solid || wide) : keepLine ? Math.ceil(wide) + 8 : Math.max(textMin, Math.ceil(solid));
     const totalMin = rendered?.totals[leafIndex] || 0;
     const min = Math.max(FIT_MIN_COLUMN_WIDTH, headerMin, contentMin + pad, totalMin ? totalMin + pad : 0);
     const want = Math.max(min, Math.ceil(Math.max(headerWidth, wide)) + pad);
     // 金额、日期、编号（包括合计金额）的最小宽度不受原列宽限制，原列宽偏窄时宁可放不下也不截断；文字列最多收窄到原列宽。
-    const finalMin = unbreakable || totalMin ? min : Math.min(min, declared);
+    const finalMin = unbreakable || totalMin || keepLine ? min : Math.min(min, declared);
     leaves.push({ declared: Math.max(declared, finalMin), min: finalMin, want: Math.min(want, Math.max(declared, finalMin)), locked: false, numeric: unbreakable });
   });
   visit(columns);

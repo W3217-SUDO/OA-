@@ -27,3 +27,11 @@ test("合一栏上原告下被告，操作列靠右收窄、进度时长放宽",
   assert.match(columns, /context\.isRefundCaseFeeRoute && header === "操作" \? \("right" as const\)/);
   assert.match(columns, /context\.isRefundCaseFeeRoute && header === "操作" \? \{ align: "right" as const \}/);
 });
+
+test("进度及时长自适应时不压窄，从别的列匀宽度（陶国南 11-03）", () => {
+  assert.match(columns, /header === "进度及时长" \? \{ className: "oa-fit-nowrap", sorter:/);
+  const table = fs.readFileSync(new URL("../../src/components/ResizableTable.tsx", import.meta.url), "utf8");
+  assert.match(table, /const keepLine = typeof column\.className === "string" && column\.className\.split\(\/\\s\+\/\)\.includes\("oa-fit-nowrap"\)/);
+  assert.match(table, /keepLine \? Math\.ceil\(wide\) \+ 8 :/);
+  assert.match(table, /const finalMin = unbreakable \|\| totalMin \|\| keepLine \? min :/);
+});

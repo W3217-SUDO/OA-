@@ -79,7 +79,7 @@ export function createConfiguredColumns(context: {
       </span>) : (header),
         key: `${header}-${index}`,
         ...moneyColumnStyle(header),
-        ...(header === "进度及时长" ? { sorter: (a: any, b: any) => Number(a.data?.refund_progress_days || 0) - Number(b.data?.refund_progress_days || 0) } : {}),
+        ...(header === "进度及时长" ? { className: "oa-fit-nowrap", sorter: (a: any, b: any) => Number(a.data?.refund_progress_days || 0) - Number(b.data?.refund_progress_days || 0) } : {}),
         ...(header === "进度时长" ? { align: "right" as const, sorter: (a: any, b: any) => Number(a.data?.refund_progress_days || 0) - Number(b.data?.refund_progress_days || 0) } : {}),
         width: context.initialView === "finance-internal-settle"
             ? context.settlementColumnWidths[index]
