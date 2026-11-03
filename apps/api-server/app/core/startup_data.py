@@ -143,7 +143,14 @@ async def initialize_startup_data(
             if expected:
                 name, extra = expected
                 phase.name = name
+                # 501222：重置模板阶段时保留“预期停留天数”（管理员在系统参数里改的），没有时按初始天数补上。
+                from app.core.case_phase_expected_days import EXPECTED_DAYS_KEY, INITIAL_EXPECTED_DAYS
+                previous_extra = phase.extra or {}
                 phase.extra = dict(extra)
+                if EXPECTED_DAYS_KEY in previous_extra:
+                    phase.extra[EXPECTED_DAYS_KEY] = previous_extra[EXPECTED_DAYS_KEY]
+                elif name in INITIAL_EXPECTED_DAYS:
+                    phase.extra[EXPECTED_DAYS_KEY] = INITIAL_EXPECTED_DAYS[name]
                 phase.sort_order = int(extra.get("sort_order") or 0)
                 phase.is_active = True
                 phase.updated_by = "system"
