@@ -20,6 +20,7 @@ type Props = {
   onOpenIntake?: (id: string) => void;
   onStartTask?: (skillId: string) => void;
   onOpenTaskConversation?: (id: string, skillId: string) => void;
+  onOpenCaseAgent?: (caseId: number, serialNo: string) => void;
 };
 
 const TASK_ICONS: Record<string, ReactNode> = { tasks: <ScheduleOutlined />, intake: <InboxOutlined />, customer: <SolutionOutlined /> };
@@ -32,7 +33,7 @@ const shortTime = (value?: string) => {
   return `${date.getMonth() + 1}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 };
 
-export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPersonalSpace, onReopenConfirmation, onReturnWorkbench, onOpenCaseAgentConversation, onOpenTaskConversation }: Props) {
+export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPersonalSpace, onReopenConfirmation, onReturnWorkbench, onOpenCaseAgentConversation, onOpenTaskConversation, onOpenCaseAgent }: Props) {
   const [expanded, setExpanded] = useState<string[]>([]);
   // 501147：历史会话标题写明属于哪个空间。
   const current = workspace.currentWorkspace;
@@ -92,7 +93,7 @@ export function AssistantWorkspaceSidebar({ workspace, name, logoSrc, onOpenPers
         {/* 501147（tgn 22:50）：收文已是固定会话，左侧不再另列收文历史，避免出现两个“收文助手”。 */}
         <Button type="text" className="assistant-workspace-generated-entry" icon={<FolderOpenOutlined />} onClick={onOpenPersonalSpace}>AI生成文件夹</Button>
         <ConfirmationHistory onReopen={onReopenConfirmation} busy={busy || !!workspace.dismissalId} />
-        <ConversationWorkspaceNavigation workspace={workspace} history={history} />
+        <ConversationWorkspaceNavigation workspace={workspace} history={history} onOpenCaseAgent={onOpenCaseAgent} />
       </>}
     />
     <div className="assistant-workspace-footer">

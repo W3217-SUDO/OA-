@@ -492,6 +492,7 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
         onOpenIntake={openIntake}
         onStartTask={startTask}
         onOpenTaskConversation={openTaskConversation}
+        onOpenCaseAgent={onOpenCaseAgent}
       />}
       {desktopWorkspace ? <div className="assistant-workspace-main">{content}</div> : content}
       {caseAgentFolderOpen && currentCaseProject?.case_id && <CaseAgentFileFolderModal open caseId={currentCaseProject.case_id} serialNo={currentCaseProject.serial_no} onClose={() => setCaseAgentFolderOpen(false)} />}

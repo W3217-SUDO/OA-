@@ -6,7 +6,9 @@ import { PERSONAL_CONVERSATION_WORKSPACE } from "./conversationWorkspace";
 import { errorText, type ConversationWorkspace } from "./types";
 import type { usePersonalWorkspace } from "./usePersonalWorkspace";
 
-type Props = { workspace: ReturnType<typeof usePersonalWorkspace>; history?: ReactNode };
+type Props = { workspace: ReturnType<typeof usePersonalWorkspace>; history?: ReactNode;
+  /** 501185（陶国南 11-03 09:36）：点案件空间里的案件，跳到该案件详情并在右下角弹出案件智能体浮窗。 */
+  onOpenCaseAgent?: (caseId: number, serialNo: string) => void };
 
 // 501147：每个空间的收起/展开记在本机，下次打开保持（读写失败时按默认展开）。
 const COLLAPSE_STORAGE_KEY = "oa-agent-space-collapsed-v1";
@@ -16,7 +18,7 @@ const readCollapsed = (): Record<string, boolean> => {
 };
 
 /** 空间导航；history 紧贴放在所选空间下面（501147：历史会话属于所在空间，点空间标题收起/展开）。 */
-export function ConversationWorkspaceNavigation({ workspace, history }: Props) {
+export function ConversationWorkspaceNavigation({ workspace, history, onOpenCaseAgent }: Props) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(readCollapsed);
   const setSpaceCollapsed = (key: string, value: boolean) => setCollapsed((previous) => {
     const next = { ...previous, [key]: value };
@@ -55,7 +57,7 @@ export function ConversationWorkspaceNavigation({ workspace, history }: Props) {
           const key = `case:${item.case_id}`;
           return <div key={item.case_id}>
             <Tooltip title={!item.available ? item.unavailable_reason : `${item.serial_no} · ${item.title}`}>
-              <Button type="text" className="assistant-workspace-project" icon={caret(active && !collapsed[key])} aria-current={active ? "page" : undefined} aria-expanded={active ? !collapsed[key] : false} disabled={busy || !!workspace.loadError || !canUseCases || !item.available} onClick={() => openSpace(key, active, { kind: "case", case_id: item.case_id! })}>
+              <Button type="text" className="assistant-workspace-project" icon={caret(active && !collapsed[key])} aria-current={active ? "page" : undefined} aria-expanded={active ? !collapsed[key] : false} disabled={busy || !!workspace.loadError || !canUseCases || !item.available} onClick={() => onOpenCaseAgent ? onOpenCaseAgent(item.case_id!, item.serial_no || "") : openSpace(key, active, { kind: "case", case_id: item.case_id! })}>
                 <span className="assistant-workspace-project-label"><b>{item.serial_no}</b><span>{item.title}</span></span>
               </Button>
             </Tooltip>
@@ -64,6 +66,9 @@ export function ConversationWorkspaceNavigation({ workspace, history }: Props) {
         })}
       </div>}
     </div>
-    <CaseWorkspaceSelector open={selectorOpen} blocked={!!workspace.loadError} onClose={() => setSelectorOpen(false)} onSelect={async (item) => { await workspace.selectWorkspace({ kind: "case", case_id: item.id }); setExpanded(true); }} />
+    <CaseWorkspaceSelector open={selectorOpen} blocked={!!workspace.loadError} onClose={() => setSelectorOpen(false)} onSelect={async (item) => {
+      if (onOpenCaseAgent) { setSelectorOpen(false); onOpenCaseAgent(item.id, item.serial_no); return; }
+      await workspace.selectWorkspace({ kind: "case", case_id: item.id }); setExpanded(true);
+    }} />
   </>;
 }
