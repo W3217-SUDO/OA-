@@ -26,6 +26,7 @@ import type { usePersonalWorkspace } from "./usePersonalWorkspace";
 import { COURT_INTAKE_SKILL, NEW_CONVERSATION_COMMANDS, taskEntryForSkill } from "../agentSkillRouting";
 import "./assistant-panel.css";
 import "../agentPending.css";
+import "../composerSingleBox.css";
 
 export type { AssistantSuggestion };
 

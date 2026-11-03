@@ -1,0 +1,73 @@
+/* 陶威 11-03：输入区只要一个框。外框圆角、平时浅灰、获得焦点变主题色；里面的文字框不要自己的边框和焦点描边。
+   下拉、案件文件、附件、发送排成一排放在同一个框里。钉钉 Chrome 100：不用 :has、color-mix，:focus-within 可用。 */
+
+/* 智能体中心（首页和对话中） */
+.assistant-composer .assistant-composer-input,
+.assistant-composer .assistant-composer-input:focus-within {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.assistant-composer textarea.ant-input,
+.assistant-composer textarea.ant-input:focus,
+.assistant-composer textarea.ant-input:focus-visible {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+}
+
+.ai-chat-page.is-desktop-workspace .assistant-composer {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  border: 1px solid var(--oa-border);
+  border-radius: 12px;
+}
+.ai-chat-page.is-desktop-workspace .assistant-composer:focus-within {
+  border-color: var(--workspace-accent, var(--oa-primary));
+  outline: none;
+  box-shadow: none;
+}
+.ai-chat-page.is-desktop-workspace .assistant-composer > * { flex: 1 1 100%; min-width: 0; }
+.ai-chat-page.is-desktop-workspace .assistant-composer > .assistant-task-hint { order: -1; }
+/* 表单只负责提交，不再单独画框：文字框占满一行，发送按钮跟工具排在下一行最右边。 */
+.ai-chat-page.is-desktop-workspace .assistant-composer .assistant-composer-input { display: contents; }
+.ai-chat-page.is-desktop-workspace .assistant-composer .assistant-composer-input > :not(.assistant-composer-actions) {
+  order: 0;
+  flex: 1 1 100%;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 4px;
+}
+.ai-chat-page.is-desktop-workspace .assistant-composer > .assistant-context-items { order: 1; }
+.ai-chat-page.is-desktop-workspace .assistant-composer > .assistant-context-tools { order: 2; flex: 1 1 auto; }
+.ai-chat-page.is-desktop-workspace .assistant-composer .assistant-composer-actions { order: 3; flex: none; margin-left: auto; }
+.ai-chat-page.is-desktop-workspace .assistant-composer > .assistant-composer-links { order: 4; }
+
+
+/* 案件智能体浮窗 */
+.case-agent-panel .case-agent-composer {
+  margin: 8px 14px 12px;
+  padding: 6px 8px;
+  border: 1px solid var(--oa-border);
+  border-radius: 12px;
+  background: var(--oa-surface);
+  box-shadow: none;
+  align-items: end;
+}
+.case-agent-panel .case-agent-composer:focus-within {
+  border-color: var(--oa-primary);
+  box-shadow: none;
+}
+.case-agent-panel .case-agent-composer textarea,
+.case-agent-panel .case-agent-composer textarea:hover,
+.case-agent-panel .case-agent-composer textarea:focus {
+  padding: 8px 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+}

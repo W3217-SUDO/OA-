@@ -19,6 +19,7 @@ StopOutlined,
 } from "@ant-design/icons";
 import { Alert,Button,Dropdown,Image,Input,message,Modal,Popover,Select,Space,Tag,Tooltip,Tree } from "antd";
 import "../agentPending.css";
+import "../composerSingleBox.css";
 import { useEffect, useState } from "react";
 import { AgentOperationPreview, agentOperationName, hasAgentOperationPreview } from "../AgentOperationPreview";
 import { AgentToolResult } from "../AgentToolResult";
