@@ -106,6 +106,19 @@ def _signature(key: str, secret: str) -> dict:
     return {"Token": token, "Timespan": timespan}
 
 
+class QccError(HTTPException):
+    """企查查返回的业务错误，带上官方状态码，调用方据此判断接口是否开通。"""
+
+    def __init__(self, qcc_status: str):
+        super().__init__(502, qcc_error_message(qcc_status))
+        self.qcc_status = qcc_status
+
+
+# 接口没买或没开通（官方状态码 111、113、114、214）：模糊搜索不可用时改用工商信息按全称直接查（陶威 11-03 只开通了 410）。
+QCC_NOT_OPEN = {"111", "113", "114", "214"}
+EXACT_HINT = "企查查模糊搜索接口未开通，只能按企业全称或统一社会信用代码查，请输入准确全称后再点“查企业”"
+
+
 async def _qcc_get(path: str, params: dict, key: str, secret: str) -> dict:
     try:
         async with httpx.AsyncClient(timeout=15, trust_env=False, follow_redirects=False) as client:
@@ -121,7 +134,7 @@ async def _qcc_get(path: str, params: dict, key: str, secret: str) -> dict:
         return payload
     if status == "201":
         return {"Status": "201", "Result": None}
-    raise HTTPException(502, qcc_error_message(status))
+    raise QccError(status)
 
 
 def qcc_error_message(status: str) -> str:
@@ -261,12 +274,28 @@ async def search_companies(keyword: str = Query(min_length=2, max_length=60),
     except HTTPException as exc:
         await _log(db, username, "search", keyword, cached=False, count=0, error=str(exc.detail))
         await db.commit()
+        if isinstance(exc, QccError) and exc.qcc_status in QCC_NOT_OPEN:
+            return await _exact_candidates(keyword, identity, db)
         raise
     items = [_search_item(row) for row in (payload.get("Result") or []) if isinstance(row, dict)]
     await _store_cache(db, "search", keyword, items, SEARCH_CACHE_DAYS)
     await _log(db, username, "search", keyword, cached=False, count=len(items))
     await db.commit()
     return {"items": items, "cached": False, **quota}
+
+
+async def _exact_candidates(keyword: str, identity: dict, db: AsyncSession) -> dict:
+    """模糊搜索没开通时按全称或信用代码直接查工商信息，查到就作为唯一候选；选中时读缓存，不再计费。"""
+    try:
+        detail = await company_detail(keyword, identity, db)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return {"items": [], "cached": False, "mode": "exact", "hint": EXACT_HINT}
+        raise
+    item = {"name": detail["name"], "credit_code": detail["credit_code"], "legal_person": detail["legal_representative"],
+            "start_date": detail["established_date"], "status": detail["status"], "address": detail["registered_address"],
+            "abnormal": detail["abnormal"]}
+    return {"items": [item], "cached": detail.get("cached", False), "mode": "exact", "hint": EXACT_HINT}
 
 
 @router.get(f"{settings.api_prefix}/company-lookup/detail")
@@ -359,7 +388,7 @@ PROVIDERS = [{
     "id": "qcc", "name": "企查查开放平台", "doc_url": "https://openapi.qcc.com/dataApi/886",
     "usage": "新建客户时“查企业”：输入名称查询，选中后带出工商基本信息",
     "fields": [{"name": "key", "label": "Key（应用 AppKey）"}, {"name": "secret", "label": "SecretKey（密钥）"}],
-    "test_note": "测试连接会做一次企业模糊搜索，计 1 次费用（0.10 元）", "has_limits": True,
+    "test_note": "测试连接会分别调一次企业模糊搜索（0.10 元）和企业工商信息（0.20 元）", "has_limits": True,
 }]
 
 
@@ -404,14 +433,22 @@ async def save_qcc_limits(body: LimitInput, identity: dict = Depends(current_ide
 
 @router.post(f"{settings.api_prefix}/external-credentials/qcc/test")
 async def test_qcc_connection(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    """测试连接：用当前凭据做一次模糊搜索（计 1 次费用），只返回是否连通，不返回企业数据。"""
+    """测试连接：用当前凭据分别调一次模糊搜索和工商信息（各计 1 次费用），只返回各接口是否可用，不返回企业数据。"""
     _require_admin(identity)
     key, secret, source = await credentials(db)
-    ok, message = True, "连接正常"
-    try:
-        await _qcc_get(SEARCH_PATH, {"searchKey": "企查查科技"}, key, secret)
-    except HTTPException as exc:
-        ok, message = False, str(exc.detail)
+    # 两个接口分别测：模糊搜索（886）、工商信息（410）；工商信息能用就算连通，模糊搜索没开通时“查企业”按全称直接查。
+    results = []
+    for label, path, params in (("模糊搜索", SEARCH_PATH, {"searchKey": "企查查科技"}),
+                                ("工商信息", DETAIL_PATH, {"keyword": "企查查科技股份有限公司"})):
+        try:
+            await _qcc_get(path, params, key, secret)
+            results.append((label, True, "正常"))
+        except HTTPException as exc:
+            results.append((label, False, str(exc.detail)))
+    ok = results[1][1]
+    message = "；".join(f"{label}：{text}" for label, _, text in results)
+    if ok and not results[0][1]:
+        message += "。模糊搜索不可用，“查企业”只能按企业全称或统一社会信用代码查"
     await _log(db, identity["username"], "test", "测试连接", cached=False, count=0, error="" if ok else message)
     record = await _config(db, CREDENTIAL_KEY, lock=True)
     if record is not None:

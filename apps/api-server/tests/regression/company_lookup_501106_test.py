@@ -111,6 +111,46 @@ class CompanyLookupTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(listed["items"][0]["status"]["configured"])
         self.assertNotIn(FAKE_KEY, json.dumps(listed, ensure_ascii=False)); self.assertNotIn(FAKE_SECRET, json.dumps(listed, ensure_ascii=False))
 
+    async def only_detail_get(self, path, params, key, secret):
+        """陶威 11-03：只开通了 410，模糊搜索返回 214。"""
+        self.calls.append((path, params))
+        if path == qcc.SEARCH_PATH:
+            raise qcc.QccError("214")
+        if params.get("keyword") == "上海甲科技有限公司":
+            return await self.fake_get(path, params, key, secret)
+        return {"Status": "201", "Result": None}
+
+    async def test_search_falls_back_to_exact_detail_when_fuzzy_not_open(self):
+        with patch.object(qcc, "_qcc_get", self.only_detail_get), \
+                patch.dict("os.environ", {"QCC_APP_KEY": FAKE_KEY, "QCC_SECRET_KEY": FAKE_SECRET}):
+            async with self.sessions() as db:
+                found = await qcc.search_companies("上海甲科技有限公司", LAWYER, db)
+                self.assertEqual(found["mode"], "exact")
+                self.assertEqual([item["name"] for item in found["items"]], ["上海甲科技有限公司"])
+                self.assertEqual(found["items"][0]["credit_code"], "91310000AAAAAAAAAA")
+                # 选中时读 30 天缓存，不再调接口、不再计费。
+                calls = len(self.calls)
+                detail = await qcc.company_detail("91310000AAAAAAAAAA", LAWYER, db)
+                self.assertTrue(detail["cached"]); self.assertEqual(len(self.calls), calls)
+                missing = await qcc.search_companies("上海甲", LAWYER, db)
+                self.assertEqual((missing["items"], missing["mode"]), ([], "exact"))
+                self.assertIn("全称", missing["hint"])
+
+    async def test_connection_test_reports_each_interface(self):
+        with patch.object(qcc, "_qcc_get", self.only_detail_get), \
+                patch.dict("os.environ", {"QCC_APP_KEY": FAKE_KEY, "QCC_SECRET_KEY": FAKE_SECRET}):
+            self.calls = []
+            async def detail_ok(path, params, key, secret):
+                if path == qcc.SEARCH_PATH:
+                    raise qcc.QccError("214")
+                return {"Status": "200", "Result": {"Name": "企查查科技股份有限公司"}}
+            with patch.object(qcc, "_qcc_get", detail_ok):
+                async with self.sessions() as db:
+                    result = await qcc.test_qcc_connection(ADMIN, db)
+        self.assertTrue(result["ok"])
+        self.assertIn("模糊搜索：企查查返回 214", result["message"])
+        self.assertIn("工商信息：正常", result["message"])
+
     async def test_only_actual_system_admin(self):
         self.admin.stop()
         try:

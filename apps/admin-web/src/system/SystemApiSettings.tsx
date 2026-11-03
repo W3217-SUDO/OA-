@@ -59,7 +59,7 @@ function ProviderCard({ provider, onChanged }: { provider: Provider; onChanged: 
     setTesting(true);
     try {
       const { data } = await api.post<{ ok: boolean; message: string }>(`${base}/test`);
-      if (data.ok) message.success("连接正常"); else message.error(data.message);
+      if (data.ok) message.success(data.message || "连接正常"); else message.error(data.message);
       await reload();
     } catch (failure) { message.error(errorText(failure, "测试连接失败")); }
     finally { setTesting(false); }

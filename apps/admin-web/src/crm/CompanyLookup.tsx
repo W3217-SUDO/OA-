@@ -19,18 +19,23 @@ const errorText = (failure: unknown, fallback: string) => {
   return typeof detail === "string" && detail ? detail : fallback;
 };
 
-/** 新建客户“查企业”（501106）：输入至少 2 个字查企查查，选中后带出工商信息，所有字段仍可手改；先查重再带入。 */
+/** 新建客户“查企业”（501106）：输入至少 2 个字查企查查（模糊搜索未开通时按全称直接查），选中后带出工商信息，所有字段仍可手改；先查重再带入。 */
 export function CompanyLookup({ form, disabled }: { form: FormInstance; disabled?: boolean }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<Candidate[]>([]);
   const [error, setError] = useState("");
   const [picking, setPicking] = useState("");
+  const [hint, setHint] = useState("");
   const search = async () => {
     const keyword = String(form.getFieldValue("title") || "").trim();
     if (keyword.length < 2) { message.warning("请先在客户名称里输入至少 2 个字"); return; }
-    setOpen(true); setLoading(true); setError(""); setItems([]);
-    try { const { data } = await api.get<{ items: Candidate[] }>("/company-lookup/search", { params: { keyword } }); setItems(data.items); }
+    setOpen(true); setLoading(true); setError(""); setHint(""); setItems([]);
+    try {
+      // 模糊搜索接口没开通时，后端改按全称或信用代码直接查工商信息（mode=exact），这里提示要输全称。
+      const { data } = await api.get<{ items: Candidate[]; mode?: string; hint?: string }>("/company-lookup/search", { params: { keyword } });
+      setItems(data.items); setHint(data.mode === "exact" ? data.hint || "" : "");
+    }
     catch (failure) { setError(errorText(failure, "查询失败，请手工填写")); }
     finally { setLoading(false); }
   };
@@ -61,6 +66,7 @@ export function CompanyLookup({ form, disabled }: { form: FormInstance; disabled
     <Button icon={<SearchOutlined />} disabled={disabled} onClick={() => void search()}>查企业</Button>
     <Modal title="从企查查查企业" open={open} width={POPUP_WIDTH.md} footer={null} onCancel={() => setOpen(false)} destroyOnHidden>
       {error && <Alert type="warning" showIcon title={error} />}
+      {hint && !error && <Alert type="info" showIcon title={hint} style={{ marginBottom: 8 }} />}
       <List loading={loading} dataSource={items} locale={{ emptyText: loading ? "查询中" : "没有找到匹配的企业，请换个关键词或手工填写" }}
         renderItem={(item) => <List.Item actions={[<Button key="pick" type="link" loading={picking === (item.credit_code || item.name)} disabled={!!picking} onClick={() => void pick(item)}>选择</Button>]}>
           <List.Item.Meta title={<span>{item.name} {item.status && <Tag color={item.abnormal ? "error" : "success"}>{item.status}</Tag>}</span>}
