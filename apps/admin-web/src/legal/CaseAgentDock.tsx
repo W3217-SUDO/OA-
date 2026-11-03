@@ -62,9 +62,11 @@ function readViewport() {
 
 type Props = { open: boolean; title: ReactNode; onClose: () => void; children: ReactNode;
   /** 每次点“案件智能体”加一：窗口已打开也重新显示并拉回可视区。 */
-  revealKey?: number };
+  revealKey?: number;
+  /** 501185（陶国南 11-03 11:11）：案件详情打开着、智能体没开时，右侧默认显示收起状态的小按钮，点了才展开（手机不显示）。 */
+  idleTab?: boolean; onExpandIdle?: () => void };
 
-export function CaseAgentDock({ open, title, onClose, children, revealKey = 0 }: Props) {
+export function CaseAgentDock({ open, title, onClose, children, revealKey = 0, idleTab = false, onExpandIdle }: Props) {
   const [viewport, setViewport] = useState(readViewport);
   const [rect, setRect] = useState<WindowRect>(() => visibleRect(readRect(), viewport));
   const [collapsed, setCollapsed] = useState(false);
@@ -79,7 +81,7 @@ export function CaseAgentDock({ open, title, onClose, children, revealKey = 0 }:
   const [hostHidden, setHostHidden] = useState(false);
   useEffect(() => {
     setHostHidden(false);
-    if (!open) return;
+    if (!open && !idleTab) return;
     const page = anchorRef.current?.closest(".workspace-page");
     if (!page || typeof MutationObserver === "undefined") return;
     let wasCached = page.classList.contains("is-cached");
@@ -90,7 +92,7 @@ export function CaseAgentDock({ open, title, onClose, children, revealKey = 0 }:
     });
     observer.observe(page, { attributes: true, attributeFilter: ["class"] });
     return () => observer.disconnect();
-  }, [open, revealKey]);
+  }, [open, revealKey, idleTab]);
 
   // 打开或再次点“案件智能体”：展开、取消放大，位置不在可视区就回到右下角。
   useEffect(() => {
@@ -135,8 +137,15 @@ export function CaseAgentDock({ open, title, onClose, children, revealKey = 0 }:
     return { ...start, w: start.w + dx, h: start.h + dy };
   });
 
-  if (!open || typeof document === "undefined") return null;
+  if (typeof document === "undefined") return null;
   const anchor = <span ref={anchorRef} hidden aria-hidden="true" className="case-agent-dock-anchor" />;
+  if (!open) {
+    if (!idleTab || viewport.mobile || !onExpandIdle) return null;
+    if (hostHidden) return anchor;
+    return <>{anchor}{createPortal(<button type="button" className="case-agent-dock-tab" aria-label="展开案件智能体" title="展开案件智能体" onClick={onExpandIdle}>
+      <RobotOutlined /><span>案件智能体</span>
+    </button>, document.body)}</>;
+  }
   if (hostHidden) return anchor;
   if (collapsed) return <>{anchor}{createPortal(<button type="button" className="case-agent-dock-tab" aria-label="展开案件智能体" title="展开案件智能体" onClick={() => setCollapsed(false)}>
     <RobotOutlined /><span>案件智能体</span>

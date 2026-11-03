@@ -149,3 +149,24 @@ test("tgn 09:05：判断不了所在页签时宁可显示；点“案件智能�
   assert.equal(visible(), true, "再点“案件智能体”一定显示");
   await act(async () => { renderer.unmount(); });
 });
+
+test("501185（陶国南 11:11）：平时进案件详情，右侧默认显示收起的小按钮，点了才展开；手机不显示", async () => {
+  const env = environment();
+  const { CaseAgentDock } = load(env);
+  const expanded = [];
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(CaseAgentDock, { open: false, idleTab: true, onExpandIdle: () => expanded.push(1), title: "案件智能体", onClose() {} }, "内容")); });
+  assert.equal(renderer.root.findAllByProps({ "aria-label": "案件智能体" }).length, 0, "不自动展开");
+  await act(async () => { renderer.root.findByProps({ "aria-label": "展开案件智能体" }).props.onClick(); });
+  assert.equal(expanded.length, 1, "点右侧小按钮去打开智能体");
+  await act(async () => { renderer.update(React.createElement(CaseAgentDock, { open: true, revealKey: 1, idleTab: true, onExpandIdle() {}, title: "案件智能体", onClose() {} }, "内容")); });
+  assert.equal(renderer.root.findAllByProps({ "aria-label": "案件智能体" }).length, 1, "打开后展开");
+  await act(async () => { renderer.update(React.createElement(CaseAgentDock, { open: false, idleTab: false, title: "案件智能体", onClose() {} }, "内容")); });
+  assert.equal(renderer.root.findAllByProps({ "aria-label": "展开案件智能体" }).length, 0, "没在看案件详情时不显示");
+  await act(async () => { renderer.unmount(); });
+  const phone = environment({ width: 390, height: 800, mobile: true });
+  const mobile = load(phone).CaseAgentDock;
+  await act(async () => { renderer = create(React.createElement(mobile, { open: false, idleTab: true, onExpandIdle() {}, title: "案件智能体", onClose() {} }, "内容")); });
+  assert.equal(renderer.root.findAllByProps({ "aria-label": "展开案件智能体" }).length, 0, "手机不显示右侧小按钮");
+  await act(async () => { renderer.unmount(); });
+});

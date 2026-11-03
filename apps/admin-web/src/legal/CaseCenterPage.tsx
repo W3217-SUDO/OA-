@@ -4271,7 +4271,9 @@ export default function CaseCenterPage({
         <p><b>记录人：</b>{viewingCaseLog ? casePersonDisplayName(viewingCaseLog.operator, viewingCaseLog.operator_display_name) : "—"}</p>
         <p className="case-log-detail-content"><b>日志内容：</b>{viewingCaseLog?.content || "—"}</p>
       </Modal>
-      <CaseAgentDrawer {...agentDrawerProps} counselDetailCapabilities={counselDetailCapabilities} />
+      {/* 501185（陶国南 11-03 11:11）：平时进入案件详情，右侧默认显示收起状态的案件智能体，点了才展开；从智能体中心案件空间进来、或点“案件智能体”按钮时直接展开。 */}
+      <CaseAgentDrawer {...agentDrawerProps} counselDetailCapabilities={counselDetailCapabilities}
+        agentIdleTab={Boolean(viewingCounselCase)} openIdleAgent={() => { if (viewingCounselCase) openCaseAgent(viewingCounselCase); }} />
       <Modal
         open={Boolean(attachmentPreview)}
         title={`在线查看：${attachmentPreview?.name || ""}`}

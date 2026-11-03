@@ -42,6 +42,9 @@ export const caseConversationTitle = (now = new Date()) => `会话 ${now.getMont
 interface CaseAgentDrawerProps {
   agentOpen: boolean;
   agentRevealKey?: number;
+  /** 501185：案件详情打开着时，智能体没开也在右侧显示收起状态的小按钮。 */
+  agentIdleTab?: boolean;
+  openIdleAgent?: () => void;
   closeCaseAgent: () => void;
   agentCase: CaseRow | null;
   agentDrawerWidth: number;
@@ -88,6 +91,8 @@ interface CaseAgentDrawerProps {
 export const CaseAgentDrawer = ({
   agentOpen,
   agentRevealKey,
+  agentIdleTab,
+  openIdleAgent,
   closeCaseAgent,
   agentCase,
   agentStatus,
@@ -145,6 +150,8 @@ export const CaseAgentDrawer = ({
     <CaseAgentDock
       open={agentOpen}
       revealKey={agentRevealKey}
+      idleTab={agentIdleTab}
+      onExpandIdle={openIdleAgent}
       title={<span><RobotOutlined /> 案件智能体：{agentCase?.serial_no || ""}</span>}
       onClose={closeCaseAgent}
     >
