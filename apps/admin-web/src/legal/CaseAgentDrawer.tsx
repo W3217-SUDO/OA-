@@ -2,6 +2,7 @@ import { POPUP_WIDTH } from "../components/common/popupSize";
 import { CaseAgentDock } from "./CaseAgentDock";
 import { StatusTag } from "../components/common/StatusTag";
 import {
+CheckOutlined,
 CloseOutlined,
 DownOutlined,
 FileWordOutlined,
@@ -17,6 +18,7 @@ SendOutlined,
 StopOutlined,
 } from "@ant-design/icons";
 import { Alert,Button,Dropdown,Image,Input,message,Modal,Popover,Select,Space,Tag,Tooltip,Tree } from "antd";
+import "../agentPending.css";
 import { useEffect, useState } from "react";
 import { AgentOperationPreview, agentOperationName, hasAgentOperationPreview } from "../AgentOperationPreview";
 import { AgentToolResult } from "../AgentToolResult";
@@ -212,8 +214,11 @@ export const CaseAgentDrawer = ({
           </Popover>
         </div>
         {!agentLoading && !agentStatus?.ready && <Alert type="warning" showIcon title="案件智能体暂未就绪" description="请检查模型与 DPH 运行环境后重试。" />}
-        {agentState?.pending_actions?.length ? <section className="case-agent-actions">
-          <div className="case-agent-section-title">待审批操作</div>
+        {agentState?.pending_actions?.length ? <section className={`case-agent-actions${agentState.pending_actions.some((action) => action.status === "pending") ? " agent-pending-card" : ""}`}>
+          <div className="case-agent-section-title agent-pending-title">
+            {agentState.pending_actions.some((action) => action.status === "pending") && <Tag className="agent-pending-tag">待确认</Tag>}
+            待审批操作
+          </div>
           <Alert type="info" showIcon title="写入须人工确认后执行，原业务权限与审批规则不变。" />
           {[...agentState.pending_actions].reverse().map((action) => <div className="case-agent-action" key={action.id}>
             <div>
@@ -221,7 +226,7 @@ export const CaseAgentDrawer = ({
               <span>{agentOperationName(action)}</span>
             </div>
             {action.status === "pending" ? <Space>
-              <Button size="small" type="primary" disabled={actionDisabled(action)} loading={agentDecisionLoading === action.id} onClick={() => setActiveAction(action)}>查看并确认</Button>
+              <Button size="small" className="agent-btn-confirm" icon={<CheckOutlined />} disabled={actionDisabled(action)} loading={agentDecisionLoading === action.id} onClick={() => setActiveAction(action)}>查看并确认</Button>
             </Space> : <Space>
               <StatusTag status={action.status} tone={action.status === "approved" ? "success" : action.status === "restored" ? "processing" : "danger"} label={action.status === "approved" ? "已批准" : action.status === "restored" ? "已恢复" : "已驳回"} />
               {action.status === "approved" && action.type.endsWith(".delete") && <Button size="small" loading={agentDecisionLoading === action.id} onClick={() => void restoreCaseAgentAction(action)}>恢复</Button>}
@@ -229,10 +234,10 @@ export const CaseAgentDrawer = ({
           </div>)}
         </section> : null}
         <Modal open={Boolean(activeAction)} title="案件智能体操作确认" width={POPUP_WIDTH.md} maskClosable={!agentDecisionLoading} onCancel={() => { if (!agentDecisionLoading) setActiveAction(null); }} footer={activeAction ? [
-          <Button key="reject" danger icon={<CloseOutlined />} disabled={actionDisabled(activeAction)} onClick={() => void decideActiveAction("rejected")}>驳回，不修改</Button>,
-          <Button key="approve" type="primary" disabled={actionDisabled(activeAction) || !hasAgentOperationPreview(activeAction)} loading={agentDecisionLoading === activeAction.id} onClick={() => void decideActiveAction("approved")}>批准并执行</Button>,
+          <Button key="reject" className="agent-btn-cancel" icon={<CloseOutlined />} disabled={actionDisabled(activeAction)} onClick={() => void decideActiveAction("rejected")}>驳回，不修改</Button>,
+          <Button key="approve" className="agent-btn-confirm" icon={<CheckOutlined />} disabled={actionDisabled(activeAction) || !hasAgentOperationPreview(activeAction)} loading={agentDecisionLoading === activeAction.id} onClick={() => void decideActiveAction("approved")}>批准并执行</Button>,
         ] : null}>
-          {activeAction && <div style={{ maxHeight: "60dvh", overflowY: "auto" }}><AgentOperationPreview action={activeAction} target={agentCase?.serial_no} /></div>}
+          {activeAction && <div style={{ maxHeight: "60vh", overflowY: "auto" }}><AgentOperationPreview action={activeAction} target={agentCase?.serial_no} /></div>}
         </Modal>
         <div className="case-agent-messages" aria-live="polite">
           {!agentLoading && !agentState?.messages?.length && <div className="case-agent-empty">

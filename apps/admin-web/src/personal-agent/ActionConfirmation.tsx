@@ -1,6 +1,7 @@
 import { POPUP_WIDTH } from "../components/common/popupSize";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Modal, Space, Spin, Tag, message } from "antd";
+import "../agentPending.css";
 import { CheckOutlined, CloseOutlined, ReloadOutlined } from "@ant-design/icons";
 import { isAxiosError } from "axios";
 import { api } from "../api";
@@ -85,8 +86,8 @@ export function ActionConfirmation({ action, deciding, decisionFailure, onDecide
       {action?.type === "mcp.call" && <Button icon={<ReloadOutlined />} loading={loading} disabled={deciding} onClick={() => setRefresh((value) => value + 1)}>刷新状态</Button>}
       <Button disabled={deciding} onClick={onClose}>关闭</Button>
       {canDecide && <>
-        <Button icon={<CloseOutlined />} disabled={deciding || loading || !!pendingFailure} onClick={() => void decide("rejected")}>取消操作</Button>
-        <Button type="primary" icon={<CheckOutlined />} loading={deciding} disabled={deciding || loading || !!visibleError || personalMcpPreviewMissing || !previewAction || !hasAgentOperationPreview(previewAction)} onClick={() => void decide("approved")}>确认并执行</Button>
+        <Button className="agent-btn-cancel" icon={<CloseOutlined />} disabled={deciding || loading || !!pendingFailure} onClick={() => void decide("rejected")}>取消操作</Button>
+        <Button className="agent-btn-confirm" icon={<CheckOutlined />} loading={deciding} disabled={deciding || loading || !!visibleError || personalMcpPreviewMissing || !previewAction || !hasAgentOperationPreview(previewAction)} onClick={() => void decide("approved")}>确认并执行</Button>
       </>}
     </Space>}>
     {currentStatus && <Tag color={currentStatus === "failed" ? "error" : currentStatus === "succeeded" ? "success" : "processing"} style={{ marginBottom: 12 }}>{STATUS_NAMES[currentStatus]}</Tag>}

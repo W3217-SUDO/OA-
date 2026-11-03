@@ -1,0 +1,22 @@
+/* 501289（陶国南 11-03）：智能体“待确认”操作要一眼认出；按钮不靠红绿区分，用淡色底块加清楚的文字，
+   主次靠底色深浅和位置（主按钮在右、底色更深）。只用普通颜色，不用 color-mix、:has，兼容钉钉 Chrome 100。 */
+.agent-pending-card {
+  border: 1px solid #ffc069;
+  border-left: 5px solid #d46b08;
+  border-radius: 8px;
+  background: #fff7e6;
+}
+.agent-pending-title { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 600; color: #613400; }
+.agent-pending-tag.ant-tag { margin: 0; border-color: #ffc069; background: #ffe7ba; color: #873800; font-weight: 600; }
+.ant-btn.agent-btn-confirm { border: 1px solid #85a5ff; background: #d6e4ff; color: #10239e; font-weight: 600; box-shadow: none; }
+.ant-btn.agent-btn-confirm:not(:disabled):hover, .ant-btn.agent-btn-confirm:not(:disabled):focus-visible { border-color: #597ef7; background: #adc6ff; color: #061178; }
+.ant-btn.agent-btn-cancel { border: 1px solid #d9d9d9; background: #f5f5f5; color: #262626; box-shadow: none; }
+.ant-btn.agent-btn-cancel:not(:disabled):hover, .ant-btn.agent-btn-cancel:not(:disabled):focus-visible { border-color: #bfbfbf; background: #e8e8e8; color: #141414; }
+.ant-btn.agent-btn-confirm:disabled, .ant-btn.agent-btn-cancel:disabled { opacity: .55; }
+:root[data-theme="dark"] .agent-pending-card { border-color: #7c4a03; border-left-color: #d89614; background: #2b2111; }
+:root[data-theme="dark"] .agent-pending-title { color: #ffd591; }
+:root[data-theme="dark"] .agent-pending-tag.ant-tag { border-color: #7c4a03; background: #443111; color: #ffd591; }
+:root[data-theme="dark"] .ant-btn.agent-btn-confirm { border-color: #2f54eb; background: #1d2b53; color: #d6e4ff; }
+:root[data-theme="dark"] .ant-btn.agent-btn-confirm:not(:disabled):hover { border-color: #597ef7; background: #263a72; color: #f0f5ff; }
+:root[data-theme="dark"] .ant-btn.agent-btn-cancel { border-color: #434343; background: #303030; color: #f0f0f0; }
+:root[data-theme="dark"] .ant-btn.agent-btn-cancel:not(:disabled):hover { background: #3a3a3a; color: #ffffff; }

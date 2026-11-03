@@ -24,6 +24,7 @@ import { errorText, mentionedCaseSerial, workspaceDocumentSaveTarget, type CaseA
 import type { usePersonalWorkspace } from "./usePersonalWorkspace";
 import { COURT_INTAKE_SKILL, NEW_CONVERSATION_COMMANDS, taskEntryForSkill } from "../agentSkillRouting";
 import "./assistant-panel.css";
+import "../agentPending.css";
 
 export type { AssistantSuggestion };
 
@@ -387,9 +388,9 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
       {dismissalError && <Alert className="assistant-alert" type="error" showIcon title="操作卡未收起" description={dismissalError} />}
       {Object.values(workspace.decisionFailures).filter((failure) => !failure.hidden && !state.pending_actions.some((action) => action.id === failure.actionId)).map((failure) => <Alert key={failure.actionId} className="assistant-decision-failure" type="error" showIcon closable={{ onClose: () => workspace.hideDecisionFailure(failure.actionId) }} title="操作未完成" description={failure.message} />)}
       {!!ordinaryActions.length && (
-        <div className="assistant-pending">
+        <div className={`assistant-pending${ordinaryActions.some((action) => action.status === "pending") ? " agent-pending-card" : ""}`}>
           <div className="assistant-pending-heading">
-            <b>{ordinaryActions.some((action) => action.status === "pending") ? "待你确认的操作" : "操作状态"}</b>
+            <b className="agent-pending-title">{ordinaryActions.some((action) => action.status === "pending") && <Tag className="agent-pending-tag">待确认</Tag>}{ordinaryActions.some((action) => action.status === "pending") ? "待你确认的操作" : "操作状态"}</b>
             <Tooltip title="收起当前操作状态"><Button className="assistant-action-dismiss" type="text" icon={<CloseOutlined />} aria-label="收起当前操作状态" disabled={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId} loading={!!workspace.dismissalId} onClick={() => void dismissVisible()} /></Tooltip>
           </div>
           {decisionError && <Alert type="error" showIcon title="操作未完成" description={decisionError} />}
@@ -399,8 +400,8 @@ const AssistantPanel = forwardRef<HTMLElement, Props>(function AssistantPanel(
             renderItem={(item) => (
               <List.Item
                 actions={[
-                  <Button key="approve" type={item.status === "pending" ? "primary" : "default"} size="small" icon={<CheckOutlined />} disabled={decisionBusy} onClick={() => { setDecisionError(""); setHistoryAction(null); setActiveAction(item); }}>{item.status === "pending" ? "查看并确认" : "查看状态"}</Button>,
-                  ...(item.status === "pending" ? [<Button key="reject" size="small" icon={<CloseOutlined />} disabled={decisionBusy} loading={workspace.decisionId === item.id} onClick={() => void reject(item)}>取消</Button>] : []),
+                  <Button key="approve" className={item.status === "pending" ? "agent-btn-confirm" : undefined} size="small" icon={<CheckOutlined />} disabled={decisionBusy} onClick={() => { setDecisionError(""); setHistoryAction(null); setActiveAction(item); }}>{item.status === "pending" ? "查看并确认" : "查看状态"}</Button>,
+                  ...(item.status === "pending" ? [<Button key="reject" className="agent-btn-cancel" size="small" icon={<CloseOutlined />} disabled={decisionBusy} loading={workspace.decisionId === item.id} onClick={() => void reject(item)}>取消</Button>] : []),
                   <Tooltip key="dismiss" title="收起操作卡"><Button className="assistant-action-dismiss" type="text" size="small" icon={<CloseOutlined />} aria-label={`收起操作卡：${item.summary}`} disabled={loading || workspace.conversationBusy || !!workspace.decisionId || !!workspace.dismissalId} loading={workspace.dismissalId === item.id} onClick={() => void dismiss(item)} /></Tooltip>,
                 ]}
               >
