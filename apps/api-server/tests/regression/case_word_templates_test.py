@@ -217,7 +217,10 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
     async def test_upload_original_underlined_file_as_is(self):
         # 陶国南 16:19：直接上传他们写的范本（下划线 + 括号说明），不用改成 {字段}。这里用他发来的撤诉申请书原件。
         self.identity = ADMIN
-        original = (Path(module.TEMPLATE_ROOT) / "withdrawal-application.docx").read_bytes()
+        import base64
+        from app.areas.legal.builtin_word_templates import WITHDRAWAL_APPLICATION_DOCX
+        original = base64.b64decode(WITHDRAWAL_APPLICATION_DOCX)
+        self.assertEqual(len(original), 32538, "内置的就是陶国南给的原件")
         created = await self.client.post(API + "/case-word-templates", data={"name": "撤诉申请书（上传）"},
                                          files={"file": ("撤诉申请书.docx", original, module.DOCX_TYPE)})
         self.assertEqual(created.status_code, 201, created.text)

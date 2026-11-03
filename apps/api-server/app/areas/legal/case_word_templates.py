@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.areas.legal.template_documents import TEMPLATE_ROOT, WORD_NS, _replace_slots
+from app.areas.legal.template_documents import WORD_NS, _replace_slots
 from app.config import settings
 from app.core.constants import UPLOAD_ROOT
 from app.database import get_db
@@ -41,7 +41,7 @@ SPLIT = re.compile(r"[,，、;；\n]+")
 CAUSE_NUMBER = re.compile(r"^\s*(?:[一二三四五六七八九十百]+|\d+)[、.．]\s*")
 
 BUILTIN_TEMPLATES = [{
-    "id": "withdrawal-application", "name": "撤诉申请书", "file": "withdrawal-application.docx",
+    "id": "withdrawal-application", "name": "撤诉申请书", "file": "WITHDRAWAL_APPLICATION_DOCX",
     "options": {"撤诉理由": ["原被告之间已达成和解并履行", "原被告之间已达成和解", "被告已停止侵权并赔偿损失", "原告决定不再追究"]},
 }]
 # 系统自动取值的字段；模板里出现其他占位字段时，按“需要人工填写”处理。
@@ -108,7 +108,9 @@ async def _template_bytes(item: dict, db: AsyncSession) -> bytes:
         if not path:
             raise HTTPException(409, "模板文件找不到了，请管理员重新上传")
         return await run_in_threadpool(Path(path).read_bytes)
-    return await run_in_threadpool((TEMPLATE_ROOT / item["file"]).read_bytes)
+    import base64
+    from app.areas.legal import builtin_word_templates
+    return base64.b64decode(getattr(builtin_word_templates, item["file"]))
 
 
 W = "{%s}" % WORD_NS["w"]
