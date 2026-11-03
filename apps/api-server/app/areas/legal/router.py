@@ -226,6 +226,13 @@ async def create_case_commissions(
             "base_amount": base_amount,
             "reference_commission": reference_commission,
         }, _round_fee_amount(item.actual_amount), item.remark.strip()))
+    from app.core.cases import INVESTIGATION_COMMISSION_MAX_RATE
+    investigation_rows = [(template, amount) for template, amount, _ in normalized if template["commission_role"] == "调查"]
+    if investigation_rows:
+        investigation_total = _round_fee_amount(sum(amount for _, amount in investigation_rows))
+        investigation_limit = _round_fee_amount(max(template["base_amount"] for template, _ in investigation_rows) * INVESTIGATION_COMMISSION_MAX_RATE)
+        if investigation_total > investigation_limit:
+            raise HTTPException(status_code=422, detail=f"调查提成合计 {investigation_total:.2f} 元，超过基数的 5%（{investigation_limit:.2f} 元），请调整")
     actor = await db.scalar(select(User).where(User.username == identity["username"]));
     if not actor:
         raise HTTPException(status_code=401, detail="当前用户不存在")
@@ -2341,7 +2348,7 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     """
     from app.core.cases import (
         _active_case_phase_values, _case_commission_personnel_changed, _case_team_payload, _prioritize_new_case_assistants,
-        _recalculate_case_draft_commissions, _resolve_active_case_people, resolve_case_people_keep_legacy, split_case_people,
+        _recalculate_case_draft_commissions, _resolve_active_case_people, case_investigators_from_clues,
     )
     from app.core.crm import (
         _customer_or_404,
@@ -2386,13 +2393,16 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     assistant_values, assistant_usernames = _prioritize_new_case_assistants(
         case_data, assistant_values, assistant_usernames,
     )
-    # 调查员、案源人可多选（501293）；已存的旧值（含迁移的多人串、离职人员）对应不上时原样保留
-    previous_investigators = split_case_people(case_data.get("investigators"), case_data.get("investigator_usernames"), case_data.get("investigator"), case_data.get("investigator_username"), case_data.get("investigator_name"))
-    previous_owners = split_case_people(case_data.get("business_owners"), case_data.get("business_owner_usernames"), case_data.get("business_owner"), case_data.get("source_person"), case_data.get("source_person_username"))
-    requested_investigators = body.investigators if body.investigators is not None else split_case_people(body.investigator)
-    requested_owners = body.business_owners if body.business_owners is not None else split_case_people(body.business_owner)
-    investigator_values, investigator_usernames = await resolve_case_people_keep_legacy(requested_investigators, previous_investigators, db, field_name="调查员")
-    business_owner_values, business_owner_usernames = await resolve_case_people_keep_legacy(requested_owners, previous_owners, db, field_name="案源人")
+    # 案源人只能一人（陶国南 501293）；原来就存着、对应不上系统人员的旧值（迁移、离职）原样保留、不报错
+    owner_raw = body.business_owner.strip()
+    business_owner_values, business_owner_usernames = [], []
+    if owner_raw:
+        try:
+            business_owner_values, business_owner_usernames = await _resolve_active_case_people([owner_raw], db, field_name="案源人")
+        except HTTPException:
+            if owner_raw not in {str(case_data.get(key) or "").strip() for key in ("business_owner", "source_person", "business_owner_username", "source_person_username")}:
+                raise
+            business_owner_values = [owner_raw]
     clue_ids = list(dict.fromkeys(body.investigation_clue_ids))
     clues = list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.id.in_(clue_ids), BusinessRecord.module == "clue", BusinessRecord.customer == customer.title,
@@ -2409,12 +2419,9 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
         raise HTTPException(status_code=422, detail="仅行政及国家赔偿案件可以修改权利类型")
     old_summary = f"{case_record.customer}｜{case_record.title}｜{case_record.status}｜{case_data.get('cause_or_charge', '')}"
     previous_status = case_record.status
-    if not requested_investigators and ordered_clues:
-        # 没选调查员时按关联线索的调查员带出（每条线索的调查员，同一人只算一次）
-        clue_people = split_case_people([(item.data or {}).get("investigator_usernames") or item.owner for item in ordered_clues])
-        investigator_values, investigator_usernames = await resolve_case_people_keep_legacy(clue_people, clue_people, db, field_name="调查员")
-    investigator = "、".join(investigator_values)
-    business_owner = "、".join(business_owner_values)
+    # 调查员按关联线索带出：每条线索一人、按线索顺序、不去重（陶国南 501293：体现调查数量）；没关联线索的保留原值
+    investigator_fields = await case_investigators_from_clues(ordered_clues, db) if ordered_clues else {}
+    business_owner = business_owner_values[0] if business_owner_values else ""
     clue_nos = [item.serial_no for item in ordered_clues]
     case_record.title = title
     case_record.customer = customer.title
@@ -2426,16 +2433,11 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
         "customer_no": customer.serial_no,
         "cause_or_charge": cause_or_charge,
         "right_type": right_type if case_type == "行政案件及国家赔偿" else str(case_data.get("right_type") or ""),
-        "source_person": business_owner,
-        "business_owner": business_owner,
-        "business_owners": business_owner_values,
-        "business_owner_usernames": business_owner_usernames,
-        "source_person_username": ",".join(business_owner_usernames),
-        "investigator": investigator,
-        "investigators": investigator_values,
-        "investigator_usernames": investigator_usernames,
-        "investigator_username": ",".join(investigator_usernames),
-        **({"investigator_name": investigator} if "investigator_name" in case_data else {}),
+        "source_person": business_owner or str(case_data.get("source_person") or ""),
+        "business_owner": business_owner or str(case_data.get("business_owner") or ""),
+        **({"business_owner_username": business_owner_usernames[0], "source_person_username": business_owner_usernames[0]} if business_owner_usernames else {}),
+        **investigator_fields,
+        **({"investigator_name": investigator_fields["investigator"]} if investigator_fields and "investigator_name" in case_data else {}),
         "investigation_clue_ids": clue_ids,
         "investigation_clue_nos": clue_nos,
         "investigation_clue_id": clue_ids[0] if clue_ids else None,
@@ -2898,8 +2900,9 @@ async def update_case_hearing_lawyer(
     detail-page maintenance operation.
     """
     from app.core.cases import (
-        _case_commission_personnel_changed, _recalculate_case_draft_commissions, _resolve_active_case_people,
+        _case_commission_personnel_changed, _recalculate_case_draft_commissions, resolve_case_people_keep_legacy,
     )
+    from app.core.case_people import split_case_people
     from app.core.permissions import (
         _ensure_record_module,
     )
@@ -2910,15 +2913,20 @@ async def update_case_hearing_lawyer(
     if case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
         raise HTTPException(status_code=409, detail="归档中的案件不能修改开庭律师")
 
-    hearing_values, hearing_usernames = await _resolve_active_case_people(
-        [body.hearing_lawyer], db, field_name="开庭律师",
-    )
+    # 开庭律师可多人（陶国南 501293）；第一位作为主开庭律师（开庭排期、提醒、派任务用）
     before_case_data = dict(case_record.data or {})
+    previous_people = split_case_people(before_case_data.get("hearing_lawyers"), before_case_data.get("hearing_lawyer"), before_case_data.get("hearing_lawyer_username"))
+    requested = body.hearing_lawyers if body.hearing_lawyers is not None else [body.hearing_lawyer]
+    hearing_values, hearing_usernames = await resolve_case_people_keep_legacy(requested, previous_people, db, field_name="开庭律师")
+    if not hearing_values:
+        raise HTTPException(status_code=422, detail="请选择开庭律师")
     case_data = dict(before_case_data)
     previous_hearing_lawyer = str(case_data.get("hearing_lawyer") or "")
-    case_data["hearing_lawyer"] = hearing_values[0]
-    case_data["hearing_lawyer_username"] = hearing_usernames[0]
-    if previous_hearing_lawyer != hearing_values[0]:
+    case_data["hearing_lawyer"] = "、".join(hearing_values)
+    case_data["hearing_lawyers"] = hearing_values
+    case_data["hearing_lawyer_usernames"] = hearing_usernames
+    case_data["hearing_lawyer_username"] = hearing_usernames[0] if hearing_usernames else ""
+    if previous_hearing_lawyer != case_data["hearing_lawyer"]:
         case_data["hearing_lawyer_changed_at"] = datetime.now().isoformat(timespec="seconds")
     case_record.data = case_data
     if _case_commission_personnel_changed(before_case_data, case_data):
@@ -2930,7 +2938,7 @@ async def update_case_hearing_lawyer(
         to_status=case_record.status,
         operator=identity["username"],
         comment=(
-            f"开庭律师：{previous_hearing_lawyer or '未设置'} → {hearing_values[0]}"
+            f"开庭律师：{previous_hearing_lawyer or '未设置'} → {case_data['hearing_lawyer']}"
             + (f"；说明：{body.comment.strip()}" if body.comment.strip() else "")
         ),
     ))

@@ -243,8 +243,30 @@ async def _resolve_active_case_people(values: list[object], db: AsyncSession, *,
     return resolved_labels, resolved_usernames
 
 
+async def case_investigators_from_clues(clues: list[BusinessRecord], db: AsyncSession) -> dict:
+    """案件调查员 = 每条关联线索的调查员，按线索顺序、不去重（陶国南 501293：有几条线索就几个人，体现调查数量）。
+
+    线索的调查员：线索 investigator_usernames 有值用它，否则用线索负责人（owner）。离职的人也照记。"""
+    per_clue = [(clue, split_case_people((clue.data or {}).get("investigator_usernames")) or split_case_people(clue.owner)) for clue in clues]
+    usernames = {name for _, names in per_clue for name in names}
+    users = {user.username: user for user in (await db.scalars(select(User).where(User.username.in_(usernames)))).all()} if usernames else {}
+    rows = [{"clue_no": clue.serial_no, "clue_id": clue.id, "username": name, "name": users[name].display_name if name in users else name}
+            for clue, names in per_clue for name in names]
+    return {
+        "investigator_clues": rows,
+        "investigators": [row["name"] for row in rows],
+        "investigator_usernames": [row["username"] for row in rows],
+        "investigator": "、".join(row["name"] for row in rows),
+        "investigator_username": ",".join(row["username"] for row in rows),
+    }
+
+
+MANUAL_SPLIT_COMMISSION_ROLES = ("调查", "开庭")
+INVESTIGATION_COMMISSION_MAX_RATE = 0.05  # 调查提成合计不超过基数的 5%（陶国南 501293）
+
+
 async def resolve_case_people_keep_legacy(values: list[str], previous: list[str], db: AsyncSession, *, field_name: str) -> tuple[list[str], list[str]]:
-    """多选人员（BUG20261103 501293）：逐个对应系统在职人员；对应不上但原来就存着的（已离职等）原样保留、不报错。
+    """多选人员（501293）：逐个对应系统在职人员、去重；对应不上但原来就存着的（迁移、离职）原样保留、不报错。
 
     返回（显示名列表, 账号列表）；保留的旧值只有显示名、没有账号。"""
     previous_set = set(previous)
@@ -257,8 +279,8 @@ async def resolve_case_people_keep_legacy(values: list[str], previous: list[str]
         except HTTPException:
             if value in previous_set:
                 names.append(value)
-                continue
-            invalid.append(value)
+            else:
+                invalid.append(value)
             continue
         for name, account in zip(resolved, accounts):
             if account not in usernames:
@@ -833,6 +855,12 @@ async def _case_commission_preview_for_amount(
                     "scheme_start_date": str(scheme.get("start_date") or ""),
                     "scheme_end_date": str(scheme.get("end_date") or ""),
                 })
+    # 调查、开庭有多人时按贡献分，实际金额由人工填写，不按比例给每人自动算满额（陶国南 501293）
+    for label in MANUAL_SPLIT_COMMISSION_ROLES:
+        if len({row["employee_username"] for row in rows if row["commission_role"] == label}) > 1:
+            for row in rows:
+                if row["commission_role"] == label:
+                    row.update({"actual_amount": 0, "manual_amount": True, "remark": row["remark"] or "多人，按贡献填写"})
     if not rows and not missing:
         missing.append("案件未设置可提成的案件人员")
     return {

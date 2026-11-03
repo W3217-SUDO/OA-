@@ -636,7 +636,7 @@ CASE_MINE_TEXT_FIELDS = (
     "source_person_username", "source_person", "business_owner", "assistant_username",
     "investigator", "investigator_username", "court_lawyer_username", "court_lawyer", "hearing_lawyer_username",
     "case_team_usernames",
-    "handling_lawyer_usernames", "legacy_participants",
+    "handling_lawyer_usernames", "legacy_participants", "hearing_lawyer_usernames",
 )
 
 
@@ -694,6 +694,8 @@ async def _case_mine_scope_condition(identity: dict, db: AsyncSession, *, projec
         # 迁移数据里有大写账号（如 "SHQB"），旧系统比较不分大小写，这里也不分（分支2 按人对数发现）。
         func.lower(func.coalesce(data["case_team_usernames"], "")).contains(f'"{username.lower()}"', autoescape=True),
         func.lower(func.coalesce(data["handling_lawyer_usernames"], "")).contains(f'"{username.lower()}"', autoescape=True),
+        # 开庭律师可多人（501293），第二位起只在 hearing_lawyer_usernames 里
+        *((func.lower(func.coalesce(data["hearing_lawyer_usernames"], "")).contains(f'"{username.lower()}"', autoescape=True),) if court_lawyer else ()),
         # 陶国南 11-02 选 b-A：迁移过来的“案件参与人”（legacy_participants）不再算我的案件，与旧系统一致。
         # 迁移案件的调查员姓名存在 investigator，账号在 investigator_username（旧系统 Investigator 也算我的案件）；
         # 出庭律师实际存在 court_lawyer / hearing_lawyer_username（旧系统 CourtLawyer 也算我的案件）。

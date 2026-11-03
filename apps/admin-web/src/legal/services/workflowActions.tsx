@@ -9,7 +9,7 @@ import { api } from "../../api";
 import { clearCaseContractContext } from "../../caseContractPrefill";
 import { rememberCaseDetailTarget } from "../../caseDetailNavigation";
 import { getCaseReminderDateValidationError } from "../../caseFifthBatchParity.mjs";
-import { buildCaseCreatePayload, buildCaseDuplicateRequest, buildCaseExecutionStatusPayload, buildCaseMergePayload, buildCaseProgressPayload, buildClueConversionPayload, getCaseCreateValidationError, getCaseEditValidationError, getCaseMutationBlockReason, getClueConversionIssues, normalizeCaseEditPayload, resolveStoredCasePeople, splitCasePeople } from "../../caseSecondBatchParity";
+import { buildCaseCreatePayload, buildCaseDuplicateRequest, buildCaseExecutionStatusPayload, buildCaseMergePayload, buildCaseProgressPayload, buildClueConversionPayload, getCaseCreateValidationError, getCaseEditValidationError, getCaseMutationBlockReason, getClueConversionIssues, normalizeCaseEditPayload, resolveStoredCasePeople, splitCasePeople, storedClueInvestigators } from "../../caseSecondBatchParity";
 import { buildCaseHearingPayload, buildCaseUnarchiveReviewPayload, getCaseArchiveReviewValidationError, getCaseHearingValidationError, getCaseUnarchiveReviewValidationError } from "../../caseWorkflowFrontendParity.mjs";
 import { formatRequiredDate } from "../../formSafety";
 import { collectCasePartyIdentities } from "../CasePartyIdentityFields";
@@ -1125,7 +1125,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
         return customerId;
     };
     const openNormalCaseEdit = async (row: CaseRow) => {
-        const { isNormalEditableCase, normalCaseEditForm, resolveCasePersonValues, isCasePersonOption, setEditingNormalCase } = context;
+        const { isNormalEditableCase, normalCaseEditForm, resolveCasePersonValues, resolveCasePersonValue, isCasePersonOption, setEditingNormalCase } = context;
         if (!isNormalEditableCase(row))
             return message.warning("当前案件类型没有普通案件基本信息修改入口");
         const customerRecordId = await ensureCaseCustomerOption(row);
@@ -1139,10 +1139,8 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
                 splitCasePeople(row.data.handling_lawyer_usernames), splitCasePeople(row.data.handling_lawyers)),
             assistants: resolveStoredCasePeople(resolveCasePersonValues, isCasePersonOption,
                 splitCasePeople(row.data.assistant_usernames || row.data.assistant_username), splitCasePeople(row.data.assistants || row.data.assistant)),
-            business_owners: resolveStoredCasePeople(resolveCasePersonValues, isCasePersonOption,
-                splitCasePeople(row.data.business_owner_usernames), splitCasePeople(row.data.business_owners || row.data.business_owner || row.data.source_person)),
-            investigators: resolveStoredCasePeople(resolveCasePersonValues, isCasePersonOption,
-                splitCasePeople(row.data.investigator_usernames || row.data.investigator_username), splitCasePeople(row.data.investigators || row.data.investigator)),
+            business_owner: resolveCasePersonValue(row.data.business_owner || row.data.source_person || ""),
+            investigator_clues: storedClueInvestigators(row.data),
             investigation_clue_ids: clueIds,
             right_type: row.data.right_type || "",
             comment: "",
@@ -1357,7 +1355,8 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
         const values = await caseHearingLawyerForm.validateFields();
         try {
             const { data } = await api.put(`/cases/${editingCaseHearingLawyer.id}/hearing-lawyer`, {
-                hearing_lawyer: values.hearing_lawyer || "",
+                hearing_lawyer: (values.hearing_lawyers || [])[0] || "",
+                hearing_lawyers: values.hearing_lawyers || [],
                 comment: values.comment || "",
             });
             message.success("开庭律师已保存");

@@ -62,6 +62,8 @@ export type CaseCommissionPreviewRow = {
   reference_commission: number;
   actual_amount: number;
   remark: string;
+  /** 调查、开庭多人时实际金额人工按贡献填写（501293） */
+  manual_amount?: boolean;
 };
 
 export type CaseCommissionPreview = {

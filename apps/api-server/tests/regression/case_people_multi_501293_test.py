@@ -1,4 +1,4 @@
-"""501293：修改案件基本信息时调查员、案源人可多选；迁移的多人串和离职人员保存不再报“姓名不唯一”。"""
+"""501293：调查员按关联线索每条一人（不去重）；案源人单选、旧值保留不报错；开庭律师可多人。"""
 
 from __future__ import annotations
 
@@ -42,6 +42,11 @@ class CasePeopleMulti501293Test(unittest.IsolatedAsyncioTestCase):
             db.add(SystemParameter(category="case_phase", code="DOCUMENT", name="文书准备", sort_order=1, is_active=True))
             await db.flush()
             self.customer_id = await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == "P293-CUSTOMER"))
+            self.clues = []
+            for no, owner in (("M293A", "sugq"), ("M293B", "sugq"), ("M293C", "yuxd")):
+                clue = BusinessRecord(module="clue", serial_no=no, title=no, customer="客户293", status="已取证", owner=owner, department="调查部", data={})
+                db.add(clue)
+                self.clues.append(clue)
             case = BusinessRecord(module="case", serial_no="P293-CASE", title="案件293", customer="客户293", status="文书准备",
                                   owner=IDENTITY["username"], department="诉讼部", data={
                                       "case_type": "民事争议", "cause_or_charge": "侵害商标权纠纷",
@@ -73,27 +78,38 @@ class CasePeopleMulti501293Test(unittest.IsolatedAsyncioTestCase):
                 "handling_lawyers": [IDENTITY["username"]], "assistant": "", "business_owner": "", "investigator": "",
                 "investigation_clue_ids": [], "right_type": "", "source_person": "", "comment": "", **extra}
 
-    async def test_multi_investigators_and_departed_owner_are_saved(self) -> None:
-        response = await self.client.put(f"{API}/cases/{self.case_id}/normal-basic",
-                                         json=self._payload(investigators=["sugq", "yuxd"], business_owners=["离职员工", "wengjie"]))
+    async def test_investigators_follow_clues_one_per_clue(self) -> None:
+        from unittest.mock import AsyncMock, patch
+        with patch("app.core.case_relations.validate_case_clues", AsyncMock()), patch("app.core.case_relations.sync_case_clues", AsyncMock()):
+            response = await self.client.put(f"{API}/cases/{self.case_id}/normal-basic",
+                                             json=self._payload(investigation_clue_ids=[clue.id for clue in self.clues], business_owner="离职员工"))
         self.assertEqual(response.status_code, 200, response.text)
         data = response.json()["data"]
-        self.assertEqual(data["investigator_usernames"], ["sugq", "yuxd"])
-        self.assertEqual(data["investigator"], "苏贵全、虞向东")
-        self.assertEqual(data["investigator_username"], "sugq,yuxd")
-        self.assertEqual(data["business_owners"], ["离职员工", "翁洁"])
-        self.assertEqual(data["business_owner_usernames"], ["wengjie"])
+        self.assertEqual(data["investigator_usernames"], ["sugq", "sugq", "yuxd"])
+        self.assertEqual(data["investigator"], "苏贵全、苏贵全、虞向东")
+        self.assertEqual(data["investigator_username"], "sugq,sugq,yuxd")
+        self.assertEqual([row["clue_no"] for row in data["investigator_clues"]], ["M293A", "M293B", "M293C"])
+        self.assertEqual(data["business_owner"], "离职员工")
 
-    async def test_old_payload_with_legacy_string_no_longer_fails(self) -> None:
-        response = await self.client.put(f"{API}/cases/{self.case_id}/normal-basic",
-                                         json=self._payload(investigator="苏贵全,苏贵全,苏贵全", business_owner="离职员工"))
+    async def test_without_clues_legacy_investigator_kept_and_owner_single(self) -> None:
+        response = await self.client.put(f"{API}/cases/{self.case_id}/normal-basic", json=self._payload(business_owner="wengjie"))
         self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(response.json()["data"]["investigator_usernames"], ["sugq"])
+        data = response.json()["data"]
+        self.assertEqual(data["investigator_username"], "sugq,sugq,sugq")
+        self.assertEqual(data["business_owner"], "翁洁")
+        self.assertEqual(data["business_owner_username"], "wengjie")
 
-    async def test_new_unknown_person_is_rejected(self) -> None:
-        response = await self.client.put(f"{API}/cases/{self.case_id}/normal-basic", json=self._payload(investigators=["手输的人"]))
+    async def test_new_unknown_owner_is_rejected(self) -> None:
+        response = await self.client.put(f"{API}/cases/{self.case_id}/normal-basic", json=self._payload(business_owner="手输的人"))
         self.assertEqual(response.status_code, 422, response.text)
-        self.assertIn("请从下拉列表选择", response.text)
+
+    async def test_multiple_hearing_lawyers(self) -> None:
+        response = await self.client.put(f"{API}/cases/{self.case_id}/hearing-lawyer", json={"hearing_lawyers": ["yuxd", "sugq"], "comment": ""})
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()["data"]
+        self.assertEqual(data["hearing_lawyer_usernames"], ["yuxd", "sugq"])
+        self.assertEqual(data["hearing_lawyer_username"], "yuxd")
+        self.assertEqual(data["hearing_lawyer"], "虞向东、苏贵全")
 
 
 if __name__ == "__main__":
