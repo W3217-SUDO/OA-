@@ -82,7 +82,7 @@ class CaseQuickChecksTest(unittest.TestCase):
         self.assertGreater(over["issue_count"], 0)
         within = build_case_check(context(), stage={"name": "文书准备", "entered_at": "2026-10-01", "expected_days": 60}, today=TODAY)
         self.assertIsNone(within["b_tasks"]["stage_overdue"], "没超期不提")
-        unset = build_case_check(context(), stage={"name": "等待立案", "entered_at": "2020-01-01", "expected_days": None}, today=TODAY)
+        unset = build_case_check(context(), stage={"name": "待主体披露", "entered_at": "2020-01-01", "expected_days": None}, today=TODAY)
         self.assertIsNone(unset["b_tasks"]["stage_overdue"], "系统参数里没填天数的阶段不提醒")
 
     def test_expected_days_seed_and_parse(self):
@@ -90,6 +90,8 @@ class CaseQuickChecksTest(unittest.TestCase):
         self.assertEqual((INITIAL_EXPECTED_DAYS["等待公证书"], INITIAL_EXPECTED_DAYS["审核公证书"], INITIAL_EXPECTED_DAYS["提交立案"],
                           INITIAL_EXPECTED_DAYS["一审庭后待判"], INITIAL_EXPECTED_DAYS["一审等待上诉"], INITIAL_EXPECTED_DAYS["执行结案"]),
                          (30, 20, 90, 120, 15, 60))
+        self.assertEqual([INITIAL_EXPECTED_DAYS[name] for name in ("等待立案", "补充取证", "一审待客户回款", "执行立案", "执行受理", "二审立案受理")],
+                         [90, 30, 60, 120, 120, 120], "陶国南 11-03 14:41 补充的阶段")
         self.assertEqual(expected_days({"expected_days": "45"}), 45)
         self.assertIsNone(expected_days({"expected_days": ""}))
         self.assertIsNone(expected_days({"expected_days": 0}))
@@ -106,7 +108,7 @@ class CaseQuickChecksTest(unittest.TestCase):
             connection.execute(table.insert(), [
                 {"category": "case_phase", "code": "101011", "name": "文书准备", "extra": {"case_type": "民事争议"}},
                 {"category": "case_phase", "code": "101001", "name": "等待公证书", "extra": {"expected_days": ""}},
-                {"category": "case_phase", "code": "101012", "name": "等待立案", "extra": {}},
+                {"category": "case_phase", "code": "101009", "name": "待主体披露", "extra": {}},
                 {"category": "court", "code": "C1", "name": "文书准备", "extra": {}},
             ])
             self.assertEqual(upgrade_case_phase_expected_days(connection), 1)
@@ -114,7 +116,7 @@ class CaseQuickChecksTest(unittest.TestCase):
             extras = {name: extra for name, category, extra in connection.execute(select(table.c.name, table.c.category, table.c.extra)) if category == "case_phase"}
         self.assertEqual(extras["文书准备"], {"case_type": "民事争议", "expected_days": 60})
         self.assertEqual(extras["等待公证书"], {"expected_days": ""}, "管理员清空过的不覆盖")
-        self.assertEqual(extras["等待立案"], {}, "没列的阶段不填")
+        self.assertEqual(extras["待主体披露"], {}, "没列的阶段不填")
 
 
 if __name__ == "__main__":
