@@ -190,7 +190,7 @@ def _suability(detail: dict, name: str) -> tuple[str, list[str]]:
 
 
 def render_party_docx(record: BusinessRecord, name: str, role: str, kind: str, detail: dict, risk: dict | None = None,
-                      *, risk_note: str = "风险扫描接口未开通", business_source: str = "", lawyer: str = "") -> bytes:
+                      *, risk_note: str = "风险扫描接口未开通", business_source: str = "") -> bytes:
     """基本信息：工商信息表。尽职调查报告：商务版式（party_report），有风险数据时加涉诉、执行与信用、经营风险和执行可能性。"""
     from app.areas.crm.company_lookup import business_rows
 
@@ -202,7 +202,7 @@ def render_party_docx(record: BusinessRecord, name: str, role: str, kind: str, d
         return render_due_diligence(
             record, name, role, detail, risk, risk_note=risk_note, subject=subject, subject_notes=notes, business_rows=rows,
             business_risks=_risks(detail), not_covered=[item for item in NOT_COVERED if not risk or not _covered(item, risk)],
-            business_source=business_source, lawyer=lawyer)
+            business_source=business_source)
 
     from io import BytesIO
     from docx import Document
@@ -258,11 +258,8 @@ async def save_case_party_document(case_id: int, body: PartyDocumentInput,
         session.add(WorkflowEvent(record_id=record.id, action=f"生成{label}", from_status=record.status,
                                   to_status=record.status, operator=identity["username"], comment=filename))
 
-    from app.areas.legal.case_word_templates import case_field_values
-
-    lawyer = (await case_field_values(record, db))["开庭律师"]  # 没填开庭律师时取第一位经办律师（501222）
     result = await save_generated_file(
-        db, identity, name=filename, content=render_party_docx(record, name, role, body.kind, detail, lawyer=lawyer),
+        db, identity, name=filename, content=render_party_docx(record, name, role, body.kind, detail),
         content_type=WORD_DOCUMENT_CONTENT_TYPE, source_kind="case_draft", case_record=record, on_available=on_available,
     )
     return {"file": _attachment_dict(result["attachment"], record)}
