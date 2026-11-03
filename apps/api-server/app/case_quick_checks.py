@@ -2,7 +2,7 @@
 
 系统先按固定规则把检查结果算好放进案件空间（case_check），智能体照此汇报，不靠模型自己推断：
 a. 案件要素是否齐全，阶段和已上传文书是否对得上；
-b. 紧急、长时间未处理、多次延期的案件任务；
+b. 紧急、多次延期的案件任务；案件日志和流转 60 日内没有记录的，提醒“案件 N 日未有状态变化”（思法汇成 11-03 12:59）；
 c. 合同、委托书、律师费、发票（框架合作合同前期不提醒建费用，判决后提醒执行或催收）；
 d. 律师证扫描件不是必备项，只在提交法院的阶段提醒一并提交。
 """
@@ -15,8 +15,8 @@ from app.case_workflow_rules import _phase_code
 
 FRAMEWORK_CONTRACT_TYPE = "框架合作合同"
 URGENT_DAYS = 3          # 已逾期或 3 天内到期算紧急
-STALE_DAYS = 7           # 超过 7 天没有任何进展算长时间未处理
-POSTPONE_LIMIT = 2       # 延期 2 次及以上算多次延期
+STALE_DAYS = 60          # 案件日志和流转 60 日内没有记录算长时间未处理
+POSTPONE_LIMIT = 3       # 延期 3 次及以上算多次延期
 DONE_STATUSES = {"已完成", "完成", "已关闭", "关闭", "已作废", "作废", "已取消", "取消", "已拒绝", "拒绝"}
 JUDGMENT_DOCS = ("判决书", "裁定书", "调解书")
 FILING_DOCS = ("受理通知书", "传票", "应诉通知书", "举证通知书")
@@ -81,8 +81,8 @@ def _stage_mismatch(phase: str, phase_name: str, names: list[str]) -> list[str]:
     return result
 
 
-def _task_flags(tasks: list[dict], postpones: dict[int, int], last_activity: dict[int, str], today: date) -> dict[str, list[dict]]:
-    urgent, stale, postponed = [], [], []
+def _task_flags(tasks: list[dict], postpones: dict[int, int], today: date) -> dict[str, list[dict]]:
+    urgent, postponed = [], []
     for task in tasks:
         status = _text(_field(task, "status"))
         if status in DONE_STATUSES:
@@ -92,13 +92,10 @@ def _task_flags(tasks: list[dict], postpones: dict[int, int], last_activity: dic
         deadline = _date(item["deadline"])
         if deadline and (deadline - today).days <= URGENT_DAYS:
             urgent.append({**item, "overdue_days": max(0, (today - deadline).days)})
-        last = _date(last_activity.get(task.get("id")) or _field(task, "updated_at", "created_at"))
-        if last and (today - last).days > STALE_DAYS:
-            stale.append({**item, "idle_days": (today - last).days})
         count = postpones.get(task.get("id"), 0)
         if count >= POSTPONE_LIMIT:
             postponed.append({**item, "postpone_count": count})
-    return {"urgent": urgent, "stale": stale, "postponed": postponed}
+    return {"urgent": urgent, "postponed": postponed}
 
 
 def _billing(context: dict, phase: str, names: list[str]) -> list[str]:
@@ -132,7 +129,15 @@ def _lawyer_license(phase: str, names: list[str]) -> list[str]:
     return []
 
 
-def build_case_check(context: dict, *, postpones: dict[int, int] | None = None, last_activity: dict[int, str] | None = None,
+def _case_idle(case: dict, case_last_activity: str | None, today: date) -> dict | None:
+    last = _date(case_last_activity) or _date(_field(case, "created_at"))
+    if not last or (today - last).days < STALE_DAYS:
+        return None
+    days = (today - last).days
+    return {"idle_days": days, "last_activity": last.isoformat(), "message": f"案件 {days} 日未有状态变化"}
+
+
+def build_case_check(context: dict, *, postpones: dict[int, int] | None = None, case_last_activity: str | None = None,
                      today: date | None = None) -> dict:
     today = today or date.today()
     case = context.get("case") or {}
@@ -144,7 +149,8 @@ def build_case_check(context: dict, *, postpones: dict[int, int] | None = None, 
         "rules": {"urgent_days": URGENT_DAYS, "stale_days": STALE_DAYS, "postpone_limit": POSTPONE_LIMIT},
         "a_case_elements": {"missing": _missing_fields(case, context.get("people") or []),
                             "stage_document_mismatch": _stage_mismatch(phase, phase_name, names)},
-        "b_tasks": _task_flags(context.get("tasks") or [], postpones or {}, last_activity or {}, today),
+        "b_tasks": {**_task_flags(context.get("tasks") or [], postpones or {}, today),
+                    "case_idle": _case_idle(case, case_last_activity, today)},
         "c_contract_and_fees": _billing(context, phase, names),
         "d_lawyer_license": _lawyer_license(phase, names),
     }
@@ -153,7 +159,7 @@ def build_case_check(context: dict, *, postpones: dict[int, int] | None = None, 
 QUICK_COMMAND_RULES = (
     "用户发“归纳案件情况”时，按案件空间里 case_check 的四部分逐项汇报："
     "a 案件要素缺哪些（逐项列出并提醒补齐），阶段与文书不合逻辑的提醒更新；"
-    "b 紧急任务（逾期或 3 天内到期）提醒尽快处理，长时间未处理的任务提醒跟进，多次延期的提醒按时真实完成、不要一再拖延；"
+    "b 紧急任务（逾期或 3 天内到期）提醒尽快处理，case_idle 不为空时按其 message 提醒“案件 N 日未有状态变化”，多次延期（3 次及以上）的任务提醒按时真实完成、不要一再拖延；"
     "c 合同、委托书、律师费、发票的问题（框架合作合同前期不提醒建费用，判决后提醒执行或催收）；"
     "d 律师证只在提交法院时提醒。没有问题的部分写“无”。"
     "用户发“优先待办事项”时，只从 case_check 里挑最重要的 5 件以内，按 1、2、3、4、5 依次一句话列出，不展开解释。"

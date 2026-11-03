@@ -412,7 +412,24 @@ async def get_case_space_context(case_id: int, identity: dict = Depends(current_
             stamp = created_at.isoformat() if created_at else ""
             if stamp > last_activity.get(record_id, ""):
                 last_activity[record_id] = stamp
-    context["case_check"] = build_case_check(context, postpones=postpones, last_activity=last_activity)
+    # 思法汇成 11-03 12:59：案件日志和案件流转 60 日内都没有记录，才算长时间未处理。
+    from sqlalchemy import func
+    from app.core.case_document_sources import case_document_sources
+    from app.core.dependencies import LegacyCaseLog
+    source_case_nos = [item["serial_no"] for item in case_document_sources(case_record) if item.get("serial_no")]
+    log_filters = [BusinessRecord.data["case_id"].as_integer() == case_record.id]
+    if source_case_nos:
+        log_filters.append(BusinessRecord.data["case_no"].as_string().in_(source_case_nos))
+    stamps = [
+        await db.scalar(select(func.max(BusinessRecord.created_at)).where(
+            BusinessRecord.module == "case_log", BusinessRecord.status != "已删除", or_(*log_filters))),
+        await db.scalar(select(func.max(WorkflowEvent.created_at)).where(WorkflowEvent.record_id == case_record.id)),
+        max(last_activity.values(), default=None),
+    ]
+    if source_case_nos:
+        stamps.append(await db.scalar(select(func.max(LegacyCaseLog.CreateTime)).where(LegacyCaseLog.CaseNo.in_(source_case_nos))))
+    case_last_activity = max((str(item.isoformat() if hasattr(item, "isoformat") else item)[:10] for item in stamps if item), default=None)
+    context["case_check"] = build_case_check(context, postpones=postpones, case_last_activity=case_last_activity)
     return context
 
 

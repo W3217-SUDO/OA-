@@ -39,10 +39,12 @@ class CaseQuickChecksTest(unittest.TestCase):
                  {"id": 2, "title": "联系客户", "status": "处理中", "deadline": "2026-12-30"},
                  {"id": 3, "title": "补材料", "status": "待处理", "deadline": "2026-12-01"},
                  {"id": 4, "title": "已办完", "status": "已完成", "deadline": "2026-10-01"}]
-        check = build_case_check(context(tasks=tasks), postpones={3: 2}, last_activity={1: "2026-11-02", 2: "2026-10-01", 3: "2026-11-02"}, today=TODAY)
+        check = build_case_check(context(tasks=tasks), postpones={2: 2, 3: 3}, case_last_activity="2026-10-01", today=TODAY)
         self.assertEqual([item["id"] for item in check["b_tasks"]["urgent"]], [1])
-        self.assertEqual([item["id"] for item in check["b_tasks"]["stale"]], [2])
-        self.assertEqual([(item["id"], item["postpone_count"]) for item in check["b_tasks"]["postponed"]], [(3, 2)])
+        self.assertEqual([(item["id"], item["postpone_count"]) for item in check["b_tasks"]["postponed"]], [(3, 3)], "延期 3 次及以上才算多次延期")
+        self.assertIsNone(check["b_tasks"]["case_idle"], "60 日内有记录不提醒")
+        idle = build_case_check(context(), case_last_activity="2026-09-01T10:00:00", today=TODAY)["b_tasks"]["case_idle"]
+        self.assertEqual(idle["message"], "案件 63 日未有状态变化")
 
     def test_c_contract_fees_framework_and_after_judgment(self):
         bare = build_case_check(context(contracts=[], finances={"fees": [], "invoices": []}, documents=[]), today=TODAY)
