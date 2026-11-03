@@ -728,7 +728,9 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             setCounselDetailClues(relationRes.status === "fulfilled" ? relationRes.value.data.clues || [] : []);
             if (relationRes.status === "fulfilled" && clueRequestId === counselDetailClueRequestRef.current) {
                 setViewingCounselCase(current => current?.id === row.id ? { ...current, data: { ...current.data, ...relationRes.value.data.case_data } } : current);
-                applyCounselDetailCluePageState(relationRes.value.data, 1, 10);
+                // 501294：上面的关联只取费用（452cfe76 提速），不含线索；线索页签单独按本案线索查询，否则一直显示“没有查询到关联线索”。
+                applyCounselDetailCluePageState({ clues: [], clue_total: 0 }, 1, 10);
+                void context.loadCounselDetailCluesPage(row, 1, 10, "").catch(() => applyCounselDetailCluePageState({ clues: [], clue_total: 0 }, 1, 10));
             }
             else if (relationRes.status === "rejected" && clueRequestId === counselDetailClueRequestRef.current) {
                 applyCounselDetailCluePageState({ clues: [], clue_total: 0 }, 1, 10);
@@ -800,9 +802,19 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
     };
     const openCaseClueWorkspace = async (target: {
         id?: number;
+        serial_no?: string;
     }) => {
-        const { setCaseClueLoading, setViewingCaseClue, setSelectedCaseClueEvidenceId } = context;
-        const id = Number(target.id || 0) || undefined;
+        const { setCaseClueLoading, setViewingCaseClue, setSelectedCaseClueEvidenceId, viewingCounselCase } = context;
+        let id = Number(target.id || 0) || undefined;
+        // 501294：只有线索号、对不上线索编号时，按线索号在本案关联线索里查到再打开。
+        const serialNo = String(target.serial_no || "").trim();
+        if (!id && serialNo && viewingCounselCase) {
+            try {
+                const { data } = await api.get(`/cases/${viewingCounselCase.id}/clues`, { params: { keyword: serialNo, page: 1, page_size: 20 } });
+                id = (Array.isArray(data?.clues) ? data.clues : []).find((item: CaseRow) => item.serial_no === serialNo)?.id;
+            }
+            catch { /* 查不到就按未关联提示 */ }
+        }
         if (!id)
             return message.warning("当前案件未关联调查线索");
         setCaseClueLoading(true);
