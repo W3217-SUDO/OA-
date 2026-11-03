@@ -15,10 +15,12 @@ test("全身形象接在首页、思考中和空状态，小头像不变", () =>
   assert.match(panel, /\{logoSrc \? <img src=\{logoSrc\} alt="" width=\{32\} height=\{32\} \/> : <AgentAvatar size=\{32\} \/>\}/);
   // 陶威 11-03：头像、菜单、案件智能体等所有地方统一换成新形象的头部。
   assert.match(read("../src/personal-agent/AgentAvatar.tsx"), /export const AGENT_HEAD_SRC = "\/assets\/agent\/agent-head\.webp";/);
+  // 导航栏等处用线条图标，颜色跟随文字色，适配深色/浅色导航栏。
+  assert.match(read("../src/personal-agent/AgentAvatar.tsx"), /export function AgentIcon\(\{ size \}: \{ size\?: number \}\) \{[\s\S]*stroke="currentColor"/);
   assert.match(read("../src/personal-agent/AiChatPage.tsx"), /logoSrc=\{AGENT_HEAD_SRC\}/);
   assert.match(read("../src/legal/CaseAgentDrawer.tsx"), /<AgentMascot pose="wave" height=\{110\} blink className="case-agent-empty-mascot" \/>/);
-  assert.match(read("../src/legal/CaseAgentDock.tsx"), /<AgentIcon size=\{26\} \/>\{alert &&/);
-  assert.match(read("../src/App.tsx"), /\{ key: "ai-chat", icon: <AgentIcon size=\{16\} \/>, label: "智能体中心" \}/);
+  assert.match(read("../src/legal/CaseAgentDock.tsx"), /<AgentHeadIcon size=\{26\} \/>\{alert &&/);
+  assert.match(read("../src/App.tsx"), /\{ key: "ai-chat", icon: <AgentIcon \/>, label: "智能体中心" \}/);
   assert.match(read("../src/personal-agent/ConversationManager.tsx"), /<Empty image=\{<AgentMascot pose="sleep" height=\{72\} \/>\} description="暂无对话" \/>/);
   assert.match(read("../src/personal-agent/ConversationManager.tsx"), /<AgentMascot pose="laptop" height=\{40\} bob \/><span>正在加载对话<\/span>/);
   assert.match(read("../src/personal-agent/CaseWorkspaceSelector.tsx"), /<AgentMascot pose="sorry" height=\{72\} \/>/);

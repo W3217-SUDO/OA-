@@ -33,7 +33,7 @@ function load(env) {
   const output = ts.transpileModule(fs.readFileSync(entry, "utf8"), { compilerOptions, fileName: entry }).outputText;
   const module = { exports: {} };
   const component = name => ({ children, ...props }) => React.createElement(name, props, children);
-  const deps = { antd: { Button: component("button"), Tooltip: ({ children }) => children, ConfigProvider: ({ children }) => children }, "@ant-design/icons": new Proxy({}, { get: () => "icon" }), "react-dom": { createPortal: node => node }, "../personal-agent/AgentAvatar": { AgentIcon: () => "icon" } };
+  const deps = { antd: { Button: component("button"), Tooltip: ({ children }) => children, ConfigProvider: ({ children }) => children }, "@ant-design/icons": new Proxy({}, { get: () => "icon" }), "react-dom": { createPortal: node => node }, "../personal-agent/AgentAvatar": { AgentHeadIcon: () => "icon" } };
   vm.runInNewContext(output, { module, exports: module.exports, require: s => deps[s] ?? createRequire(entry)(s), JSON, Math, Number, ...env }, { filename: entry });
   return module.exports;
 }

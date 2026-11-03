@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Button, Empty } from "antd";
 import { api } from "./api";
 import { RightOutlined } from "@ant-design/icons";
-import AgentAvatar from "./personal-agent/AgentAvatar";
+import { AgentIcon } from "./personal-agent/AgentAvatar";
 import dayjs from "dayjs";
 import { hearingPrompt } from "./dashboardPrompts";
 import { usePeopleNames } from "./personNames";
@@ -105,7 +105,7 @@ export default function DashboardHearingSchedule({ hearings, hearingsTotal, load
                     <span className="wb-hearing-time">{item.time}</span>
                     <b className="wb-hearing-court">{item.court || "法院待定"}</b>
                     <button type="button" className="wb-ask" title="交给智能体" aria-label="交给智能体" onClick={() => canOpenCase ? onOpenHearingAgent(item.case_no) : onAsk(hearingPrompt(item))}>
-                      <AgentAvatar size={15} />智能体
+                      <AgentIcon />智能体
                     </button>
                   </div>
                   <div className="wb-hearing-detail">

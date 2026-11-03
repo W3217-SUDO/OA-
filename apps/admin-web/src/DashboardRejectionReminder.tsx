@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Empty } from "antd";
-import AgentAvatar from "./personal-agent/AgentAvatar";
+import { AgentIcon } from "./personal-agent/AgentAvatar";
 import type { DashboardRejection } from "./dashboardData";
 import { rejectionPrompt } from "./dashboardPrompts";
 import { usePeopleNames } from "./personNames";
@@ -40,7 +40,7 @@ export default function DashboardRejectionReminder({ items, total, loading, stat
                 <time>{item.rejected_at}</time>
               </span>
               <button type="button" className="wb-ask" onClick={() => onAsk(rejectionPrompt(item))}>
-                <AgentAvatar size={15} />交给智能体
+                <AgentIcon />交给智能体
               </button>
             </div>
           </li>
