@@ -211,6 +211,25 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
         preview = (await self.client.post(self.url(body["id"], "preview"), json={"values": {"付款日期": "2026年12月1日"}})).json()
         self.assertEqual(preview["paragraphs"][0], "致上海市浦东新区人民法院：请甲店、北京三快在线科技有限公司于2026年12月1日付款。")
 
+    async def test_upload_original_underlined_file_as_is(self):
+        # 陶国南 16:19：直接上传他们写的范本（下划线 + 括号说明），不用改成 {字段}。这里用他发来的撤诉申请书原件。
+        self.identity = ADMIN
+        original = (Path(module.TEMPLATE_ROOT) / "withdrawal-application.docx").read_bytes()
+        created = await self.client.post(API + "/case-word-templates", data={"name": "撤诉申请书（上传）"},
+                                         files={"file": ("撤诉申请书.docx", original, module.DOCX_TYPE)})
+        self.assertEqual(created.status_code, 201, created.text)
+        slots = created.json()["slots"]
+        self.assertEqual([(slot["note"], slot["source"], slot["key"]) for slot in slots], [
+            ("哪个法院", "case", "法院"), ("原告名称", "case", "原告"), ("被告名称，有几个写几个", "case", "被告"), ("案由", "case", "案由"),
+            ("法院案号", "case", "法院案号"), ("撤诉理由", "manual", "撤诉理由"), ("被告名称", "case", "被告"), ("原告", "case", "原告"),
+            ("开庭律师", "case", "开庭律师"), ("生成当日", "case", "生成日期")])
+        self.assertEqual(slots[4]["sample"], "（2022）沪0115民初5795号")
+        self.identity = LAWYER
+        preview = (await self.client.post(self.url(created.json()["id"], "preview"), json={"values": {"撤诉理由": "原被告之间已达成和解"}})).json()
+        self.assertEqual(preview["missing"], [])
+        self.assertEqual(preview["paragraphs"][2], "上海市浦东新区人民法院：")
+        self.assertNotIn("（", preview["paragraphs"][7], "括号说明删掉")
+
     def test_note_rules(self):
         self.assertEqual(module._split_segment("（2022）沪0115民初5795号（法院案号）"), [("（2022）沪0115民初5795号", "法院案号")], "只有数字的括号是示例本身")
         self.assertEqual(module._split_segment("甲公司（原告名称）侵权纠纷（案由） "), [("甲公司", "原告名称"), ("侵权纠纷", "案由")])
