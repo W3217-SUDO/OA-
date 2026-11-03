@@ -123,7 +123,9 @@ export function FeeReviewDrawer({
           ),
           dataIndex: "actual_commission",
           width: 54,
-          render: renderFeeNumber,
+          render: (value: unknown, row: any) => row?.over_limit
+            ? <span className="finance-over-limit" style={{ color: "#cf1322", fontWeight: 600 }} title="调查提成合计超过基数 5%，金额超标，请进行个案审核">{renderFeeNumber(value)}</span>
+            : renderFeeNumber(value),
         },
         {
           title: (
@@ -191,6 +193,11 @@ export function FeeReviewDrawer({
       onClose={onClose}
       footer={<Button onClick={onClose}>取消</Button>}
     >
+      {!isPaymentAudit && (feeReviewRows as any[]).some((row) => row?.over_limit) && (
+        <div role="alert" data-testid="commission-over-limit" style={{ color: "#cf1322", fontWeight: 600, marginBottom: 8 }}>
+          调查提成合计超过基数 5%（标红的行），金额超标，请进行个案审核。
+        </div>
+      )}
       <Input.TextArea
         aria-label="审批意见"
         placeholder="审批意见"

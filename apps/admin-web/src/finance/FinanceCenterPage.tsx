@@ -3709,6 +3709,8 @@ function FinanceCenterContent({
             detail.actual_commission ??
             fee.data?.actual_commission ??
             fee.data?.amount,
+          // 调查提成合计超过基数 5%：可保存，审核时标红提醒个案审核（501293）
+          over_limit: Boolean(fee.data?.investigation_over_limit),
           paid_investigation:
             detail.paid_investigation ?? fee.data?.paid_investigation,
           paid_source: detail.paid_source ?? fee.data?.paid_source,

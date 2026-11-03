@@ -9,7 +9,7 @@ import { api } from "../../api";
 import { clearCaseContractContext } from "../../caseContractPrefill";
 import { rememberCaseDetailTarget } from "../../caseDetailNavigation";
 import { getCaseReminderDateValidationError } from "../../caseFifthBatchParity.mjs";
-import { buildCaseCreatePayload, buildCaseDuplicateRequest, buildCaseExecutionStatusPayload, buildCaseMergePayload, buildCaseProgressPayload, buildClueConversionPayload, getCaseCreateValidationError, getCaseEditValidationError, getCaseMutationBlockReason, getClueConversionIssues, normalizeCaseEditPayload, resolveStoredCasePeople, splitCasePeople, storedClueInvestigators } from "../../caseSecondBatchParity";
+import { buildCaseCreatePayload, buildCaseDuplicateRequest, buildCaseExecutionStatusPayload, buildCaseMergePayload, buildCaseProgressPayload, buildClueConversionPayload, getCaseCreateValidationError, getCaseEditValidationError, getCaseMutationBlockReason, getClueConversionIssues, normalizeCaseEditPayload, resolveStoredCasePeople, splitCasePeople, storedClueInvestigators, storedExtraInvestigators } from "../../caseSecondBatchParity";
 import { buildCaseHearingPayload, buildCaseUnarchiveReviewPayload, getCaseArchiveReviewValidationError, getCaseHearingValidationError, getCaseUnarchiveReviewValidationError } from "../../caseWorkflowFrontendParity.mjs";
 import { formatRequiredDate } from "../../formSafety";
 import { collectCasePartyIdentities } from "../CasePartyIdentityFields";
@@ -1141,6 +1141,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
                 splitCasePeople(row.data.assistant_usernames || row.data.assistant_username), splitCasePeople(row.data.assistants || row.data.assistant)),
             business_owner: resolveCasePersonValue(row.data.business_owner || row.data.source_person || ""),
             investigator_clues: storedClueInvestigators(row.data),
+            extra_investigators: resolveCasePersonValues(storedExtraInvestigators(row.data)),
             investigation_clue_ids: clueIds,
             right_type: row.data.right_type || "",
             comment: "",

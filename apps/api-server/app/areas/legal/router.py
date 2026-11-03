@@ -226,13 +226,15 @@ async def create_case_commissions(
             "base_amount": base_amount,
             "reference_commission": reference_commission,
         }, _round_fee_amount(item.actual_amount), item.remark.strip()))
+    # 调查提成合计超过基数 5% 可以保存，但给审核人员标红提醒个案审核（陶国南 501293）
     from app.core.cases import INVESTIGATION_COMMISSION_MAX_RATE
     investigation_rows = [(template, amount) for template, amount, _ in normalized if template["commission_role"] == "调查"]
+    investigation_over_limit = None
     if investigation_rows:
         investigation_total = _round_fee_amount(sum(amount for _, amount in investigation_rows))
         investigation_limit = _round_fee_amount(max(template["base_amount"] for template, _ in investigation_rows) * INVESTIGATION_COMMISSION_MAX_RATE)
         if investigation_total > investigation_limit:
-            raise HTTPException(status_code=422, detail=f"调查提成合计 {investigation_total:.2f} 元，超过基数的 5%（{investigation_limit:.2f} 元），请调整")
+            investigation_over_limit = {"investigation_over_limit": True, "investigation_total": investigation_total, "investigation_limit": investigation_limit}
     actor = await db.scalar(select(User).where(User.username == identity["username"]));
     if not actor:
         raise HTTPException(status_code=401, detail="当前用户不存在")
@@ -298,6 +300,7 @@ async def create_case_commissions(
                 "commission_created_by": identity["username"],
                 "applicant": identity["username"],
                 "application_date": applied_at[:10],
+                **(investigation_over_limit if investigation_over_limit and template["commission_role"] == "调查" else {}),
             },
         )
         db.add(record); await db.flush()
@@ -2349,7 +2352,9 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     from app.core.cases import (
         _active_case_phase_values, _case_commission_personnel_changed, _case_team_payload, _prioritize_new_case_assistants,
         _recalculate_case_draft_commissions, _resolve_active_case_people, case_investigators_from_clues,
+        resolve_case_people_keep_legacy,
     )
+    from app.core.case_people import split_case_people
     from app.core.crm import (
         _customer_or_404,
     )
@@ -2420,7 +2425,17 @@ async def update_normal_case_basic(case_id: int, body: CaseNormalBasicInput, ide
     old_summary = f"{case_record.customer}｜{case_record.title}｜{case_record.status}｜{case_data.get('cause_or_charge', '')}"
     previous_status = case_record.status
     # 调查员按关联线索带出：每条线索一人、按线索顺序、不去重（陶国南 501293：体现调查数量）；没关联线索的保留原值
-    investigator_fields = await case_investigators_from_clues(ordered_clues, db) if ordered_clues else {}
+    # 个案可另加调查员（陶国南 23:52：“个案可以添加调查员”），从系统在职人员里选；原来另加的旧值对应不上时保留
+    extra: list[tuple[str, str]] = []
+    if body.extra_investigators is not None:
+        previous_extra = split_case_people(case_data.get("investigator_extra_usernames"))
+        for value in split_case_people(body.extra_investigators):
+            names, accounts = await resolve_case_people_keep_legacy([value], previous_extra, db, field_name="调查员")
+            if names and all(names[0] != name for name, _ in extra):
+                extra.append((names[0], accounts[0] if accounts else ""))
+    else:
+        extra = [(row.get("name") or "", row.get("username") or "") for row in case_data.get("investigator_clues") or [] if row.get("extra")]
+    investigator_fields = await case_investigators_from_clues(ordered_clues, db, extra) if ordered_clues or extra else {}
     business_owner = business_owner_values[0] if business_owner_values else ""
     clue_nos = [item.serial_no for item in ordered_clues]
     case_record.title = title

@@ -243,21 +243,25 @@ async def _resolve_active_case_people(values: list[object], db: AsyncSession, *,
     return resolved_labels, resolved_usernames
 
 
-async def case_investigators_from_clues(clues: list[BusinessRecord], db: AsyncSession) -> dict:
-    """案件调查员 = 每条关联线索的调查员，按线索顺序、不去重（陶国南 501293：有几条线索就几个人，体现调查数量）。
+async def case_investigators_from_clues(clues: list[BusinessRecord], db: AsyncSession, extra: list[tuple[str, str]] = ()) -> dict:
+    """案件调查员 = 每条关联线索的调查员（按线索顺序、不去重，陶国南 501293：体现调查数量）+ 个案另加的调查员。
 
-    线索的调查员：线索 investigator_usernames 有值用它，否则用线索负责人（owner）。离职的人也照记。"""
+    线索的调查员：线索 investigator_usernames 有值用它，否则用线索负责人（owner）。离职的人也照记。
+    extra 是（显示名, 账号）；对应不上系统人员的旧值账号为空。"""
     per_clue = [(clue, split_case_people((clue.data or {}).get("investigator_usernames")) or split_case_people(clue.owner)) for clue in clues]
     usernames = {name for _, names in per_clue for name in names}
     users = {user.username: user for user in (await db.scalars(select(User).where(User.username.in_(usernames)))).all()} if usernames else {}
     rows = [{"clue_no": clue.serial_no, "clue_id": clue.id, "username": name, "name": users[name].display_name if name in users else name}
             for clue, names in per_clue for name in names]
+    extra_rows = [{"clue_no": "", "username": username, "name": name, "extra": True} for name, username in extra]
+    rows += extra_rows
     return {
         "investigator_clues": rows,
+        "investigator_extra_usernames": [row["username"] or row["name"] for row in extra_rows],
         "investigators": [row["name"] for row in rows],
-        "investigator_usernames": [row["username"] for row in rows],
+        "investigator_usernames": [row["username"] for row in rows if row["username"]],
         "investigator": "、".join(row["name"] for row in rows),
-        "investigator_username": ",".join(row["username"] for row in rows),
+        "investigator_username": ",".join(row["username"] for row in rows if row["username"]),
     }
 
 

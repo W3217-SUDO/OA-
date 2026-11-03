@@ -91,6 +91,20 @@ class CasePeopleMulti501293Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([row["clue_no"] for row in data["investigator_clues"]], ["M293A", "M293B", "M293C"])
         self.assertEqual(data["business_owner"], "离职员工")
 
+    async def test_extra_investigators_added_after_clue_ones(self) -> None:
+        from unittest.mock import AsyncMock, patch
+        with patch("app.core.case_relations.validate_case_clues", AsyncMock()), patch("app.core.case_relations.sync_case_clues", AsyncMock()):
+            response = await self.client.put(f"{API}/cases/{self.case_id}/normal-basic",
+                                             json=self._payload(investigation_clue_ids=[self.clues[0].id], extra_investigators=["wengjie"]))
+            self.assertEqual(response.status_code, 200, response.text)
+            data = response.json()["data"]
+            self.assertEqual(data["investigator_usernames"], ["sugq", "wengjie"])
+            self.assertEqual(data["investigator_extra_usernames"], ["wengjie"])
+            # 旧前端不传另加调查员：保留原来另加的人
+            again = await self.client.put(f"{API}/cases/{self.case_id}/normal-basic",
+                                          json=self._payload(investigation_clue_ids=[self.clues[0].id]))
+        self.assertEqual(again.json()["data"]["investigator_usernames"], ["sugq", "wengjie"])
+
     async def test_without_clues_legacy_investigator_kept_and_owner_single(self) -> None:
         response = await self.client.put(f"{API}/cases/{self.case_id}/normal-basic", json=self._payload(business_owner="wengjie"))
         self.assertEqual(response.status_code, 200, response.text)

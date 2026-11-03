@@ -41,8 +41,23 @@ test("线索调查员：有 investigator_usernames 用它，否则用线索负�
   assert.deepEqual(parity.clueInvestigatorRows({ id: 2, serial_no: "M2", owner: "sugq", data: { investigator_usernames: ["yuxd"] } }, name).map((row) => row.name), ["虞向东"]);
 });
 
-test("修改窗口：调查员按线索只读显示，案源人单选，开庭律师多选", () => {
-  assert.match(page, /label="调查员" name="investigator_clues"[\s\S]*?<CaseClueInvestigatorList \/>/);
+test("另加调查员：不来自线索的行单独回显，线索列表不含它们", () => {
+  const data = { investigator_clues: [{ clue_no: "M1", username: "sugq", name: "苏贵全" }, { clue_no: "", username: "wengjie", name: "翁洁", extra: true }] };
+  assert.deepEqual(parity.storedClueInvestigators(data).map((row) => row.clue_no), ["M1"]);
+  assert.deepEqual(parity.storedExtraInvestigators(data), ["wengjie"]);
+  assert.deepEqual(parity.normalizeCaseEditPayload({ handling_lawyers: ["a"], extra_investigators: ["wengjie"] }, "normal").extra_investigators, ["wengjie"]);
+});
+
+test("提成审批：调查提成超 5% 标红并提示个案审核", () => {
+  const drawer = read("../src/finance/FeeReviewDrawer.tsx");
+  assert.match(drawer, /row\?\.over_limit/);
+  assert.match(drawer, /金额超标，请进行个案审核/);
+  assert.match(read("../src/finance/FinanceCenterPage.tsx"), /over_limit: Boolean\(fee\.data\?\.investigation_over_limit\)/);
+});
+
+test("修改窗口：调查员按线索只读显示，可另加调查员，案源人单选，开庭律师多选", () => {
+  assert.match(page, /label="调查员（来自线索）" name="investigator_clues"[\s\S]*?<CaseClueInvestigatorList \/>/);
+  assert.match(page, /label="另加调查员" name="extra_investigators"[^>]*><KeywordPersonSelect mode="multiple"/);
   assert.match(page, /label="案源人" name="business_owner"><KeywordPersonSelect allowClear/);
   assert.match(page, /label="开庭律师" name="hearing_lawyers"[^>]*>\s*<KeywordPersonSelect mode="multiple"/);
   assert.match(page, /CaseClueSelect caseId=\{editingNormalCase\?\.id\} onPickRows=/);

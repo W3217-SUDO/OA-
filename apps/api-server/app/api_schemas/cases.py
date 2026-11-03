@@ -298,6 +298,7 @@ class CaseNormalBasicInput(BaseModel):
     assistants: list[str] | None = Field(default=None, max_length=20)
     business_owner: str = Field(default="", max_length=128)
     investigator: str = Field(default="", max_length=128)
+    extra_investigators: list[str] | None = Field(default=None, max_length=20)  # 个案另加的调查员（501293）
     investigation_clue_ids: list[int] = Field(default_factory=list, max_length=50)
     right_type: str = Field(default="", max_length=128)
     source_person: str = Field(default="", max_length=128)

@@ -92,7 +92,7 @@ export const normalizeCaseEditPayload = (draft: Record<string, unknown>, kind: C
   investigator: text(draft.investigator),
   investigation_clue_ids: idList(draft.investigation_clue_ids),
   ...(kind === "normal" ? { assistants: list(draft.assistants), business_owner: text(draft.business_owner), right_type: text(draft.right_type),
-    ...(Array.isArray(draft.investigators) ? { investigators: list(draft.investigators) } : {}),
+    ...(Array.isArray(draft.extra_investigators) ? { extra_investigators: list(draft.extra_investigators) } : {}),
     ...(Array.isArray(draft.business_owners) ? { business_owners: list(draft.business_owners) } : {}) } : {}),
   comment: text(draft.comment),
 });
@@ -206,7 +206,7 @@ export const resolveStoredCasePeople = (
   resolve: (sources: unknown) => string[], isOption: (value: string) => boolean, usernames: string[], names: string[],
 ): string[] => [...new Set(usernames.length && usernames.every(isOption) ? resolve(usernames) : resolve(names.length ? names : usernames))];
 
-export type CaseClueInvestigator = { clue_id?: number; clue_no: string; username?: string; name: string };
+export type CaseClueInvestigator = { clue_id?: number; clue_no: string; username?: string; name: string; extra?: boolean };
 
 /** 一条线索的调查员（501293）：线索 investigator_usernames 有值用它，否则用线索负责人。 */
 export const clueInvestigatorRows = (
@@ -220,10 +220,16 @@ export const clueInvestigatorRows = (
 
 /** 打开修改窗口时的“线索：调查员”：新存的按 investigator_clues；迁移数据按线索号与“苏贵全,苏贵全,苏贵全”逐个对上。 */
 export const storedClueInvestigators = (data: Record<string, any>): CaseClueInvestigator[] => {
-  if (Array.isArray(data.investigator_clues)) return data.investigator_clues;
+  if (Array.isArray(data.investigator_clues)) return data.investigator_clues.filter((row: CaseClueInvestigator) => !row.extra);
   const clueNos = splitCasePeople(data.investigation_clue_nos || data.clue_nos || data.clue_no);
   const names = String(data.investigator_name || data.investigator || "").split(/[,，、;；|]+/).map((item) => item.trim()).filter(Boolean);
   if (!names.length) return [];
   if (clueNos.length === names.length) return clueNos.map((clue_no, index) => ({ clue_no, name: names[index] }));
   return names.map((name) => ({ clue_no: "", name }));
 };
+
+/** 个案另加的调查员（不来自线索，501293）：回显为账号，对应不上系统人员的旧值用姓名。 */
+export const storedExtraInvestigators = (data: Record<string, any>): string[] =>
+  Array.isArray(data.investigator_clues)
+    ? data.investigator_clues.filter((row: CaseClueInvestigator) => row.extra).map((row: CaseClueInvestigator) => row.username || row.name)
+    : [];

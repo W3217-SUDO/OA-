@@ -4532,9 +4532,10 @@ export default function CaseCenterPage({
           <div className="form-grid">
             <Form.Item label="经办律师" name="handling_lawyers" rules={[{required:true,message:"请选择系统已创建的在职律师"}]}><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions}/></Form.Item>
             <Form.Item label="律师助理" name="assistants" normalize={prioritizeCaseAssistantSelection}><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="可选择多人；最新选择的助理排在最前" /></Form.Item>
-            <Form.Item label="调查员" name="investigator_clues" extra="按关联调查线索带出，每条线索一人；调查员不对请在线索里修改">
+            <Form.Item label="调查员（来自线索）" name="investigator_clues" extra="按关联调查线索带出，每条线索一人；调查员不对请在线索里修改">
               <CaseClueInvestigatorList />
             </Form.Item>
+            <Form.Item label="另加调查员" name="extra_investigators" extra="线索以外参与调查的人，可多选"><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>
             {isCivilCaseType(editingNormalCase?.data.case_type) && <Form.Item label="案源人" name="business_owner"><KeywordPersonSelect allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" /></Form.Item>}
             {editingNormalCase?.data.case_type === "行政案件及国家赔偿" && <Form.Item label="权利类型" name="right_type"><Select allowClear options={rightTypeOptions}/></Form.Item>}
           </div>
