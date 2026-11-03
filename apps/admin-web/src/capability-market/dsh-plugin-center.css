@@ -42,3 +42,11 @@
   .dsh-plugin-community-links { flex-direction: column; gap: 8px; }
   .dsh-plugin-community-links .ant-btn { width: 100%; justify-content: flex-start; }
 }
+/* DSH API 配置（服务商列表）；不用 color-mix，兼容钉钉旧内核。 */
+.dsh-provider-list { display: block; width: 100%; }
+.dsh-provider-list article { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 16px; border-top: 1px solid var(--plugin-line); }
+.dsh-provider-list article.is-active { background: var(--oa-fill); border-radius: 6px; }
+.dsh-provider-list .ant-radio-wrapper { margin-inline-end: 0; }
+@media (max-width: 767px) {
+  .dsh-provider-list article { flex-direction: column; align-items: stretch; gap: 8px; padding: 14px 8px; }
+}

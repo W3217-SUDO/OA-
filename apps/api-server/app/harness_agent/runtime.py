@@ -72,10 +72,14 @@ def workspace_paths(owner: str, workspace: str, conversation: str):
     return identifier, cwd, home
 
 
-def _patch(url, token, schema, directories, mode_supported, response_mode, memory=None, native_plugins=False):
-    model = {"id": settings.langgraph_model, "name": settings.langgraph_model, "input": ["text", "image"]}
-    provider = {"displayName": "沪知已配置模型", "apiKeyEnv": "OA_MODEL_API_KEY", "api": "openai-completions",
-                "baseURL": settings.langgraph_api_base_url, "models": [model],
+def _patch(url, token, schema, directories, mode_supported, response_mode, memory=None, native_plugins=False, active=None):
+    # 模型服务商按“智能体设置 › DSH API 配置”的当前使用项；没传时按服务器配置（兼容旧调用）。
+    if active is None:
+        from .model_providers import active_from_settings
+        active = active_from_settings()
+    model = {"id": active.model, "name": active.model, "input": ["text", "image"]}
+    provider = {"displayName": active.name, "apiKeyEnv": "OA_MODEL_API_KEY", "api": active.api,
+                "baseURL": active.base_url, "models": [model],
                 "headers": {"Connection": "close"}, "timeoutMs": 120000, "streamIdleTimeoutMs": 90000,
                 "retryPolicy": {"mode": "normal", "maxRetries": 0}}
     if mode_supported:
@@ -114,7 +118,7 @@ def _patch(url, token, schema, directories, mode_supported, response_mode, memor
     ]
 
 
-def _environment():
+def _environment(api_key=None):
     # SDK 默认继承宿主环境；显式清空业务数据库、OSS、钉钉及 OA 登录相关配置。
     allowed = {"PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP", "LANG", "LC_ALL"}
     environment = {key: value if key.upper() in allowed else "" for key, value in os.environ.items()}
@@ -125,7 +129,7 @@ def _environment():
     cache.mkdir(parents=True, exist_ok=True, mode=0o700)
     # 独立库的 Windows 原生扩展受路径长度限制，不能以深层会话目录作为 homedir。
     # 此目录仅用于可重建的运行库缓存；会话历史仍由显式 dsh_home 独立保存。
-    environment.update({"HOME": str(cache), "USERPROFILE": str(cache), "OA_MODEL_API_KEY": settings.langgraph_api_key,
+    environment.update({"HOME": str(cache), "USERPROFILE": str(cache), "OA_MODEL_API_KEY": settings.langgraph_api_key if api_key is None else api_key,
                         "DSH_TELEMETRY_DISABLED": "1", "DSH_PRIMARY_RUNTIME": "", "DSH_BUNDLED_OFFICE_CLI": ""})
     if settings.deepseek_harness_plugin_path.strip():
         environment["PATH"] = settings.deepseek_harness_plugin_path.strip() + os.pathsep + environment.get("PATH", "")
@@ -268,8 +272,9 @@ async def close_all_residents() -> None:
         await _close_resident(resident)
 
 
-def _fingerprint(schemas, directories, mode_supported, response_mode, memory, profile) -> str:
+def _fingerprint(schemas, directories, mode_supported, response_mode, memory, profile, model="") -> str:
     material = json.dumps({
+        "model": model,
         "tools": [(item["function"]["name"], item["function"].get("parameters")) for item in schemas],
         "skills": sorted(str(path) for path in directories.values()),
         "mode": [mode_supported, response_mode], "memory": memory, "profile": profile,
@@ -314,7 +319,11 @@ async def _run_session(messages, on_delta, *, tools, schema, identity, db, ident
             memory = memory_configuration(cwd, identity['username'])
             from .plugins import attach
             profile = attach(home)
-        fingerprint = _fingerprint(schemas, directories, mode_supported, response_mode, memory, profile)
+            from .model_providers import active_model
+            active = await active_model(db)
+            if not active.configured:
+                raise HTTPException(503, "智能体模型服务商未配置完整，请系统管理员在“智能体设置 › DSH API 配置”检查")
+        fingerprint = _fingerprint(schemas, directories, mode_supported, response_mode, memory, profile, active.fingerprint())
 
         # 复用常驻会话：配置未变、仍是本进程跑完的最近一轮、没被关停。
         key = identifier
@@ -345,12 +354,13 @@ async def _run_session(messages, on_delta, *, tools, schema, identity, db, ident
                     workspace_mcp(_SwitchTools(holder), schemas, lambda: holder["context"]))
                 resident.patch_path = home / ("oa-run-" + uuid4().hex + ".yml")
                 resident.patch_path.write_text(yaml.safe_dump(
-                    _patch(url, secret, schemas, directories, mode_supported, response_mode, memory, native_plugins=profile != "sdk"),
+                    _patch(url, secret, schemas, directories, mode_supported, response_mode, memory, native_plugins=profile != "sdk",
+                           active=active),
                     allow_unicode=True, sort_keys=False), encoding="utf-8")
                 resident.patch_path.chmod(0o600)
                 resident.harness = DeepSeekHarness(
                     dsh_home=native_path(home), cwd=native_path(cwd), profile=profile, patches=(native_path(resident.patch_path),),
-                    provider="huzhi-oa", model=settings.langgraph_model, env=_environment(),
+                    provider="huzhi-oa", model=active.model, env=_environment(active.api_key),
                     reasoning_effort=("off" if response_mode == "fast" else "high") if mode_supported else None,
                     initialize_timeout_seconds=40, request_timeout_seconds=180)
             except BaseException:

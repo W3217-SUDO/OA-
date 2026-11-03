@@ -165,17 +165,18 @@ async def personal_agent_status(identity: dict = Depends(current_identity), db: 
     from app.areas.personal_agent.ai_space_service import personal_save_capability
     file_capability = await personal_save_capability(safe_identity, db)
     from app.harness_agent.runtime import readiness
+    from app.harness_agent.model_providers import active_model
     native = readiness()
+    active = await active_model(db)
     return {
-        "ready": bool(settings.langgraph_enabled and settings.langgraph_api_base_url and settings.langgraph_api_key and settings.langgraph_model
-                      and native["ready"]),
+        "ready": bool(settings.langgraph_enabled and active.configured and native["ready"]),
         "agent_runtime_backend": settings.agent_runtime_backend,
         "harness_version": native["version"],
         "runtime_error": native["error"],
-        "model": settings.langgraph_model,
-        "model_provider": settings.langgraph_model_provider,
+        "model": active.model,
+        "model_provider": active.name,
         "runtime": "personal-agent",
-        "supports_response_modes": supports_response_modes(),
+        "supports_response_modes": supports_response_modes(active),
         "write_requires_confirmation": True,
         "personal_file_storage": file_capability,
         "identity": {key: value for key, value in safe_identity.items() if not key.startswith("_")},

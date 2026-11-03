@@ -15,6 +15,7 @@ from app.user_agent_skills import USER_SKILL_CONFIG_GROUP, USER_SKILL_CONFIG_PRE
 from app.areas.agent_admin.skills import router as skills_router
 from app.areas.agent_admin.system_skills import router as system_skills_router
 from app.areas.agent_admin.plugins import router as plugins_router
+from app.areas.agent_admin.model_providers import router as model_providers_router
 from app.areas.capability_market.router import router as capability_router
 
 
@@ -22,6 +23,7 @@ router = APIRouter()
 router.include_router(skills_router)
 router.include_router(system_skills_router)
 router.include_router(plugins_router)
+router.include_router(model_providers_router)
 router.include_router(capability_router)
 
 
@@ -31,6 +33,10 @@ async def agent_admin_overview(identity: dict = Depends(current_identity), db: A
     require_agent_settings_management(identity)
     runtime = case_agent_runtime.status()
     runtime.pop("skills", None)
+    # 运行状态里的模型按“DSH API 配置”当前使用的服务商显示（切换后不用重启）。
+    from app.harness_agent.model_providers import active_model
+    active = await active_model(db)
+    runtime.update({"model_provider": active.name, "model": active.model, "model_configured": active.configured})
     system_skills = await active_system_skills(db)
     runtime["skill_count"] = len(system_skills)
     overview = {
