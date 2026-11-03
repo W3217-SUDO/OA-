@@ -255,9 +255,8 @@
 .assistant-workspace-greeting .assistant-greeting-hero .assistant-greeting-bubble{position:relative;align-self:center;margin:0 0 18px 10px;padding:10px 22px;border:1px solid var(--oa-border,#e5e7eb);border-radius:20px;background:var(--oa-surface,#fff);box-shadow:0 6px 18px rgba(15,23,42,.06);animation:assistant-greeting-pop .45s ease-out .15s both}
 .assistant-workspace-greeting .assistant-greeting-hero .assistant-greeting-bubble::before{content:"";position:absolute;left:-8px;top:50%;width:14px;height:14px;margin-top:-7px;border-left:1px solid var(--oa-border,#e5e7eb);border-bottom:1px solid var(--oa-border,#e5e7eb);background:inherit;transform:rotate(45deg)}
 @keyframes assistant-greeting-pop{from{opacity:0;transform:translateX(-6px) scale(.96)}to{opacity:1;transform:none}}
-.assistant-greeting-hero .agent-mascot>img{transform-origin:50% 90%;animation:assistant-greeting-wave 3.2s ease-in-out infinite}
-@keyframes assistant-greeting-wave{0%,70%,100%{transform:rotate(0)}76%{transform:rotate(-4deg)}82%{transform:rotate(3deg)}88%{transform:rotate(-2deg)}}
-@media (prefers-reduced-motion:reduce){.assistant-workspace-greeting .assistant-greeting-hero .assistant-greeting-bubble,.assistant-greeting-hero .agent-mascot>img{animation:none}}
+/* 首页小机器人身体不动（陶威 11-03），只眨眼。 */
+@media (prefers-reduced-motion:reduce){.assistant-workspace-greeting .assistant-greeting-hero .assistant-greeting-bubble{animation:none}}
 /* 智能体头像图标（AgentIcon）：和原来的图标对齐。 */
 .agent-avatar{display:inline-block;flex:none;object-fit:contain;vertical-align:middle}
 .anticon.agent-icon{display:inline-flex;align-items:center;justify-content:center;line-height:0}
