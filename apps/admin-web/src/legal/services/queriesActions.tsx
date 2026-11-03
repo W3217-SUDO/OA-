@@ -125,6 +125,9 @@ export interface CaseQueriesDependencies {
     readonly counselDetailCluePageSize: number;
     readonly counselDetailClueKeyword: string;
     readonly counselDetailClueRequestRef: React.RefObject<number>;
+    /** 线索分页自己的请求序号；不能共用打开详情的序号，否则文档、费用的返回会被当成过期丢掉（陶威 11-03 文档一直“正在加载”）。 */
+    readonly counselDetailCluePageRequestRef: React.RefObject<number>;
+    readonly counselDetailCaseIdRef: React.RefObject<number | null>;
     readonly setCounselDetailClueLoading: React.Dispatch<React.SetStateAction<boolean>>;
     readonly viewingCounselCase: CaseRow | null;
     readonly applyCounselDetailCluePageState: (payload: any, fallbackPage: number, fallbackPageSize: number) => {
@@ -471,19 +474,19 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
         return applyCounselDetailCustomerTaskPageState(data, nextPage, nextPageSize);
     };
     const loadCounselDetailCluesPage = async (row: CaseRow, nextPage = context.counselDetailCluePage, nextPageSize = context.counselDetailCluePageSize, keyword = context.counselDetailClueKeyword) => {
-        const { counselDetailClueRequestRef, setCounselDetailClueLoading, viewingCounselCase, applyCounselDetailCluePageState } = context;
-        const requestId = ++counselDetailClueRequestRef.current;
+        const { counselDetailCluePageRequestRef, counselDetailCaseIdRef, setCounselDetailClueLoading, applyCounselDetailCluePageState } = context;
+        const requestId = ++counselDetailCluePageRequestRef.current;
         setCounselDetailClueLoading(true);
         try {
             const { data } = await api.get(`/cases/${row.id}/clues`, {
                 params: { page: nextPage, page_size: nextPageSize, keyword: keyword || undefined },
             });
-            if (!shouldApplyCaseClueResponse({ requestId, currentRequestId: counselDetailClueRequestRef.current, currentCaseId: viewingCounselCase?.id, targetCaseId: row.id }))
+            if (!shouldApplyCaseClueResponse({ requestId, currentRequestId: counselDetailCluePageRequestRef.current, currentCaseId: counselDetailCaseIdRef.current ?? undefined, targetCaseId: row.id }))
                 return null;
             return applyCounselDetailCluePageState(data, nextPage, nextPageSize);
         }
         finally {
-            if (requestId === counselDetailClueRequestRef.current)
+            if (requestId === counselDetailCluePageRequestRef.current)
                 setCounselDetailClueLoading(false);
         }
     };

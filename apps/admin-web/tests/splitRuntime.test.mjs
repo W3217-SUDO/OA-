@@ -61,9 +61,9 @@ test('finance query reads default pagination at invocation and applies response 
 });
 
 test('case clue request guard ignores stale responses and clears loading only for latest request', async () => {
-  const pending = [], loading = [], applied = [], requestRef = { current: 0 };
+  const pending = [], loading = [], applied = [], requestRef = { current: 0 }, detailRef = { current: 7 };
   api.get = (url, options) => new Promise(resolve => pending.push({ url, options, resolve }));
-  const actions = createCaseQueriesActions({ counselDetailCluePage: 3, counselDetailCluePageSize: 15, counselDetailClueKeyword: 'CODEX-SPLIT', counselDetailClueRequestRef: requestRef, setCounselDetailClueLoading: value => loading.push(value), viewingCounselCase: { id: 4 }, applyCounselDetailCluePageState: (data, page, size) => { applied.push([data, page, size]); return data; } });
+  const actions = createCaseQueriesActions({ counselDetailCluePage: 3, counselDetailCluePageSize: 15, counselDetailClueKeyword: 'CODEX-SPLIT', counselDetailClueRequestRef: detailRef, counselDetailCluePageRequestRef: requestRef, counselDetailCaseIdRef: { current: 4 }, setCounselDetailClueLoading: value => loading.push(value), viewingCounselCase: { id: 4 }, applyCounselDetailCluePageState: (data, page, size) => { applied.push([data, page, size]); return data; } });
   const first = actions.loadCounselDetailCluesPage({ id: 4 });
   const second = actions.loadCounselDetailCluesPage({ id: 4 }, 2, 30, 'new');
   pending[0].resolve({ data: { marker: 'stale' } });
@@ -73,6 +73,8 @@ test('case clue request guard ignores stale responses and clears loading only fo
   await second;
   assert.deepEqual(applied, [[{ marker: 'latest' }, 2, 30]]);
   assert.deepEqual(loading, [true, true, false]);
+  // 陶威 11-03：线索分页不能动打开详情的序号，否则文档、费用的返回被当成过期，一直“正在加载”。
+  assert.equal(detailRef.current, 7);
 });
 
 test('contract upload keeps rejected file and skips refresh, then clears only after success', async () => {

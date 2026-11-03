@@ -622,6 +622,7 @@ export default function CaseCenterPage({
   const caseUploadRef = useRef<HTMLInputElement>(null);
   const counselDetailUploadRef = useRef<HTMLInputElement>(null);
   const counselDetailClueRequestRef = useRef(0);
+  const counselDetailCluePageRequestRef = useRef(0);
     const counselDetailCaseIdRef = useRef<number | null>(null);
   const counselDetailAssistedFeeRequestRef = useRef(0);  const caseLitigantSearchTimerRef = useRef<number | undefined>(undefined);
   const caseLitigantSearchRequestRef = useRef(0);
@@ -1048,6 +1049,8 @@ export default function CaseCenterPage({
     get counselDetailCluePageSize() { return counselDetailCluePageSize; },
     get counselDetailClueKeyword() { return counselDetailClueKeyword; },
     get counselDetailClueRequestRef() { return counselDetailClueRequestRef; },
+    get counselDetailCluePageRequestRef() { return counselDetailCluePageRequestRef; },
+    get counselDetailCaseIdRef() { return counselDetailCaseIdRef; },
     get setCounselDetailClueLoading() { return setCounselDetailClueLoading; },
     get viewingCounselCase() { return viewingCounselCase; },
     get applyCounselDetailCluePageState() { return applyCounselDetailCluePageState; },
