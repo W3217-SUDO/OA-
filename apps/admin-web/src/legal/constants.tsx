@@ -1,4 +1,5 @@
 import { Checkbox,Space } from "antd";
+import { documentTitleFromContent } from "./documentTitle";
 import dayjs from "dayjs";
 import type { ReactNode } from "react";
 import { useState } from "react";
@@ -212,7 +213,7 @@ export const isUsableAiDocumentContent = (value: string) => {
 
 export const aiWordDocumentName = (request: string, generatedContent = "") => {
   const explicitTitle = request.match(/标题(?:为|是)?[“\"]([^”\"]{1,80})[”\"]/i)?.[1]?.trim();
-  const generatedTitle = generatedContent.split(/\r?\n/).map((line) => line.replace(/^[#*\s]+/, "").trim()).find(Boolean)?.slice(0, 60);
+  const generatedTitle = documentTitleFromContent(generatedContent);
   const cleaned = request
     .replace(/(?:请|帮我|给我|需要|可以|能否)/g, "")
     .replace(/(?:我要(?:的)?(?:是)?|不是这个|改成|保存为|转成|导出为)/g, "")
