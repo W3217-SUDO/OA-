@@ -27,6 +27,9 @@ class CloudSettings:
     api_key: str
     model: str
     memory: bool
+    plan_key: str = ""  # Agent Plan 专属 Key，用于 Harness（专业数据集、豆包搜索）
+    datapro: bool = False
+    doubao_search: bool = False
 
     @property
     def ready(self) -> bool:
@@ -48,14 +51,20 @@ async def load(db: AsyncSession, *, lock: bool = False):
     value.setdefault("model", DEFAULT_MODEL)
     value.setdefault("memory", True)
     value.setdefault("encrypted_key", "")
+    value.setdefault("encrypted_plan_key", "")
+    value.setdefault("datapro", True)
+    value.setdefault("doubao_search", True)
     value.setdefault("revision", 0)
     return record, value
 
 
 def resolve(value: dict) -> CloudSettings:
     api_key = _unseal(value["encrypted_key"]) if value.get("encrypted_key") else ""
+    plan_key = _unseal(value["encrypted_plan_key"]) if value.get("encrypted_plan_key") else ""
     return CloudSettings(enabled=bool(value.get("enabled")), api_key=api_key,
-                         model=str(value.get("model") or "").strip(), memory=bool(value.get("memory", True)))
+                         model=str(value.get("model") or "").strip(), memory=bool(value.get("memory", True)),
+                         plan_key=plan_key, datapro=bool(plan_key and value.get("datapro", True)),
+                         doubao_search=bool(plan_key and value.get("doubao_search", True)))
 
 
 async def active(db) -> CloudSettings | None:

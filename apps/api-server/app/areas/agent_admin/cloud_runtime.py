@@ -25,6 +25,9 @@ class CloudInput(BaseModel):
     model: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9._:-]+$")
     memory: bool = True
     api_key: str = Field(default="", max_length=500)  # 留空表示不改
+    plan_key: str = Field(default="", max_length=500)  # Agent Plan 专属 Key，留空表示不改
+    datapro: bool = True
+    doubao_search: bool = True
 
 
 def _require_admin(identity: dict) -> None:
@@ -41,7 +44,9 @@ def _now() -> str:
 
 def _public(value: dict) -> dict:
     return {"enabled": bool(value.get("enabled")), "model": value.get("model", ""), "memory": bool(value.get("memory", True)),
-            "key_set": bool(value.get("encrypted_key")), "models": MODELS, "revision": value.get("revision", 0),
+            "key_set": bool(value.get("encrypted_key")), "models": MODELS,
+            "plan_key_set": bool(value.get("encrypted_plan_key")), "datapro": bool(value.get("datapro", True)),
+            "doubao_search": bool(value.get("doubao_search", True)), "revision": value.get("revision", 0),
             "updated_by": value.get("updated_by", ""), "updated_at": value.get("updated_at", ""),
             "verified_at": value.get("verified_at", ""), "verify_ok": value.get("verify_ok"),
             "verify_message": value.get("verify_message", "")}
@@ -71,9 +76,12 @@ async def update_cloud_runtime(body: CloudInput, identity: dict = Depends(curren
     _require_admin(identity)
     record, value = await load(db, lock=True)
     changed = {**value, "enabled": body.enabled, "model": body.model.strip(), "memory": body.memory,
+               "datapro": body.datapro, "doubao_search": body.doubao_search,
                "updated_by": identity["username"], "updated_at": _now(), "revision": int(value.get("revision") or 0) + 1}
     if body.api_key.strip():
         changed.update({"encrypted_key": seal_key(body.api_key.strip()), "verified_at": "", "verify_ok": None, "verify_message": ""})
+    if body.plan_key.strip():
+        changed["encrypted_plan_key"] = seal_key(body.plan_key.strip())
     if body.model.strip() != value.get("model"):
         changed.update({"verified_at": "", "verify_ok": None, "verify_message": ""})
     if changed["enabled"] and not (changed.get("encrypted_key") and changed["model"]):

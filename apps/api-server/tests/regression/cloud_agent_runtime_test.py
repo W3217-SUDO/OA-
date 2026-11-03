@@ -155,3 +155,44 @@ def test_probe_reports_model_not_open_and_cleans_up_agent():
     assert not ok and "开通" in message
     ok, _ = asyncio.run(probe(FAKE_KEY, "open", transport=httpx.MockTransport(handler)))
     assert ok and deleted == ["/api/v3/agents/agent-1"]
+
+
+def test_doubao_search_uses_plan_key_and_official_payload():
+    from app.cloud_agent.harness import doubao_search
+    seen = {}
+
+    def handler(request: httpx.Request):
+        seen["url"], seen["auth"], seen["body"] = str(request.url), request.headers["authorization"], json.loads(request.content)
+        return httpx.Response(200, json={"Result": {"WebResults": [{"Title": "测试"}]}})
+
+    result = asyncio.run(doubao_search("plan-fake", {"Query": "上海 律师 新规", "AuthLevel": 1, "NeedContent": True},
+                                       transport=httpx.MockTransport(handler)))
+    assert seen["url"] == "https://open.feedcoopapi.com/search_api/web_search" and seen["auth"] == "Bearer plan-fake"
+    assert seen["body"]["Filter"] == {"NeedUrl": True, "AuthInfoLevel": 1, "NeedContent": True}
+    assert "测试" in result["result"]
+
+
+def test_harness_tools_route_and_fall_through_to_oa_tools():
+    from app.cloud_agent import harness
+
+    calls = []
+
+    async def fake_datapro(key, arguments):
+        calls.append(("datapro", key, arguments["query"]))
+        return {"result": "法条"}
+
+    original = harness.datapro
+    harness.datapro = fake_datapro
+    try:
+        oa = FakeTools()
+        tools = harness.HarnessTools(oa, "plan-fake")
+        assert asyncio.run(tools.execute("volc_professional_data", {"query": "民法典第577条"})) == {"result": "法条"}
+        assert asyncio.run(tools.execute("query_case", {"case_no": "A1"}))["status"] == "已立案"
+    finally:
+        harness.datapro = original
+    assert calls == [("datapro", "plan-fake", "民法典第577条")] and oa.calls == [("query_case", {"case_no": "A1"})]
+
+
+def test_builtin_web_search_off_when_doubao_search_on():
+    body = agent_body("m", [], web_search=False)
+    assert "web_search" not in {item["name"] for item in body["tools"][0]["configs"]}

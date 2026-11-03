@@ -8,9 +8,10 @@ import "./dsh-plugin-center.css";
 // 陶威 11-03：智能体中心改用火山方舟 Managed Agents（云端智能体），不再在服务器上跑 DSH。Key 加密保存、不回显。
 export type CloudState = {
   enabled: boolean; model: string; memory: boolean; key_set: boolean; models: string[]; revision: number;
+  plan_key_set: boolean; datapro: boolean; doubao_search: boolean;
   updated_by: string; updated_at: string; verified_at: string; verify_ok: boolean | null; verify_message: string;
 };
-type CloudForm = { enabled: boolean; model: string; memory: boolean; api_key?: string };
+type CloudForm = { enabled: boolean; model: string; memory: boolean; api_key?: string; plan_key?: string; datapro: boolean; doubao_search: boolean };
 
 const BASE = "/agent-admin/cloud-runtime";
 
@@ -26,7 +27,8 @@ export function CloudRuntimeSettings({ active, canManage, onBusy }: { active: bo
     try {
       const { data } = await api.get<CloudState>(BASE);
       setState(data);
-      form.setFieldsValue({ enabled: data.enabled, model: data.model, memory: data.memory, api_key: "" });
+      form.setFieldsValue({ enabled: data.enabled, model: data.model, memory: data.memory, api_key: "", plan_key: "",
+        datapro: data.datapro, doubao_search: data.doubao_search });
     } catch (failure) { setError(errorText(failure, "云端智能体配置加载失败")); }
     finally { setLoading(false); }
   }, [form]);
@@ -37,9 +39,10 @@ export function CloudRuntimeSettings({ active, canManage, onBusy }: { active: bo
     const values = await form.validateFields();
     setBusy("save"); setError(""); onBusy(true);
     try {
-      const { data } = await api.put<CloudState>(BASE, { ...values, model: values.model.trim(), api_key: (values.api_key || "").trim() });
+      const { data } = await api.put<CloudState>(BASE, { ...values, model: values.model.trim(), api_key: (values.api_key || "").trim(),
+        plan_key: (values.plan_key || "").trim() });
       setState(data);
-      form.setFieldsValue({ api_key: "" });
+      form.setFieldsValue({ api_key: "", plan_key: "" });
       message.success(data.enabled ? "已保存：智能体改用云端运行" : "已保存：智能体仍在服务器上运行");
     } catch (failure) { setError(errorText(failure, "保存未完成")); }
     finally { setBusy(""); onBusy(false); }
@@ -73,7 +76,7 @@ export function CloudRuntimeSettings({ active, canManage, onBusy }: { active: bo
           {state.verify_ok === true && <Tag color="success">连接正常</Tag>}
           {state.verify_ok === false && <Tag color="error">连接失败</Tag>}
         </div>
-        <small>方舟 API Key：{state.key_set ? "已保存（不显示）" : "未填写"}
+        <small>方舟 API Key：{state.key_set ? "已保存（不显示）" : "未填写"}　Agent Plan Key：{state.plan_key_set ? "已保存（不显示）" : "未填写"}
           {state.updated_at ? `　最近修改：${state.updated_by} ${state.updated_at.slice(0, 16).replace("T", " ")}` : ""}</small>
         {state.verify_message && <p className={state.verify_ok === false ? "dsh-plugin-failure" : undefined}>测试结果：{state.verify_message}</p>}
         <Form form={form} layout="vertical" autoComplete="off" disabled={!canManage || !!busy}>
@@ -83,6 +86,17 @@ export function CloudRuntimeSettings({ active, canManage, onBusy }: { active: bo
           <Form.Item name="model" label="模型" extra="模型 ID 带版本号，需要先在方舟“开通管理”里开通；可以从下拉里选，也可以直接填写。"
             rules={[{ required: true, whitespace: true, message: "请填写模型" }]}>
             <AutoComplete maxLength={120} options={state.models.map(value => ({ value }))} />
+          </Form.Item>
+          <Form.Item name="plan_key" label="Agent Plan 专属 Key（Harness 用）"
+            extra={state.plan_key_set ? "已保存的 Key 不显示；留空表示不修改。" : "在 Agent Plan 控制台“使用配置”里获取；用于专业数据集和豆包搜索，费用从套餐抵扣。不填则不接这两项。"}>
+            <Input.Password maxLength={500} autoComplete="new-password" visibilityToggle={false} />
+          </Form.Item>
+          <Form.Item name="datapro" label="专业数据集" valuePropName="checked"
+            extra="法律法规、司法案例、法律幻觉校验、企业工商和风险等；各类数据在火山“专业数据集管理后台”单独开关。">
+            <Switch />
+          </Form.Item>
+          <Form.Item name="doubao_search" label="豆包搜索" valuePropName="checked" extra="开启后用豆包搜索代替云端自带的联网搜索（套餐每月 500 次免费）。">
+            <Switch />
           </Form.Item>
           <Form.Item name="memory" label="长期记忆" valuePropName="checked" extra="开启后每人一个云端记忆库；个人在“记忆”里关掉的不挂载。">
             <Switch />

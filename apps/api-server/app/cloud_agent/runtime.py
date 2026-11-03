@@ -23,6 +23,7 @@ from app.harness_agent.skills import RESOURCE_TOOL, SCRIPT_TOOL, WorkspaceTools,
 
 from .client import ArkClient, ArkError
 from .config import CloudSettings
+from .harness import HarnessTools, schemas as harness_schemas
 
 logger = logging.getLogger(__name__)
 TURN_SECONDS = 300
@@ -37,6 +38,8 @@ SYSTEM = (
     "不要尝试在沙箱里登录或访问 OA。\n"
     "技能：需要时先用 harness_read_skill_resource 读取技能的 SKILL.md（path 填 SKILL.md），按其中的步骤执行；"
     "技能包里的脚本用 harness_run_skill_script 运行。\n"
+    "专业资料：查法条、判例、企业工商和风险时用 volc_professional_data（权威库），引用法条和案号前可用它做法律幻觉校验；"
+    "查最新公开信息用 doubao_search（没有这个工具时用 web_search）。这两个工具按次计费，不要重复查同一问题。\n"
     "长期记忆：挂载了记忆库时，用户明确要求记住的事写入记忆库；历史信息相关时先检索记忆库。记忆不是最新业务事实，"
     "权限、金额、状态仍须查询 OA。不得保存密钥、密码或整段原始聊天；用户要求遗忘时删除对应记忆。"
 )
@@ -77,15 +80,17 @@ def custom_tool(item: dict) -> dict:
             "input_schema": function.get("parameters") or {"type": "object", "properties": {}}}
 
 
-def agent_body(model: str, schemas: list[dict]) -> dict:
+def agent_body(model: str, schemas: list[dict], *, web_search: bool = True) -> dict:
+    # 接了豆包搜索（套餐抵扣）就关掉云端自带的 web_search（按次另计费），避免两个搜索都开。
+    enabled = [name for name in SANDBOX_TOOLS if web_search or name != "web_search"]
     sandbox = {"type": TOOLSET, "default_config": {"enabled": False, "permission_policy": {"type": "always_allow"}},
-               "configs": [{"name": name, "enabled": True} for name in SANDBOX_TOOLS]}
+               "configs": [{"name": name, "enabled": True} for name in enabled]}
     return {"model": {"id": model}, "system": SYSTEM, "tools": [sandbox, *[custom_tool(item) for item in schemas]]}
 
 
 async def _agent(client: ArkClient, cloud: CloudSettings, schemas: list[dict]) -> str:
     """同一套模型和工具只建一个 Agent，按指纹复用；工具变了（权限变化、上线新工具）就建新的。"""
-    body = agent_body(cloud.model, schemas)
+    body = agent_body(cloud.model, schemas, web_search=not cloud.doubao_search)
     fingerprint = hashlib.sha256(json.dumps([cloud.fingerprint(), body], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     path = _state_root() / "agents.json"
     known = _read(path)
@@ -293,8 +298,9 @@ async def run(messages, on_delta, *, tools, schema, identity, db, workspace, con
     from app.harness_agent.runtime import workspace_paths
 
     _, _, home = workspace_paths(identity["username"], workspace, conversation)
-    guarded = WorkspaceTools(tools, identity, db, on_progress)
-    schemas = [*schema, RESOURCE_TOOL, SCRIPT_TOOL]
+    delegate = HarnessTools(tools, cloud.plan_key) if cloud.plan_key else tools
+    guarded = WorkspaceTools(delegate, identity, db, on_progress)
+    schemas = [*schema, RESOURCE_TOOL, SCRIPT_TOOL, *harness_schemas(datapro=cloud.datapro, search=cloud.doubao_search)]
     catalog = skill_catalog(await definitions(identity, db))
     try:
         async with asyncio.timeout(TURN_SECONDS):
