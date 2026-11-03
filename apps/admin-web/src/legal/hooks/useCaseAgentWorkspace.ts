@@ -16,12 +16,15 @@ interface CaseAgentWorkspaceDependencies {
   viewingCounselCase: CaseRow | null;
   refreshCounselDetailAttachments: (caseId: number) => Promise<unknown>;
   selectCounselDocCategory: (category: string) => void;
+  /** 501289：智能体的修改批准执行后，马上刷新正在看的案件详情（不用手动刷新）。 */
+  refreshCounselCase?: (caseId: number) => Promise<unknown>;
 }
 
 export function useCaseAgentWorkspace({
   viewingCounselCase,
   refreshCounselDetailAttachments,
   selectCounselDocCategory,
+  refreshCounselCase,
 }: CaseAgentWorkspaceDependencies) {
   const [agentCase, setAgentCase] = useState<CaseRow | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
@@ -151,6 +154,7 @@ export function useCaseAgentWorkspace({
     get viewingCounselCase() { return viewingCounselCase; },
     get refreshCounselDetailAttachments() { return refreshCounselDetailAttachments; },
     get selectCounselDocCategory() { return selectCounselDocCategory; },
+    get refreshCounselCase() { return refreshCounselCase; },
     get agentDecisionLoading() { return agentDecisionLoading; },
     get setAgentDecisionLoading() { return setAgentDecisionLoading; },
   });

@@ -39,6 +39,7 @@ export interface CaseAssistantDependencies {
     readonly viewingCounselCase: CaseRow | null;
     readonly refreshCounselDetailAttachments: (caseId: number) => Promise<any>;
     readonly selectCounselDocCategory: (category: string) => void;
+    readonly refreshCounselCase?: (caseId: number) => Promise<unknown>;
     readonly agentDecisionLoading: string;
     readonly setAgentDecisionLoading: React.Dispatch<React.SetStateAction<string>>;
 }
@@ -274,6 +275,11 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
             }, { headers: { "X-OA-Agent-Confirmation": "frontend" } });
             setAgentState(data);
             message.success(decision === "approved" ? "已记录批准决定" : "已记录驳回决定");
+            // 501289（陶国南 11-03 21:23）：批准并执行成功后马上刷新正在看的案件详情，改的案由等立刻显示；云端和 DSH 都走这里。
+            const executed = (data?.pending_actions || []).find((item: CaseAgentAction) => item.id === action.id);
+            if (decision === "approved" && executed?.status === "approved" && context.viewingCounselCase?.id === agentCase.id && context.refreshCounselCase) {
+                void context.refreshCounselCase(agentCase.id).catch(() => message.warning("修改已执行，案件详情刷新失败，请手动刷新"));
+            }
         }
         catch (error: any) {
             message.error(agentOperationError(error, "审批操作失败"));

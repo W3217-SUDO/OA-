@@ -250,11 +250,24 @@ async def _tool_result(guarded: WorkspaceTools, event: dict, usage=None) -> dict
             "content": [{"type": "text", "text": text}]}
 
 
+NARRATION_LIMIT = 80
+
+
+def final_answer(messages: list[str], tool_marks: list[int]) -> str:
+    """最终回答：去掉调用工具之前那些很短的过程说明（如“正在查询案件空间…”），保留工具之后的回答（501289）。
+    工具前写的是正式内容（较长）的照样保留；没有调用工具时原样拼接。"""
+    last_tool = tool_marks[-1] if tool_marks else 0
+    kept = [text for index, text in enumerate(messages)
+            if text.strip() and (index >= last_tool or len(text.strip()) > NARRATION_LIMIT)]
+    return "\n\n".join(kept).strip() or "\n\n".join(text for text in messages if text.strip()).strip()
+
+
 async def run_turn(client: ArkClient, session_id: str, blocks: list[dict], guarded: WorkspaceTools, on_delta, on_progress,
                    usage=None, active_before: float = 0.0) -> str:
     pending: dict[str, dict] = {}
     streamed: dict[str, str] = {}
     messages: list[str] = []
+    tool_marks: list[int] = []  # 每次调用工具时已经有几条消息，用来去掉工具前的过程说明
     state = {"emitted": False, "current": ""}
 
     async def emit(event_id: str, text: str) -> None:
@@ -282,8 +295,11 @@ async def run_turn(client: ArkClient, session_id: str, blocks: list[dict], guard
                 messages.append(full)
             elif kind == "agent.custom_tool_use":
                 pending[event["id"]] = event
-            elif kind in ("agent.tool_use", "agent.mcp_tool_use") and on_progress:
-                await on_progress("正在调用：" + str(event.get("name") or "云端工具"))
+                tool_marks.append(len(messages))
+            elif kind in ("agent.tool_use", "agent.mcp_tool_use"):
+                tool_marks.append(len(messages))
+                if on_progress:
+                    await on_progress("正在调用：" + str(event.get("name") or "云端工具"))
             elif kind == "span.model_request_end" and usage is not None:
                 usage.model_request(event)
             elif kind == "session.usage" and usage is not None:
@@ -310,7 +326,7 @@ async def run_turn(client: ArkClient, session_id: str, blocks: list[dict], guard
                         await client.request("POST", f"/sessions/{session_id}/events", json_body={"events": replies})
         else:
             raise HTTPException(502, "云端事件流提前断开，未确认任何未执行操作成功")
-    answer = "\n\n".join(text for text in messages if text.strip()).strip()
+    answer = final_answer(messages, tool_marks)
     if not answer:
         raise HTTPException(502, "云端智能体本轮没有回复，未确认任何未执行操作成功")
     return answer

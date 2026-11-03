@@ -1908,10 +1908,16 @@ export default function CaseCenterPage({
     setCounselUploadCategory(hasCaseFileTypeOption(category, applicableOptions) ? category : DEFAULT_CASE_ATTACHMENT_CATEGORY);
     setSelectedCounselAttachmentKeys([]);
   };
+  // 501289：智能体批准执行后重新取案件详情，合并进正在看的案件（案件信息、案由等马上更新）。
+  const refreshCounselCase = async (caseId: number) => {
+    const { data } = await api.get(`/records/${caseId}/shell`);
+    setViewingCounselCase((current) => current?.id === caseId ? { ...current, ...data, data: { ...current.data, ...(data?.data || {}) } } : current);
+  };
   const { openCaseAgent, drawerProps: agentDrawerProps } = useCaseAgentWorkspace({
     viewingCounselCase,
     refreshCounselDetailAttachments,
     selectCounselDocCategory,
+    refreshCounselCase,
   });
   // 501170（tgn 08:46）：案件智能体属于正在看的这个案件详情；关掉详情或换到别的案件时一起关掉，不留在列表上。
   useEffect(() => {

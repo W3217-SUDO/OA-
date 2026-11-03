@@ -25,3 +25,11 @@ test("确认按钮淡色底块加文字和图标，主次靠底色深浅，不�
   assert.doesNotMatch(css, /color-mix\(|:has\(|@container|dvh/);
   assert.match(css, /:root\[data-theme="dark"\] \.ant-btn\.agent-btn-confirm/);
 });
+
+test("批准并执行成功后马上刷新正在看的案件详情（501289 补充）", () => {
+  const actions = read("../src/legal/services/assistantActions.tsx");
+  assert.match(actions, /decision === "approved" && executed\?\.status === "approved" && context\.viewingCounselCase\?\.id === agentCase\.id && context\.refreshCounselCase/);
+  const page = read("../src/legal/CaseCenterPage.tsx");
+  assert.match(page, /const refreshCounselCase = async \(caseId: number\) => \{\n    const \{ data \} = await api\.get\(`\/records\/\$\{caseId\}\/shell`\);/);
+  assert.match(page, /selectCounselDocCategory,\n    refreshCounselCase,\n  \}\);/);
+});
