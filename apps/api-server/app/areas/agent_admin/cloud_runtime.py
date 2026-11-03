@@ -123,3 +123,33 @@ async def test_cloud_runtime(identity: dict = Depends(current_identity), db: Asy
     if record is not None:
         await _save(db, record, {**value, "verified_at": _now(), "verify_ok": ok, "verify_message": message})
     return {"ok": ok, "message": message}
+
+
+def _month(value: str | None) -> str:
+    from app.cloud_agent.usage import BEIJING
+
+    month = value or datetime.now(BEIJING).strftime("%Y-%m")
+    if len(month) != 7 or month[4] != "-" or not (month[:4] + month[5:]).isdigit():
+        raise HTTPException(422, "月份格式应为 YYYY-MM")
+    return month
+
+
+@router.get("/usage")
+async def cloud_usage(month: str | None = None, identity: dict = Depends(current_identity)):
+    """每人本月调用次数、token、工具次数和估算费用（按公开单价估算，以火山账单为准）。"""
+    _require_admin(identity)
+    from app.cloud_agent.usage import AFP_YUAN, read_month, summarize
+
+    selected = _month(month)
+    return {"month": selected, **summarize(read_month(selected)), "afp_yuan": AFP_YUAN,
+            "note": "费用按火山公开单价估算：模型按 token（区分高峰/空闲、命中缓存），运行时 0.5 元/小时，专业数据集和豆包搜索按套餐 AFP 折算（1 AFP≈0.002 元）。不含赠送的免费额度，实际以火山账单为准。"}
+
+
+@router.get("/usage/records")
+async def cloud_usage_records(username: str, month: str | None = None, identity: dict = Depends(current_identity)):
+    """某人本月每一轮的明细，最新在前，最多 300 条。"""
+    _require_admin(identity)
+    from app.cloud_agent.usage import read_month
+
+    rows = [row for row in read_month(_month(month)) if row.get("username") == username]
+    return {"records": list(reversed(rows))[:300], "total": len(rows)}

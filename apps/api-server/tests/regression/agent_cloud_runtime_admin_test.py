@@ -78,3 +78,16 @@ class AgentCloudRuntimeAdminTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.json()["ok"], False)
         probe.assert_awaited_once_with(FAKE_KEY, "deepseek-v4-1-flash-261017")
         self.assertIn("开通", (await self.client.get(API)).json()["verify_message"])
+
+    async def test_usage_summary_admin_only(self):
+        rows = [{"time": "2026-11-03T10:00:00+08:00", "username": "a", "display_name": "甲", "workspace": "personal", "ok": True,
+                 "input_tokens": 1, "cache_tokens": 1, "output_tokens": 1, "active_seconds": 1, "oa_tools": 1, "datapro": {},
+                 "searches": 0, "harness_afp": 0, "model_yuan": 0.01, "runtime_yuan": 0.0, "harness_yuan": 0.0}]
+        with patch("app.cloud_agent.usage.read_month", return_value=rows):
+            data = (await self.client.get(API + "/usage", params={"month": "2026-11"})).json()
+            self.assertEqual((data["month"], data["total"]["turns"], data["people"][0]["display_name"]), ("2026-11", 1, "甲"))
+            records = (await self.client.get(API + "/usage/records", params={"month": "2026-11", "username": "a"})).json()
+            self.assertEqual(records["total"], 1)
+            self.assertEqual((await self.client.get(API + "/usage", params={"month": "2026/11"})).status_code, 422)
+            self.identity = PAGE_ADMIN
+            self.assertEqual((await self.client.get(API + "/usage")).status_code, 403)

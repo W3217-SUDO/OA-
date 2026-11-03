@@ -24,6 +24,7 @@ from app.harness_agent.skills import CODE_TOOL, RESOURCE_TOOL, SCRIPT_TOOL, WEB_
 from .client import ArkClient, ArkError
 from .config import CloudSettings
 from .harness import HarnessTools, schemas as harness_schemas
+from .usage import TurnUsage, append
 
 logger = logging.getLogger(__name__)
 TURN_SECONDS = 300
@@ -167,6 +168,21 @@ async def _session(client, home: Path, agent_id: str, environment_id: str, memor
     return created["id"], True
 
 
+def _bill(home: Path, usage, identity, workspace, conversation, model, ok) -> None:
+    """记一轮用量；记账失败只写日志，不影响回答。"""
+    try:
+        if usage.active_total is not None:
+            path = home / "cloud-session.json"
+            known = _read(path)
+            if known:
+                _write(path, {**known, "active_total": usage.active_total})
+        if usage.requests or usage.oa_tools or usage.datapro or usage.searches:
+            append(usage.record(username=identity["username"], display_name=str(identity.get("display_name") or ""),
+                                workspace=workspace, conversation=conversation, model=model, ok=ok))
+    except Exception:
+        logger.exception("cloud_agent_usage_record_failed")
+
+
 def _forget_session(home: Path) -> None:
     (home / "cloud-session.json").unlink(missing_ok=True)
 
@@ -216,18 +232,23 @@ def _message_text(event: dict) -> str:
     return "".join(block.get("text", "") for block in event.get("content") or [] if block.get("type") == "text")
 
 
-async def _tool_result(guarded: WorkspaceTools, event: dict) -> dict:
+async def _tool_result(guarded: WorkspaceTools, event: dict, usage=None) -> dict:
     name, arguments = event.get("name", ""), event.get("input") or {}
+    result = None
     try:
         result = await guarded.execute(name, arguments)
         text, failed = json.dumps(result, ensure_ascii=False, default=str), bool(isinstance(result, dict) and result.get("isError"))
     except HTTPException as exc:
         text, failed = json.dumps({"isError": True, "message": str(exc.detail)}, ensure_ascii=False), True
+    finally:
+        if usage is not None:
+            usage.tool(name, result)
     return {"type": "user.custom_tool_result", "custom_tool_use_id": event["id"], "is_error": failed,
             "content": [{"type": "text", "text": text}]}
 
 
-async def run_turn(client: ArkClient, session_id: str, blocks: list[dict], guarded: WorkspaceTools, on_delta, on_progress) -> str:
+async def run_turn(client: ArkClient, session_id: str, blocks: list[dict], guarded: WorkspaceTools, on_delta, on_progress,
+                   usage=None, active_before: float = 0.0) -> str:
     pending: dict[str, dict] = {}
     streamed: dict[str, str] = {}
     messages: list[str] = []
@@ -260,6 +281,10 @@ async def run_turn(client: ArkClient, session_id: str, blocks: list[dict], guard
                 pending[event["id"]] = event
             elif kind in ("agent.tool_use", "agent.mcp_tool_use") and on_progress:
                 await on_progress("正在调用：" + str(event.get("name") or "云端工具"))
+            elif kind == "span.model_request_end" and usage is not None:
+                usage.model_request(event)
+            elif kind == "session.usage" and usage is not None:
+                usage.active_total = usage.session_usage(event, active_before)
             elif kind == "session.error":
                 logger.warning("cloud_agent_session_error session=%s error=%s", session_id,
                                json.dumps(event.get("error") or {}, ensure_ascii=False)[:500])
@@ -275,7 +300,7 @@ async def run_turn(client: ArkClient, session_id: str, blocks: list[dict], guard
                     replies = []
                     for event_id in reason.get("event_ids") or []:
                         if event_id in pending:
-                            replies.append(await _tool_result(guarded, pending.pop(event_id)))
+                            replies.append(await _tool_result(guarded, pending.pop(event_id), usage))
                         else:  # 云沙箱工具都是 always_allow，一般不会走到这里；沙箱里没有 OA 数据，放行
                             replies.append({"type": "user.tool_confirmation", "tool_use_id": event_id, "result": "allow"})
                     if replies:
@@ -321,12 +346,19 @@ async def run(messages, on_delta, *, tools, schema, identity, db, workspace, con
                     memory_id = await _memory_store(client, cloud, identity["username"]) if cloud.memory and _memory_enabled(identity["username"]) else ""
                     session_id, fresh = await _session(client, home, agent_id, environment_id, memory_id, workspace + " " + conversation)
                     blocks = content_blocks(messages, resumed=not fresh, catalog=catalog)
+                    usage = TurnUsage()
+                    before = float(_read(home / "cloud-session.json").get("active_total") or 0)
+                    ok = False
                     try:
-                        return await run_turn(client, session_id, blocks, guarded, on_delta, on_progress)
+                        answer = await run_turn(client, session_id, blocks, guarded, on_delta, on_progress, usage, before)
+                        ok = True
+                        return answer
                     except ArkError as exc:
                         if exc.status in (404, 410):
                             _forget_session(home)  # 会话被删或已终止：下一轮新建会话并带上完整历史
                         raise
+                    finally:
+                        _bill(home, usage, identity, workspace, conversation, cloud.model, ok)
     except TimeoutError as exc:
         raise HTTPException(504, "云端智能体本轮执行超时，未取得完成结果") from exc
     except ArkError as exc:

@@ -196,3 +196,84 @@ def test_harness_tools_route_and_fall_through_to_oa_tools():
 def test_builtin_web_search_off_when_doubao_search_on():
     body = agent_body("m", [], web_search=False)
     assert "web_search" not in {item["name"] for item in body["tools"][0]["configs"]}
+
+
+def test_usage_peak_hours_and_cost():
+    from datetime import datetime
+    from app.cloud_agent.usage import BEIJING, TurnUsage, peak
+
+    assert peak(datetime(2026, 11, 3, 10, 0, tzinfo=BEIJING)) and peak(datetime(2026, 11, 3, 17, 59, tzinfo=BEIJING))
+    assert not peak(datetime(2026, 11, 3, 12, 30, tzinfo=BEIJING)) and not peak(datetime(2026, 11, 8, 10, 0, tzinfo=BEIJING))
+    usage = TurnUsage()
+    # 空闲：100 万未缓存输入 + 100 万缓存 + 100 万输出 = 0.8 + 0.016 + 3.2；高峰同量 = 1.6 + 0.032 + 6.4
+    usage.model_request({"processed_at": "2026-11-03T12:30:00+08:00",
+                         "model_usage": {"input_tokens": 1_000_000, "cache_read_input_tokens": 1_000_000, "output_tokens": 1_000_000}})
+    usage.model_request({"processed_at": "2026-11-03T02:00:00Z",
+                         "model_usage": {"input_tokens": 1_000_000, "cache_read_input_tokens": 1_000_000, "output_tokens": 1_000_000}})
+    assert usage.session_usage({"usage": {"active_seconds": 3700}}, 100) == 3700
+    usage.tool("volc_professional_data", {"result": json.dumps({"dataset_type": "legal_case"})})
+    usage.tool("doubao_search", {"result": "{}"})
+    usage.tool("biz_my_tasks", {"items": []})
+    record = usage.record(username="u1", display_name="张三", workspace="personal", conversation="c", model="deepseek-v4-1-flash-economy-261017", ok=True)
+    assert round(record["model_yuan"], 4) == round(0.8 + 0.016 + 3.2 + 1.6 + 0.032 + 6.4, 4)
+    assert record["runtime_yuan"] == 0.5 and record["harness_afp"] == 48 + 5 and record["oa_tools"] == 1
+    assert record["datapro"] == {"legal_case": 1} and record["peak_tokens"] == 3_000_000
+
+
+def test_usage_ledger_summarizes_per_person(tmp_path=None):
+    import tempfile
+    from pathlib import Path
+    from app.cloud_agent.usage import append, read_month, summarize
+
+    directory = Path(tmp_path or tempfile.mkdtemp())
+    base = {"conversation": "c", "model": "m", "ok": True, "requests": 1, "input_tokens": 10, "cache_tokens": 90, "output_tokens": 5,
+            "active_seconds": 2, "oa_tools": 1, "datapro": {}, "searches": 0, "harness_afp": 0, "model_yuan": 0.01,
+            "runtime_yuan": 0.001, "harness_yuan": 0}
+    append({**base, "time": "2026-11-03T10:00:00+08:00", "username": "a", "display_name": "甲", "workspace": "personal"}, directory)
+    append({**base, "time": "2026-11-03T11:00:00+08:00", "username": "a", "display_name": "甲", "workspace": "case:9", "ok": False}, directory)
+    append({**base, "time": "2026-11-04T09:00:00+08:00", "username": "b", "display_name": "乙", "workspace": "personal",
+            "datapro": {"legal_case": 2}, "harness_afp": 96, "harness_yuan": 0.192}, directory)
+    summary = summarize(read_month("2026-11", directory))
+    first = summary["people"][0]
+    assert first["username"] == "b" and first["datapro"] == 2 and first["total_yuan"] == round(0.01 + 0.001 + 0.192, 4)
+    person_a = summary["people"][1]
+    assert (person_a["turns"], person_a["personal_turns"], person_a["case_turns"], person_a["failed"]) == (2, 1, 1, 1)
+    assert summary["total"]["turns"] == 3 and [day["date"] for day in summary["days"]] == ["2026-11-03", "2026-11-04"]
+
+
+def test_turn_collects_usage_events():
+    from app.cloud_agent.usage import TurnUsage
+
+    phases = [[
+        {"id": "s1", "type": "span.model_request_end", "processed_at": "2026-11-03T12:30:00+08:00",
+         "model_usage": {"input_tokens": 100, "cache_read_input_tokens": 900, "output_tokens": 20}},
+        {"id": "t1", "type": "agent.custom_tool_use", "name": "query_case", "input": {"case_no": "A1"}},
+        {"id": "i1", "type": "session.status_idle", "stop_reason": {"type": "requires_action", "event_ids": ["t1"]}},
+        {"id": "m1", "type": "agent.message", "content": [{"type": "text", "text": "好"}]},
+        {"id": "u1", "type": "session.usage", "usage": {"active_seconds": 12.5}},
+        {"id": "i2", "type": "session.status_idle", "stop_reason": {"type": "end_turn"}},
+    ]]
+    fake, usage = FakeArk(phases), TurnUsage()
+
+    async def scenario():
+        async with ArkClient(FAKE_KEY, base_url="https://ark.test/api/v3", transport=httpx.MockTransport(fake.handler)) as client:
+            return await run_turn(client, "sesn-1", [], FakeTools(), _noop, None, usage, 10.0)
+
+    assert asyncio.run(scenario()) == "好"
+    assert usage.requests == 1 and usage.tokens["offpeak"] == [100, 900, 20] and usage.oa_tools == 1
+    assert usage.active_seconds == 2.5 and usage.active_total == 12.5
+
+
+def test_harness_network_failure_returns_error_instead_of_failing_turn():
+    from app.cloud_agent import harness
+
+    async def broken(key, arguments):
+        raise OSError("dns")
+
+    original = harness.datapro
+    harness.datapro = broken
+    try:
+        result = asyncio.run(harness.HarnessTools(FakeTools(), "k").execute("volc_professional_data", {"query": "民法典"}))
+    finally:
+        harness.datapro = original
+    assert result["isError"] is True and "连接失败" in result["message"]

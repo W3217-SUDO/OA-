@@ -8,11 +8,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from contextlib import AsyncExitStack
 
 import httpx
 from fastapi import HTTPException
 
+logger = logging.getLogger(__name__)
 DATAPRO_URL = "https://datapro.hqd.cn-beijing.volces.com/mcp"
 SEARCH_URL = "https://open.feedcoopapi.com/search_api/web_search"
 MAX_RESULT_CHARS = 60000
@@ -108,11 +110,16 @@ class HarnessTools:
         self.delegate, self.plan_key = delegate, plan_key
 
     async def execute(self, name, arguments):
-        if name == DATAPRO_TOOL["function"]["name"]:
-            return await datapro(self.plan_key, arguments)
-        if name == SEARCH_TOOL["function"]["name"]:
-            return await doubao_search(self.plan_key, arguments)
-        return await self.delegate.execute(name, arguments)
+        if name not in NAMES:
+            return await self.delegate.execute(name, arguments)
+        call = datapro if name == DATAPRO_TOOL["function"]["name"] else doubao_search
+        try:
+            return await call(self.plan_key, arguments)
+        except HTTPException:
+            raise
+        except Exception as exc:  # 网络或第三方故障：把失败交回智能体如实说明，不让整轮对话失败
+            logger.warning("cloud_harness_error tool=%s error=%s", name, type(exc).__name__)
+            return {"isError": True, "message": ("专业数据集" if call is datapro else "豆包搜索") + "暂时连接失败，请稍后重试"}
 
     def __getattr__(self, item):  # 其余属性（如 pending_actions）透传给原工具集
         return getattr(self.delegate, item)
