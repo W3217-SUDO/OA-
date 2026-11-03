@@ -8,7 +8,7 @@ d. 律师证扫描件不是必备项，只在提交法院的阶段提醒一并�
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from typing import Any
 
 from app.case_workflow_rules import _phase_code
