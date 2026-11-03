@@ -138,6 +138,12 @@ ROLE_TASKS = {
     ],
 }
 
+# 501189（陶国南 11-03）：案件负责成员以案件信息里填的人为准——经办律师＝委托书上的受委托律师，开庭律师＝实际主办律师，
+# 律师助理＝文书，主办律师领导下团队负责制；不以案件任务认定或指定负责人。手册岗位名按此对应到案件信息里的角色。
+CASE_MEMBER_ROLE_SOURCES = {"主办律师": ("开庭律师",), "文书": ("律师助理",), "经办律师": ("经办律师",), "开庭律师": ("开庭律师",), "调查员": ("调查员",)}
+# 部门岗位不是案件成员，不按案件指定人，只说明由哪个部门办理。
+DEPARTMENT_ROLES = {"分案人员", "品管", "财务"}
+
 AGENT_RULES = [
     "只使用当前账号有权访问的案件空间数据，不得臆测缺失事实。",
     "区分已确认事实、缺失信息、期限风险和处理建议。",
@@ -145,6 +151,7 @@ AGENT_RULES = [
     "期限临近、材料缺失和阶段停滞必须标注风险等级及责任岗位。",
     "任何新增任务、提醒、材料变更、阶段更新和审批都必须先形成待审批操作。",
     "不得替代主办律师作出诉讼策略、上诉、执行或客户核心沟通决定。",
+    "案件负责成员以案件信息中填写的经办律师（委托书上的受委托律师）、开庭律师（实际主办律师）、律师助理（文书）为准，实行主办律师领导下的团队负责制；不得以是否派了案件任务判断“岗位未分配”，任务只是推进案件进度的办法。",
 ]
 
 
@@ -272,13 +279,22 @@ def _material_guidance(documents: list[dict[str, Any]], materials: list[tuple] =
 def _role_guidance(snapshot: dict[str, Any], phase_code: str) -> list[dict[str, Any]]:
     people = snapshot.get("people") or []
     tasks = snapshot.get("tasks") or []
-    people_by_role = {str(item.get("role")): _text(item.get("name")) for item in people}
+    people_by_role: dict[str, list[str]] = {}
+    for item in people:
+        name = _text(item.get("name")) or _text(item.get("username"))
+        if name and name not in people_by_role.setdefault(str(item.get("role")), []):
+            people_by_role[str(item.get("role"))].append(name)
     task_titles = [_text(item.get("title")) for item in tasks]
     result = []
     for role, task in ROLE_TASKS.get(phase_code, ROLE_TASKS["document-preparation"]):
-        owner = people_by_role.get(role, "")
         completed = any(keyword in title for title in task_titles for keyword in task.split("、")[:1] if keyword)
-        result.append({"role": role, "owner_name": owner, "task": task, "assignment_status": "assigned" if owner else "unassigned", "task_status": "matched" if completed else "pending"})
+        if role in DEPARTMENT_ROLES:
+            result.append({"role": role, "owner_name": "", "task": task, "assignment_status": "department", "task_status": "matched" if completed else "pending"})
+            continue
+        owners = [name for source in CASE_MEMBER_ROLE_SOURCES.get(role, (role,)) for name in people_by_role.get(source, [])]
+        owner = "、".join(dict.fromkeys(owners))
+        result.append({"role": role, "owner_name": owner, "member_role": "、".join(CASE_MEMBER_ROLE_SOURCES.get(role, (role,))), "task": task,
+                       "assignment_status": "assigned" if owner else "unassigned", "task_status": "matched" if completed else "pending"})
     return result
 
 
