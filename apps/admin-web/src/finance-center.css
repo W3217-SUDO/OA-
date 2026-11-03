@@ -312,6 +312,10 @@
   line-height: 1.5;
   text-align: left;
 }
+/* 进度及时长一栏不换行（501150）。 */
+.finance-party-stack.finance-stack-nowrap > span {
+  white-space: nowrap;
+}
 .finance-party-stack i {
   margin-right: 6px;
   color: var(--oa-text-3);

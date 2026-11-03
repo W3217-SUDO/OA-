@@ -22,7 +22,7 @@ const refundColumnWidths: Record<string, number> = {
     "原告/被告": 260,
     "开庭律师/律师助理": 150,
     法院名称: 210,
-    进度及时长: 150,
+    进度及时长: 200,
     操作: 72,
 };
 
@@ -130,7 +130,7 @@ export function createConfiguredColumns(context: {
         </div>) : header === "开庭律师/律师助理" ? (<div className="finance-party-stack">
           <span><i>律师</i>{context.cellValue(row, "开庭律师") || "—"}</span>
           <span><i>助理</i>{context.cellValue(row, "律师助理") || "—"}</span>
-        </div>) : header === "进度及时长" ? (<div className="finance-party-stack">
+        </div>) : header === "进度及时长" ? (<div className="finance-party-stack finance-stack-nowrap">
           <span><i>进度</i>{context.cellValue(row, "退费进度") || "—"}</span>
           <span><i>时长</i>{row.data?.refund_progress_days == null ? "—" : `${row.data.refund_progress_days} 天`}</span>
         </div>) : header === "操作" ? ([
