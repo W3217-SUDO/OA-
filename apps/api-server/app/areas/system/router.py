@@ -640,9 +640,6 @@ async def autocomplete_system_causes(keyword: str = "", limit: int = Query(20, g
         term = f"%{keyword.strip()}%"
         statement = statement.where(or_(SystemParameter.code.ilike(term), SystemParameter.name.ilike(term)))
     items = (await db.scalars(statement.order_by(SystemParameter.sort_order, SystemParameter.id).limit(limit))).all()
-    if category == "notary_office":
-        from app.core.system import notary_number_template
-        return {"items": [{"id": item.id, "code": item.code, "name": item.name, "number_template": notary_number_template(item)} for item in items]}
     return {"items": [{"id": item.id, "code": item.code, "name": item.name} for item in items]}
 
 
@@ -677,6 +674,9 @@ async def list_system_parameter_options(category: str, include_inactive: bool = 
     ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
     if category == "case_file_type":
         return {"items": _case_file_type_tree(list(items))}
+    if category == "notary_office":
+        from app.core.system import notary_number_template
+        return {"items": [{"id": item.id, "code": item.code, "name": item.name, "number_template": notary_number_template(item)} for item in items]}
     return {"items": [{"id": item.id, "code": item.code, "name": item.name} for item in items]}
 
 

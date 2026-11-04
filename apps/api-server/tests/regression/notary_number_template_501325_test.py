@@ -26,5 +26,13 @@ class NotaryNumberTemplateTest(unittest.TestCase):
         self.assertEqual(_system_parameter_dict(item)["extra"], {"a": 1})
 
 
+class NotaryOptionsEndpointTest(unittest.TestCase):
+    def test_options_endpoint_returns_template(self):
+        import inspect
+        from app.areas.system.router import autocomplete_system_causes, list_system_parameter_options
+        self.assertIn("notary_number_template", inspect.getsource(list_system_parameter_options))
+        self.assertNotIn("notary_number_template", inspect.getsource(autocomplete_system_causes))
+
+
 if __name__ == "__main__":
     unittest.main()
