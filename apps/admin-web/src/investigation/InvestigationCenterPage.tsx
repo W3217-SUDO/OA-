@@ -83,6 +83,7 @@ import InvestigationDetailModal from "./InvestigationDetailModal";
 import ClueAuditSidePanel from "./ClueAuditSidePanel";
 import EditRecordModal from "./EditRecordModal";
 import ClueAssistantModal, { clueAssistantUsernames } from "./ClueAssistantModal";
+import { loadRemainingPages } from "./loadRemainingPages";
 import AssignInvestigatorModal from "./AssignInvestigatorModal";
 import FeeApplicationModal from "./FeeApplicationModal";
 import { useMobileFilterToggle } from "../components/common/MobileFilterToggle";
@@ -337,42 +338,29 @@ export default function InvestigationCenterPage({
         : initialTab.startsWith("investigation-task-")
           ? "investigation"
           : key;
+      const listParams = {
+        module,
+        page_size: 100,
+        scope:
+          internalClueAuditTabs.has(initialTab)
+            ? "audit"
+            : initialTab.includes("-my-") ||
+          (initialTab.startsWith("investigation-task-") &&
+          !initialTab.startsWith("investigation-task-sub-"))
+            ? "mine"
+            : "all",
+        investigation_view: investigationListView(initialTab),
+        statuses: (clueStatusesByRoute[initialTab] || []).join(","),
+      };
       const { data } =
         initialTab === "notary-query-files"
           ? await api.get("/investigations/notaries/files")
-          : await api.get("/records", {
-              params: {
-                module,
-                page_size: 100,
-                scope:
-                  internalClueAuditTabs.has(initialTab)
-                    ? "audit"
-                    : initialTab.includes("-my-") ||
-                  (initialTab.startsWith("investigation-task-") &&
-                  !initialTab.startsWith("investigation-task-sub-"))
-                    ? "mine"
-                    : "all",
-                investigation_view: investigationListView(initialTab),
-                statuses: (clueStatusesByRoute[initialTab] || []).join(","),
-              },
-            });
+          : await api.get("/records", { params: listParams });
       const loadedRows = data.items as Row[];
-      if (initialTab === "investigation-task-unassigned" && data.total > loadedRows.length) {
-        const pages = Math.ceil(data.total / 100);
-        const remaining = await Promise.all(
-          Array.from({ length: pages - 1 }, (_, index) =>
-            api.get("/records", {
-              params: {
-                module: "investigation",
-                scope: "mine",
-                investigation_view: "unassigned",
-                page_size: 100,
-                page: index + 2,
-              },
-            }),
-          ),
-        );
-        loadedRows.push(...remaining.flatMap((response) => response.data.items as Row[]));
+      // 501338（fwl 11-04）：接口每次最多给 100 条，列表要把后面几页也取全，总条数才和老系统一致。
+      if (initialTab !== "notary-query-files" && data.total > loadedRows.length) {
+        loadedRows.push(...await loadRemainingPages(Number(data.total), (page) =>
+          api.get("/records", { params: { ...listParams, page } }).then((response) => response.data.items as Row[])));
       }
       setRows(loadedRows);
       setInvestigationActions({});
