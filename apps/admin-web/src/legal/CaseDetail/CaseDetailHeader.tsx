@@ -185,7 +185,8 @@ export const CaseDetailHeader = (props: CaseDetailHeaderProps) => {
           </div>;
         })}
       </CaseSummarySection>}
-      {viewingCase.data.case_type !== "法律顾问" && <section className="case-court-summary" aria-label="法院信息">
+      {/* 501362（范文玲 11-04）：没人填过法院信息时不显示这一栏；填写入口在“操作 › 修改法院信息”。 */}
+      {viewingCase.data.case_type !== "法律顾问" && sectionVisibility.court && <section className="case-court-summary" aria-label="法院信息">
         <div className="case-court-summary-title">
           <span>法院信息</span>
           <Button
@@ -201,7 +202,7 @@ export const CaseDetailHeader = (props: CaseDetailHeaderProps) => {
           />
         </div>
         <div id={courtPanelId} className="case-court-summary-grid" hidden={!courtExpanded}>
-          {(sectionVisibility.firstCourt || !sectionVisibility.court) && <>
+          {sectionVisibility.firstCourt && <>
             <p><strong>一审法院</strong><span title={caseCourtDisplay(viewingCase.data, "first")}>{caseCourtDisplay(viewingCase.data, "first")}</span></p>
             <p><strong>法庭</strong><span>{viewingCase.data.first_court_courtroom||viewingCase.data.courtroom||"—"}</span></p>
             <p><strong>一审案号</strong><span>{viewingCase.data.first_court_case_no||viewingCase.data.first_instance_case_no||viewingCase.data.court_case_no||"—"}</span></p>
