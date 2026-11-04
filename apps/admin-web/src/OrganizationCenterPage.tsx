@@ -1,4 +1,5 @@
 import { POPUP_WIDTH } from "./components/common/popupSize";
+import { dropPartialParentMenus, menuTreeCheckState, type PermissionTreeNode } from "./rolePermissionTreeState";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -636,7 +637,7 @@ export default function OrganizationCenterPage({
     }
     try {
       await api.patch(`/hr/job-roles/${permissionRole.id}/permissions`, {
-        permissions: rolePermissionTreeKeysToPayload(selectedRolePermissions),
+        permissions: rolePermissionTreeKeysToPayload(dropPartialParentMenus(rolePermissionTreeData as PermissionTreeNode[], selectedRolePermissions)),
         case_actions_explicit: true,
         field_keys: selectedRoleFieldKeys,
         field_keys_configured: roleFieldKeysConfigured,
@@ -1058,7 +1059,7 @@ export default function OrganizationCenterPage({
                 checkStrictly
                 defaultExpandAll
                     treeData={rolePermissionTreeData}
-                    checkedKeys={rolePermissionCheckedGroups(rolePermissionTreeData, selectedRolePermissions)}
+                    checkedKeys={menuTreeCheckState(rolePermissionTreeData as PermissionTreeNode[], rolePermissionCheckedGroups(rolePermissionTreeData, selectedRolePermissions))}
                 disabled={rolePermissionLoading || permissionRole?.code === "SYSTEM-ADMIN"}
                 onCheck={(_checked, info) => {
                   const key = String(info.node.key);

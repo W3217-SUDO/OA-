@@ -152,6 +152,30 @@ def _effective_job_role_menu_keys(role: JobRole) -> list[str]:
     return _expand_menu_permission_keys(result)
 
 
+def _drop_partial_parent_menu_keys(permissions: list[str]) -> list[str]:
+    """BUG20261104006（501310）：角色权限树里勾了大类、又取消了下面某个页面时，大类不再保存。
+    已存的大类按兼容规则会放开下面全部页面（_expand_menu_permission_keys），留着就会让“取消页面”不生效。
+    大类只有在它下面角色树里能勾的页面全部勾上时才保留；左侧不显示、树里没有的页面和人人都有的公共页面不算。"""
+    from app.core.constants import ROLE_TREE_HIDDEN_MENU_KEYS
+    submitted = {_normalize_menu_permission_key(str(value)) for value in permissions}
+
+    def required(key: str) -> set[str]:
+        result: set[str] = set()
+        for child in MENU_CHILDREN_BY_KEY.get(key, []):
+            if child in SYSTEM_MENU_ROUTE_KEYS and child not in ROLE_TREE_HIDDEN_MENU_KEYS and child not in PUBLIC_MENU_KEYS:
+                result.add(child)
+            result |= required(child)
+        return result
+
+    kept = []
+    for value in permissions:
+        key = _normalize_menu_permission_key(str(value))
+        if MENU_CHILDREN_BY_KEY.get(key) and not required(key) <= submitted:
+            continue
+        kept.append(value)
+    return kept
+
+
 def _split_role_permission_keys(menu_keys: list[str] | None) -> tuple[list[str], list[str]]:
     menus: list[str] = []
     actions: list[str] = []
