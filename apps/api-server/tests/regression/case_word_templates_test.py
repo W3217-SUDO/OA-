@@ -61,6 +61,8 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
                 JobRole(code="WT-EDITOR", name="文书办理岗", permissions=["case-mine", "案件承办", "action:case.document.generate"], data_scope="全所数据", is_active=True),
                 JobRole(code="WT-VIEWER", name="查看岗", permissions=["case-mine"], data_scope="全所数据", is_active=True),
                 SystemParameter(category="court", code="沪0115", name="上海市浦东新区人民法院", extra={}, is_active=True),
+                SystemParameter(category="payment_type", code="HZ-PAY", name="上海沪知律师事务所", is_active=True,
+                                extra={"payee": "上海沪知律师事务所", "account_bank": "招商银行某某支行", "account": "1219000000"}),
             ])
             case = BusinessRecord(
                 module="case", serial_no="GDMS2100456", title="商标案", customer="青岛尚美数智科技集团有限公司", status="一审准备开庭",
@@ -237,7 +239,8 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("（", preview["paragraphs"][7], "括号说明删掉")
 
     async def test_builtin_mediation_agreement_lists_each_party_and_account(self):
-        """陶国南 11-04：调解协议书——原告/被告逐个列出详细信息，赔偿金额自动大写，收款账户取律所账户，调解员和付款期限可留空。"""
+        """陶国南 11-04：调解协议书——原告/被告逐个列出详细信息，赔偿金额自动大写，调解员和付款期限可留空；
+        委托诉讼代理人用经办律师、律所用上海沪知律师事务所，收款账户取系统参数“付款单位”里沪知所的账户（14:19）。"""
         from app.data_models.parties import PartyRecord
         async with self.sessions() as db:
             case = await db.get(BusinessRecord, self.case_id)
@@ -245,7 +248,7 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
                          "plaintiff_identities": [{"name": "青岛尚美数智科技集团有限公司", "organization_type": "公司企业", "identity_no": "91370200MA3C000000"}],
                          "defendant_identities": [{"name": "甲店", "organization_type": "个人", "identity_no": "110101199003070011"},
                                                   {"name": "北京三快在线科技有限公司", "organization_type": "公司企业", "identity_no": "91110108MA0000000X"}],
-                         "plaintiff_agents": [{"name": "沈建锋", "law_firm": "", "position": "律师", "phone": "", "authority": ""}]}
+                         "plaintiff_agents": [{"name": "别的代理人", "law_firm": "别的所", "position": "律师", "phone": "", "authority": ""}]}
             db.add_all([PartyRecord(party_no="DSR2600001", name="甲店", data={"contact_address": "某省某市某路1号", "contact_phone": "13800000000"}),
                         PartyRecord(party_no="DSR2600002", name="青岛尚美数智科技集团有限公司", data={"registered_address": "青岛市某路2号"})])
             await db.commit()
@@ -259,7 +262,7 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fields["赔偿金额大写"]["value"], "肆仟伍佰元整")
         self.assertTrue(fields["赔偿金额大写"]["derived"] and fields["被告信息"]["multiline"])
         self.assertEqual(fields["委托诉讼代理人"]["value"], "沈建锋")
-        self.assertEqual(fields["代理律所"]["value"], "上海申浩律师事务所")
+        self.assertEqual(fields["代理律所"]["value"], "上海沪知律师事务所")
         text = "\n".join(body["paragraphs"])
         self.assertIn("上海市浦东新区人民法院", body["paragraphs"][0])
         self.assertIn("原告：青岛尚美数智科技集团有限公司，联系地址：青岛市某路2号，统一社会信用代码：91370200MA3C000000。", body["paragraphs"])
@@ -267,11 +270,12 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("被告：北京三快在线科技有限公司，统一社会信用代码：91110108MA0000000X。", body["paragraphs"])
         self.assertIn("被告甲店、北京三快在线科技有限公司与原告侵害商标权纠纷一案【案号：（2022）沪0115民初5795号】，上海市浦东新区人民法院委派调解员\u3000\u3000\u3000\u3000进行调解", text)
         self.assertIn("同意于\u3000\u3000\u3000\u3000前支付赔偿款项（含合理维权开支）共计4500元（大写：肆仟伍佰元整）", text)
-        self.assertIn("名称：上海申浩律师事务所", body["paragraphs"])
-        self.assertIn("开户行：中信银行古北支行", body["paragraphs"])
-        self.assertIn("账  号：8110201012400029679", body["paragraphs"])
+        self.assertIn("委托诉讼代理人：沈建锋，上海沪知律师事务所。", body["paragraphs"])
+        self.assertIn("名称：上海沪知律师事务所", body["paragraphs"])
+        self.assertIn("开户行：招商银行某某支行", body["paragraphs"])
+        self.assertIn("账  号：1219000000", body["paragraphs"])
         self.assertNotIn("（", "".join(p for p in body["paragraphs"] if p.startswith(("名称", "开户行", "账"))), "说明括号都去掉了")
-        for leaked in ("黄响壮", "445281199603160350", "13434916251", "公牛", "李某", "某某"):
+        for leaked in ("黄响壮", "445281199603160350", "13434916251", "公牛", "李某", "某某市", "申浩", "别的代理人"):
             self.assertNotIn(leaked, text)
         # 改了赔偿金额，大写跟着变；填了调解员就写进去。
         again = (await self.client.post(self.url("mediation-agreement", "preview"), json={"values": {"赔偿金额": "12000", "调解员": "王调解", "赔偿金额大写": "乱填"}})).json()

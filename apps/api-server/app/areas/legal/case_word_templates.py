@@ -55,9 +55,9 @@ AUTO_FIELDS = ("法院", "法院案号", "原告", "被告", "第三人", "案�
 MULTILINE_FIELDS = {"原告信息", "被告信息"}
 # 由别的字段算出来的，不单独填：赔偿金额大写跟着赔偿金额走。
 DERIVED_FIELDS = {"赔偿金额大写": "赔偿金额"}
-# 律所收款账户（和知识产权年费通知书同一个账户，高勤兰 11-02 确认）；系统里还没有单独维护律所账户的地方。
-FIRM_NAME = "上海申浩律师事务所"
-FIRM_ACCOUNT = {"收款户名": FIRM_NAME, "收款开户行": "中信银行古北支行", "收款账号": "8110201012400029679"}
+# 陶国南 11-04 14:19：律所用系统所在的上海沪知律师事务所，收款账户用沪知所的账户——
+# 取系统参数“付款单位”里的上海沪知律师事务所（户名/开户行/账号），那里改了这里跟着变。
+FIRM_NAME = "上海沪知律师事务所"
 # 留空的字段在文书里留几个全角空格，方便打印后手写。
 BLANK = "\u3000" * 4
 
@@ -386,7 +386,6 @@ def _court_keys(status_text: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
 
 ADDRESS_KEYS = ("contact_address", "registered_address", "registration_address", "address", "business_address", "invoice_address")
 PHONE_KEYS = ("contact_phone", "phone", "mobile", "invoice_phone")
-AGENT_NAME = re.compile(r'"?[Nn]ame\\?"?\s*:\s*\\?"([^"\\]+)')
 
 
 async def _party_profiles(names: list[str], db: AsyncSession) -> dict[str, dict]:
@@ -433,19 +432,6 @@ async def _party_lines(data: dict, names: list[str], identities_key: str, db: As
     return "\n".join(_party_line(name, identities.get(name, {}), profiles.get(name, {}), defendant=defendant) for name in names)
 
 
-def _agent_names_and_firm(data: dict) -> tuple[list[str], str]:
-    """原告方代理人：案件里登记的代理人（新格式是 {name, law_firm}，旧数据是拆散的 JSON 文本）。"""
-    names, firm = [], ""
-    for item in data.get("plaintiff_agents") or []:
-        if isinstance(item, dict):
-            if str(item.get("name") or "").strip():
-                names.append(str(item["name"]).strip())
-                firm = firm or str(item.get("law_firm") or "").strip()
-        else:
-            names.extend(match.strip() for match in AGENT_NAME.findall(str(item)) if match.strip())
-    return list(dict.fromkeys(names)), firm
-
-
 def _amount_text(value) -> str:
     text = str(value or "").replace(",", "").strip()
     try:
@@ -453,6 +439,19 @@ def _amount_text(value) -> str:
     except ValueError:
         return ""
     return f"{number:.2f}".rstrip("0").rstrip(".") if number else ""
+
+
+async def firm_account(db: AsyncSession) -> dict[str, str]:
+    """系统参数“付款单位”里本所的收款账户；没有维护时留空，生成时提示补填。"""
+    from app.models import SystemParameter
+    rows = (await db.scalars(select(SystemParameter).where(SystemParameter.category == "payment_type", SystemParameter.name == FIRM_NAME,
+                                                          SystemParameter.is_active.is_(True)).order_by(SystemParameter.id))).all()
+    for row in rows:
+        extra = row.extra or {}
+        bank, account = str(extra.get("account_bank") or "").strip(), str(extra.get("account") or "").strip()
+        if bank and account:
+            return {"收款户名": str(extra.get("payee") or FIRM_NAME).strip(), "收款开户行": bank, "收款账号": account}
+    return {"收款户名": FIRM_NAME, "收款开户行": "", "收款账号": ""}
 
 
 async def case_field_values(record: BusinessRecord, db: AsyncSession, today: datetime | None = None) -> dict[str, str]:
@@ -478,11 +477,6 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
     today = today or datetime.now()
     plaintiffs = _names(data.get("plaintiffs") or data.get("plaintiff") or data.get("appellant_names"))
     defendants = _names(data.get("defendants") or data.get("defendant") or data.get("appellee_names"))
-    agents, agent_firm = _agent_names_and_firm(data)
-    if agents:
-        agent_users = {user.username.casefold(): user.display_name for user in (await db.scalars(select(User).where(
-            User.username.in_(agents) | User.display_name.in_(agents)))).all()}
-        agents = [agent_users.get(name.casefold(), name) for name in agents]
     compensation = _amount_text(data.get("settlement_amount") or data.get("judgment_amount"))
     return {
         "法院": court,
@@ -500,12 +494,12 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
         "生成日期": f"{today.year}年{today.month}月{today.day}日",
         "原告信息": await _party_lines(data, plaintiffs, "plaintiff_identities", db, defendant=False),
         "被告信息": await _party_lines(data, defendants, "defendant_identities", db, defendant=True),
-        # 没登记原告代理人时按开庭律师（和撤诉申请书一致）。
-        "委托诉讼代理人": "、".join(agents) or people(hearing),
-        "代理律所": agent_firm or FIRM_NAME,
+        # 陶国南 11-04 14:19：委托诉讼代理人用案件的经办律师，律所用本所。
+        "委托诉讼代理人": people(handling),
+        "代理律所": FIRM_NAME,
         "赔偿金额": compensation,
         "赔偿金额大写": amount_upper(compensation) if compensation else "",
-        **FIRM_ACCOUNT,
+        **(await firm_account(db)),
     }
 
 
