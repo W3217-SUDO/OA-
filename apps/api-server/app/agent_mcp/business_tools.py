@@ -890,26 +890,32 @@ async def _payment_elements(run: Run, args: dict) -> dict:
 
 
 # 陶国南 11-05：改、填案件信息时一次出确认卡片，不再在 25 组里逐个搜功能（11-04 填判决金额找了 21 次工具、等了 2 分钟）。
-@business_tool("biz_case_update_info", "修改案件信息（判决金额/诉讼标的/法院信息/开庭律师/阶段）",
-               "一次修改案件常改项：判决/调解金额、诉讼标的、法院信息（法院、案号、法庭、法官、书记员、立案/开庭/判决日期、判决文书号）、"
-               "开庭律师、案件阶段。只改传入的项，没传的保持原值。改这些信息时直接用本工具，不要先搜索其他工具或读案件文档。",
+@business_tool("biz_case_update_info", "修改案件信息（判决金额/诉讼标的/法院信息/开庭律师/阶段/执行状态）",
+               "一次修改案件详情里的常改项：诉讼/判决金额区块（判决/调解金额、诉讼标的）；法院信息区块（一审/二审/执行/再审的法院、案号、法庭、法官、"
+               "书记员、立案/开庭/判决日期、判决文书号）；开庭律师；案件阶段；执行状态。只改传入的项，没传的保持原值。"
+               "改这些信息时直接用本工具，不要先搜索其他工具或读案件文档。",
                {**CASE_REF,
                 "judgment_amount": _desc({"type": "number", "minimum": 0}, "判决/调解金额（元）"),
                 "litigation_amount": _desc({"type": "number", "minimum": 0}, "诉讼标的（元）"),
                 "court": {"type": "object", "additionalProperties": False, "description": "法院信息（同页面“修改法院信息”），只传要改的字段", "properties": {
-                    "level": {"type": "string", "enum": ["first", "second"], "default": "first", "description": "审级：first 一审、second 二审"},
+                    "level": {"type": "string", "enum": ["first", "second", "execution", "retrial"], "default": "first",
+                              "description": "审级：first 一审、second 二审、execution 执行、retrial 再审"},
                     "court": _desc(S, "法院名称"), "court_case_no": _desc(S, "法院案号"), "courtroom": _desc(S, "法庭"),
                     "judge": _desc(S, "法官"), "clerk": _desc(S, "书记员"), "filing_date": _desc(DATE, "立案日期"),
                     "hearing_date": _desc(DATE, "开庭日期"), "hearing_time": _desc(S, "开庭时间 HH:MM"),
                     "judgment_date": _desc(DATE, "判决日期"), "judgment_document_no": _desc(S, "判决文书号")}},
+                "execution_status": {"type": "string", "enum": ["一审待执行", "二审待执行", "准备材料", "提交法院", "执行受理", "执行中止", "执行结案",
+                                                                "执行终本", "执行终结", "执行亏损", "执行异议", "执行和解中", "未开始", "执行中", "已执行"],
+                                     "description": "执行状态"},
                 "hearing_lawyers": _desc(NAMES, "开庭律师（姓名或账号，可多人）"),
                 "case_phase_name": _desc(S, "案件阶段名称，如 一审庭后待判"),
                 "comment": _desc(S, "修改说明")},
                write=True,
                uses=("oa_search_ordinary_cases_post", "oa_get_record_get", "oa_update_case_settlement_amount_put",
-                     "oa_update_case_court_info_put", "oa_update_case_hearing_lawyer_put", "oa_update_case_phase_post"))
+                     "oa_update_case_court_info_put", "oa_update_case_hearing_lawyer_put", "oa_update_case_phase_post",
+                     "oa_update_case_execution_status_post"))
 async def _case_update_info(run: Run, args: dict) -> dict:
-    keys = ("judgment_amount", "litigation_amount", "court", "hearing_lawyers", "case_phase_name")
+    keys = ("judgment_amount", "litigation_amount", "court", "hearing_lawyers", "case_phase_name", "execution_status")
     if not any(args.get(key) not in (None, "", [], {}) for key in keys):
         raise HTTPException(422, "请至少提供一项要修改的案件信息")
     case = await find_case(run, args)
@@ -953,6 +959,10 @@ async def _case_update_info(run: Run, args: dict) -> dict:
         await run.write("oa_update_case_phase_post", {"body": {"case_nos": [case.get("serial_no")], "case_phase_name": args["case_phase_name"],
                                                                "comment": comment}}, "变更案件阶段")
         changed.append("案件阶段")
+    if args.get("execution_status"):
+        await run.write("oa_update_case_execution_status_post", {"body": {"case_nos": [case.get("serial_no")], "execution_status": args["execution_status"],
+                                                                          "comment": comment}}, "修改执行状态")
+        changed.append("执行状态")
     return {"case": _brief(case), "changed": changed}
 
 

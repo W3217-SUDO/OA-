@@ -54,9 +54,50 @@ class CaseUpdateInfoToolTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(caught.exception.status_code, 422)
 
 
+class CaseFieldMapTest(unittest.IsolatedAsyncioTestCase):
+    """陶国南 11-05 07:37：案件详情各填写区块逐项列清，用户说法 → 区块 → 字段 → 怎么改。"""
+
+    def test_map_covers_every_detail_block(self):
+        from app.case_agent import CASE_FIELD_MAP_ROWS
+        blocks = {block for _, block, _, _ in CASE_FIELD_MAP_ROWS}
+        for block in ("诉讼/判决金额", "法院信息（一审）", "法院信息（二审）", "开庭律师", "案件阶段", "执行状态", "基本信息", "当事人信息",
+                      "公证信息", "案件提醒", "案件事件", "案件日志", "费用", "公安信息（刑事）", "检察院信息（刑事）"):
+            self.assertIn(block, blocks)
+        self.assertIn("判决金额", CASE_INFO_EDIT_RULES)
+        self.assertNotIn("{CASE_FIELD_MAP}", CASE_INFO_EDIT_RULES)
+
+    def test_mapped_catalog_tools_exist(self):
+        import re
+        from app.agent_mcp.catalog import get_catalog
+        from app.case_agent import CASE_FIELD_MAP_ROWS
+        catalog = get_catalog(app)
+        for _, _, _, how in CASE_FIELD_MAP_ROWS:
+            for name in re.findall(r"oa_[a-z0-9_]+", how):
+                catalog.get(name)  # 不存在会抛错
+            for name in re.findall(r"biz_[a-z_]+", how):
+                self.assertIn(name, business_tools.TOOLS)
+
+    def test_case_sessions_open_case_groups(self):
+        from app.agent_mcp.model_tools import ModelToolSession
+        self.assertEqual(ModelToolSession(case_id=1).discovered_groups, {"06", "07", "14", "15"})
+        self.assertEqual(ModelToolSession().discovered_groups, set())
+
+    async def test_execution_status_in_same_call(self):
+        calls = []
+
+        async def fake_call(name, args):
+            calls.append(name)
+            return {"id": 1, "serial_no": "HZMS1", "data": {}}
+
+        with patch.object(business_tools, "get_auth_context", return_value=_context()):
+            result = await business_tools.run_business_tool("biz_case_update_info", {"case_id": 1, "execution_status": "执行中"}, call=fake_call)
+        self.assertEqual([step["tool"] for step in result["steps"] if step["kind"] == "写"], ["oa_update_case_execution_status_post"])
+
+
 class EditRequestSlimContextTest(unittest.TestCase):
     def test_edit_requests_detected(self):
-        for text in ("判决金额改成5万元", "把诉讼标的填写为 8 万", "开庭律师改为曹志刚", "案件阶段变更为一审已判决", "录入一审案号（2026）沪73民初1号"):
+        for text in ("判决金额改成5万元", "把诉讼标的填写为 8 万", "开庭律师改为曹志刚", "案件阶段变更为一审已判决", "录入一审案号（2026）沪73民初1号",
+                     "执行状态改为执行中", "经办律师换成张三", "公证书号补上(2026)沪徐证经字第123号"):
             self.assertTrue(is_case_info_edit_request(text), text)
         for text in ("归纳案件情况", "根据判决书填写判决金额", "起草答辩状", "分析这个案件的风险", "法院在哪里"):
             self.assertFalse(is_case_info_edit_request(text), text)

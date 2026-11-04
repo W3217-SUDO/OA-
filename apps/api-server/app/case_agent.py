@@ -72,12 +72,45 @@ CASE_INFO_EDIT_RULES = (
     "判决/调解金额、诉讼标的、法院信息（法院、案号、法庭、法官、书记员、立案/开庭/判决日期、判决文书号）、开庭律师、案件阶段，"
     "直接调用 biz_case_update_info（case_id 用当前案件 ID）：先不带 confirm 拿执行计划，用户同意后加 confirm=true 生成确认卡片；"
     "不要为这些项目调用 oa_list_tool_groups 或 oa_search_tools。"
+    + "\n" + "案件信息字段对照（陶国南 11-05：听到哪项就知道是案件详情哪个区块、哪个字段，直接办，不到处找）：" + "\n" + "{CASE_FIELD_MAP}"
 )
+
+# 用户说法 → 区块 → 字段 → 怎么改。不在 biz_case_update_info 里的区块，用 oa_search_tools 在给出的组里按工具名搜一次（组已预先开放），再 oa_call_tool。
+CASE_FIELD_MAP_ROWS = (
+    ("判决金额、调解金额、判决调解金额", "诉讼/判决金额", "判决/调解金额", "biz_case_update_info.judgment_amount"),
+    ("诉讼标的、标的额、起诉金额", "诉讼/判决金额", "诉讼标的", "biz_case_update_info.litigation_amount"),
+    ("一审法院、受理法院、法院案号、一审案号、法庭、法官、承办法官、书记员、立案日期、开庭时间、开庭日期、判决日期、判决书文号",
+     "法院信息（一审）", "法院名称、案号、法庭、法官、书记员、立案日期、开庭日期时间、判决日期、判决文书号", "biz_case_update_info.court（level=first）"),
+    ("二审法院、二审案号、上诉法院", "法院信息（二审）", "同上各项", "biz_case_update_info.court（level=second）"),
+    ("执行法院、执行案号", "法院信息（执行）", "同上各项", "biz_case_update_info.court（level=execution）"),
+    ("再审法院、再审案号", "法院信息（再审）", "同上各项", "biz_case_update_info.court（level=retrial）"),
+    ("开庭律师、出庭律师", "开庭律师", "开庭律师（可多人）", "biz_case_update_info.hearing_lawyers"),
+    ("案件阶段、阶段、进展到哪", "案件阶段", "案件阶段", "biz_case_update_info.case_phase_name"),
+    ("执行状态", "执行状态", "执行状态", "biz_case_update_info.execution_status"),
+    ("案件名称、案由、罪名、经办律师、承办律师、律师助理、文书、案源人、调查员、权利类型（民事、知产、行政等案件）",
+     "基本信息", "案件名称、案由、经办律师、律师助理、案源人、调查员、调查辅助员、权利类型、案件阶段", "组 07 搜 oa_update_normal_case_basic_put（先读案件基本信息，没改的项照原值一起提交）"),
+    ("法律顾问案件的顾问类型、顾问期限、案件名称、经办律师", "基本信息（法律顾问）", "案件名称、顾问类型、顾问起止日期、经办律师、律师助理、案由", "组 07 搜 oa_update_counsel_case_basic_put"),
+    ("仲裁案件的名称、案由、经办律师", "基本信息（仲裁）", "案件名称、案由、经办律师、律师助理、调查员", "组 07 搜 oa_update_arbitration_case_basic_put"),
+    ("原告、被告、第三人、申请人、被申请人、当事人、代理人、对方当事人", "当事人信息",
+     "原告/被告/第三人名单、各自证件（组织类型、证件号）、代理人", "组 07 搜 oa_update_case_litigants_put（整份名单提交：先读现有名单，只改用户说的那一方）"),
+    ("刑事案件的犯罪嫌疑人、被害人", "当事人信息（刑事）", "刑事当事人", "组 07 搜 oa_maintain_criminal_litigants_put"),
+    ("公安机关、侦查机关", "公安信息（刑事）", "公安机关名称、案号、地址、电话、承办人", "组 07 搜 oa_maintain_criminal_public_security_put"),
+    ("检察院、审查起诉", "检察院信息（刑事）", "一审/二审/再审检察院名称、案号、地址、电话、承办人", "组 07 搜 oa_maintain_criminal_procuratorates_put"),
+    ("刑事案件的法院", "法院信息（刑事）", "一审/二审/执行/再审法院各项", "组 07 搜 oa_maintain_criminal_courts_put"),
+    ("公证书号、公证信息、证物仓库位置", "公证信息", "公证书号、仓库库位", "组 14 搜 oa_update_case_notary_info_put（整份提交：先读现有公证书号和库位）"),
+    ("提醒、到期提醒", "案件提醒", "提醒日期、截止日期、内容", "组 07 搜 oa_create_case_reminder_post"),
+    ("案件事件、案件流水、记一件事", "案件事件", "事件类型、时间、内容、截止日期、是否提醒", "组 07 搜 oa_create_case_event_post（修改已有事件搜 oa_update_case_event_patch）"),
+    ("案件日志、写日志", "案件日志", "日志内容", "组 07 搜 oa_create_case_log_post"),
+    ("案件费用、内部费用、律师费、诉讼费", "费用", "费用范围、类型、金额、经办人等", "biz_case_fee_create_and_request_payment"),
+)
+CASE_FIELD_MAP = "\n".join(f"- {said} → {block} › {fields} → {how}" for said, block, fields, how in CASE_FIELD_MAP_ROWS)
+CASE_INFO_EDIT_RULES = CASE_INFO_EDIT_RULES.replace("{CASE_FIELD_MAP}", CASE_FIELD_MAP)
 
 # 陶国南 11-05：改、填案件信息时不带整个案件空间（费用、文档、任务、线索、检查等），只带案件基本信息，省时间也省费用。
 _EDIT_VERBS = re.compile(r"(改|修改|填|填写|录入|更新|设为|设置为|变更|调整|补上|补填|写上|换成)")
-_EDIT_FIELDS = re.compile(r"(判决金额|调解金额|诉讼标的|标的额|标的|金额|法院|案号|法庭|法官|书记员|开庭律师|开庭时间|开庭日期|立案日期|判决日期|"
-                          r"判决文书|阶段|当事人|原告|被告|第三人|案由|提醒|案件事件|公证|基本信息|案件名称)")
+_EDIT_FIELDS = re.compile(r"(判决金额|调解金额|诉讼标的|标的额|标的|金额|法院|案号|法庭|法官|书记员|开庭律师|出庭律师|开庭时间|开庭日期|立案日期|判决日期|"
+                          r"判决文书|阶段|当事人|原告|被告|第三人|申请人|代理人|案由|罪名|提醒|案件事件|案件流水|案件日志|公证|仓库|库位|基本信息|案件名称|"
+                          r"经办律师|承办律师|律师助理|案源人|调查员|执行状态|顾问期限|顾问类型|公安|检察院|犯罪嫌疑人|被害人)")
 
 
 def is_case_info_edit_request(message: str) -> bool:

@@ -79,7 +79,8 @@ class ModelToolSession:
         self.case_id = case_id
         self.conversation_id = conversation_id
         self.discovered: dict[str, ToolDefinition] = {}
-        self.discovered_groups: set[str] = set()
+        # 案件智能体里改案件信息：案件查询、案件办理、取证公证、费用登记四组预先开放，按字段对照直接组内搜（陶国南 11-05）。
+        self.discovered_groups: set[str] = {"06", "07", "14", "15"} if case_id is not None else set()
         self.discovered_subgroups: set[str] = set()
         self.pending_actions: list[dict[str, Any]] = []
         self.structured_results: list[dict[str, Any]] = []
