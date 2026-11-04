@@ -48,6 +48,11 @@ export default function CollectionModal({
       autoFilled.current = filled;
     }
   };
+  // 501323（fwl 11-04）：换一条线索取证或取消后，文件框不再显示上一条选过的文件。
+  const fileInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!collectionFiles.length && fileInput.current) fileInput.current.value = "";
+  }, [collectionFiles, open, collectionTarget?.id]);
   const notaryInstitutionOptions = Array.from(
     new Set([
       ...notaryOfficeOptions.map((item) => item.value),
@@ -152,6 +157,8 @@ export default function CollectionModal({
         {batchCollectionTargets.length === 0 && (
           <Form.Item label="证据文件">
             <input
+              ref={fileInput}
+              key={collectionTarget?.id ?? "none"}
               type="file"
               multiple
               onChange={(event) =>
