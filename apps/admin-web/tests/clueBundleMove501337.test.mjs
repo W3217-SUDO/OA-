@@ -28,3 +28,10 @@ test("目标案件原有公证书号、仓库位置与移入线索的证物叠�
   assert.match(header, /\[caseCertificate, \.\.\.clueEvidences/);
   assert.match(header, /\[caseLocation, \.\.\.clueEvidences/);
 });
+
+test("新增、修改公证费可登记所属线索", () => {
+  assert.match(page, /<span>费用类型<\/span><span>所属线索<\/span>/);
+  assert.match(page, /name=\{\[field\.name, "clue_record_id"\]\}/);
+  assert.match(page, /label="所属线索" name="clue_record_id"/);
+  assert.match(page, /const isClueFeeName = \(name: unknown\) => \/公证\//);
+});

@@ -102,6 +102,8 @@ class FinanceFeeInput(BaseModel):
     deadline: date | None = None
     commission_mode: Literal["automatic", "manual"] | None = None
     commission_details: list[FinanceFeeCommissionDetailInput] = Field(default_factory=list)
+    # 501337：公证费/公证服务费所属的本案线索（不传=不改，0=不属于线索）
+    clue_record_id: int | None = Field(default=None, ge=0)
 
 
 class FinanceFeeUpdateInput(FinanceFeeInput):

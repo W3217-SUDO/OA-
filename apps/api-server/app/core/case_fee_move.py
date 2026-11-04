@@ -259,3 +259,14 @@ async def clue_bundle_preview(case_id: int, clue_id: int, identity: dict, db) ->
                        "location": _text((item.data or {}).get("storage_location_name") or (item.data or {}).get("storage_location"))} for item in evidences],
         "fees": [{"id": item.id, "serial_no": item.serial_no, "title": item.title, "amount": (item.data or {}).get("amount")} for item in fees],
     }
+
+
+async def fee_clue_fields(clue_record_id: int | None, case_record: BusinessRecord | None, db) -> dict:
+    """新增/修改费用时登记所属线索（501337 fwl 11-04）：只能选本案关联的线索；不传不改，0 清空。"""
+    if clue_record_id is None:
+        return {}
+    if not clue_record_id:
+        return {"clue_record_id": None}
+    if case_record is None or all(item.id != clue_record_id for item in await _case_clue_records(case_record, db)):
+        raise HTTPException(status_code=422, detail="所属线索不是本案关联的线索")
+    return {"clue_record_id": clue_record_id}

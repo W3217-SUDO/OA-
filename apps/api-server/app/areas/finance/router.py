@@ -95,6 +95,8 @@ async def update_finance_fee(fee_id: int, body: FinanceFeeUpdateInput, identity:
     contract_record = await _resolve_case_fee_contract(case_record, contract_record, body.expense_scope, identity, db)
     commission = await _finance_fee_commission_payload(body, amount, db, case_record=case_record, existing_data=data)
     data.update({"amount": amount, **fee_snapshot, "expense_scope": body.expense_scope or "", "handler": body.handler, "court": body.court, "document_no": body.document_no, "payee": body.payee, "base_amount": body.base_amount, "reference_commission": body.reference_commission, "case_no": case_record.serial_no if case_record else body.case_no, "case_id": case_record.id if case_record else body.case_record_id, "contract_id": contract_record.id if contract_record else None, "contract_no": contract_record.serial_no if contract_record else "", "deadline": str(body.deadline) if body.deadline else "", **commission, "is_refund": fee_snapshot["fee_type"] == "内部费用" and amount < 0})
+    from app.core.case_fee_move import fee_clue_fields
+    data.update(await fee_clue_fields(body.clue_record_id, case_record, db))
     item.title = body.title; item.customer = body.customer; item.owner = body.handler; item.description = body.description; item.data = data
     db.add(WorkflowEvent(record_id=item.id, action="修改费用", from_status=item.status, to_status=item.status, operator=identity["username"], comment=f"{item.serial_no}：{body.title} {amount:.2f}"))
     await db.commit(); await db.refresh(item)
@@ -1517,8 +1519,10 @@ async def create_finance_fee(body: FinanceFeeInput, identity: dict = Depends(cur
     from app.areas.finance.fee_draft_preparation import prepare_finance_fee_draft
     from app.core.permissions import _record_dict_for_identity
     case_record, fee_snapshot, contract_record, user, handler, amount, commission = await prepare_finance_fee_draft(body, identity, db)
+    from app.core.case_fee_move import fee_clue_fields
+    clue_fields = await fee_clue_fields(body.clue_record_id, case_record, db)
     serial = f"FY{datetime.now():%Y%m%d%H%M%S%f}"
-    item = BusinessRecord(module="finance", serial_no=serial, title=body.title, customer=body.customer, status="草稿", owner=handler, department=user.department, description=body.description, data={"amount": amount, **fee_snapshot, "expense_scope": body.expense_scope or "", "is_refund": fee_snapshot["fee_type"] == "内部费用" and amount < 0, "case_no": case_record.serial_no if case_record else body.case_no, "case_id": case_record.id if case_record else None, "contract_id": contract_record.id if contract_record else None, "contract_no": contract_record.serial_no if contract_record else "", "deadline": str(body.deadline) if body.deadline else "", "handler": handler, "court": body.court, "document_no": body.document_no, "payee": body.payee, "base_amount": body.base_amount, "reference_commission": body.reference_commission, **commission})
+    item = BusinessRecord(module="finance", serial_no=serial, title=body.title, customer=body.customer, status="草稿", owner=handler, department=user.department, description=body.description, data={"amount": amount, **fee_snapshot, "expense_scope": body.expense_scope or "", "is_refund": fee_snapshot["fee_type"] == "内部费用" and amount < 0, "case_no": case_record.serial_no if case_record else body.case_no, "case_id": case_record.id if case_record else None, "contract_id": contract_record.id if contract_record else None, "contract_no": contract_record.serial_no if contract_record else "", "deadline": str(body.deadline) if body.deadline else "", "handler": handler, "court": body.court, "document_no": body.document_no, "payee": body.payee, "base_amount": body.base_amount, "reference_commission": body.reference_commission, **commission, **clue_fields})
     db.add(item); await db.flush()
     db.add(WorkflowEvent(record_id=item.id, action="创建费用", to_status="草稿", operator=identity["username"], comment=f"{fee_snapshot['fee_type_path']}：{amount:.2f} 元"))
     await db.commit(); await db.refresh(item)

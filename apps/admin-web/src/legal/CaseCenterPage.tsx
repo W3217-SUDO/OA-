@@ -2214,6 +2214,17 @@ export default function CaseCenterPage({
     });
   };
   // 10.22 第8行：律所/平台费用“移到其他案子”（同一客户、一次一条；合同编号保留原值）。
+  const isClueFeeName = (name: unknown) => /公证/.test(String(name || ""));
+  const feeCaseClueOptions = () => {
+    const ids: unknown[] = Array.isArray(feeCase?.data.investigation_clue_ids) ? feeCase?.data.investigation_clue_ids : [];
+    const nos: unknown[] = Array.isArray(feeCase?.data.investigation_clue_nos) ? feeCase?.data.investigation_clue_nos : [];
+    return ids.map((id, index) => ({ value: Number(id), label: String(nos[index] || id) })).filter((item) => item.value > 0);
+  };
+  const editCaseClueOptions = () => {
+    const ids: unknown[] = Array.isArray(viewingCounselCase?.data.investigation_clue_ids) ? viewingCounselCase?.data.investigation_clue_ids : [];
+    const nos: unknown[] = Array.isArray(viewingCounselCase?.data.investigation_clue_nos) ? viewingCounselCase?.data.investigation_clue_nos : [];
+    return ids.map((id, index) => ({ value: Number(id), label: String(nos[index] || id) })).filter((item) => item.value > 0);
+  };
   const submitCaseClueMove = async () => {
     if (!movingClue) return;
     const values = await moveClueForm.validateFields();
@@ -2315,6 +2326,7 @@ export default function CaseCenterPage({
     const feeTypeId = Number(row.data.fee_type_id) || initialFeeTypeId(feeTypeCatalog, expenseScope, "", expenseSubtype);
     const feeType = feeTypeSelection(feeTypeCatalog, feeTypeId);
     feeForm.setFieldsValue({ title: row.title, amount: row.data.amount, contract_record_id: Number(row.data.contract_id || row.data.contract_record_id) || undefined, expense_scope: expenseScope, fee_type_id: feeType?.id || feeTypeId, expense_subtype: feeType?.name || expenseSubtype, fee_type: feeType?.base_fee_type || row.data.fee_type || "官方费用", handler: row.data.handler || row.owner, court: row.data.court || "", payee: row.data.payee || "", base_amount: row.data.base_amount ?? 0, reference_commission: row.data.reference_commission ?? 0, document_no: row.data.document_no || "", deadline: row.data.deadline ? dayjs(row.data.deadline) : undefined, description: row.description || "" });
+    feeForm.setFieldValue("clue_record_id", Number(row.data.clue_record_id) || undefined);
     setEditingFeeRow(row);
   };
 
@@ -3737,6 +3749,12 @@ export default function CaseCenterPage({
               <Form.Item label="费用类别" name="fee_type_id" rules={[{ required: true, message: "请选择末级费用类型" }]}><TreeSelect showSearch treeNodeFilterProp="title" treeDefaultExpandAll treeData={feeTypeTreeOptions} placeholder="请选择系统费用类型" onChange={(value) => { const option = feeTypeSelection(feeTypeCatalog, value); feeForm.setFieldsValue({ expense_subtype: option?.name, fee_type: option?.base_fee_type }); }} /></Form.Item>
               <Form.Item label="金额" name="amount" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} style={{ width: "100%" }} /></Form.Item><Form.Item name="expense_subtype" hidden><Input /></Form.Item><Form.Item name="fee_type" hidden><Input /></Form.Item><Form.Item label="经办人员" name="handler" rules={[{ required: true }]}><Input /></Form.Item><Form.Item label="收款单位" name="payee"><Input /></Form.Item><Form.Item label="缴费法院/机构" name="court"><Input /></Form.Item><Form.Item label="缴费通知文号" name="document_no"><Input /></Form.Item><Form.Item label="截止日期" name="deadline"><DatePicker style={{ width: "100%" }} /></Form.Item>
             </div>
+              {/* 501337：公证费、公证服务费可改所属线索 */}
+              <Form.Item noStyle shouldUpdate={(prev, next) => prev.expense_subtype !== next.expense_subtype}>
+                {() => isClueFeeName(feeForm.getFieldValue("expense_subtype")) && editCaseClueOptions().length > 0 && <Form.Item label="所属线索" name="clue_record_id" extra="属于线索的公证费，移线索时会一起带走">
+                  <Select allowClear options={[{ value: 0, label: "不属于线索" }, ...editCaseClueOptions()]} />
+                </Form.Item>}
+              </Form.Item>
               <Form.Item label="说明" name="description"><Input.TextArea rows={2} /></Form.Item>
           </>}
         </Form>
@@ -3771,12 +3789,16 @@ export default function CaseCenterPage({
                 <span className="case-fee-row-actions"><Button type="text" aria-label="新增费用行" icon={<PlusOutlined />} onClick={() => add({ ...feeForm.getFieldValue(["items", field.name]), amount: undefined })} /><Button type="text" danger aria-label="删除费用行" icon={<CloseOutlined />} disabled={fields.length === 1} onClick={() => remove(field.name)} /></span>
                 <Form.Item name={[field.name, "title"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "expense_scope"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "expense_subtype"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "fee_type"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "handler"]} hidden><Input /></Form.Item>
               </div>)}
-            </div> : <div className="case-fee-entry-table">
-              <div className="case-fee-entry-head"><span>案号</span><span>合同号</span><span>费用类型</span><span>金额</span><span>备注</span><span>截止日期</span><span>操作</span></div>
+            </div> : <div className="case-fee-entry-table case-fee-entry-table-with-clue">
+              <div className="case-fee-entry-head"><span>案号</span><span>合同号</span><span>费用类型</span><span>所属线索</span><span>金额</span><span>备注</span><span>截止日期</span><span>操作</span></div>
               {fields.map((field) => <div className="case-fee-entry-row" key={field.key}>
                 <span className="case-fee-static-value">{feeCase?.serial_no || "—"}</span>
                 <Form.Item name={[field.name, "contract_record_id"]} rules={[{ required: true, message: "请选择合同" }]}><Select showSearch optionFilterProp="label" placeholder="请选择" options={feeContractOptions} /></Form.Item>
-                <Form.Item name={[field.name, "fee_type_id"]} rules={[{ required: true, message: "请选择末级费用类型" }]}><Select showSearch optionFilterProp="label" placeholder="请选择" popupMatchSelectWidth={180} options={feeTypeSelectOptions} onChange={(value) => { const option = feeTypeSelection(feeTypeCatalog, value); feeForm.setFieldValue(["items",field.name,"expense_subtype"],option?.name); feeForm.setFieldValue(["items",field.name,"fee_type"],option?.base_fee_type); feeForm.setFieldValue(["items",field.name,"title"],`${feeCase?.title || ""}${option?.name || ""}`); }} /></Form.Item>
+                <Form.Item name={[field.name, "fee_type_id"]} rules={[{ required: true, message: "请选择末级费用类型" }]}><Select showSearch optionFilterProp="label" placeholder="请选择" popupMatchSelectWidth={180} options={feeTypeSelectOptions} onChange={(value) => { const option = feeTypeSelection(feeTypeCatalog, value); feeForm.setFieldValue(["items",field.name,"expense_subtype"],option?.name); feeForm.setFieldValue(["items",field.name,"fee_type"],option?.base_fee_type); feeForm.setFieldValue(["items",field.name,"title"],`${feeCase?.title || ""}${option?.name || ""}`); const clues = feeCaseClueOptions(); if (isClueFeeName(option?.name) && clues.length === 1 && !feeForm.getFieldValue(["items",field.name,"clue_record_id"])) feeForm.setFieldValue(["items",field.name,"clue_record_id"], clues[0].value); }} /></Form.Item>
+                {/* 501337：公证费、公证服务费登记所属线索，移线索时一起带走 */}
+                <Form.Item noStyle shouldUpdate={(prev, next) => prev.items?.[field.name]?.expense_subtype !== next.items?.[field.name]?.expense_subtype}>
+                  {() => <Form.Item name={[field.name, "clue_record_id"]}><Select allowClear placeholder={isClueFeeName(feeForm.getFieldValue(["items", field.name, "expense_subtype"])) ? "请选择" : "—"} disabled={!isClueFeeName(feeForm.getFieldValue(["items", field.name, "expense_subtype"])) || !feeCaseClueOptions().length} options={feeCaseClueOptions()} /></Form.Item>}
+                </Form.Item>
                 <Form.Item name={[field.name, "amount"]} rules={[{ required: true, message: "请输入金额" }]}><InputNumber min={0.01} precision={2} className="case-fee-amount-input" /></Form.Item>
                 <Form.Item name={[field.name, "description"]}><Input /></Form.Item>
                 <Form.Item name={[field.name, "deadline"]}><DatePicker /></Form.Item>
