@@ -10,6 +10,7 @@ type PartyInfo = {
   identity: { organization_type: string; identity_no: string };
   local: { kind: string; id: number; serial_no: string; rows: Row[] }[];
   business: { rows: Row[]; queried_at: string; abnormal: boolean } | null;
+  auto_sheet?: { saved: boolean; name?: string; error?: string };  // 被告查到后自动存的企业基本信息表
 };
 
 /** 原告、被告、第三人名称拆成单个名字（和后端 case_parties._names 一致）。 */
@@ -47,7 +48,10 @@ function CasePartyInfoModal({ caseId, name, onClose }: { caseId: number; name: s
     setQuerying(true);
     try {
       const { data } = await api.post<PartyInfo>(`/cases/${caseId}/parties/business-info`, { name, refresh });
-      setInfo(data); message.success("工商信息已更新");
+      setInfo(data);
+      if (data.auto_sheet?.saved) message.success(`工商信息已更新，企业基本信息表已自动存到案件空间：${data.auto_sheet.name || ""}`, 5);
+      else if (data.auto_sheet) message.warning(`工商信息已更新，但企业基本信息表没能自动保存：${data.auto_sheet.error || ""}`, 6);
+      else message.success("工商信息已更新");
     } catch (failure) { message.error(errorText(failure, "查询工商信息失败")); }
     finally { setQuerying(false); }
   };
@@ -96,10 +100,10 @@ function CasePartyInfoModal({ caseId, name, onClose }: { caseId: number; name: s
         {info.business
           ? <>{rowsView(info.business.rows)}<div style={{ marginTop: 4, color: "#888" }}>查询时间 {time(info.business.queried_at)}，以后查看不再计费</div>
             <Space wrap style={{ marginTop: 12 }}>
-              <Button loading={saving === "basic"} onClick={() => void saveDocument("basic")}>保存{info.role}基本信息到案件空间</Button>
+              <Button loading={saving === "basic"} onClick={() => void saveDocument("basic")}>生成企业基本信息表</Button>
               <Button loading={saving === "due_diligence"} onClick={() => void saveDocument("due_diligence")}>生成尽职调查报告</Button>
             </Space></>
-          : <Alert type="info" showIcon title="还没有查过。点“查询工商信息”会调用一次企查查企业工商信息接口（0.20 元），查到后存进系统，以后谁再看都不再计费。" />}
+          : <Alert type="info" showIcon title={`还没有查过。点“查询工商信息”会调用一次企查查企业工商信息接口（0.20 元），查到后存进系统，以后谁再看都不再计费。${info.role === "被告" ? "被告查到后会自动生成企业基本信息表存到案件空间。" : ""}`} />}
       </div>}
     </Space>}
   </Modal>;

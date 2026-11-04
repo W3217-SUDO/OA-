@@ -109,7 +109,7 @@ async def query_case_party_business_info(case_id: int, body: PartyLookupInput,
     """查询（或重新查询）当事人的企查查工商信息：没查过或 refresh=True 才计费，结果存进企业档案。"""
     from app.core.permissions import _ensure_record_module
     record = await _ensure_record_module(case_id, "case", identity, db)
-    _role, party_identity = case_party(record, body.name)
+    role, party_identity = case_party(record, body.name)
     if party_identity.get("organization_type") == "个人":
         raise HTTPException(422, "个人当事人没有工商信息")
     keywords = _keywords(body.name.strip(), party_identity)
@@ -117,14 +117,25 @@ async def query_case_party_business_info(case_id: int, body: PartyLookupInput,
         return await party_info(record, body.name, db)
     # 有信用代码按信用代码查，避免同名企业查错。
     await lookup_company(keywords[-1], identity["username"], db, refresh=body.refresh, aliases=tuple(keywords))
-    return await party_info(record, body.name, db)
+    info = await party_info(record, body.name, db)
+    if role == "被告":
+        # 被告查到（或重新查到）工商信息后，自动生成企业基本信息表存进案件空间（陶国南 11-04：一定要用）。
+        # 每查一次存一份新的，文件名带查询时间，旧的保留；存不了（没有上传权限等）不影响查询结果，页面提示原因。
+        try:
+            detail = await company_profile(db, *keywords)
+            saved = await _save_document(record, role, body.name.strip(), "basic", detail, party_identity, identity, db)
+            info["auto_sheet"] = {"saved": True, "name": saved["file"].get("original_name") or saved["file"].get("name") or ""}
+        except Exception as exc:  # noqa: BLE001 — 存档失败不能让查询失败
+            await db.rollback()
+            info["auto_sheet"] = {"saved": False, "error": str(exc.detail) if isinstance(exc, HTTPException) else "保存到案件空间失败，请稍后点“生成企业基本信息表”"}
+    return info
 
 
-# ---------- 被告基本信息文档、尽职调查报告（501226 第 3 条） ----------
+# ---------- 企业基本信息表、尽职调查报告（501226 第 3 条） ----------
 # 只用已存的工商信息生成 Word，存到案件 AI 空间，不另外调接口。报告目前有工商登记和可诉性判断（陶国南 11-03 定方案 C、
 # 要判断可诉性）；企业风险扫描接口开通前，失信、被执行、股东、经营风险报告里写明“未核查”。
 
-DOCUMENT_KINDS = {"basic": "基本信息", "due_diligence": "尽职调查报告"}
+DOCUMENT_KINDS = {"basic": "企业基本信息表", "due_diligence": "尽职调查报告"}
 NOT_COVERED = ["涉诉情况（裁判文书、开庭公告、立案信息）", "失信被执行人", "被执行人", "限制高消费", "股东及出资",
                "主要人员", "经营异常", "行政处罚", "欠税", "股权出质", "股权冻结", "破产重整"]
 
@@ -191,7 +202,7 @@ def _suability(detail: dict, name: str) -> tuple[str, list[str]]:
 
 def render_party_docx(record: BusinessRecord, name: str, role: str, kind: str, detail: dict, risk: dict | None = None,
                       *, risk_note: str = "风险扫描接口未开通", business_source: str = "") -> bytes:
-    """基本信息：工商信息表。尽职调查报告：商务版式（party_report），有风险数据时加涉诉、执行与信用、经营风险和执行可能性。"""
+    """basic：企业基本信息表。due_diligence：尽职调查报告商务版式，有风险数据时加涉诉、执行与信用、经营风险和执行可能性。"""
     from app.areas.crm.company_lookup import business_rows
 
     rows = business_rows(detail)
@@ -204,24 +215,10 @@ def render_party_docx(record: BusinessRecord, name: str, role: str, kind: str, d
             business_risks=_risks(detail), not_covered=[item for item in NOT_COVERED if not risk or not _covered(item, risk)],
             business_source=business_source)
 
-    from io import BytesIO
-    from docx import Document
-    from docx.shared import Pt
+    # 企业基本信息表（供法院立案用，陶国南 11-04 确认样稿）：不要封面目录，只放工商登记信息。
+    from app.areas.legal.party_report import render_company_sheet
 
-    document = Document()
-    document.styles["Normal"].font.size = Pt(10.5)
-    document.add_heading(f"{role}{DOCUMENT_KINDS[kind]}：{name}", level=1)
-    queried = str(detail.get("queried_at") or "")[:10]
-    document.add_paragraph(f"案件：{record.serial_no} {record.title}")
-    document.add_paragraph(f"数据来源：企查查企业工商信息{f'（{queried} 查询）' if queried else ''}。以国家企业信用信息公示系统为准。")
-    grid = document.add_table(rows=0, cols=2)
-    grid.style = "Table Grid"
-    for row in rows:
-        cells = grid.add_row().cells
-        cells[0].text, cells[1].text = row["label"], row["value"]
-    buffer = BytesIO()
-    document.save(buffer)
-    return buffer.getvalue()
+    return render_company_sheet(detail, business_rows=rows)
 
 
 class PartyDocumentInput(BaseModel):
@@ -234,12 +231,7 @@ async def save_case_party_document(case_id: int, body: PartyDocumentInput,
                                    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """把当事人工商信息生成 Word 存到案件 AI 空间：基本信息或尽职调查报告。工商信息只用已存的；
     尽职调查报告另取风险数据（30 天内查过的直接用，否则按开关查一次火山企业风险库或企查查 736），查不到也照样出报告。"""
-    from app.core.cases import _case_ai_draft_name
-    from app.core.constants import WORD_DOCUMENT_CONTENT_TYPE
-    from app.core.generated_file_storage import save_generated_file
-    from app.core.permissions import _ensure_record_module, _require_case_attachment_upload_access
-    from app.core.storage import _attachment_dict
-    from app.models import WorkflowEvent
+    from app.core.permissions import _ensure_record_module
 
     record = await _ensure_record_module(case_id, "case", identity, db)
     role, party_identity = case_party(record, body.name)
@@ -249,13 +241,31 @@ async def save_case_party_document(case_id: int, body: PartyDocumentInput,
     detail = await company_profile(db, *_keywords(name, party_identity))
     if not detail:
         raise HTTPException(409, "请先点“查询工商信息”，查到后再生成")
+    return await _save_document(record, role, name, body.kind, detail, party_identity, identity, db)
+
+
+async def _save_document(record: BusinessRecord, role: str, name: str, kind: str, detail: dict, party_identity: dict,
+                         identity: dict, db: AsyncSession) -> dict:
+    from app.core.cases import _case_ai_draft_name
+    from app.core.constants import WORD_DOCUMENT_CONTENT_TYPE
+    from app.core.generated_file_storage import save_generated_file
+    from app.core.permissions import _require_case_attachment_upload_access
+    from app.core.storage import _attachment_dict
+    from app.models import WorkflowEvent
+
     await _require_case_attachment_upload_access(record, identity, db)
-    label = f"{role}{DOCUMENT_KINDS[body.kind]}"
     safe = "".join(char for char in name if char not in '\\/:*?"<>|')[:60]
-    filename = _case_ai_draft_name(f"{record.serial_no}_{label}_{safe}.docx")
+    if kind == "basic":
+        label = DOCUMENT_KINDS[kind]
+        # 文件名带工商信息的查询时间：重新查询后新生成一份，旧的保留，按时间区分。
+        stamp = "".join(char for char in str(detail.get("queried_at") or "")[:16] if char.isdigit())
+        filename = _case_ai_draft_name(f"{record.serial_no}_{label}_{safe}{f'_{stamp[:8]}-{stamp[8:12]}' if len(stamp) >= 12 else ''}.docx")
+    else:
+        label = f"{role}{DOCUMENT_KINDS[kind]}"
+        filename = _case_ai_draft_name(f"{record.serial_no}_{label}_{safe}.docx")
 
     risk, risk_note = None, ""
-    if body.kind == "due_diligence":
+    if kind == "due_diligence":
         from app.areas.legal import party_risk
         risk, risk_note = await party_risk.risk_for(db, name=detail.get("name") or name, credit_code=detail.get("credit_code") or "",
                                                     username=identity["username"], keywords=_keywords(name, party_identity))
@@ -267,7 +277,7 @@ async def save_case_party_document(case_id: int, body: PartyDocumentInput,
                                   to_status=record.status, operator=identity["username"], comment=filename))
 
     result = await save_generated_file(
-        db, identity, name=filename, content=render_party_docx(record, name, role, body.kind, detail, risk, risk_note=risk_note or "风险扫描接口未开通"),
+        db, identity, name=filename, content=render_party_docx(record, name, role, kind, detail, risk, risk_note=risk_note or "风险扫描接口未开通"),
         content_type=WORD_DOCUMENT_CONTENT_TYPE, source_kind="case_draft", case_record=record, on_available=on_available,
     )
     return {"file": _attachment_dict(result["attachment"], record), "risk": bool(risk), "risk_note": risk_note}

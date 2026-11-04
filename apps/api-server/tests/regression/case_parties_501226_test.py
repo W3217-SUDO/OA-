@@ -119,7 +119,8 @@ class CasePartyDocumentTest(CasePartiesTest):
         detail = {**qcc._detail({**FULL_410, "Status": "吊销，未注销", "RevokeInfo": {"RevokeDate": "2025-01-01", "RevokeReason": "未年报"}}),
                   "queried_at": "2026-11-03T14:30:00"}
         basic = self._text(case_parties.render_party_docx(self.case, "广信区有明眼镜店", "被告", "basic", detail))
-        self.assertIn("被告基本信息：广信区有明眼镜店", basic)
+        self.assertIn("企业基本信息表\n企业名称\n上饶市广信区有明眼镜店", basic)
+        self.assertIn("经营者\n王五", basic, "个体户写经营者")
         self.assertIn("92361121MA00000000", basic)
         report = self._text(case_parties.render_party_docx(self.case, "广信区有明眼镜店", "被告", "due_diligence", detail))
         self.assertIn("已吊销：2025-01-01，未年报", report)
@@ -150,12 +151,30 @@ class CasePartyDocumentTest(CasePartiesTest):
                 with self.assertRaises(HTTPException) as caught:
                     await case_parties.save_case_party_document(self.case.id, body, LAWYER, db)
                 self.assertEqual(caught.exception.status_code, 409)
-                await case_parties.query_case_party_business_info(self.case.id, case_parties.PartyLookupInput(name="广信区有明眼镜店"), LAWYER, db)
+                info = await case_parties.query_case_party_business_info(self.case.id, case_parties.PartyLookupInput(name="广信区有明眼镜店"), LAWYER, db)
+                self.assertEqual(info["auto_sheet"]["saved"], False, "存档失败不影响查询")
+                self.assertIsNotNone(info["business"])
                 with self.assertRaises(RuntimeError):
                     await case_parties.save_case_party_document(self.case.id, case_parties.PartyDocumentInput(name="广信区有明眼镜店", kind="due_diligence"), LAWYER, db)
-        self.assertEqual(saved[0]["name"], "HZMS2600441_被告尽职调查报告_广信区有明眼镜店.docx")
-        self.assertEqual(saved[0]["source_kind"], "case_draft")
+        self.assertRegex(saved[0]["name"], r"^HZMS2600441_企业基本信息表_广信区有明眼镜店_\d{8}-\d{4}\.docx$", "被告查到后自动存企业基本信息表，文件名带查询时间")
+        self.assertEqual(saved[1]["name"], "HZMS2600441_被告尽职调查报告_广信区有明眼镜店.docx")
+        self.assertEqual(saved[1]["source_kind"], "case_draft")
         self.assertEqual(len(self.calls), 1, "生成文档不调接口")
+
+    async def test_plaintiff_lookup_does_not_auto_save(self):
+        saved = []
+
+        async def fake_save(db, identity, **kwargs):
+            saved.append(kwargs)
+            raise RuntimeError("stop")
+
+        async with self.sessions() as db:
+            with patch("app.core.permissions._ensure_record_module", self._case), \
+                 patch("app.core.permissions._require_case_attachment_upload_access", self._allow), \
+                 patch("app.core.generated_file_storage.save_generated_file", fake_save):
+                info = await case_parties.query_case_party_business_info(self.case.id, case_parties.PartyLookupInput(name="浙江大光明眼镜有限公司"), LAWYER, db)
+        self.assertNotIn("auto_sheet", info, "原告、第三人不自动存，照旧手点按钮")
+        self.assertEqual(saved, [])
 
     async def _allow(self, *args):
         return None
