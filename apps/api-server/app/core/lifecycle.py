@@ -143,7 +143,10 @@ def _upgrade_schema(connection) -> None:
 
 
 async def _backfill_clue_generated_case_register_dates(db: AsyncSession) -> int:
-    """Fill only missing filing dates on historical clue-generated cases.
+    """Fill only missing case register dates on historical clue-generated cases.
+
+    501362（范文玲 11-04）：案件立案日期（case_register_date）是案件生成日期；法院立案时间（filing_date）由
+    “修改法院信息”填写，两者无关，这里不再用生成日期补 filing_date。
 
     The conversion event is the authoritative business timestamp.  The case
     creation timestamp is used only for legacy rows whose matching event was
@@ -151,9 +154,6 @@ async def _backfill_clue_generated_case_register_dates(db: AsyncSession) -> int:
     """
     missing_register_date = func.trim(func.coalesce(
         BusinessRecord.data["case_register_date"].as_string(), "",
-    )) == ""
-    missing_filing_date = func.trim(func.coalesce(
-        BusinessRecord.data["filing_date"].as_string(), "",
     )) == ""
     business_tz = ZoneInfo("Asia/Shanghai")
     last_id = 0
@@ -163,7 +163,7 @@ async def _backfill_clue_generated_case_register_dates(db: AsyncSession) -> int:
         cases = (await db.scalars(select(BusinessRecord).where(
             BusinessRecord.module == "case",
             BusinessRecord.id > last_id,
-            or_(missing_register_date, missing_filing_date),
+            missing_register_date,
         ).order_by(BusinessRecord.id).limit(400))).all()
         if not cases:
             break
@@ -190,8 +190,6 @@ async def _backfill_clue_generated_case_register_dates(db: AsyncSession) -> int:
                 resolved_date = str(generated_at.astimezone(business_tz).date())
             if not case_register_date:
                 data["case_register_date"] = resolved_date
-            if not filing_date:
-                data["filing_date"] = resolved_date
             item.data = data
         updated += len(candidates)
         await db.flush()

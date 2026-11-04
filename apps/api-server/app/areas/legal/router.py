@@ -2781,7 +2781,8 @@ async def review_case_creation(case_id: int, body: CaseCreationReviewInput, iden
         **data, "case_creation_approval_status": approval_status, "business_stage": "立案",
         "case_creation_reviewer": identity["username"], "case_creation_reviewed_at": datetime.now().isoformat(timespec="seconds"),
         "case_creation_review_comment": body.comment.strip(),
-        **({"case_register_date": str(date.today()), "filing_date": str(date.today())} if body.approved and data.get("conflict_review_requires_creation_approval") else {}),
+        # 501362：建案审批通过只记案件立案日期；法院立案时间由“修改法院信息”填写，不再用审批日期顶替。
+        **({"case_register_date": str(date.today())} if body.approved and data.get("conflict_review_requires_creation_approval") else {}),
         **({"case_creation_step": "litigants"} if not body.approved else {}),
     }
     action = "案件创建审批通过" if body.approved else "案件创建审批驳回"

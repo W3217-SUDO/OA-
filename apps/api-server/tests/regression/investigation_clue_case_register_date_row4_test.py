@@ -77,7 +77,7 @@ class InvestigationClueCaseRegisterDateRow4Test(unittest.IsolatedAsyncioTestCase
 
         self.assertEqual(result["created"], 1)
         self.assertEqual(case_record.data["case_register_date"], "2026-09-01")
-        self.assertEqual(case_record.data["filing_date"], "2026-09-01")
+        self.assertNotIn("filing_date", case_record.data, "501362：法院立案时间不再用案件生成日期填")
 
     async def test_historical_original_record_uses_generation_event_business_date(self) -> None:
         async with self.sessions() as db:
@@ -108,7 +108,7 @@ class InvestigationClueCaseRegisterDateRow4Test(unittest.IsolatedAsyncioTestCase
             await db.refresh(case_record)
 
         self.assertEqual(case_record.data["case_register_date"], "2026-09-01")
-        self.assertEqual(case_record.data["filing_date"], "2026-09-01")
+        self.assertNotIn("filing_date", case_record.data, "501362：法院立案时间不再用案件生成日期填")
 
     async def test_existing_filing_date_is_preserved_and_fills_missing_register_date(self) -> None:
         async with self.sessions() as db:
