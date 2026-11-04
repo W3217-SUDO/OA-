@@ -112,8 +112,11 @@ export const CaseDetailHeader = (props: CaseDetailHeaderProps) => {
   openRelatedClue,
   clueEvidences = [],
  } = props;
-  const evidenceCertificates = [...new Set(clueEvidences.map((item) => item.certificate_no).filter(Boolean))].join("、");
-  const evidenceLocations = [...new Set(clueEvidences.map((item) => [item.warehouse_name, item.warehouse_location].filter(Boolean).join(" ")).filter(Boolean))].join("、");
+  // 501337（fwl 11-04）：案件原有的公证书号/仓库位置与关联线索证物的叠加显示，不是替换
+  const caseCertificate = String(viewingCase.data.notarial_no||viewingCase.data.notary_no||viewingCase.data.certificate_no||"").trim();
+  const caseLocation = String(viewingCase.data.warehouse||viewingCase.data.warehouse_location||viewingCase.data.storage_location||viewingCase.data.location||viewingCase.data.deposit_address||"").trim();
+  const evidenceCertificates = [...new Set([caseCertificate, ...clueEvidences.map((item) => item.certificate_no || "")].filter(Boolean))].join("、");
+  const evidenceLocations = [...new Set([caseLocation, ...clueEvidences.map((item) => [item.warehouse_name, item.warehouse_location].filter(Boolean).join(" "))].filter(Boolean))].join("、");
   const sectionVisibility = getCaseDetailSectionVisibility(viewingCase.data, viewingCase.status);
   const [courtExpanded, setCourtExpanded] = useState(true);
   const [archiveExpanded, setArchiveExpanded] = useState(true);
