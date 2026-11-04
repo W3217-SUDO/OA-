@@ -69,7 +69,7 @@ test("第8行：未选或多选时按统一提示拦截；弹窗字段、提示�
   for (const label of ["当前案件", "客户编号", "合同编号", "目标案件", "请输入目标案件编号", "仅允许迁移到同一客户下的案件；一次只能迁移一条费用。", 'okText="确定"', 'cancelText="取消"']) {
     assert.ok(modal.includes(label) || page.includes(label), label);
   }
-  assert.match(page, /api\.post\(`\/finance\/fees\/\$\{movingFee\.id\}\/move-case`, \{ target_case_no: targetCaseNo \}\)/);
+  assert.match(page, /api\.post\(`\/finance\/fees\/\$\{movingFee\.id\}\/move-case`, \{ target_case_no: targetCaseNo, clue_id: clueId \}\)/);
   assert.match(page, /目标案件不能与当前案件相同/);
   const css = read("../src/case-center.css");
   assert.match(css, /\.case-fee-move-form \.ant-form-item-label\{flex:0 0 100%!important/);

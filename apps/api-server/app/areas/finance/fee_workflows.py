@@ -325,7 +325,7 @@ async def move_finance_fee_to_case(fee_id: int, body: FinanceFeeMoveCaseInput, i
     """10.22 第8行：律所/平台费用“移到其他案子”，同一客户、一次一条。"""
     from app.core.case_fee_move import move_case_fee
     from app.core.permissions import _record_dict_for_identity
-    item = await move_case_fee(fee_id, body.target_case_no, identity, db)
+    item = await move_case_fee(fee_id, body.target_case_no, identity, db, clue_id=body.clue_id)
     return await _record_dict_for_identity(item, identity, db)
 
 @router.post(f"{settings.api_prefix}/finance/fees/{{fee_id}}/mark-refund-not-required")

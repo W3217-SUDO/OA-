@@ -513,6 +513,8 @@ from app.areas.crm.company_lookup import router as company_lookup_router  # 5011
 app.include_router(company_lookup_router)
 from app.areas.legal.case_parties import router as case_parties_router  # 501226 案件当事人信息
 app.include_router(case_parties_router)
+from app.areas.legal.case_clue_move import router as case_clue_move_router  # 501337 线索整条移到其他案子
+app.include_router(case_clue_move_router)
 app.include_router(agent_admin_router)
 app.include_router(data_query_router)
 app.include_router(case_statistics_router)

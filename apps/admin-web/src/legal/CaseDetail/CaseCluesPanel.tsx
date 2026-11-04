@@ -22,6 +22,8 @@ interface CaseCluesPanelProps {
   onOpenClue: (row: CaseRow) => void;
   onOpenClueWorkspace: (row: CaseRow) => void;
   onCreateTask: (caseRow: CaseRow, clues: CaseRow[]) => void;
+  /** 501337：整条线索（证物、费用）移到其他案子 */
+  onMoveClue?: (caseRow: CaseRow, clue: CaseRow) => void;
 }
 
 type ClueEvidence = { id: number; certificate_no?: string; certificate_status?: string; certificate_stored_at?: string; item_count?: string; warehouse_name?: string; warehouse_location?: string; evidence_status?: string };
@@ -52,6 +54,7 @@ export const CaseCluesPanel = ({
   onOpenClue,
   onOpenClueWorkspace,
   onCreateTask,
+  onMoveClue,
 }: CaseCluesPanelProps) => {
   const [selectedClues, setSelectedClues] = useState<CaseRow[]>([]);
   useEffect(() => { setSelectedClues([]); }, [viewingCase?.id]);
@@ -99,6 +102,9 @@ export const CaseCluesPanel = ({
       {title:"证物状态",width:110,render:(_:unknown,{clue,evidence}:ClueEvidenceRow)=>evidence?.evidence_status||clue.data.evidence_status||clue.data.warehouse_status||"—"},
       {title:"操作",width:90,fixed:"right",render:(_:unknown,row:ClueEvidenceRow)=><Button type="link" onClick={()=>void onOpenClueWorkspace(row.clue)}>查看</Button>},
     ]}/>
-    {capabilities.can_create_case_task&&<div className="case-legacy-bottom-actions"><Button onClick={()=>{ if (!selectedClues.length) return message.warning("请先选择线索信息"); if (viewingCase) onCreateTask(viewingCase, selectedClues); }}>发布任务</Button></div>}
+    {(capabilities.can_create_case_task||(onMoveClue&&(capabilities.can_move_fee||capabilities.can_edit_basic)))&&<div className="case-legacy-bottom-actions">
+      {capabilities.can_create_case_task&&<Button onClick={()=>{ if (!selectedClues.length) return message.warning("请先选择线索信息"); if (viewingCase) onCreateTask(viewingCase, selectedClues); }}>发布任务</Button>}
+      {onMoveClue&&(capabilities.can_move_fee||capabilities.can_edit_basic)&&<Button onClick={()=>{ if (selectedClues.length !== 1) return message.warning("请选择一条线索"); if (viewingCase) onMoveClue(viewingCase, selectedClues[0]); }}>移到其他案子</Button>}
+    </div>}
   </div>);
 };

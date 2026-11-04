@@ -196,6 +196,8 @@ class FinanceFeeMoveCaseInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     target_case_no: str = Field(min_length=1, max_length=64)
+    # 501337：费用没记属于哪条线索时，操作人选的本案线索（选了就整条线索一起移）
+    clue_id: int | None = Field(default=None, gt=0)
 
 
 class InternalPaymentSelectionInput(BaseModel):
