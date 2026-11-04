@@ -1,3 +1,4 @@
+import { LinkifiedText } from "../../components/LinkifiedText";
 import { Descriptions } from "antd";
 import type { CaseRow } from "../types";
 
@@ -30,11 +31,11 @@ export function CaseClueDetails({ clue }: { clue: CaseRow }) {
             { key: "investigated", label: "调查时间", children: String(clue.data.investigated_at || clue.data.investigation_time || clue.data.investigation_date || "").replace("T", " ").slice(0, 19) || "—" },
             { key: "shop", label: "店铺名称", children: clue.data.shop_name || clue.data.store_name || clue.title || "—" },
             { key: "shop-id", label: "店铺Id", children: clue.data.shop_id || clue.data.store_id || "—" },
-            { key: "shop-link", label: "店铺链接", children: clue.data.store_url || clue.data.shop_link || clue.data.store_link ? <a href={clue.data.store_url || clue.data.shop_link || clue.data.store_link} target="_blank" rel="noreferrer">{clue.data.store_url || clue.data.shop_link || clue.data.store_link}</a> : "—", span: 2 },
+            { key: "shop-link", label: "店铺链接", children: <LinkifiedText value={clue.data.store_url || clue.data.shop_link || clue.data.store_link} />, span: 2 },
             { key: "region", label: "调查区域", children: clue.data.investigation_region || clue.data.region || "—" },
             { key: "address", label: "侵权地址", children: clue.data.infringement_address || clue.data.shop_address || clue.data.address || "—" },
             { key: "product", label: "产品名称", children: clue.data.product || "—", span: 2 },
-            { key: "product-link", label: "产品链接", children: clue.data.product_url ? <a href={clue.data.product_url} target="_blank" rel="noreferrer">{clue.data.product_url}</a> : "—", span: 2 },
+            { key: "product-link", label: "产品链接", children: <LinkifiedText value={clue.data.product_url} />, span: 2 },
             { key: "scale", label: "规模", children: clue.data.sale_num || "—", span: 2 },
             { key: "producers", label: "生产商", children: partyDetails(clue.data.producers?.length ? clue.data.producers : clue.data.producer), span: 2 },
             { key: "subjects", label: "主体信息", children: partyDetails(clue.data.indictees?.length ? clue.data.indictees : clue.data.indictee || clue.data.subject), span: 2 },

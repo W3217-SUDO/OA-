@@ -1,3 +1,4 @@
+import { LinkifiedText } from "../../components/LinkifiedText";
 import { ReloadOutlined } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import type { TablePaginationConfig } from "antd";
@@ -92,7 +93,7 @@ export const CaseCluesPanel = ({
       {title:"调查时间",width:150,render:(_:unknown,{clue}:ClueEvidenceRow)=>String(clue.data.investigated_at||clue.data.collected_at||clue.data.investigation_time||clue.data.investigation_date||"").replace("T"," ").slice(0,19)||"—"},
       {title:"店铺名称",width:180,ellipsis:true,render:(_:unknown,{clue}:ClueEvidenceRow)=>clue.data.shop_name||clue.data.store_name||clue.title||"—"},
       // 与旧系统一致：没有地址的线上店铺显示店铺链接
-      {title:"店铺地址",width:250,ellipsis:true,render:(_:unknown,{clue}:ClueEvidenceRow)=>clue.data.shop_address||clue.data.address||clue.data.location_address||clue.data.store_url||clue.data.legacy_record?.StoreUrl||"—"},
+      {title:"店铺地址",width:250,ellipsis:true,render:(_:unknown,{clue}:ClueEvidenceRow)=><LinkifiedText value={clue.data.shop_address||clue.data.address||clue.data.location_address||clue.data.store_url||clue.data.legacy_record?.StoreUrl} />},
       {title:"公证书号",width:180,render:(_:unknown,{clue,evidence}:ClueEvidenceRow)=>evidence?.certificate_no||clue.data.certificate_no||clue.data.notary_no||"—"},
       {title:"公证书状态",width:120,render:(_:unknown,{clue,evidence}:ClueEvidenceRow)=>evidence?.certificate_status||clue.data.certificate_status||clue.data.notary_status||"—"},
       {title:"公证书入库时间",width:150,render:(_:unknown,{clue,evidence}:ClueEvidenceRow)=>String(evidence?.certificate_stored_at||clue.data.certificate_stored_at||clue.data.notary_stored_at||clue.data.storage_date||"").replace("T"," ").slice(0,19)||"—"},

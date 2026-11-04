@@ -1,3 +1,4 @@
+import { LinkifiedText } from "../../components/LinkifiedText";
 import { StatusTag } from "../../components/common/StatusTag";
 import { Descriptions, Button } from "antd";
 import type { Row } from "../types";
@@ -266,17 +267,7 @@ export default function ClueDetailHeader({
               {
                 key: "store-url",
                 label: "店铺链接",
-                children: investigationDetail.data.store_url ? (
-                  <a
-                    href={String(investigationDetail.data.store_url)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {String(investigationDetail.data.store_url)}
-                  </a>
-                ) : (
-                  "—"
-                ),
+                children: <LinkifiedText value={investigationDetail.data.store_url} />,
               },
               {
                 key: "shop-name",

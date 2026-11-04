@@ -73,7 +73,9 @@ test('线索详情映射原始店铺链接、产品及多主体字段', async ()
   const { CaseClueDetails } = await load('../src/legal/CaseDetail/CaseClueDetails.tsx', {});
   const tree=CaseClueDetails({clue:{id:1,serial_no:'CODEX-0917',data:{store_url:'https://example.test/store',product:'商品',product_url:'https://example.test/product',sale_num:'2万',producers:[{name:'厂商',address:'生产地址'}],indictees:[{name:'主体甲',identity_no:'TEST-A'},{name:'主体乙',identity_no:'TEST-B'}]}}});
   const fields=Object.fromEntries(tree.props.items.map(item=>[item.key,item.children]));
-  assert.equal(fields['shop-link'].props.href,'https://example.test/store');
+  // 店铺链接改用 LinkifiedText（分享文案里的网址可点击）
+  assert.equal(fields['shop-link'].props.value,'https://example.test/store');
+  assert.equal(fields['product-link'].props.value,'https://example.test/product');
   assert.equal(fields.product,'商品');assert.equal(fields.scale,'2万');
   assert.equal(fields.subjects.length,2);
   assert.match(fields.subjects[1].props.children,/主体乙/);
