@@ -1,6 +1,7 @@
 """按固定模板生成文书（陶国南 11-03）：模板管理、字段取值、只替换不改写、确认后存进案件空间。"""
 import tempfile
 import unittest
+from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
@@ -257,7 +258,11 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
         body = response.json()
         fields = {field["key"]: field for field in body["fields"]}
         self.assertEqual(body["missing"], [], "调解员、付款期限可留空，其余都从案件带出")
-        self.assertTrue(fields["调解员"]["optional"] and fields["付款期限"]["optional"])
+        self.assertTrue(fields["调解员"]["optional"])
+        # 日期都生成（陶国南 14:28）：案件里没有约定付款日期时默认生成日起 7 天；签署日期是生成当日。
+        due = datetime.now() + timedelta(days=7)
+        self.assertEqual(fields["付款期限"]["value"], f"{due.year}年{due.month}月{due.day}日")
+        self.assertEqual(fields["签署日期"]["value"], f"{datetime.now().year}年{datetime.now().month}月{datetime.now().day}日")
         self.assertEqual(fields["赔偿金额"]["value"], "4500")
         self.assertEqual(fields["赔偿金额大写"]["value"], "肆仟伍佰元整")
         self.assertTrue(fields["赔偿金额大写"]["derived"] and fields["被告信息"]["multiline"])
@@ -267,9 +272,12 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("上海市浦东新区人民法院", body["paragraphs"][0])
         self.assertIn("原告：青岛尚美数智科技集团有限公司，联系地址：青岛市某路2号，统一社会信用代码：91370200MA3C000000。", body["paragraphs"])
         self.assertIn("被告：甲店，男，身份证号码：110101199003070011，地址：某省某市某路1号，联系方式：13800000000。", body["paragraphs"])
-        self.assertIn("被告：北京三快在线科技有限公司，统一社会信用代码：91110108MA0000000X。", body["paragraphs"])
+        # 系统里没有的项留空格（各项都列出）。
+        self.assertIn("被告：北京三快在线科技有限公司，地址：\u3000\u3000\u3000\u3000，统一社会信用代码：91110108MA0000000X，联系方式：\u3000\u3000\u3000\u3000。", body["paragraphs"])
+        self.assertIn("原告：青岛尚美数智科技集团有限公司      被告：甲店、北京三快在线科技有限公司", body["paragraphs"], "落款带出被告名称")
+        self.assertEqual(body["paragraphs"][-1].strip(), fields["签署日期"]["value"])
         self.assertIn("被告甲店、北京三快在线科技有限公司与原告侵害商标权纠纷一案【案号：（2022）沪0115民初5795号】，上海市浦东新区人民法院委派调解员\u3000\u3000\u3000\u3000进行调解", text)
-        self.assertIn("同意于\u3000\u3000\u3000\u3000前支付赔偿款项（含合理维权开支）共计4500元（大写：肆仟伍佰元整）", text)
+        self.assertIn(f"同意于{fields['付款期限']['value']}前支付赔偿款项（含合理维权开支）共计4500元（大写：肆仟伍佰元整）", text)
         self.assertIn("委托诉讼代理人：沈建锋，上海沪知律师事务所。", body["paragraphs"])
         self.assertIn("名称：上海沪知律师事务所", body["paragraphs"])
         self.assertIn("开户行：招商银行某某支行", body["paragraphs"])

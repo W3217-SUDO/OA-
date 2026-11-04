@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import quote
@@ -50,7 +50,11 @@ BUILTIN_TEMPLATES = [{
 }]
 # 系统自动取值的字段；模板里出现其他占位字段时，按“需要人工填写”处理。
 AUTO_FIELDS = ("法院", "法院案号", "原告", "被告", "第三人", "案由", "开庭律师", "经办律师", "律师助理", "客户名称", "案件编号", "生成日期",
-               "原告信息", "被告信息", "委托诉讼代理人", "代理律所", "赔偿金额", "赔偿金额大写", "收款户名", "收款开户行", "收款账号")
+               "原告信息", "被告信息", "委托诉讼代理人", "代理律所", "赔偿金额", "赔偿金额大写", "收款户名", "收款开户行", "收款账号",
+               "付款期限", "签署日期")
+# 陶国南 11-04 14:28：日期都要生成。案件里没有约定付款日期时，付款期限默认生成日起 7 天（样本是起草后约 3 天），可以改。
+DEFAULT_PAYMENT_DAYS = 7
+PAYMENT_DATE_KEYS = ("agreed_payment_date", "payment_deadline", "settlement_payment_date", "promised_payment_date", "mediation_payment_date")
 # 多个当事人逐行列出（每人一段，段落前面的“原告：”“被告：”跟着重复）。
 MULTILINE_FIELDS = {"原告信息", "被告信息"}
 # 由别的字段算出来的，不单独填：赔偿金额大写跟着赔偿金额走。
@@ -134,6 +138,7 @@ FIELD_HINTS = (
     (("原告信息",), "原告信息"), (("被告信息",), "被告信息"), (("原告名称",), "原告"), (("被告名称",), "被告"),
     (("委托诉讼代理人",), "委托诉讼代理人"), (("代理律所",), "代理律所"), (("赔偿金额大写",), "赔偿金额大写"), (("赔偿金额",), "赔偿金额"),
     (("收款户名",), "收款户名"), (("收款开户行",), "收款开户行"), (("收款账号",), "收款账号"),
+    (("付款期限",), "付款期限"), (("签署日期",), "签署日期"),
     (("法院案号", "案号"), "法院案号"), (("开庭律师", "出庭律师", "代理律师", "代理人"), "开庭律师"), (("经办律师", "承办律师"), "经办律师"),
     (("律师助理", "助理"), "律师助理"), (("第三人",), "第三人"), (("原告",), "原告"), (("被告",), "被告"), (("案由",), "案由"),
     (("法院",), "法院"), (("客户",), "客户名称"), (("案件编号",), "案件编号"), (("生成当日", "当日", "今天", "日期"), "生成日期"),
@@ -402,27 +407,30 @@ async def _party_profiles(names: list[str], db: AsyncSession) -> dict[str, dict]
     return profiles
 
 
+ORGANIZATION_WORDS = ("公司", "店", "厂", "中心", "部", "所", "行", "馆", "社", "院", "局", "会", "站", "场", "室", "户）", "合作社")
+
+
+def _is_person(name: str, identity: dict, identity_no: str, profile: dict) -> bool:
+    if identity.get("organization_type"):
+        return identity["organization_type"] == "个人"
+    if profile.get("credit_code") or any(word in name for word in ORGANIZATION_WORDS):
+        return False
+    return len(identity_no) == 18 and identity_no[:17].isdigit() or len(name) <= 4
+
+
 def _party_line(name: str, identity: dict, profile: dict, *, defendant: bool) -> str:
-    """一位当事人的一行：单位写统一社会信用代码，个人写性别和身份证号（性别按身份证第 17 位）；没有的项不写。"""
+    """一位当事人的一行，各项都列出（陶国南 11-04 14:28）：单位写地址、统一社会信用代码；个人写性别（按身份证第 17 位）、身份证号、地址；
+    被告再写联系方式。系统里没有的项留空格，打印后手写。"""
     identity_no = str(identity.get("identity_no") or profile.get("identity_no") or profile.get("credit_code") or "").strip().upper()
-    person = identity.get("organization_type") == "个人" or (len(identity_no) == 18 and identity_no[:17].isdigit() and not identity.get("organization_type")
-                                                             and not profile.get("credit_code"))
     address, phone = _first(profile, *ADDRESS_KEYS), _first(profile, *PHONE_KEYS)
     parts = [name]
-    if person:
-        if len(identity_no) == 18 and identity_no[16].isdigit():
-            parts.append("男" if int(identity_no[16]) % 2 else "女")
-        if identity_no:
-            parts.append(f"身份证号码：{identity_no}")
-        if address:
-            parts.append(f"地址：{address}")
+    if _is_person(name, identity, identity_no, profile):
+        gender = ("男" if int(identity_no[16]) % 2 else "女") if len(identity_no) == 18 and identity_no[16].isdigit() else ""
+        parts += [gender or f"性别：{BLANK}", f"身份证号码：{identity_no or BLANK}", f"地址：{address or BLANK}"]
     else:
-        if address:
-            parts.append(f"{'地址' if defendant else '联系地址'}：{address}")
-        if identity_no:
-            parts.append(f"统一社会信用代码：{identity_no}")
-    if phone and defendant:
-        parts.append(f"联系方式：{phone}")
+        parts += [f"{'地址' if defendant else '联系地址'}：{address or BLANK}", f"统一社会信用代码：{identity_no or BLANK}"]
+    if defendant:
+        parts.append(f"联系方式：{phone or BLANK}")
     return "，".join(parts)
 
 
@@ -478,6 +486,11 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
     plaintiffs = _names(data.get("plaintiffs") or data.get("plaintiff") or data.get("appellant_names"))
     defendants = _names(data.get("defendants") or data.get("defendant") or data.get("appellee_names"))
     compensation = _amount_text(data.get("settlement_amount") or data.get("judgment_amount"))
+    payment_date = _first(data, *PAYMENT_DATE_KEYS)[:10]
+    try:
+        due = datetime.strptime(payment_date, "%Y-%m-%d") if payment_date else today + timedelta(days=DEFAULT_PAYMENT_DAYS)
+    except ValueError:
+        due = today + timedelta(days=DEFAULT_PAYMENT_DAYS)
     return {
         "法院": court,
         "法院案号": _first(data, *case_no_keys),
@@ -498,6 +511,8 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
         "委托诉讼代理人": people(handling),
         "代理律所": FIRM_NAME,
         "赔偿金额": compensation,
+        "付款期限": f"{due.year}年{due.month}月{due.day}日",
+        "签署日期": f"{today.year}年{today.month}月{today.day}日",
         "赔偿金额大写": amount_upper(compensation) if compensation else "",
         **(await firm_account(db)),
     }
@@ -512,7 +527,8 @@ async def _fields(record: BusinessRecord, item: dict, content: bytes, db: AsyncS
     for key in field_keys(slots):
         if key in DERIVED_FIELDS:
             continue
-        values[key] = str(overrides.get(key, auto.get(key, "") if sources[key] == "case" else "")).strip()
+        # 只去掉普通空白；留给手写的全角空格要保留。
+        values[key] = str(overrides.get(key, auto.get(key, "") if sources[key] == "case" else "")).strip(" \t\r\n")
     for key, base in DERIVED_FIELDS.items():
         if key in sources:
             values[key] = amount_upper(values.get(base, auto.get(base, ""))) if values.get(base, auto.get(base, "")) else ""
