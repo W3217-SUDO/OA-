@@ -1,4 +1,5 @@
 import { POPUP_WIDTH } from "../components/common/popupSize";
+import { EvidenceInfoFields } from "../investigation/EvidenceInfoFields";
 import { StatusTag } from "../components/common/StatusTag";
 import { CaseLogEntry } from "./CaseDetail/CaseLogEntry";
 import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
@@ -4835,14 +4836,7 @@ export default function CaseCenterPage({
         destroyOnHidden
       >
         <Form form={caseClueEvidenceForm} layout="vertical">
-          <Form.Item label="取证机构" name="notary_institution" rules={[{ required: true, message: "请输入取证机构" }]}><Input /></Form.Item>
-          <div className="form-grid">
-            <Form.Item label="公证书号" name="certificate_no"><Input /></Form.Item>
-            <Form.Item label="取证时间" name="collected_at" rules={[{ required: true, message: "请选择取证时间" }]}><DatePicker style={{ width: "100%" }} /></Form.Item>
-            <Form.Item label="发票号码" name="invoice_no"><Input /></Form.Item>
-            <Form.Item label="证物状态" name="evidence_status"><Select options={["未入库", "已入库", "已出库", "已重新入库", "已销毁"].map((value) => ({ value, label: value }))} /></Form.Item>
-          </div>
-          <Form.Item label="证物存放处" name="storage_location"><Input /></Form.Item>
+          <EvidenceInfoFields form={caseClueEvidenceForm} open={Boolean(editingCaseClueEvidence)} />
           <Form.Item label="证据文件"><Input disabled value={editingCaseClueEvidence?.files?.map((file) => file.original_name).join("、") || "无"} /></Form.Item>
         </Form>
       </Modal>
