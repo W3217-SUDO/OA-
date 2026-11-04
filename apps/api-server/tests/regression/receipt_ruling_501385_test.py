@@ -46,5 +46,29 @@ class ReceiptRulingTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("（2026）沪0110民初1号民事裁定书.pdf", await self.names("mine"), "我的收文同一规则")
 
 
+class ReceiptDedupeTest(ReceiptRulingTest):
+    """同一案件已有同名官方收文时，案件文档里那份不在公司收文、我的收文里重复列。"""
+
+    async def test_case_copy_of_official_receipt_listed_once(self):
+        async with self.sessions() as db:
+            from sqlalchemy import select
+            case = await db.scalar(select(BusinessRecord).where(BusinessRecord.serial_no == "HZMS2600001"))
+            official = FileAttachment(record_id=case.id, category="官方收文", original_name="（2026）沪0110民初1号民事判决书.pdf",
+                                      stored_name="o", size=1, path="o", uploader="fwl")
+            db.add(official)
+            await db.flush()
+            db.add(BusinessRecord(module="document", serial_no="HZ-FIO-1", title=official.original_name, status="已签收", owner="fwl",
+                                  data={"direction": "收文", "attachment_id": official.id, "case_id": case.id}))
+            await db.commit()
+        async def allow(*args):
+            return None
+        async with self.sessions() as db:
+            with patch.object(receipt_sources, "_require_receipt_menu", allow):
+                rows = (await receipt_sources.list_receipts(scope="company", identity=ADMIN, db=db))["items"]
+        titles = [row["title"] for row in rows]
+        self.assertEqual(titles.count("（2026）沪0110民初1号民事判决书.pdf"), 1, "官方收文和案件文档里的同名文件只列一条")
+        self.assertIn("（2026）沪0110民初1号民事裁定书.pdf", titles)
+
+
 if __name__ == "__main__":
     unittest.main()

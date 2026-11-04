@@ -166,8 +166,10 @@ async def list_receipts(
             .join(BusinessRecord, FileAttachment.record_id == BusinessRecord.id)
             .where(BusinessRecord.module == "case", keyword_filter)
         )).all()
+        # 501385：旧系统归档官方收文时会在案件文档里另存一份，同一案件已有同名官方收文的那份案件附件不再重复列。
+        official_names = {(official_attachments[item].record_id, official_attachments[item].original_name) for item in official_ids}
         for attachment, case in case_files:
-            if attachment.id in official_ids:
+            if attachment.id in official_ids or (attachment.record_id, attachment.original_name) in official_names:
                 continue
             if scope == "mine" and attachment.uploader != identity["username"]:
                 continue
