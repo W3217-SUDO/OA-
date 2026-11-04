@@ -137,7 +137,7 @@ def classify_tool(route, method: str) -> tuple[str, str | None]:
         return "04", None
     if root in {"conflict-reviews", "conflict-rules", "legacy-contract-history"} or path == "customers/conflicts":
         return "05", None
-    if root in {"customers", "parties", "party-library", "company-lookup"}:
+    if root in {"customers", "parties", "party-library", "company-lookup", "company-library"}:
         return "03", None
     if root == "receivables":
         return "17", None

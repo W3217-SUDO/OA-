@@ -23,7 +23,7 @@ class CreatePartyTest(unittest.IsolatedAsyncioTestCase):
             await connection.run_sync(Base.metadata.create_all)
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False)
         self.calls = []
-        self.patches = [patch.object(qcc, "_require_customer_create", self._allow), patch.object(qcc, "_require_admin", lambda identity: None),
+        self.patches = [patch.object(qcc, "_require_customer_create", self._allow), patch.object(qcc, "_require_company_library", self._allow), patch.object(qcc, "_require_admin", lambda identity: None),
                         patch.object(qcc, "_qcc_get", self.fake_get)]
         for item in self.patches:
             item.start()
@@ -68,6 +68,29 @@ class CreatePartyTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(caught.exception.status_code, 409)
             self.assertIn("KH001", caught.exception.detail)
             self.assertEqual(self.calls, [], "没查过的企业也不会因新建当事人去调企查查")
+
+    async def test_library_reuses_archive_and_shows_roles(self):
+        async with self.sessions() as db:
+            await qcc.save_qcc_credentials(qcc.CredentialInput(key="fake-key-12345678", secret="fake-secret-87654321"), ADMIN, db)
+            first = await qcc.lookup_company_library(qcc.CompanyLibraryLookupInput(keyword="合肥鹿山鸣贸易有限公司"), LAWYER, db)
+            again = await qcc.lookup_company_library(qcc.CompanyLibraryLookupInput(keyword="91340100AAAAAAAAAA"), LAWYER, db)
+            self.assertEqual((first["cached"], again["cached"], len(self.calls)), (False, True, 1), "存档里有就不再扣次数")
+            self.assertEqual(first["roles"], {"customers": [], "parties": []}, "查过的企业不是客户也不是当事人")
+            listed = await qcc.list_company_library("", 1, 20, LAWYER, db)
+            self.assertEqual((listed["total"], listed["items"][0]["credit_code"]), (1, "91340100AAAAAAAAAA"), "同一企业按信用代码合并成一条")
+            created = await qcc.create_party(qcc.PartyCreateInput(name="合肥鹿山鸣贸易有限公司"), LAWYER, db)
+            listed = await qcc.list_company_library("鹿山", 1, 20, LAWYER, db)
+            self.assertEqual(listed["items"][0]["roles"]["parties"][0]["party_no"], created["party_no"])
+            await qcc.lookup_company_library(qcc.CompanyLibraryLookupInput(keyword="合肥鹿山鸣贸易有限公司", refresh=True), LAWYER, db)
+            self.assertEqual(len(self.calls), 2, "只有重新查询才再扣一次")
+
+
+class CompanyInfoMenuDefaultTest(unittest.TestCase):
+    def test_party_center_users_get_company_info_page(self):
+        from app.core.permissions import _expand_menu_permission_keys
+        self.assertIn("party-company-info", _expand_menu_permission_keys(["party-mine-civil"]))
+        self.assertIn("party-company-info", _expand_menu_permission_keys(["party"]))
+        self.assertNotIn("party-company-info", _expand_menu_permission_keys(["customer-company"]))
 
 
 if __name__ == "__main__":

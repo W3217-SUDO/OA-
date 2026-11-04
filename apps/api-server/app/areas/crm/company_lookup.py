@@ -311,6 +311,17 @@ async def _require_customer_create(identity: dict, db: AsyncSession) -> None:
     await _require_record_module_menu("customer", identity, db, action="新建")
 
 
+async def _require_company_library(identity: dict, db: AsyncSession) -> None:
+    """企业信息查询（501368）：有当事人中心页面（含默认给的企业信息查询）或新建客户权限的人可用。"""
+    from app.core.permissions import _permission_payload_for_identity
+    if identity.get("role") == "admin" or identity.get("_page_menu_capability"):
+        return
+    permission = await _permission_payload_for_identity(identity, db)
+    if "party-company-info" in set(permission.get("menu_keys") or []):
+        return
+    await _require_customer_create(identity, db)
+
+
 @router.get(f"{settings.api_prefix}/company-lookup/search")
 async def search_companies(keyword: str = Query(min_length=2, max_length=60),
                            identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
@@ -449,6 +460,58 @@ async def customer_duplicates(credit_code: str = "", name: str = "",
     return {"items": await find_duplicate_customers(db, credit_code, name)}
 
 
+# ---------- 企业信息库（501368） ----------
+# 查过企查查的企业都存在企业档案里：没建成客户或当事人之前不属于任何一方，不进利益冲突检索；
+# 列表按信用代码（没有时按名称）合并同一企业，并标出已建成的客户或当事人。
+
+class CompanyLibraryLookupInput(BaseModel):
+    keyword: str = Field(min_length=2, max_length=60, description="企业全称或统一社会信用代码")
+    refresh: bool = Field(default=False, description="只有用户明确要求重新查询时为 true，会再扣一次企查查次数")
+
+
+async def _library_roles(db: AsyncSession, name: str, credit_code: str) -> dict:
+    from app.core.formatters import _normalize_customer_name
+    from app.data_models.parties import PartyRecord
+    customers = [item for item in await find_duplicate_customers(db, credit_code, name) if not item.get("deleted")]
+    normalized = _normalize_customer_name(name)
+    parties = [{"id": party.id, "party_no": party.party_no, "name": party.name} for party in (await db.scalars(select(PartyRecord))).all()
+               if _normalize_customer_name(party.name) == normalized or (credit_code and credit_code.upper() in {
+                   str((party.data or {}).get("credit_code") or "").upper(), str((party.data or {}).get("identity_no") or "").upper()})]
+    return {"customers": [{"id": item["id"], "serial_no": item["serial_no"], "title": item["title"]} for item in customers], "parties": parties}
+
+
+@router.get(f"{settings.api_prefix}/company-library")
+async def list_company_library(keyword: str = Query("", max_length=60), page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+                               identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """企业信息库：本所查过企查查的企业（不扣次数），可按名称或信用代码筛选。"""
+    await _require_company_library(identity, db)
+    rows = (await db.scalars(select(SystemConfig).where(SystemConfig.key.like("qcc_p_%")).order_by(SystemConfig.id.desc()))).all()
+    merged: dict[str, dict] = {}
+    for row in rows:
+        data = (row.value or {}).get("data")
+        if not isinstance(data, dict) or not data.get("name"):
+            continue
+        merged.setdefault(str(data.get("credit_code") or data.get("name")), data)
+    term = keyword.strip()
+    items = [item for item in merged.values() if not term or term in str(item.get("name") or "") or term.upper() == str(item.get("credit_code") or "").upper()]
+    items.sort(key=lambda item: str(item.get("queried_at") or ""), reverse=True)
+    page_items = items[(page - 1) * page_size: page * page_size]
+    result = []
+    for item in page_items:
+        result.append({**{key: item.get(key, "") for key in ("name", "credit_code", "legal_representative", "registered_address", "organization_type",
+                                                               "status", "established_date", "registered_capital", "queried_at", "queried_by")},
+                       "abnormal": bool(item.get("abnormal")), "roles": await _library_roles(db, str(item.get("name") or ""), str(item.get("credit_code") or ""))})
+    return {"items": result, "total": len(items), "page": page, "page_size": page_size}
+
+
+@router.post(f"{settings.api_prefix}/company-library/lookup")
+async def lookup_company_library(body: CompanyLibraryLookupInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """企业信息查询：先用本所存档（不扣次数），没有才查一次企查查并存进企业信息库；refresh=true 才重新扣次查询。"""
+    await _require_company_library(identity, db)
+    detail = await lookup_company(body.keyword.strip(), identity["username"], db, refresh=body.refresh)
+    return {**detail, "roles": await _library_roles(db, str(detail.get("name") or ""), str(detail.get("credit_code") or ""))}
+
+
 # ---------- 新建对方当事人（501368） ----------
 # 智能体拿到公司全称后查过企查查，用户选“新建对方当事人”时用这里登记：存进当事人档案（DSR 编号），带上已查到的工商信息，
 # 不再调企查查、不扣费；客户或当事人里已有同名或同信用代码的不重复建。当事人中心按案件列出，案件里填为当事人后才进列表。
@@ -468,7 +531,7 @@ async def create_party(body: PartyCreateInput, identity: dict = Depends(current_
     from app.core.formatters import _normalize_customer_name
     from app.data_models.parties import PartyRecord
     from app.models import User
-    await _require_customer_create(identity, db)
+    await _require_company_library(identity, db)
     name = " ".join(body.name.split())
     profile = await company_profile(db, name, body.identity_no) or {}
     organization_type = body.organization_type.strip() or str(profile.get("organization_type") or "")

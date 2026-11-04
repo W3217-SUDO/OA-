@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { COMPANY_PREFILL_KEY, type LibraryCompany } from "./companyLibrary";
 import type { Key } from "react";
 import { Form, message, Modal } from "antd";
 import dayjs from "dayjs";
@@ -420,6 +421,19 @@ export default function CustomerCenterPage({
       customer_source: "",
     });
     setOpen(true);
+    // 501368：从“企业信息查询”点新建客户，带入已查到的工商信息（一次性）。
+    try {
+      const prefill = window.sessionStorage.getItem(COMPANY_PREFILL_KEY);
+      if (prefill) {
+        window.sessionStorage.removeItem(COMPANY_PREFILL_KEY);
+        const company = JSON.parse(prefill) as LibraryCompany;
+        form.setFieldsValue({ title: company.name, credit_code: company.credit_code, legal_representative: company.legal_representative,
+          registered_address: company.registered_address, invoice_address: company.registered_address,
+          organization_type: company.organization_type || undefined, phone: company.phone, registered_capital: company.registered_capital,
+          business_registration: { registered_capital: company.registered_capital, established_date: company.established_date, status: company.status,
+            business_scope: company.business_scope, registration_authority: company.registration_authority, source: "企查查", queried_at: company.queried_at } });
+      }
+    } catch { /* 预填读不到就按空白新建 */ }
   };
 
   const startEdit = (r: Customer) => {

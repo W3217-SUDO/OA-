@@ -52,6 +52,9 @@ def _expand_menu_permission_keys(menu_keys: list[str]) -> list[str]:
             if child_key not in granted:
                 granted.add(child_key)
                 pending.append(child_key)
+    # 501368（陶国南 11-04）：企业信息查询默认给有当事人中心任一页面的人，不另写权限数据。
+    if "party-company-info" not in granted and any(key == "party" or key.startswith("party-") for key in granted):
+        granted.add("party-company-info")
     # 原始配置标识供菜单树回显，规范路由供页面访问；不按标签推断外链对应页面。
     preserved_keys = [key for key in raw_keys if key in _MENU_PERMISSION_ROUTE_ALIASES or key.startswith("legacy-menu-")]
     return [key for key in MENU_KEYS if key in granted] + preserved_keys
