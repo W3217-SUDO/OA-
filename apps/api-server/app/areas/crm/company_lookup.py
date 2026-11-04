@@ -449,6 +449,58 @@ async def customer_duplicates(credit_code: str = "", name: str = "",
     return {"items": await find_duplicate_customers(db, credit_code, name)}
 
 
+# ---------- 新建对方当事人（501368） ----------
+# 智能体拿到公司全称后查过企查查，用户选“新建对方当事人”时用这里登记：存进当事人档案（DSR 编号），带上已查到的工商信息，
+# 不再调企查查、不扣费；客户或当事人里已有同名或同信用代码的不重复建。当事人中心按案件列出，案件里填为当事人后才进列表。
+
+class PartyCreateInput(BaseModel):
+    name: str = Field(min_length=2, max_length=200, description="当事人全称，与企查查查到的企业名称一致")
+    organization_type: str = Field(default="", max_length=20, description="公司企业、个体工商户、个人、事业单位、机关团体、其他；留空时按已查到的工商信息")
+    identity_no: str = Field(default="", max_length=40, description="统一社会信用代码（个人为身份证号）；留空时按已查到的工商信息")
+    legal_representative: str = Field(default="", max_length=60)
+    registered_address: str = Field(default="", max_length=300)
+
+
+@router.post(f"{settings.api_prefix}/parties", status_code=201)
+async def create_party(body: PartyCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """新建对方当事人：登记到当事人档案，带上企查查已查到的工商信息（不重复计费）；已有同名或同信用代码的客户或当事人时不新建。"""
+    from app.core.crm import _next_party_serial_no
+    from app.core.formatters import _normalize_customer_name
+    from app.data_models.parties import PartyRecord
+    from app.models import User
+    await _require_customer_create(identity, db)
+    name = " ".join(body.name.split())
+    profile = await company_profile(db, name, body.identity_no) or {}
+    organization_type = body.organization_type.strip() or str(profile.get("organization_type") or "")
+    identity_no = (body.identity_no.strip() or str(profile.get("credit_code") or "")).upper()
+    normalized = _normalize_customer_name(name)
+    customers = await find_duplicate_customers(db, identity_no if organization_type != "个人" else "", name)
+    if customers:
+        raise HTTPException(409, f"已有客户“{customers[0].get('title') or name}”（{customers[0].get('serial_no') or ''}），不重复新建")
+    for party in (await db.scalars(select(PartyRecord))).all():
+        data = party.data or {}
+        same_code = identity_no and identity_no in {str(data.get("credit_code") or "").upper(), str(data.get("identity_no") or "").upper()}
+        if _normalize_customer_name(party.name) == normalized or same_code:
+            raise HTTPException(409, f"当事人档案里已有“{party.name}”（{party.party_no}），不重复新建")
+    user = await db.scalar(select(User).where(User.username == identity["username"], User.is_active.is_(True)))
+    if not user:
+        raise HTTPException(401, "当前用户不存在或已停用")
+    data: dict = {"customer_source": "智能体新建", "organization_type": organization_type,
+                  "legal_representative": body.legal_representative.strip() or str(profile.get("legal_representative") or ""),
+                  "registered_address": body.registered_address.strip() or str(profile.get("registered_address") or "")}
+    if identity_no:
+        data["identity_no" if organization_type == "个人" else "credit_code"] = identity_no
+    if profile:
+        data["business_info"] = {"source": profile.get("source") or "企查查", "queried_at": profile.get("queried_at") or "", "status": profile.get("status") or ""}
+    party = PartyRecord(party_no=await _next_party_serial_no(db), name=name, party_type="当事人", source_customer_id=None,
+                        owner=user.username, department=user.department or "", managers=[user.username], status="潜在",
+                        description="由智能体按企业工商信息新建", data=data, created_by=identity["username"])
+    db.add(party)
+    await db.commit()
+    return {"id": party.id, "party_no": party.party_no, "name": party.name, "organization_type": organization_type,
+            "credit_code": data.get("credit_code", ""), "identity_no": data.get("identity_no", ""), "business_info_found": bool(profile)}
+
+
 # ---------- 管理员：凭据与限额 ----------
 
 class CredentialInput(BaseModel):
