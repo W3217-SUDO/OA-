@@ -222,8 +222,9 @@ async def _contract_customer_record_dict(
         names_by_username = {user.username.lower(): user.display_name for user in users}
     result["owner_display_name"] = _contract_person_display_name(record.owner, names_by_username)
     for key in ("source_person", "customer_source", "submitted_by", "current_approver", "investigator", "investigation_assistant", "handler", "source_owner", "assigner", "assigned_by"):
+        # 501312（fwl 11-04）：字段在但没填人（空串）时不出“姓名待维护”，列表才不会多显示一个人。
         if key in data:
-            data[f"{key}_display_name"] = _contract_person_display_name(data.get(key), names_by_username)
+            data[f"{key}_display_name"] = _contract_person_display_name(data.get(key), names_by_username) if str(data.get(key) or "").strip() else ""
     # 调查、调查任务、线索的“案源人”是旧系统调查的 BusinessOwner（存在 business_owner，任务和线索继承所属调查）；
     # 迁移数据的 source_owner 存的是委托人客户编号（旧 Indicter），不能当人名显示。
     if record.module in ("investigation", *INVESTIGATION_CHILD_MODULES) and data.get("business_owner"):

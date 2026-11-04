@@ -208,7 +208,9 @@ export default function InvestigationCenterPage({
   // 列表“调查员”一栏同时显示调查员和调查辅助员（BUG20261030017，同旧系统）。
   const clueInvestigatorText = (r: Row) => {
     const owner = r.owner_display_name || personDisplayName(r.owner);
-    const assistants = r.data?.investigation_assistant_display_name || clueAssistantUsernames(r).map((name) => personDisplayName(name)).join("、");
+    // 501312：没有调查辅助员时只显示调查员，不拿空的辅助员显示名凑出“姓名待维护”。
+    const assistantUsernames = clueAssistantUsernames(r);
+    const assistants = !assistantUsernames.length ? "" : r.data?.investigation_assistant_display_name || assistantUsernames.map((name) => personDisplayName(name)).join("、");
     return [owner, assistants].filter(Boolean).join("、") || "—";
   };
   const [feeTarget, setFeeTarget] = useState<Row | null>(null);
