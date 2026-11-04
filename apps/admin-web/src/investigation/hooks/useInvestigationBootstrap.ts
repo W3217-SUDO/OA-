@@ -20,7 +20,7 @@ export const loadInvestigationBootstrap = (): Promise<InvestigationBootstrapData
     api.get("/system/parameters/options", { params: { category: "notary_office" } })
       .then(({ data }) =>
         (data.items || [])
-          .map((item: { name?: string }) => ({ value: String(item.name || "").trim() }))
+          .map((item: { name?: string; number_template?: string }) => ({ value: String(item.name || "").trim(), template: String(item.number_template || "").trim() }))
           .filter((item: { value: string }) => item.value),
       )
       .catch(() => [] as { value: string }[]),
@@ -39,7 +39,7 @@ export function useInvestigationBootstrap() {
     role: "",
   });
   const [assignmentSupervisor, setAssignmentSupervisor] = useState("");
-  const [notaryOfficeOptions, setNotaryOfficeOptions] = useState<{ value: string }[]>([]);
+  const [notaryOfficeOptions, setNotaryOfficeOptions] = useState<{ value: string; template?: string }[]>([]);
   const [casePeopleOptions, setCasePeopleOptions] = useState<PersonOption[]>([]);
   const [warehouseCatalog, setWarehouseCatalog] = useState<WarehouseCatalogItem[]>([]);
 

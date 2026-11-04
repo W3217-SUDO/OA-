@@ -94,7 +94,7 @@ export type InvestigationActions = {
 export type InvestigationBootstrapData = {
   profile: Profile;
   assignmentSupervisor: string;
-  notaryOfficeOptions: { value: string }[];
+  notaryOfficeOptions: { value: string; template?: string }[];
   casePeopleOptions: PersonOption[];
   warehouseCatalog: WarehouseCatalogItem[];
 };

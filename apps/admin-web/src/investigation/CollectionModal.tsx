@@ -1,3 +1,6 @@
+import { useEffect, useRef } from "react";
+import dayjs from "dayjs";
+import { fillNotaryNumber, hasNotaryPlaceholder } from "./notaryNumber";
 import { Modal, Form, AutoComplete, Input, DatePicker, Cascader, Select, Alert, Spin } from "antd";
 import type { Row } from "./types";
 
@@ -9,7 +12,7 @@ interface CollectionModalProps {
   collectionStorageOptions: any[];
   collectionStorageLoading: boolean;
   collectionStorageError: string;
-  notaryOfficeOptions: { value: string }[];
+  notaryOfficeOptions: { value: string; template?: string }[];
   rows: Row[];
   collectionFiles: File[];
   onOk: () => void;
@@ -32,6 +35,19 @@ export default function CollectionModal({
   onCancel,
   onFilesChange,
 }: CollectionModalProps) {
+  // 501325：选取证机构或改取证日期时，公证书号还空着或还是上次自动填的，就按模板重新填。
+  const autoFilled = useRef("");
+  useEffect(() => { if (open) autoFilled.current = ""; }, [open, collectionTarget?.id]);
+  const fillNotaryFromTemplate = (values: { notary_institution?: string; collected_at?: dayjs.Dayjs; notarization_no?: string }) => {
+    const office = notaryOfficeOptions.find((item) => item.value === String(values.notary_institution || "").trim());
+    const year = values.collected_at && dayjs.isDayjs(values.collected_at) ? values.collected_at.year() : dayjs().year();
+    const filled = fillNotaryNumber(office?.template, year);
+    const current = String(values.notarization_no || "");
+    if (!current || current === autoFilled.current) {
+      collectionForm.setFieldsValue({ notarization_no: filled || (current === autoFilled.current ? "" : current) });
+      autoFilled.current = filled;
+    }
+  };
   const notaryInstitutionOptions = Array.from(
     new Set([
       ...notaryOfficeOptions.map((item) => item.value),
@@ -54,7 +70,9 @@ export default function CollectionModal({
       onOk={onOk}
       onCancel={onCancel}
     >
-      <Form form={collectionForm} layout="vertical">
+      <Form form={collectionForm} layout="vertical" onValuesChange={(changed, all) => {
+        if ("notary_institution" in changed || "collected_at" in changed) fillNotaryFromTemplate(all);
+      }}>
         <Form.Item
           label="取证机构"
           name="notary_institution"
@@ -69,7 +87,8 @@ export default function CollectionModal({
           />
         </Form.Item>
         <div className="form-grid">
-          <Form.Item label="公证书号" name="notarization_no">
+          <Form.Item label="公证书号" name="notarization_no" rules={[{ validator: (_, value) => hasNotaryPlaceholder(value)
+            ? Promise.reject(new Error("请把公证书号里的 xxxxx 换成实际编号")) : Promise.resolve() }]}>
             <Input />
           </Form.Item>
           <Form.Item label="发票号码" name="invoice_no">

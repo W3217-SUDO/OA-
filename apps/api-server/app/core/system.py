@@ -360,6 +360,16 @@ async def _rename_system_username(user: User, requested_username: str, identity:
     return new_username
 
 
+def notary_number_template(item: SystemParameter) -> str:
+    """公证号模板：先用“公证处设置”里维护的；没维护过的旧系统公证处用旧系统的模板（501325，只读，不写库）。"""
+    extra = item.extra or {}
+    own = str(extra.get("number_template") or "").strip()
+    if own:
+        return own
+    legacy = extra.get("legacy_record") if isinstance(extra.get("legacy_record"), dict) else {}
+    return str(legacy.get("TemplateName") or "").strip()
+
+
 def _system_parameter_dict(item: SystemParameter) -> dict:
     def audit_time(value):
         if value and (item.extra or {}).get("legacy_audit_utc") and value.tzinfo is None:
@@ -367,7 +377,9 @@ def _system_parameter_dict(item: SystemParameter) -> dict:
         return value
     return {
         "id": item.id, "category": item.category, "category_name": SYSTEM_PARAMETER_CATEGORIES.get(item.category, item.category),
-        "code": item.code, "name": item.name, "extra": item.extra or {}, "sort_order": item.sort_order,
+        "code": item.code, "name": item.name,
+        "extra": {**(item.extra or {}), "number_template": notary_number_template(item)} if item.category == "notary_office" else item.extra or {},
+        "sort_order": item.sort_order,
         "is_active": item.is_active, "created_by": item.created_by, "updated_by": item.updated_by,
         "created_at": audit_time(item.created_at), "updated_at": audit_time(item.updated_at),
     }

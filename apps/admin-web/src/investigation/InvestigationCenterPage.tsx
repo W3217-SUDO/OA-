@@ -139,7 +139,7 @@ export default function InvestigationCenterPage({
     role: "",
   });
   const [notaryOfficeOptions, setNotaryOfficeOptions] = useState<
-    { value: string }[]
+    { value: string; template?: string }[]
   >([]);
   const [casePeopleOptions, setCasePeopleOptions] = useState<PersonOption[]>([]);
   const mobileFilter = useMobileFilterToggle();
