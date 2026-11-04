@@ -15,7 +15,8 @@ from app.models import BusinessRecord, FileAttachment
 
 router = APIRouter()
 
-RECEIPT_KEYWORDS = ("缴费单", "判决书", "通知书", "传票", "告知书")
+# 按文件名识别案件里的法院收文；“裁定书”和旧系统一致（501385，范文玲 11-04 确认；调解书、决定书等不计入）。
+RECEIPT_KEYWORDS = ("缴费单", "判决书", "裁定书", "通知书", "传票", "告知书")
 RECEIPT_MENU = {
     "official": "documents-official",
     "mine": "documents-my",
