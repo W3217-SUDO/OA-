@@ -74,5 +74,29 @@ class EditRequestSlimContextTest(unittest.TestCase):
         self.assertEqual(describe("biz_case_update_info", {})[0], "修改案件信息")
 
 
+
+class BusinessCardRecordsCaseTest(unittest.IsolatedAsyncioTestCase):
+    """11-05 实测：案件智能体里办事工具生成的确认卡片必须记下所在案件，否则在案件里点确认会被拒。"""
+
+    async def test_business_tool_runs_inside_case_origin(self):
+        from app.agent_mcp import auth, model_tools
+        seen = []
+
+        async def fake_run(name, arguments, **kwargs):
+            seen.append(auth._case_origin.get())
+            return {"tool": name, "mode": "计划"}
+
+        context = SimpleNamespace(scope={"path": "/api/v1/case-spaces/279523/agent/messages"}, active=True, bearer="x")
+        token = auth._auth_context.set(context)
+        try:
+            with patch.object(model_tools, "run_business_tool", fake_run):
+                session = model_tools.ModelToolSession(case_id=279523)
+                await session._execute("biz_case_update_info", {"case_id": 279523, "judgment_amount": 1})
+                await model_tools.ModelToolSession()._execute("biz_case_update_info", {"case_id": 279523, "judgment_amount": 1})
+        finally:
+            auth._auth_context.reset(token)
+        self.assertEqual(seen, [279523, None])
+
+
 if __name__ == "__main__":
     unittest.main()

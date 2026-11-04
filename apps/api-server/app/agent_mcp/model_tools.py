@@ -137,7 +137,12 @@ class ModelToolSession:
             self.discovered.update({tool["name"]: catalog.get(tool["name"]) for tool in result["tools"]})
             return result
         if is_business_tool(name):
-            result = await run_business_tool(name, arguments, call=self._call_catalog, conversation_id=self.conversation_id)
+            # 案件智能体里用办事工具时，确认卡片要记下所在案件，否则在案件里点确认会被当成“入口不一致”拒绝（11-05 实测）。
+            if self.case_id is None:
+                result = await run_business_tool(name, arguments, call=self._call_catalog, conversation_id=self.conversation_id)
+            else:
+                with tool_origin(self.case_id):
+                    result = await run_business_tool(name, arguments, call=self._call_catalog, conversation_id=self.conversation_id)
             if isinstance(result, dict) and result.get("status") == "pending":
                 # 业务工具整体生成的待确认请求，和单个接口一样显示成对话里的确认卡片。
                 request_id, preview = result.get("request_id"), result.get("preview")
