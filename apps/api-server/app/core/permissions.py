@@ -1894,6 +1894,7 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
     can_edit_settlement = active and await _case_action_granted(identity, db, "case.settlement.update")
     can_close_case = active and await _case_action_granted(identity, db, "case.archive.submit")
     can_archive_case = active and await _case_action_granted(identity, db, "case.archive.submit")
+    from app.core.case_task_members import case_member_usernames
     base = {
         "can_write": False, "can_manage_assisted_fees": False, "can_generate_document": False, "can_upload_attachment": False,
         "can_manage_document": active and await _case_action_granted(identity, db, "case.document.manage"),
@@ -1920,6 +1921,8 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
         "can_create_finance": active and await _case_action_granted(identity, db, "case.fee.create"), "team_role": role, "reason": "",
         "can_edit_finance": active and await _case_action_granted(identity, db, "case.fee.update"),
         "can_delete_finance": active and await _case_action_granted(identity, db, "case.fee.delete"),
+        # 501384：本案人员可以改删还没产生数据的费用（每笔费用另按 fee_has_activity 判断，后端改删时再校验）。
+        "can_change_untouched_finance": active and str(identity.get("username") or "").lower() in case_member_usernames(case_record),
         "can_refund_finance": active and await _case_action_granted(identity, db, "case.fee.refund"),
         "can_apply_fee_payment": active and await _case_action_granted(identity, db, "case.fee.payment"),
         "can_apply_fee_invoice": active and await _case_action_granted(identity, db, "case.fee.invoice"),

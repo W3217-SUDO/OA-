@@ -258,6 +258,7 @@ import { CaseCreateWizard } from "./CaseCreateWizard";
 import { CauseSearchInput } from "./CauseSearchInput";
 import { CaseOperationsMenu } from "./CaseOperationsMenu";
 import { AgentIcon } from "../personal-agent/AgentAvatar";
+import { canChangeCaseFee } from "./caseFeeMemberEdit";
 import {
 CaseCaseTasksPanel,
 CaseCluesPanel,
@@ -267,6 +268,8 @@ CaseDocumentsPanel,
 CaseFeesPanel,
 CaseSystemLogsPanel,
 } from "./CaseDetail";
+// 501384：本案人员能改删还没产生数据的费用；已产生数据时提示原因。
+const CASE_FEE_MEMBER_DENIED = "这笔费用已经有审批、付款、退费、回款、开票或结算记录，只有分配了修改/删除案件费用权限的角色才能修改或删除";
 
 // Re-export types and named exports for backward compatibility
 export type {
@@ -2188,7 +2191,7 @@ export default function CaseCenterPage({
   };
 
   const deleteCaseFee = (row: CaseRow) => {
-    if (!(isInternalCaseFee(row) ? counselDetailCapabilities.can_delete_internal_fee : counselDetailCapabilities.can_delete_finance)) return message.warning("当前角色没有删除案件费用权限");
+    if (!(isInternalCaseFee(row) ? counselDetailCapabilities.can_delete_internal_fee : canChangeCaseFee(counselDetailCapabilities, "delete", row))) return message.warning(counselDetailCapabilities.can_change_untouched_finance && !isInternalCaseFee(row) ? CASE_FEE_MEMBER_DENIED : "当前角色没有删除案件费用权限");
     Modal.confirm({ title: `删除费用：${row.serial_no}`, content: "删除后仅系统管理员可在回收站恢复，是否继续？", okText: "确认删除", cancelText: "取消", onOk: async () => {
       try { await api.delete(isInternalCaseFee(row) ? `/finance/internal-fees/${row.id}` : `/finance/fees/${row.id}`); message.success("费用草稿已删除"); await load(); if (viewingCounselCase) await openCounselDetail(viewingCounselCase); }
       catch (error: any) { message.error(error?.response?.data?.detail || "费用删除失败"); }
@@ -2318,7 +2321,7 @@ export default function CaseCenterPage({
     });
   };
   const editCaseFee = (row: CaseRow) => {
-    if (!(isInternalCaseFee(row) ? counselDetailCapabilities.can_edit_internal_fee : counselDetailCapabilities.can_edit_finance)) return message.warning("当前角色没有修改案件费用权限");
+    if (!(isInternalCaseFee(row) ? counselDetailCapabilities.can_edit_internal_fee : canChangeCaseFee(counselDetailCapabilities, "edit", row))) return message.warning(counselDetailCapabilities.can_change_untouched_finance && !isInternalCaseFee(row) ? CASE_FEE_MEMBER_DENIED : "当前角色没有修改案件费用权限");
     setFeeSubtypePreset("");
     feeForm.setFieldValue("source_file_type", resolveCaseFileTypeSelection("", fileTypeOptionsForCase(viewingCounselCase?.data.case_type)));
     const expenseScope = row.data.expense_scope || "律所";

@@ -34,7 +34,8 @@ class CaseFeeMutationTest(unittest.TestCase):
             payload={"title":prefix+"费用","customer":prefix+"客户","amount":101.01,"fee_type":"官方费用","expense_scope":"律所","expense_subtype":"官费","case_no":prefix,"case_record_id":case_id,"handler":"admin","description":prefix}
             s,b=req("POST","/finance/fees",admin,payload); self.assertEqual(s,201,b.decode()); fee_id=json.loads(b)["id"]
             edit={**payload,"title":prefix+"修改","amount":202.02}; s,b=req("PUT",f"/finance/fees/{fee_id}",admin,edit); self.assertEqual(s,200,b.decode()); self.assertEqual(json.loads(b)["data"]["amount"],202.02)
-            s,b=req("PUT",f"/finance/fees/{fee_id}",user,edit); self.assertEqual(s,403,b.decode())
+            # 501384：本案人员改删还没产生数据的费用，不需要角色权限。
+            s,b=req("PUT",f"/finance/fees/{fee_id}",user,edit); self.assertEqual(s,200,b.decode())
             c.execute("update business_records set status=? where id=?",("已归档",case_id)); c.commit(); s,b=req("DELETE",f"/finance/fees/{fee_id}",admin); self.assertEqual(s,409,b.decode()); self.assertIn("归档",json.loads(b)["detail"])
             c.execute("update business_records set status=? where id=?",("一审立案受理",case_id)); c.commit(); s,b=req("DELETE",f"/finance/fees/{fee_id}",admin); self.assertEqual(s,204,b.decode()) ; deleted_fee_id, fee_id = fee_id, None
         finally:

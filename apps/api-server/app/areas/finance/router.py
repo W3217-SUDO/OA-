@@ -47,8 +47,11 @@ async def update_finance_fee(fee_id: int, body: FinanceFeeUpdateInput, identity:
         _case_detail_action_capabilities, _ensure_record_visible, _record_dict_for_identity, _validate_finance_fee_scope_subtype,
     )
     item = await _editable_finance_fee(fee_id, identity, db)
+    # 501384：本案人员改还没产生数据的费用，不再要求角色的修改费用权限。
+    member_untouched = bool(item.__dict__.get("_member_untouched_change"))
     from app.core.finance_action_permissions import require_fee_action
-    await require_fee_action(item, identity, db, "finance.fee.update")
+    if not member_untouched:
+        await require_fee_action(item, identity, db, "finance.fee.update")
     amount = _round_fee_amount(body.amount)
     data = dict(item.data or {})
     case_record = None
@@ -56,7 +59,7 @@ async def update_finance_fee(fee_id: int, body: FinanceFeeUpdateInput, identity:
     if case_record_id:
         case_record = await _ensure_record_visible(case_record_id, identity, db)
         if case_record.module != "case": raise HTTPException(status_code=422, detail="关联记录不是案件")
-        if not (await _case_detail_action_capabilities(case_record, identity, db))["can_edit_finance"]:
+        if not member_untouched and not (await _case_detail_action_capabilities(case_record, identity, db))["can_edit_finance"]:
             raise HTTPException(status_code=403, detail="当前账号没有修改案件费用权限")
     fee_snapshot = {
         "fee_type_id": None,
@@ -109,9 +112,11 @@ async def delete_finance_fee(fee_id: int, identity: dict = Depends(current_ident
         _editable_finance_fee,
     )
     item = await _editable_finance_fee(fee_id, identity, db, action="delete")
-    await _require_linked_case_fee_action(item, "case.fee.delete", identity, db)
-    from app.core.finance_action_permissions import require_fee_action
-    await require_fee_action(item, identity, db, "finance.fee.delete")
+    # 501384：本案人员删还没产生数据的费用，不再要求角色的删除费用权限。
+    if not item.__dict__.get("_member_untouched_change"):
+        await _require_linked_case_fee_action(item, "case.fee.delete", identity, db)
+        from app.core.finance_action_permissions import require_fee_action
+        await require_fee_action(item, identity, db, "finance.fee.delete")
     db.add(WorkflowEvent(record_id=item.id, action="删除费用", from_status=item.status, to_status="已删除", operator=identity["username"], comment=item.serial_no))
     item.status = "已删除"
     from app.core.fee_refund_query import void_refund_for_agency_fee

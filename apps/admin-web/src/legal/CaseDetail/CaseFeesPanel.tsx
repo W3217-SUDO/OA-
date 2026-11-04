@@ -5,6 +5,7 @@ import type { Key } from "react";
 import { PLATFORM_AGENCY_FEE_SUBTYPE } from "../../caseRelationConsumption.mjs";
 import type { CaseDetailCapabilities,CaseRow } from "../types";
 import { displayFeeValue } from "../../financialValueDisplay";
+import { canChangeCaseFee } from "../caseFeeMemberEdit";
 
 type CaseFeeScope = "firm" | "platform" | "internal";
 
@@ -60,6 +61,7 @@ export const CaseFeesPanel = ({
     counselDetailCapabilities.can_apply_fee_invoice,
     counselDetailCapabilities.can_edit_finance,
     counselDetailCapabilities.can_delete_finance,
+    counselDetailCapabilities.can_change_untouched_finance,
     counselDetailCapabilities.can_mark_fee_unpaid,
     counselDetailCapabilities.can_move_fee,
   ].some(Boolean);
@@ -76,8 +78,9 @@ export const CaseFeesPanel = ({
             // 10.22 第8行：旧系统“移到其他案子”位于“申请开票”之后。
             // BUG20261028015：费用通知五项、到账确认、查看票据/发票文件已按用户要求去掉。
             ...(counselDetailCapabilities.can_move_fee?[{key:"move-case",label:"移到其他案子"}]:[]),
-            ...(counselDetailCapabilities.can_edit_finance?[{key:"bill",label:"上传票据文件"},{key:"edit",label:"修改"}]:[]),
-            ...(counselDetailCapabilities.can_delete_finance?[{key:"delete",label:"删除"}]:[]),
+            ...(counselDetailCapabilities.can_edit_finance?[{key:"bill",label:"上传票据文件"}]:[]),
+            ...(canChangeCaseFee(counselDetailCapabilities,"edit",selectedFee)?[{key:"edit",label:"修改"}]:[]),
+            ...(canChangeCaseFee(counselDetailCapabilities,"delete",selectedFee)?[{key:"delete",label:"删除"}]:[]),
             ...(counselDetailCapabilities.can_mark_fee_unpaid?[{key:"no-payment",label:"标记不缴费"}]:[]),
             ...(counselDetailCapabilities.can_refund_finance&&canMarkCaseFeeRefundNotRequired?.(selectedFee)?[{key:"refund-not-required",label:"标记不再办理退费"}]:[]),
           ],onClick:({key})=>key === "refund" ? (selectedFee ? openCourtRefund?.(selectedFee) : requireSingleFee?.(selectedFeeKeys,selectedFee,"办理法院退费")) : void handleExternalFeeOperation?.(selectedFeeKeys,selectedFee,key)}}><Button>其他操作</Button></Dropdown>}
@@ -100,8 +103,9 @@ export const CaseFeesPanel = ({
             // 10.22 第8行：旧系统“移到其他案子”位于“申请开票”之后。
             // BUG20261028015：费用通知五项、到账确认、查看票据/发票文件已按用户要求去掉。
             ...(counselDetailCapabilities.can_move_fee?[{key:"move-case",label:"移到其他案子"}]:[]),
-            ...(counselDetailCapabilities.can_edit_finance?[{key:"bill",label:"上传票据文件"},{key:"edit",label:"修改"}]:[]),
-            ...(counselDetailCapabilities.can_delete_finance?[{key:"delete",label:"删除"}]:[]),
+            ...(counselDetailCapabilities.can_edit_finance?[{key:"bill",label:"上传票据文件"}]:[]),
+            ...(canChangeCaseFee(counselDetailCapabilities,"edit",selectedFee)?[{key:"edit",label:"修改"}]:[]),
+            ...(canChangeCaseFee(counselDetailCapabilities,"delete",selectedFee)?[{key:"delete",label:"删除"}]:[]),
             ...(counselDetailCapabilities.can_mark_fee_unpaid?[{key:"no-payment",label:"标记不缴费"}]:[]),
             ...(counselDetailCapabilities.can_refund_finance&&canMarkCaseFeeRefundNotRequired?.(selectedFee)?[{key:"refund-not-required",label:"标记不再办理退费"}]:[]),
           ],onClick:({key})=>key === "refund" ? (selectedFee ? openCourtRefund?.(selectedFee) : requireSingleFee?.(selectedFeeKeys,selectedFee,"办理法院退费")) : void handleExternalFeeOperation?.(selectedFeeKeys,selectedFee,key)}}><Button>其他操作</Button></Dropdown>}

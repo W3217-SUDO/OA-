@@ -22,6 +22,7 @@ const { CaseFeesPanel } = loadModule("../src/legal/CaseDetail/CaseFeesPanel.tsx"
   "../../components/ResizableTable": { __esModule: true, default: "Table" },
   "../../caseRelationConsumption.mjs": { PLATFORM_AGENCY_FEE_SUBTYPE: "平台代理费" },
   "../../financialValueDisplay": { displayFeeValue: (value) => value },
+  "../caseFeeMemberEdit": loadModule("../src/legal/caseFeeMemberEdit.ts"),
 });
 
 const findDropdowns = (node, output = []) => {

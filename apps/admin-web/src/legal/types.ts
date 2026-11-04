@@ -409,6 +409,8 @@ export type CaseDetailCapabilities = {
   can_create_finance: boolean;
   can_edit_finance: boolean;
   can_delete_finance: boolean;
+  /** 501384：本案人员可以改删还没产生数据的费用。 */
+  can_change_untouched_finance?: boolean;
   can_refund_finance: boolean;
   can_apply_fee_payment: boolean;
   can_apply_fee_invoice: boolean;

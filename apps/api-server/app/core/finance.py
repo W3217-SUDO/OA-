@@ -433,7 +433,13 @@ async def _editable_finance_fee(fee_id: int, identity: dict, db: AsyncSession, a
             raise HTTPException(409, "费用的案件关联无效，请先修正关联")
         from app.core.cases import _case_action_granted
         if not await _case_action_granted(identity, db, f"case.fee.{action}"):
-            raise HTTPException(403, "当前角色没有该页面的费用修改或删除权限")
+            # 501384：还没产生数据的费用，本案人员不看角色权限也能改删。
+            from app.core.case_fee_member_edit import MEMBER_EDIT_DENIED, fee_has_activity, member_may_change_untouched_fee
+            if not await member_may_change_untouched_fee(item, case, identity, db):
+                from app.core.case_task_members import case_member_usernames
+                member = str(identity.get("username") or "").lower() in case_member_usernames(case)
+                raise HTTPException(403, MEMBER_EDIT_DENIED if member and fee_has_activity(item) else "当前角色没有该页面的费用修改或删除权限")
+            item.__dict__["_member_untouched_change"] = True
         if case.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档"}:
             raise HTTPException(status_code=409, detail="归档中的案件费用不可修改或删除")
     else:
