@@ -93,5 +93,23 @@ class CompanyInfoMenuDefaultTest(unittest.TestCase):
         self.assertNotIn("party-company-info", _expand_menu_permission_keys(["customer-company"]))
 
 
+
+class AgentAsksPurposeFirstTest(unittest.TestCase):
+    """501368（陶国南 11-04 14:23）：没说明用途先问，不先查企查查；说明了就直接查。"""
+
+    def test_rule_and_tool_guidance(self):
+        from fastapi.routing import APIRoute
+        from app.agent_mcp.operation_guidance import get_operation_guidance
+        from app.harness_agent.runtime import oa_persona
+        from app.main import app
+        persona = oa_persona()
+        self.assertIn("没说的，先问是新建客户、新建对方当事人，还是只查一下基本信息，等用户回答后再查，不要先调企查查", persona)
+        self.assertIn("说了新建客户、新建对方当事人或查一下基本信息的，直接办", persona)
+        for name in ("lookup_company_library", "company_detail"):
+            route = next(item for item in app.routes if isinstance(item, APIRoute) and item.endpoint.__name__ == name)
+            guidance = get_operation_guidance(route, sorted(route.methods)[0])
+            self.assertTrue(any("用途" in text for text in guidance["prerequisites"]), name)
+
+
 if __name__ == "__main__":
     unittest.main()
