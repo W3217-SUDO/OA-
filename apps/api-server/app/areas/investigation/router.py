@@ -1688,6 +1688,34 @@ async def bind_clue_source_contract(clue_id: int, body: ClueSourceContractBindin
     return {"clue": _record_dict(clue), "contract": {"id": contract.id, "serial_no": contract.serial_no, "title": contract.title, "customer": contract.customer}}
 
 
+_PARTY_NATURE_TYPES = {"企业": "公司企业", "E": "公司企业", "个体工商户": "个体工商户", "I": "个体工商户", "个人": "个人", "P": "个人", "其他": "其他"}
+
+
+def clue_defendants(clue_data: dict) -> tuple[list[str], list[dict]]:
+    """线索主体信息 → 案件被告（名称、证件）；没有主体信息时用线索原来的对方当事人（501331）。"""
+    names: list[str] = []
+    identities: list[dict] = []
+    for party in clue_data.get("indictees") or []:
+        if not isinstance(party, dict):
+            continue
+        name = str(party.get("name") or party.get("indictee") or "").strip()
+        if not name or name in names:
+            continue
+        names.append(name)
+        organization_type = _PARTY_NATURE_TYPES.get(str(party.get("nature") or "").strip()) or _PARTY_NATURE_TYPES.get(str(party.get("nature_code") or "").strip().upper())
+        identity_no = str(party.get("identity_no") or party.get("license_no") or "").strip().upper()
+        if organization_type == "个人":
+            valid = len(identity_no) == 18 and identity_no[:17].isdigit() and identity_no[-1] in "0123456789X"
+        else:
+            valid = bool(organization_type) and len(identity_no) == 18 and identity_no.isalnum()
+        if valid:
+            identities.append({"name": name, "organization_type": organization_type, "identity_no": identity_no})
+    if not names:
+        fallback = str(clue_data.get("opponent") or clue_data.get("indictee") or "").strip()
+        names = [item for item in dict.fromkeys(part.strip() for part in fallback.replace("，", "、").replace(",", "、").split("、")) if item]
+    return names, identities
+
+
 @router.post(f"{settings.api_prefix}/investigations/clues/batch-cases", status_code=status.HTTP_201_CREATED)
 async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import _require_role_action
@@ -1791,12 +1819,19 @@ async def batch_create_cases_from_clues(body: BatchClueCaseInput, identity: dict
             assistant_username,
         )
         case_record = BusinessRecord(module="case", serial_no=serial_no, title=case_title or clue.title, customer=case_customer, status=body.case_phase.strip() or "新案待分配", owner=clue.owner, department=case_department, description=f"由已取证线索 {clue.serial_no} 自动转案", data=case_data)
+        # 501331（fwl 11-04）：同老系统，线索“主体信息”里的主体带成新案件的被告，原告是合同客户。
+        defendants, defendant_identities = clue_defendants(clue_data)
+        if defendants:
+            case_record.data = {**case_record.data, "defendants": defendants, "opponent": "、".join(defendants),
+                                "defendant_identities": defendant_identities,
+                                "plaintiffs": [case_customer] if case_customer else [], "plaintiff": case_customer or ""}
         db.add(case_record); await db.flush()
         await _persist_case_litigant_customers(
             case_record,
-            {"对方当事人": [str(clue_data.get("opponent") or "").strip()] if str(clue_data.get("opponent") or "").strip() else []},
+            {"被告": defendants} if defendants else {},
             identity,
             db,
+            party_identities={item["name"]: item for item in defendant_identities},
         )
         previous = clue.status; clue.status = "已转案件"; clue.data = {**clue_data, "converted_case_id": case_record.id, "converted_case_no": serial_no}
         notary = await db.get(BusinessRecord, int(clue_data.get("notary_record_id") or 0)) if clue_data.get("notary_record_id") else None
