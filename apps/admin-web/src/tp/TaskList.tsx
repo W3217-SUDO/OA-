@@ -93,7 +93,7 @@ export interface TaskListProps {
   onOpenHandoff: (row: TaskRow) => void;
   onRequestException: (row: TaskRow, action: "挂起" | "取消") => void;
   onReviewException: (row: TaskRow, approved: boolean) => void;
-  onMaintainTask: (row: TaskRow) => void;
+  onMaintainTask: (row: TaskRow, rows?: TaskRow[]) => void;
   onOpenTaskBatchLifecycle: (action: TaskBatchLifecycleAction) => void;
   onMoreAction: (key: string) => void;
 }
@@ -419,8 +419,9 @@ export default function TaskList(props: TaskListProps) {
                 申请取消任务
               </Button>
             )}
-            {selected && props.canMaintainTask(selected) && (
-              roleActionAllowed("task.batch.update") && <Button style={{ minHeight: 44, minWidth: 44 }} loading={actionSubmitting} onClick={() => props.onMaintainTask(selected)}>维护任务</Button>
+            {selectedRows.length > 0 && selectedRows.some((row) => props.canMaintainTask(row)) && (
+              // 勾选多条时一次维护（501302）：负责人、截止日期一起改，不符合的跳过并列出原因
+              roleActionAllowed("task.batch.update") && <Button style={{ minHeight: 44, minWidth: 44 }} loading={actionSubmitting} onClick={() => props.onMaintainTask(selectedRows[0], selectedRows)}>{selectedRows.length > 1 ? `批量维护任务（${selectedRows.length}）` : "维护任务"}</Button>
             )}
             {selected?.performance_impact?.overdue && (
               <Tag color="red">

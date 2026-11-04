@@ -793,16 +793,28 @@ async def batch_update_tasks(body: TaskBatchUpdateInput, identity: dict = Depend
     normalized_owner = None
     if body.owner is not None:
         normalized_owner = await _active_task_username(body.owner, db, field_name="负责人")
+    # 批量维护（501302 梁晨宇 11-04）：不符合的几条跳过并说明原因，其余照常修改；只选一条时不符合仍直接报错
+    valid, skipped = [], []
     for task in tasks:
-        _require_task_owner_or_initiator(task, identity, action="批量修改任务")
-        if requires_phase_completion(task) and (body.priority is not None or body.is_vip is not None):
-            raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 的人工维护仅允许变更负责人和期限")
-        if task.status not in {"待接收", "待处理", "处理中"}:
-            raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 已进入不可批量修改的状态")
-        if normalized_owner is not None:
-            # BUG20261102013：案件任务只能交给本案人员。
-            from app.core.case_task_members import require_case_task_members
-            await require_case_task_members([normalized_owner], db, task_data=task.data or {})
+        try:
+            _require_task_owner_or_initiator(task, identity, action="批量修改任务")
+            if requires_phase_completion(task) and (body.priority is not None or body.is_vip is not None):
+                raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 的人工维护仅允许变更负责人和期限")
+            if task.status not in {"待接收", "待处理", "处理中"}:
+                raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 已进入不可批量修改的状态")
+            if normalized_owner is not None:
+                # BUG20261102013：案件任务只能交给本案人员。
+                from app.core.case_task_members import require_case_task_members
+                await require_case_task_members([normalized_owner], db, task_data=task.data or {})
+        except HTTPException as exc:
+            if len(tasks) == 1:
+                raise
+            skipped.append({"id": task.id, "serial_no": task.serial_no, "title": task.title, "reason": str(exc.detail)})
+            continue
+        valid.append(task)
+    if not valid:
+        raise HTTPException(status_code=409, detail="；".join(item["reason"] for item in skipped))
+    tasks = valid
     for task in tasks:
         changes: list[str] = []
         if normalized_owner is not None:
@@ -826,7 +838,7 @@ async def batch_update_tasks(body: TaskBatchUpdateInput, identity: dict = Depend
     await db.commit()
     for task in tasks:
         await db.refresh(task)
-    return {"updated": len(tasks), "items": [_task_dict(task) for task in tasks]}
+    return {"updated": len(tasks), "skipped": skipped, "items": [_task_dict(task) for task in tasks]}
 
 
 @router.post(f"{settings.api_prefix}/tasks/batch-lifecycle")

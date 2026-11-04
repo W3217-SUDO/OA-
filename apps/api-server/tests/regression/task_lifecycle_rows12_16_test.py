@@ -211,8 +211,9 @@ class TaskLifecycleRows12To16Test(unittest.IsolatedAsyncioTestCase):
         })
         self.assertEqual(invalid_deadline.status_code, 422, invalid_deadline.text)
         stopped = await self.create_task("已停止", "manual-mixed")
+        # 批量维护（batch-update）自 501302 起改为不符合的跳过、其余照常修改，见 test_batch_maintenance_skips_invalid_tasks_and_updates_the_rest；
+        # 批量完成仍是整批预检。
         for path, payload in (
-            ("batch-update", {"task_ids": [task_id, stopped], "owner": RECIPIENT["username"]}),
             ("batch-lifecycle", {"task_ids": [task_id, stopped], "action": "complete"}),
         ):
             response = await self.client.post(f"{API}/tasks/{path}", json=payload)
@@ -401,6 +402,19 @@ class TaskLifecycleRows12To16Test(unittest.IsolatedAsyncioTestCase):
         handed = await self.persisted_task(ok_task)
         self.assertEqual((handed.owner, handed.status, handed.data["handoff_from"]), (RECIPIENT["username"], "待接收", OWNER["username"]))
         self.assertEqual((await self.persisted_task(stopped)).owner, OWNER["username"])
+
+    async def test_batch_maintenance_skips_invalid_tasks_and_updates_the_rest(self) -> None:
+        """501302：批量维护任务，不符合的跳过并说明原因，其余照常修改；只选一条不符合仍报错。"""
+        self.identity = dict(OWNER)
+        ok_task = await self.create_task("处理中", "3023")
+        stopped = await self.create_task("已停止", "3024")
+        deadline = (date.today() + timedelta(days=5)).isoformat()
+        response = await self.client.post(f"{API}/tasks/batch-update", json={"task_ids": [ok_task, stopped], "deadline": deadline, "comment": "批量维护"})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual((response.json()["updated"], [item["serial_no"] for item in response.json()["skipped"]]), (1, ["9033024"]))
+        self.assertEqual((await self.persisted_task(ok_task)).data["deadline"], deadline)
+        single = await self.client.post(f"{API}/tasks/batch-update", json={"task_ids": [stopped], "deadline": deadline})
+        self.assertEqual(single.status_code, 409, single.text)
 
     async def test_ended_tasks_reject_recipient_actions(self) -> None:
         self.identity = dict(OWNER)

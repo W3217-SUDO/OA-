@@ -107,6 +107,7 @@ export default function TaskCenterPage({
   const [createOpen, setCreateOpen] = useState(false);
   const [handoff, setHandoff] = useState<TaskRow | null>(null);
   const [maintenance, setMaintenance] = useState<TaskRow | null>(null);
+  const [maintenanceRows, setMaintenanceRows] = useState<TaskRow[]>([]);
   const [handoffDirectory, setHandoffDirectory] = useState<DirectoryUser[]>([]);
   const [handoffDirectoryLoading, setHandoffDirectoryLoading] = useState(false);
   const [dialog, setDialog] = useState<{
@@ -460,8 +461,9 @@ export default function TaskCenterPage({
   const selected = selectedRows.length === 1 ? selectedRows[0] : null;
 
   // ─── Task actions ──────────────────────────────────────────────────────
-  const openTaskMaintenance = (row: TaskRow) => {
+  const openTaskMaintenance = (row: TaskRow, rows?: TaskRow[]) => {
     maintenanceForm.resetFields();
+    setMaintenanceRows(rows && rows.length > 1 ? rows : [row]);
     setMaintenance(row);
   };
 
@@ -474,16 +476,29 @@ export default function TaskCenterPage({
     }
     if (!beginTaskAction()) return;
     try {
+      const ids = maintenanceRows.length ? maintenanceRows.map((row) => row.id) : [maintenance.id];
       const { data } = await api.post("/tasks/batch-update", {
-        task_ids: [maintenance.id], owner: values.owner || undefined,
+        task_ids: ids, owner: values.owner || undefined,
         deadline: values.deadline ? formatRequiredDate(values.deadline, "截止日期") : undefined,
         comment: values.comment,
       });
-      message.success("任务已修改");
+      const skipped: Array<{ serial_no: string; title?: string; reason: string }> = data.skipped || [];
+      if (skipped.length) {
+        Modal.info({
+          title: `已修改 ${data.updated} 条，跳过 ${skipped.length} 条`,
+          width: 560,
+          content: <div>{skipped.map((item) => <div key={item.serial_no}>{item.serial_no}{item.title ? `（${item.title}）` : ""}：{item.reason}</div>)}</div>,
+        });
+      } else {
+        message.success(ids.length > 1 ? `已修改 ${data.updated} 条任务` : "任务已修改");
+      }
       setMaintenance(null);
-      if (communication?.id === maintenance.id) {
-        setCommunication(data.items[0]);
-        await loadTaskFeedback(data.items[0]);
+      setMaintenanceRows([]);
+      if (ids.length > 1) setSelectedKeys([]);
+      const updatedCurrent = (data.items || []).find((item: TaskRow) => item.id === communication?.id);
+      if (updatedCurrent) {
+        setCommunication(updatedCurrent);
+        await loadTaskFeedback(updatedCurrent);
       }
       await load();
     } catch (error: any) {
@@ -1529,7 +1544,7 @@ export default function TaskCenterPage({
         onMoreAction={moreAction}
       />
 
-      <TaskMaintenanceModal row={maintenance} form={maintenanceForm} peopleOptions={peopleOptions}
+      <TaskMaintenanceModal row={maintenance} count={maintenanceRows.length} form={maintenanceForm} peopleOptions={peopleOptions}
         actionSubmitting={actionSubmitting} onOk={submitTaskMaintenance} onCancel={() => setMaintenance(null)} />
 
       <FeeModal

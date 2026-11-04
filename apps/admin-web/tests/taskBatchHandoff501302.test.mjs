@@ -23,3 +23,10 @@ test("转完列出跳过的任务和原因", () => {
   assert.match(page, /data\.skipped/);
   assert.match(page, /跳过 \$\{skipped\.length\} 条/);
 });
+
+test("维护任务可勾选多条一起改负责人、截止日期，不符合的跳过并列出原因", () => {
+  assert.match(list, /批量维护任务（\$\{selectedRows\.length\}）/);
+  assert.match(page, /task_ids: ids, owner: values\.owner/);
+  assert.match(page, /已修改 \$\{data\.updated\} 条，跳过 \$\{skipped\.length\} 条/);
+  assert.match(modals, /批量维护任务（已选 \$\{count\} 条）/);
+});

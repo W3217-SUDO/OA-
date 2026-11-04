@@ -37,8 +37,9 @@ import {
 } from "./constants";
 import dayjs from "dayjs";
 
-export function TaskMaintenanceModal({ row, form, peopleOptions, actionSubmitting, onOk, onCancel }: {
+export function TaskMaintenanceModal({ row, count = 1, form, peopleOptions, actionSubmitting, onOk, onCancel }: {
   row: TaskRow | null;
+  count?: number;
   form: FormInstance;
   peopleOptions: PeopleOption[];
   actionSubmitting: boolean;
@@ -46,7 +47,7 @@ export function TaskMaintenanceModal({ row, form, peopleOptions, actionSubmittin
   onCancel: () => void;
 }) {
   return (
-    <Modal open={Boolean(row)} title={`维护任务：${row?.serial_no || ""}`} okText="保存" cancelText="取消"
+    <Modal open={Boolean(row)} title={count > 1 ? `批量维护任务（已选 ${count} 条）` : `维护任务：${row?.serial_no || ""}`} okText="保存" cancelText="取消"
       confirmLoading={actionSubmitting} onOk={onOk} onCancel={onCancel}
       okButtonProps={{ style: { minHeight: 44, minWidth: 44 } }} cancelButtonProps={{ style: { minHeight: 44, minWidth: 44 } }}>
       <Form form={form} layout="vertical">
