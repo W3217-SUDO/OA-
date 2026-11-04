@@ -2,7 +2,7 @@
 
 文件夹里放：
 - 个案结算表：按 shenhe 给的“结算提成表”原件（settlement_sheet_template）填数；
-  另附一份同名 PDF（横向一页、无页眉页脚），Excel 照样保留（fanyuxing 11-04，501225）；
+  另附一份同名 PDF（竖向 A4 一页、无页眉页脚），Excel 照样保留（fanyuxing 11-04，501225）；
 - 法院文书：案件附件里文件名（或文件类型）是判决书、裁定书、调解书、和解协议的；
   另放本案全部诉讼费缴费凭证、有公证费的放公证费发票，不受“上次结算已放过”限制（BUG20261103011，fanyuxing 11-03）；
 - 票据：诉讼费、保全费放缴费支付凭证（案件票据文件），公证费放公证处发票（案件发票/票据文件）；
@@ -103,13 +103,14 @@ def render_case_sheet(values: dict, costs: list[tuple[Decimal | None, Decimal | 
         if 8 <= index <= 63 and colour:
             book.set_colour_RGB(index, *colour)
     sheet = book.add_sheet(template.name, cell_overwrite_ok=True)
-    # 打印/转 PDF：横向、缩到一页、水平居中、不打页眉页脚（501225）
-    sheet.portrait = False
+    # 打印/转 PDF：竖向 A4、整张表缩到一页、水平居中、不打页眉页脚（fanyuxing 11-04 10:00 要竖向 A4 一页，501225）
+    sheet.portrait = True
+    sheet.paper_size_code = 9  # A4
     sheet.fit_num_pages = sheet.fit_width_to_pages = sheet.fit_height_to_pages = 1
     sheet.header_str = sheet.footer_str = b""
     sheet.print_centered_horz = True
-    sheet.left_margin = sheet.right_margin = 0.4
-    sheet.top_margin = sheet.bottom_margin = 0.5
+    sheet.left_margin = sheet.right_margin = 0.3
+    sheet.top_margin = sheet.bottom_margin = 0.4
     styles = {}
     money_styles = {}
 

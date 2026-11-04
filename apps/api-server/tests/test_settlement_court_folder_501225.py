@@ -34,14 +34,14 @@ class CourtFolderExtrasTest(unittest.TestCase):
 
 
 class CaseSheetPdf501225Test(unittest.TestCase):
-    def test_case_sheet_prints_landscape_on_one_page_without_header(self):
+    def test_case_sheet_prints_portrait_a4_on_one_page_without_header(self):
         import xlrd
         from decimal import Decimal
         from app.areas.finance.settlement_package import render_case_sheet
         content = render_case_sheet({"case_no": "GDMS2400287", "receipt_amount": Decimal("4975")}, [(None, None)] * 9)
         book = xlrd.open_workbook(file_contents=content, formatting_info=True)
         self.assertEqual(book.sheet_by_index(0).cell_value(2, 1), "GDMS2400287")
-        # xlwt 写入的打印设置：横向（portrait=0）
+        # xlwt 写入的打印设置记录
         self.assertIn(b"\xa1\x00", content)  # SETUP 记录存在
 
     def test_batch_pdf_conversion_without_tool_returns_none(self):
