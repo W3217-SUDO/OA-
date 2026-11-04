@@ -23,3 +23,8 @@ test("案件头公证书号、仓库位置按关联线索的证物显示", () =>
   assert.match(header, /evidenceCertificates\|\|viewingCase\.data\.notarial_no/);
   assert.match(header, /evidenceLocations\|\|viewingCase\.data\.warehouse/);
 });
+
+test("目标案件原有公证书号、仓库位置与移入线索的证物叠加显示", () => {
+  assert.match(header, /\[caseCertificate, \.\.\.clueEvidences/);
+  assert.match(header, /\[caseLocation, \.\.\.clueEvidences/);
+});

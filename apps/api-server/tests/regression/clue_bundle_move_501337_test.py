@@ -41,13 +41,14 @@ class ClueBundleMove501337Test(unittest.IsolatedAsyncioTestCase):
             db.add(User(username="sugq", display_name="苏贵全", department="调查部", role="user", role_ids=["user"], password_hash="x", profile={}, is_active=True))
             clue = BusinessRecord(module="clue", serial_no="M337", title="店铺", customer="客户", status="已转案件", owner="sugq", department="调查部", data={})
             other = BusinessRecord(module="clue", serial_no="M338", title="店铺2", customer="客户", status="已转案件", owner="sugq", department="调查部", data={})
-            db.add_all([clue, other])
+            kept = BusinessRecord(module="clue", serial_no="M339", title="目标原有线索", customer="客户", status="已转案件", owner="sugq", department="调查部", data={})
+            db.add_all([clue, other, kept])
             await db.flush()
             common = {"case_type": "民事争议", "customer_record_id": 9}
             source = BusinessRecord(module="case", serial_no="A337", title="A", customer="客户", status="文书准备", owner=IDENTITY["username"], department="诉讼部",
                                     data={**common, "investigation_clue_ids": [clue.id, other.id], "investigation_clue_nos": ["M337", "M338"]})
             target = BusinessRecord(module="case", serial_no="B337", title="B", customer="客户", status="文书准备", owner=IDENTITY["username"], department="诉讼部",
-                                    data={**common, "investigation_clue_ids": [], "investigation_clue_nos": []})
+                                    data={**common, "investigation_clue_ids": [kept.id], "investigation_clue_nos": ["M339"]})
             db.add_all([source, target])
             await db.flush()
             clue.data = {"case_id": source.id, "case_record_id": source.id, "case_no": "A337"}
@@ -61,7 +62,7 @@ class ClueBundleMove501337Test(unittest.IsolatedAsyncioTestCase):
                                    data={"case_id": source.id, "case_record_id": source.id, "case_no": "A337", "expense_scope": "律所", "amount": 100})
             db.add_all([evidence, notary, service, court])
             await db.commit()
-            self.ids = {"clue": clue.id, "other": other.id, "source": source.id, "target": target.id, "evidence": evidence.id,
+            self.ids = {"kept": kept.id, "clue": clue.id, "other": other.id, "source": source.id, "target": target.id, "evidence": evidence.id,
                         "notary": notary.id, "service": service.id, "court": court.id}
         self.previous_overrides = dict(app.dependency_overrides)
         app.dependency_overrides[get_db] = self.override_db
@@ -88,8 +89,9 @@ class ClueBundleMove501337Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.record("court")).data["case_no"], "A337")
         source, target = await self.record("source"), await self.record("target")
         self.assertEqual(source.data["investigation_clue_ids"], [self.ids["other"]])
-        self.assertEqual(target.data["investigation_clue_ids"], [self.ids["clue"]])
-        self.assertEqual(target.data["investigator_usernames"], ["sugq"])
+        # fwl 11-04：目标案件原有线索保留，移入的叠加
+        self.assertEqual(target.data["investigation_clue_ids"], [self.ids["kept"], self.ids["clue"]])
+        self.assertEqual(target.data["investigator_usernames"], ["sugq", "sugq"])
 
     async def test_fee_move_with_chosen_clue_moves_whole_clue(self) -> None:
         response = await self.client.post(f"{API}/finance/fees/{self.ids['notary']}/move-case", json={"target_case_no": "B337", "clue_id": self.ids["clue"]})
