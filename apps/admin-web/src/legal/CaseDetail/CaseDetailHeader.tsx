@@ -9,6 +9,8 @@ import { CasePartyLinks, casePartyNames } from "./CasePartyInfo";
 
 interface CaseDetailHeaderProps {
   viewingCase: CaseRow;
+  /** 501337：本案关联线索的证物，公证书号、仓库位置按它显示（线索移走后跟着变） */
+  clueEvidences?: Array<{ certificate_no?: string; warehouse_name?: string; warehouse_location?: string }>;
   casePersonDisplayName: (source: unknown, displayName?: unknown) => React.ReactNode;
   casePersonDisplayNames: (sources: unknown) => React.ReactNode;
   caseAssistantDisplayNames: (data: Record<string, unknown> | null | undefined) => React.ReactNode;
@@ -108,7 +110,10 @@ export const CaseDetailHeader = (props: CaseDetailHeaderProps) => {
   openRelatedCustomer,
   openRelatedContract,
   openRelatedClue,
+  clueEvidences = [],
  } = props;
+  const evidenceCertificates = [...new Set(clueEvidences.map((item) => item.certificate_no).filter(Boolean))].join("、");
+  const evidenceLocations = [...new Set(clueEvidences.map((item) => [item.warehouse_name, item.warehouse_location].filter(Boolean).join(" ")).filter(Boolean))].join("、");
   const sectionVisibility = getCaseDetailSectionVisibility(viewingCase.data, viewingCase.status);
   const [courtExpanded, setCourtExpanded] = useState(true);
   const [archiveExpanded, setArchiveExpanded] = useState(true);
@@ -149,8 +154,8 @@ export const CaseDetailHeader = (props: CaseDetailHeaderProps) => {
               <tr><th>我方案号</th><td>{viewingCase.serial_no||"—"}</td><th>起诉案由</th><td>{viewingCase.data.cause_or_charge||viewingCase.data.cause_of_action||"—"}</td><th>案件阶段</th><td>{viewingCase.status||"—"}</td><th>原告</th><td><CasePartyLinks caseId={viewingCase.id} names={casePartyNames(viewingCase.data.plaintiff||viewingCase.customer)}/></td></tr>
               <tr><th>案件名称</th><td colSpan={3}>{viewingCase.title||"—"}</td><th>开庭律师</th><td>{casePersonDisplayNames(caseHeaderHearingLawyers(viewingCase.data))}</td><th>被告</th><td><CasePartyLinks caseId={viewingCase.id} names={casePartyNames(Array.isArray(viewingCase.data.defendants) && viewingCase.data.defendants.length ? viewingCase.data.defendants : viewingCase.data.opponent || viewingCase.data.defendant)}/></td></tr>
               <tr><th>客户</th><td colSpan={3}><Button type="link" className="case-cell-link" onClick={() => openRelatedCustomer({ id: Number(viewingCase.data.customer_id) || undefined, serial_no: viewingCase.data.customer_no, title: viewingCase.customer })}>{viewingCase.customer||"—"}</Button></td><th>经办律师</th><td>{casePersonDisplayNames(viewingCase.data.handling_lawyers)}</td><th>第三人</th><td><CasePartyLinks caseId={viewingCase.id} names={casePartyNames(viewingCase.data.third_party||viewingCase.data.third_parties)}/></td></tr>
-              <tr><th>合同号</th><td>{viewingCase.data.contract_no?<Button type="link" className="case-cell-link" onClick={() => openRelatedContract({ id: Number(viewingCase.data.contract_record_id || viewingCase.data.contract_id) || undefined, serial_no: viewingCase.data.contract_no })}>{viewingCase.data.contract_no}</Button>:"—"}</td><th>调查员</th><td>{casePersonDisplayName(viewingCase.data.investigator,viewingCase.data.investigator_display_name)}</td><th>律师助理</th><td>{caseAssistantDisplayNames(viewingCase.data)}</td><th>公证书号</th><td>{viewingCase.data.notarial_no||viewingCase.data.notary_no||viewingCase.data.certificate_no||"—"}</td></tr>
-              <tr><th>线索号</th><td colSpan={3}>{caseClueLinks(viewingCase.data).length ? <span className="case-clue-links">{caseClueLinks(viewingCase.data).map((clue, index) => <span key={clue.serial_no}>{index > 0 && "、"}<Button type="link" className="case-cell-link" onClick={() => openRelatedClue(clue)}>{clue.serial_no}</Button></span>)}</span> : "—"}</td><th>立案日期</th><td>{caseDetailDate(viewingCase.created_at)}</td><th>仓库位置</th><td>{viewingCase.data.warehouse||viewingCase.data.warehouse_location||viewingCase.data.storage_location||viewingCase.data.location||viewingCase.data.deposit_address||"—"}</td></tr>
+              <tr><th>合同号</th><td>{viewingCase.data.contract_no?<Button type="link" className="case-cell-link" onClick={() => openRelatedContract({ id: Number(viewingCase.data.contract_record_id || viewingCase.data.contract_id) || undefined, serial_no: viewingCase.data.contract_no })}>{viewingCase.data.contract_no}</Button>:"—"}</td><th>调查员</th><td>{casePersonDisplayName(viewingCase.data.investigator,viewingCase.data.investigator_display_name)}</td><th>律师助理</th><td>{caseAssistantDisplayNames(viewingCase.data)}</td><th>公证书号</th><td>{evidenceCertificates||viewingCase.data.notarial_no||viewingCase.data.notary_no||viewingCase.data.certificate_no||"—"}</td></tr>
+              <tr><th>线索号</th><td colSpan={3}>{caseClueLinks(viewingCase.data).length ? <span className="case-clue-links">{caseClueLinks(viewingCase.data).map((clue, index) => <span key={clue.serial_no}>{index > 0 && "、"}<Button type="link" className="case-cell-link" onClick={() => openRelatedClue(clue)}>{clue.serial_no}</Button></span>)}</span> : "—"}</td><th>立案日期</th><td>{caseDetailDate(viewingCase.created_at)}</td><th>仓库位置</th><td>{evidenceLocations||viewingCase.data.warehouse||viewingCase.data.warehouse_location||viewingCase.data.storage_location||viewingCase.data.location||viewingCase.data.deposit_address||"—"}</td></tr>
               <tr><th>诉讼标的</th><td>{viewingCase.data.litigation_subject||viewingCase.data.litigation_amount||"—"}</td><th>判决/调解金额</th><td>{viewingCase.data.judgment_amount||viewingCase.data.settlement_amount||viewingCase.data.mediation_amount||"—"}</td><th>分案日期</th><td>{caseDetailDate(viewingCase.data.case_divisional_date||viewingCase.data.assignment_date)}</td><th>案源人</th><td>{casePersonDisplayName(viewingCase.data.business_owner||viewingCase.data.source_person||viewingCase.owner,viewingCase.data.business_owner_display_name||viewingCase.data.source_person_display_name||viewingCase.owner_display_name)}</td></tr>
             </tbody>
           </table>}

@@ -110,6 +110,7 @@ splitCasePeople,
 type CaseClueInvestigator
 } from "../caseSecondBatchParity";
 import { CaseClueInvestigatorList } from "./CaseClueInvestigatorList";
+import { ClueBundlePreview } from "./ClueBundlePreview";
 import { buildWarehouseLocationOptions,resolveCaseWarehouseLocationIds } from "../caseWarehouseLocationParity.mjs";
 import {
 buildCaseUnarchiveReviewPayload,
@@ -468,6 +469,8 @@ export default function CaseCenterPage({
   const [assistedFeeConfirming, setAssistedFeeConfirming] = useState<CaseAssistedFee | null>(null);
   const [assistedFeeSaving, setAssistedFeeSaving] = useState(false);
   const [counselDetailClues, setCounselDetailClues] = useState<CaseRow[]>([]);
+  const [movingClue, setMovingClue] = useState<{ caseRow: CaseRow; clue: CaseRow } | null>(null);
+  const [moveClueForm] = Form.useForm();
   const [counselDetailCluePage, setCounselDetailCluePage] = useState(1);
   const [counselDetailCluePageSize, setCounselDetailCluePageSize] = useState(10);
   const [counselDetailClueTotal, setCounselDetailClueTotal] = useState(0);
@@ -2210,9 +2213,41 @@ export default function CaseCenterPage({
     });
   };
   // 10.22 第8行：律所/平台费用“移到其他案子”（同一客户、一次一条；合同编号保留原值）。
+  const submitCaseClueMove = async () => {
+    if (!movingClue) return;
+    const values = await moveClueForm.validateFields();
+    const targetCaseNo = String(values.target_case_no || "").trim();
+    if (targetCaseNo === movingClue.caseRow.serial_no) {
+      message.warning("目标案件不能与当前案件相同");
+      return;
+    }
+    setMoveFeeSubmitting(true);
+    try {
+      await api.post(`/cases/${movingClue.caseRow.id}/clues/${movingClue.clue.id}/move-case`, { target_case_no: targetCaseNo });
+      message.success(`线索 ${movingClue.clue.serial_no} 及其证物、费用已移到案件 ${targetCaseNo}`);
+      setMovingClue(null);
+      await load();
+      if (viewingCounselCase) await openCounselDetail(viewingCounselCase);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "移到其他案子失败");
+    } finally {
+      setMoveFeeSubmitting(false);
+    }
+  };
   const openCaseFeeMove = (row: CaseRow) => {
     moveFeeForm.resetFields();
+    // 501337：属于线索的费用（公证费等）整条线索一起移；费用里记了线索就用它，本案只有一条线索时默认它
+    const linked = Number(row.data.clue_record_id) || 0;
+    const notaryFee = /公证|取证|调查/.test(String(row.title || row.data.fee_type || row.data.expense_subtype || ""));
+    const clues = moveFeeClueOptions();
+    moveFeeForm.setFieldsValue({ clue_id: linked || (notaryFee && clues.length === 1 ? clues[0].value : 0) });
     setMovingFee(row);
+  };
+  const moveFeeClueOptions = () => {
+    const ids: unknown[] = Array.isArray(viewingCounselCase?.data.investigation_clue_ids) ? viewingCounselCase?.data.investigation_clue_ids : [];
+    const nos: unknown[] = Array.isArray(viewingCounselCase?.data.investigation_clue_nos) ? viewingCounselCase?.data.investigation_clue_nos : [];
+    return ids.map((id, index) => ({ value: Number(id), label: String(nos[index] || counselDetailClues.find((clue) => clue.id === Number(id))?.serial_no || id) }))
+      .filter((item) => item.value > 0);
   };
   const submitCaseFeeMove = async () => {
     if (!movingFee) return;
@@ -2224,8 +2259,9 @@ export default function CaseCenterPage({
     }
     setMoveFeeSubmitting(true);
     try {
-      await api.post(`/finance/fees/${movingFee.id}/move-case`, { target_case_no: targetCaseNo });
-      message.success(`费用已移到案件 ${targetCaseNo}`);
+      const clueId = Number(values.clue_id) || null;
+      await api.post(`/finance/fees/${movingFee.id}/move-case`, { target_case_no: targetCaseNo, clue_id: clueId });
+      message.success(clueId ? `线索及其证物、费用已一起移到案件 ${targetCaseNo}` : `费用已移到案件 ${targetCaseNo}`);
       setMovingFee(null);
       setSelectedFirmFeeKeys([]);
       setSelectedPlatformFeeKeys([]);
@@ -3991,6 +4027,25 @@ export default function CaseCenterPage({
         </Form>
       </Modal>
       <Modal
+        open={Boolean(movingClue)}
+        title="线索移到其他案子"
+        okText="确定"
+        cancelText="取消"
+        confirmLoading={moveFeeSubmitting}
+        destroyOnHidden
+        onCancel={() => setMovingClue(null)}
+        onOk={() => void submitCaseClueMove()}
+      >
+        <Form form={moveClueForm} layout="horizontal" labelCol={{ flex: "84px" }} className="case-fee-move-form">
+          <Form.Item label="当前案件">{movingClue?.caseRow.serial_no || "—"}</Form.Item>
+          <Form.Item label="线索号">{movingClue?.clue.serial_no || "—"}</Form.Item>
+          <Form.Item label="目标案件" name="target_case_no" rules={[{ required: true, whitespace: true, message: "请输入目标案件编号" }]}>
+            <Input placeholder="同一客户下的案件编号" maxLength={64} />
+          </Form.Item>
+          <ClueBundlePreview caseId={movingClue?.caseRow.id} clueId={movingClue?.clue.id} />
+        </Form>
+      </Modal>
+      <Modal
         open={Boolean(movingFee)}
         title="移到其他案子"
         okText="确定"
@@ -4006,6 +4061,12 @@ export default function CaseCenterPage({
           <Form.Item label="合同编号">{String(movingFee?.data.contract_no || "—")}</Form.Item>
           <Form.Item label="目标案件" name="target_case_no" rules={[{ required: true, whitespace: true, message: "请输入目标案件编号" }]}>
             <Input placeholder="请输入目标案件编号" maxLength={64} />
+          </Form.Item>
+          {moveFeeClueOptions().length > 0 && <Form.Item label="所属线索" name="clue_id" extra="属于线索的费用（如公证费），整条线索连同证物、该线索的其他费用一起移">
+            <Select options={[{ value: 0, label: "不属于线索（只移这笔费用）" }, ...moveFeeClueOptions()]} />
+          </Form.Item>}
+          <Form.Item noStyle shouldUpdate={(prev, next) => prev.clue_id !== next.clue_id}>
+            {() => <ClueBundlePreview caseId={viewingCounselCase?.id} clueId={Number(moveFeeForm.getFieldValue("clue_id")) || undefined} />}
           </Form.Item>
         </Form>
         <Alert type="info" showIcon message="仅允许迁移到同一客户下的案件；一次只能迁移一条费用。" />
@@ -4069,6 +4130,7 @@ export default function CaseCenterPage({
           <ConflictReviewNotice guard={detailCaseConflict} />
           <CaseDetailHeader
             viewingCase={viewingCounselCase}
+            clueEvidences={counselDetailClues.flatMap((clue) => (clue as CaseRow & { evidences?: Array<{ certificate_no?: string; warehouse_name?: string; warehouse_location?: string }> }).evidences || [])}
             casePersonDisplayName={casePersonDisplayName}
             casePersonDisplayNames={casePersonDisplayNames}
             caseAssistantDisplayNames={caseAssistantDisplayNames}
@@ -4243,6 +4305,7 @@ export default function CaseCenterPage({
                 onOpenClue={openCaseClueWorkspace}
                 onOpenClueWorkspace={openCaseClueWorkspace}
                 onCreateTask={openCaseTaskCreator}
+                onMoveClue={(caseRow, clue) => { moveClueForm.resetFields(); setMovingClue({ caseRow, clue }); }}
               />},
             ]}
           />
