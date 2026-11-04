@@ -8,6 +8,9 @@ FAM_Invoice_File（按 CaseFeeGuid 关联，发票或官费收据都算），或
 付款金额/付款状态不参与。应缴日 = 申请日 + (年度-1) 年 - 1 天。案件阶段 32、99 和人工屏蔽（IPR_Case_Event_NotIn，
 EventTypeId=4）不进年费监控。老系统费用表迁移后放在 legacy_ipr_sh / legacy_ipr_hd（按案件 data.legacy_source），
 迁移前没有这些表，全部显示“未通知”、按未缴算。2017 年以前的 IPR_Case_FeeItem 旧费用模块不再用。
+280146（高勤兰 11-02 举例 SHPD1711392 等，tgn 11-04 21:50 确认）：沪知老知识产权系统迁移来的专利，老系统 2018 年 12 月后不再更新，
+阶段一直停在“年费监控”；没有任何后续记录（OA 里没有年费记录、没有在 HD 系统继续办理、也没有同一专利的其他案件）的视为已失效，
+不进年费监控和年费清单。只改这里的筛选，不改案件数据；案件上手动点过“加入年费监控”的照常监控。
 """
 from calendar import monthrange
 from urllib.parse import quote
@@ -17,7 +20,7 @@ from fastapi import APIRouter
 from app.core.constants import UPLOAD_ROOT, WORD_DOCUMENT_CONTENT_TYPE
 from app.core.dependencies import (
     AsyncSession, BusinessRecord, Depends, Document, File, FileAttachment, Form, HTTPException, Path, Query, Response,
-    UploadFile, WorkflowEvent, and_, current_identity, date, get_db, io, json, or_, select, settings, text, uuid4,
+    UploadFile, WorkflowEvent, and_, current_identity, date, func, get_db, io, json, or_, select, settings, text, uuid4,
 )
 
 router = APIRouter()
@@ -105,6 +108,44 @@ def _first_paid_year_no(data: dict, application_date: date) -> int:
     return 1
 
 
+def _normalized_application_no(data: dict) -> str:
+    return str(data.get("application_no") or "").replace(" ", "")
+
+
+async def _lapsed_legacy_case_ids(records: list, db: AsyncSession) -> set[int]:
+    """沪知老系统迁移来、之后没有任何后续记录的专利（视为已失效）。"""
+    from app.models import IprCaseAnnualFee
+    candidates = [record for record in records
+                  if str((record.data or {}).get("migration_source") or "").startswith("hz_crm")
+                  and str((record.data or {}).get("annual_fee_monitoring")).lower() != "true"]
+    if not candidates:
+        return set()
+    ids = [record.id for record in candidates]
+    numbers = sorted({number for record in candidates if (number := _normalized_application_no(record.data or {}))})
+    followed: set[str] = set()
+    if numbers:
+        # 同一专利在 OA 里还有别的案件（含恒达系统迁来的）。
+        number_expr = func.replace(func.coalesce(BusinessRecord.data["application_no"].as_string(), ""), " ", "")
+        for offset in range(0, len(numbers), 500):
+            batch = numbers[offset:offset + 500]
+            followed.update(number for number, count in (await db.execute(
+                select(number_expr, func.count()).where(BusinessRecord.module == "ipr_case", BusinessRecord.deleted_at.is_(None),
+                                                        number_expr.in_(batch)).group_by(number_expr))).all() if count > 1)
+            # 在恒达（HD）老系统里继续办理。
+            if db.get_bind().dialect.name == "postgresql" and await db.scalar(text("SELECT to_regclass('legacy_ipr_hd.\"IPR_Case\"') IS NOT NULL")):
+                followed.update(row[0] for row in (await db.execute(text(
+                    'SELECT DISTINCT replace("CaseRequestNo", \' \', \'\') FROM legacy_ipr_hd."IPR_Case" '
+                    'WHERE replace("CaseRequestNo", \' \', \'\') = ANY(:numbers)'), {"numbers": batch})).all())
+    # OA 里有年费记录（年费提醒或年费请款）。
+    with_fees = set((await db.scalars(select(IprCaseAnnualFee.case_record_id).where(IprCaseAnnualFee.case_record_id.in_(ids)))).all())
+    with_fees.update(int(value) for value in (await db.scalars(select(BusinessRecord.data["case_id"].as_string()).where(
+        BusinessRecord.module == "finance", BusinessRecord.status != "已删除",
+        BusinessRecord.data["case_id"].as_string().in_([str(value) for value in ids]),
+        BusinessRecord.data["fee_type_name"].as_string().like("%年费%")))).all() if str(value or "").isdigit())
+    return {record.id for record in candidates
+            if record.id not in with_fees and _normalized_application_no(record.data or {}) not in followed}
+
+
 def _monitoring_condition():
     flag = BusinessRecord.data["annual_fee_monitoring"].as_string()
     return or_(
@@ -188,6 +229,8 @@ async def _monitored_fee_rows(identity: dict, db: AsyncSession, start: date, end
     from app.core.ipr import _ipr_case_list_conditions
     conditions = await _ipr_case_list_conditions(identity, db, case_kind="专利")
     records = list((await db.scalars(select(BusinessRecord).where(*conditions, _monitoring_condition()))).all())
+    lapsed = await _lapsed_legacy_case_ids(records, db)
+    records = [record for record in records if record.id not in lapsed]
     by_source: dict[str, list[int]] = {}
     for item in records:
         legacy_id = str((item.data or {}).get("legacy_ipr_case_id") or "")
