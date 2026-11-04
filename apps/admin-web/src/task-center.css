@@ -802,3 +802,7 @@
   color: var(--oa-text-3);
   font-size: 12px;
 }
+
+/* 剩余天数：逾期红、3 天内到期橙（501305） */
+.task-days-overdue { color: #cf1322; font-weight: 600; }
+.task-days-soon { color: #d46b08; font-weight: 600; }
