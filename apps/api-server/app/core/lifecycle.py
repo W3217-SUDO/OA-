@@ -1,6 +1,6 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 from datetime import datetime
-from sqlalchemy import func, or_
+from sqlalchemy import func
 from app.core.constants import CASE_CREATE_PERMISSION_KEYS, case_agent_runtime, logger
 from app.core.dependencies import (
     AsyncSession, BusinessRecord, FastAPI, JSONResponse, RequestValidationError,
