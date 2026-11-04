@@ -98,7 +98,11 @@ export default function TaskCenterPage({
   const [queryForm] = Form.useForm<TaskQuery>();
   const [query, setQuery] = useState<TaskQuery>({});
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const [taskSort, setTaskSort] = useState<TaskSort>(null);
+  // 我接受的任务默认按剩余天数从少到多：逾期最久的在最前，再今天到期、剩余天数少的，无截止日期的最后（501305）
+  const defaultTaskSort: TaskSort = initialView.endsWith("-accepted") ? { field: "days_remaining", order: "ascend" } : null;
+  const [taskSort, setTaskSort] = useState<TaskSort>(defaultTaskSort);
+  // 剩余天数：逾期标红，3 天内到期标橙（501305）
+  const taskDaysClass = (value: number) => (value < 0 ? "task-days-overdue" : value <= 3 ? "task-days-soon" : "");
   const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [handoff, setHandoff] = useState<TaskRow | null>(null);
@@ -356,8 +360,8 @@ export default function TaskCenterPage({
     setSelectedKeys([]);
     queryForm.resetFields();
     setQuery({});
-    setTaskSort(null);
-    void load({}, firstTab, 1, 15, null);
+    setTaskSort(defaultTaskSort);
+    void load({}, firstTab, 1, 15, defaultTaskSort);
   }, [initialView]);
 
   useEffect(() => {
@@ -1150,7 +1154,9 @@ export default function TaskCenterPage({
       align: "center",
       sorter: true,
       sortOrder: taskSort?.field === "days_remaining" ? taskSort.order : null,
-      render: (value: number | null) => (value == null ? "" : `${value}/天`),
+      // 点表头只在升序、降序间切换，不回到无序（501305）
+      sortDirections: ["ascend", "descend", "ascend"],
+      render: (value: number | null) => (value == null ? "" : <span className={taskDaysClass(value)}>{`${value}/天`}</span>),
     },
     {
       title: isCreated && statusTab === "accepted" ? "验收日期" : "最后更新时间",
@@ -1441,9 +1447,9 @@ export default function TaskCenterPage({
   const handleQueryReset = () => {
     queryForm.resetFields();
     setQuery({});
-    setTaskSort(null);
+    setTaskSort(defaultTaskSort);
     setSelectedKeys([]);
-    void load({}, statusTab, 1, taskMeta.pageSize, null);
+    void load({}, statusTab, 1, taskMeta.pageSize, defaultTaskSort);
   };
 
   const handleCaseTaskPageChange = (nextPage: number, nextPageSize: number) => {
