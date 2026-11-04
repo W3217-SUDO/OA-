@@ -348,6 +348,9 @@ export default function TaskList(props: TaskListProps) {
                 </Button>
               </>
             )}
+            {canManageAcceptedTask && ["pending", "processing"].includes(statusTab) && selectedRows.length > 1 && (
+              roleActionAllowed("task.handoff") && roleActionAllowed("task.batch.update") && <Button onClick={() => onOpenTaskBatchLifecycle("handoff")}>批量转交</Button>
+            )}
             {canManageAcceptedTask && statusTab === "processing" && (
               <>
                 {roleActionAllowed("task.complete") && <Button disabled={selected?.phase_completion_required} onClick={() => selected && onCompleteOne(selected)}>
@@ -370,7 +373,7 @@ export default function TaskList(props: TaskListProps) {
                         ? [
                             { key: "accept", label: "批量接收任务" },
                             { key: "complete", label: "批量提交完成", disabled: selectedRows.some(row => row.phase_completion_required) },
-                            { key: "handoff", label: "批量交接任务" },
+                            { key: "handoff", label: "批量转交任务" },
                           ]
                         : []),
                       ...(canManageInitiatedTask || canManageCompanyCreatedTask

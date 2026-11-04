@@ -385,6 +385,23 @@ class TaskLifecycleRows12To16Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual((await self.persisted_task(processing_complete)).status, "已完成")
 
+    async def test_batch_handoff_skips_invalid_tasks_and_transfers_the_rest(self) -> None:
+        """501302：批量转交不符合的跳过并说明原因，其余照常转交。"""
+        self.identity = dict(OWNER)
+        ok_task = await self.create_task("进行中", "3021")
+        stopped = await self.create_task("已停止", "3022")
+        response = await self.client.post(f"{API}/tasks/batch-lifecycle", json={
+            "task_ids": [ok_task, stopped], "action": "handoff", "recipient": RECIPIENT["username"], "comment": "批量转交",
+        })
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body["updated"], 1)
+        self.assertEqual([item["serial_no"] for item in body["skipped"]], ["9033022"])
+        self.assertIn("已结束", body["skipped"][0]["reason"])
+        handed = await self.persisted_task(ok_task)
+        self.assertEqual((handed.owner, handed.status, handed.data["handoff_from"]), (RECIPIENT["username"], "待接收", OWNER["username"]))
+        self.assertEqual((await self.persisted_task(stopped)).owner, OWNER["username"])
+
     async def test_ended_tasks_reject_recipient_actions(self) -> None:
         self.identity = dict(OWNER)
         stopped = await self.create_task("已停止", "1602")

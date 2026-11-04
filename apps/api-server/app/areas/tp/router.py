@@ -857,6 +857,20 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
         recipient = await _active_task_username(body.recipient, db, field_name="接收人")
     if body.action == "withdraw" and not comment:
         raise HTTPException(status_code=422, detail="批量撤回任务必须填写撤回原因")
+    if body.action == "handoff":
+        # 批量转交（501302）：规则与单条转交一致；不符合的几条跳过并说明原因，其余照常转交
+        updated, skipped = [], []
+        for task in ordered_tasks:
+            try:
+                await _apply_task_handoff(task, recipient, comment, None, identity, db, action="批量任务交接")
+            except HTTPException as exc:
+                skipped.append({"id": task.id, "serial_no": task.serial_no, "title": task.title, "reason": str(exc.detail)})
+                continue
+            updated.append(task)
+        await db.commit()
+        for task in updated:
+            await db.refresh(task)
+        return {"updated": len(updated), "action": body.action, "skipped": skipped, "items": [_task_dict(task) for task in updated]}
 
     # Validate the full selection before changing any record, so a mixed
     # selection never creates a partial lifecycle result.
@@ -1374,20 +1388,14 @@ async def batch_read_task_messages(body: TaskBatchReadInput, identity: dict = De
     return {"task_ids": task_ids, "updated": len(items), "is_read": True}
 
 
-@router.post(f"{settings.api_prefix}/tasks/{{task_id}}/handoff")
-async def handoff_task(task_id: int, body: TaskHandoffInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.permissions import _require_role_action
-    await _require_role_action(identity, db, "task.handoff")
-    from app.core.tasks import (
-        _active_task_username, _add_task_message_notifications, _record_task_manual_intervention, _task_dict, _task_or_404,
-    )
-    task = await _task_or_404(task_id, db)
+async def _apply_task_handoff(task, recipient: str, comment: str, end_at, identity: dict, db: AsyncSession, *, action: str = "任务交接") -> None:
+    """单条转交和批量转交共用（501302）：先校验（不符合就抛错、不改任务），再改负责人、期限并写记录和通知；不提交事务。"""
+    from app.core.tasks import _add_task_message_notifications, _record_task_manual_intervention
     if identity.get("role") != "admin" and task.owner != identity["username"]:
         raise HTTPException(status_code=403, detail="只有当前负责人可以转交任务")
     if task.status in {"已完成", "已验收", "已撤回", "已停止", "已取消", "待确认", "已拒绝"}:
         raise HTTPException(status_code=409, detail="已结束任务不能交接")
     previous_owner, previous_status = task.owner, task.status
-    recipient = await _active_task_username(body.recipient, db, field_name="接收人")
     if recipient == previous_owner:
         raise HTTPException(status_code=422, detail="任务不能转交给当前负责人")
     data = task.data or {}
@@ -1411,7 +1419,7 @@ async def handoff_task(task_id: int, body: TaskHandoffInput, identity: dict = De
 
     start_at = _task_datetime(data.get("start_at") or data.get("task_begin_time") or data.get("TaskBeginTime")) or _task_datetime(task.created_at)
     existing_end_at = _task_datetime(data.get("end_at") or data.get("deadline") or data.get("task_end_time") or data.get("TaskEndTime"))
-    requested_end_at = body.end_at.replace(tzinfo=None) if body.end_at else None
+    requested_end_at = end_at.replace(tzinfo=None) if end_at else None
     if requested_end_at is not None:
         if requested_end_at < now:
             raise HTTPException(status_code=422, detail="交接结束时间不能早于当前时间")
@@ -1444,13 +1452,25 @@ async def handoff_task(task_id: int, body: TaskHandoffInput, identity: dict = De
     if handoff_end_at is not None and (requested_end_at is not None or handoff_end_at != existing_end_at):
         deadline_updates = {
             "deadline": str(handoff_end_at.date()), "end_at": handoff_end_at.isoformat(timespec="seconds"),
-            "handoff_requested_end_at": body.end_at.isoformat(timespec="seconds") if body.end_at else "",
+            "handoff_requested_end_at": end_at.isoformat(timespec="seconds") if end_at else "",
             "handoff_limit_days": handoff_limit_days,
         }
     task.data = {**data, **deadline_updates, "handoff_from": previous_owner, "handoff_recipient": recipient, "handed_off_at": str(date.today()), "handoff_auto_complete_at": "", "handoff_restarted": False}
-    await _record_task_manual_intervention(task, identity, db, action="任务交接")
+    await _record_task_manual_intervention(task, identity, db, action=action)
     deadline_comment = f"；交接结束时间：{handoff_end_at.isoformat(timespec='seconds')}" if deadline_updates else ""
-    await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="任务交接", from_status=previous_status, to_status="待接收", operator=identity["username"], comment=f"{previous_owner} 交接给 {recipient}{deadline_comment}。{body.comment}"), db, content="任务已交接.")
+    await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action=action, from_status=previous_status, to_status="待接收", operator=identity["username"], comment=f"{previous_owner} 交接给 {recipient}{deadline_comment}。{comment}"), db, content="任务已交接.")
+
+
+
+
+@router.post(f"{settings.api_prefix}/tasks/{{task_id}}/handoff")
+async def handoff_task(task_id: int, body: TaskHandoffInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_role_action
+    await _require_role_action(identity, db, "task.handoff")
+    from app.core.tasks import _active_task_username, _task_dict, _task_or_404
+    task = await _task_or_404(task_id, db)
+    recipient = await _active_task_username(body.recipient, db, field_name="接收人")
+    await _apply_task_handoff(task, recipient, body.comment, body.end_at, identity, db)
     await db.commit()
     await db.refresh(task)
     return _task_dict(task)

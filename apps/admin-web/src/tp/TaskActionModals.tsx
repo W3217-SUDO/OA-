@@ -179,6 +179,8 @@ export interface TaskBatchModalProps {
   selectedCount: number;
   actionSubmitting: boolean;
   labels: Record<TaskBatchLifecycleAction, string>;
+  handoffDirectory?: DirectoryUser[];
+  handoffDirectoryLoading?: boolean;
   onOk: () => void;
   onCancel: () => void;
 }
@@ -190,6 +192,8 @@ export function TaskBatchModal(props: TaskBatchModalProps) {
     selectedCount,
     actionSubmitting,
     labels,
+    handoffDirectory = [],
+    handoffDirectoryLoading = false,
     onOk,
     onCancel,
   } = props;
@@ -211,7 +215,7 @@ export function TaskBatchModal(props: TaskBatchModalProps) {
         showIcon
         message={
           taskBatchAction === "handoff"
-            ? "所有任务将转交给同一接收人，由接收人按正常流程处理。"
+            ? "所有任务转交给同一接收人，规则与单条转交一致；不符合的（如接收人不是该案件的人员、任务已结束）会跳过并列出原因，其余照常转交。"
             : taskBatchAction === "withdraw"
               ? "仅任务发起人或管理员可撤回；任一任务不符合条件时整批不会提交。"
               : taskBatchAction === "confirm"
@@ -225,13 +229,22 @@ export function TaskBatchModal(props: TaskBatchModalProps) {
           <Form.Item
             label="接收人"
             name="recipient"
-            rules={[{ required: true, message: "请输入接收人" }]}
+            rules={[{ required: true, message: "请选择接收人" }]}
           >
-            <Input />
+            <KeywordPersonSelect
+              showSearch
+              loading={handoffDirectoryLoading}
+              optionFilterProp="label"
+              placeholder="输入姓名或部门搜索"
+              options={handoffDirectory.map((user) => ({
+                value: user.username,
+                label: `${user.display_name || user.username}（${user.department || "未设置部门"}）`,
+              }))}
+            />
           </Form.Item>
         )}
         <Form.Item
-          label={taskBatchAction === "withdraw" ? "撤回原因" : "操作说明"}
+          label={taskBatchAction === "withdraw" ? "撤回原因" : taskBatchAction === "handoff" ? "转交说明" : "操作说明"}
           name="comment"
           rules={
             taskBatchAction === "withdraw"

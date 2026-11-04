@@ -1000,7 +1000,7 @@ export default function TaskCenterPage({
     accept: "批量接收任务",
     complete: "批量提交完成",
     confirm: "批量验收任务",
-    handoff: "批量交接任务",
+    handoff: "批量转交任务",
     withdraw: "批量撤回任务",
   };
 
@@ -1011,6 +1011,14 @@ export default function TaskCenterPage({
     }
     taskBatchForm.resetFields();
     setTaskBatchAction(action);
+    if (action === "handoff" && !handoffDirectory.length) {
+      // 批量转交与单条转交一样从员工目录里选接收人（501302）
+      setHandoffDirectoryLoading(true);
+      api.get("/users/directory")
+        .then(({ data }) => setHandoffDirectory((data.items || []).filter((item: DirectoryUser) => item.is_active !== false)))
+        .catch((error: any) => message.error(error?.response?.data?.detail || "员工目录加载失败，请稍后重试"))
+        .finally(() => setHandoffDirectoryLoading(false));
+    }
   };
 
   const submitTaskBatchLifecycle = async () => {
@@ -1024,7 +1032,17 @@ export default function TaskCenterPage({
         recipient: values.recipient || "",
         comment: values.comment || "",
       });
-      message.success(`${taskBatchLabels[taskBatchAction]}成功：${data.updated} 条`);
+      const skipped: Array<{ serial_no: string; title?: string; reason: string }> = data.skipped || [];
+      if (skipped.length) {
+        // 批量转交：不符合条件的几条跳过，列出原因（501302）
+        Modal.info({
+          title: `已转交 ${data.updated} 条，跳过 ${skipped.length} 条`,
+          width: 560,
+          content: <div>{skipped.map((item) => <div key={item.serial_no}>{item.serial_no}{item.title ? `（${item.title}）` : ""}：{item.reason}</div>)}</div>,
+        });
+      } else {
+        message.success(`${taskBatchLabels[taskBatchAction]}成功：${data.updated} 条`);
+      }
       setTaskBatchAction(null);
       setSelectedKeys([]);
       await load();
@@ -1575,6 +1593,8 @@ export default function TaskCenterPage({
         selectedCount={selectedRows.length}
         actionSubmitting={actionSubmitting}
         labels={taskBatchLabels}
+        handoffDirectory={handoffDirectory}
+        handoffDirectoryLoading={handoffDirectoryLoading}
         onOk={() => void submitTaskBatchLifecycle()}
         onCancel={() => setTaskBatchAction(null)}
       />
