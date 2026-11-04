@@ -8,7 +8,8 @@ import { POPUP_WIDTH } from "../components/common/popupSize";
 import { matchWordTemplate, type WordTemplate } from "./caseWordTemplateMatch";
 
 export { matchWordTemplate, type WordTemplate };
-type Field = { key: string; value: string; source: "case" | "manual"; missing: boolean; options: string[] };
+// optional：可以留空（如调解协议书的调解员、付款期限，打印后手写）；derived：由别的字段算出（赔偿金额大写），不单独填；multiline：多个当事人逐行列出。
+type Field = { key: string; value: string; source: "case" | "manual"; missing: boolean; options: string[]; optional?: boolean; derived?: boolean; multiline?: boolean };
 type Preview = { fields: Field[]; missing: string[]; paragraphs: string[]; filename: string };
 
 const errorText = (failure: unknown, fallback: string) => {
@@ -48,8 +49,8 @@ export function CaseWordTemplateModal({ caseId, open, templateId, canSave, onClo
   }, [base, caseId, selected]);
   useEffect(() => { if (open && selected) void refresh({}); }, [open, selected, refresh]);
 
-  const edited = useMemo(() => Object.fromEntries((preview?.fields || []).map(field => [field.key, values[field.key] ?? field.value])), [preview, values]);
-  const missing = (preview?.fields || []).filter(field => !String(edited[field.key] || "").trim()).map(field => field.key);
+  const edited = useMemo(() => Object.fromEntries((preview?.fields || []).filter(field => !field.derived).map(field => [field.key, values[field.key] ?? field.value])), [preview, values]);
+  const missing = (preview?.fields || []).filter(field => !field.optional && !field.derived && !String(edited[field.key] || "").trim()).map(field => field.key);
 
   const download = async () => {
     setBusy("download");
@@ -86,11 +87,17 @@ export function CaseWordTemplateModal({ caseId, open, templateId, canSave, onClo
         <p className="case-word-template-note">字段由系统从案件信息带出，可以修改；正文不会被改写，只替换这些字段。</p>
         <div className="case-word-template-fields">
           {preview.fields.map(field => <label key={field.key} className={missing.includes(field.key) ? "is-missing" : undefined}>
-            <span>{field.key} <Tag color={field.source === "case" ? "blue" : "orange"}>{field.source === "case" ? "案件信息" : "需填写"}</Tag></span>
-            {field.options.length
+            <span>{field.key} {field.derived ? <Tag>自动生成</Tag> : field.optional ? <Tag>可留空</Tag>
+              : <Tag color={field.source === "case" ? "blue" : "orange"}>{field.source === "case" ? "案件信息" : "需填写"}</Tag>}</span>
+            {field.derived
+              ? <Input value={field.value} disabled placeholder="随上面的金额自动生成，刷新预览后更新" />
+              : field.multiline
+              ? <Input.TextArea value={edited[field.key]} autoSize={{ minRows: 2, maxRows: 6 }} placeholder="每位当事人一行"
+                  onChange={event => setValues(current => ({ ...current, [field.key]: event.target.value }))} />
+              : field.options.length
               ? <AutoComplete value={edited[field.key]} options={field.options.map(value => ({ value }))} placeholder={`选常用项或直接填写${field.key}`}
                   onChange={value => setValues(current => ({ ...current, [field.key]: value }))} />
-              : <Input value={edited[field.key]} placeholder={field.source === "case" ? "案件里没有填写，请补充" : `请填写${field.key}`}
+              : <Input value={edited[field.key]} placeholder={field.optional ? "可以留空，打印后手写" : field.source === "case" ? "案件里没有填写，请补充" : `请填写${field.key}`}
                   onChange={event => setValues(current => ({ ...current, [field.key]: event.target.value }))} />}
           </label>)}
         </div>

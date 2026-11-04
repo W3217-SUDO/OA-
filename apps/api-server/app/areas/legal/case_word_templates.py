@@ -43,9 +43,23 @@ CAUSE_NUMBER = re.compile(r"^\s*(?:[一二三四五六七八九十百]+|\d+)[、
 BUILTIN_TEMPLATES = [{
     "id": "withdrawal-application", "name": "撤诉申请书", "file": "WITHDRAWAL_APPLICATION_DOCX",
     "options": {"撤诉理由": ["原被告之间已达成和解并履行", "原被告之间已达成和解", "被告已停止侵权并赔偿损失", "原告决定不再追究"]},
+}, {
+    # 陶国南 11-04：调解员、付款期限可以留空，打印后手写。
+    "id": "mediation-agreement", "name": "调解协议书", "file": "MEDIATION_AGREEMENT_DOCX",
+    "options": {}, "optional": ["调解员", "付款期限"],
 }]
 # 系统自动取值的字段；模板里出现其他占位字段时，按“需要人工填写”处理。
-AUTO_FIELDS = ("法院", "法院案号", "原告", "被告", "第三人", "案由", "开庭律师", "经办律师", "律师助理", "客户名称", "案件编号", "生成日期")
+AUTO_FIELDS = ("法院", "法院案号", "原告", "被告", "第三人", "案由", "开庭律师", "经办律师", "律师助理", "客户名称", "案件编号", "生成日期",
+               "原告信息", "被告信息", "委托诉讼代理人", "代理律所", "赔偿金额", "赔偿金额大写", "收款户名", "收款开户行", "收款账号")
+# 多个当事人逐行列出（每人一段，段落前面的“原告：”“被告：”跟着重复）。
+MULTILINE_FIELDS = {"原告信息", "被告信息"}
+# 由别的字段算出来的，不单独填：赔偿金额大写跟着赔偿金额走。
+DERIVED_FIELDS = {"赔偿金额大写": "赔偿金额"}
+# 律所收款账户（和知识产权年费通知书同一个账户，高勤兰 11-02 确认）；系统里还没有单独维护律所账户的地方。
+FIRM_NAME = "上海申浩律师事务所"
+FIRM_ACCOUNT = {"收款户名": FIRM_NAME, "收款开户行": "中信银行古北支行", "收款账号": "8110201012400029679"}
+# 留空的字段在文书里留几个全角空格，方便打印后手写。
+BLANK = "\u3000" * 4
 
 
 class TemplateUpdate(BaseModel):
@@ -117,6 +131,9 @@ W = "{%s}" % WORD_NS["w"]
 NOTE = re.compile(r"[（(][^（）()]*[）)]\s*")
 # 按说明文字猜对应案件里的哪一项；猜不到的设成“生成时手填”，管理员可以在模板页改。
 FIELD_HINTS = (
+    (("原告信息",), "原告信息"), (("被告信息",), "被告信息"), (("原告名称",), "原告"), (("被告名称",), "被告"),
+    (("委托诉讼代理人",), "委托诉讼代理人"), (("代理律所",), "代理律所"), (("赔偿金额大写",), "赔偿金额大写"), (("赔偿金额",), "赔偿金额"),
+    (("收款户名",), "收款户名"), (("收款开户行",), "收款开户行"), (("收款账号",), "收款账号"),
     (("法院案号", "案号"), "法院案号"), (("开庭律师", "出庭律师", "代理律师", "代理人"), "开庭律师"), (("经办律师", "承办律师"), "经办律师"),
     (("律师助理", "助理"), "律师助理"), (("第三人",), "第三人"), (("原告",), "原告"), (("被告",), "被告"), (("案由",), "案由"),
     (("法院",), "法院"), (("客户",), "客户名称"), (("案件编号",), "案件编号"), (("生成当日", "当日", "今天", "日期"), "生成日期"),
@@ -237,7 +254,7 @@ def fill(content: bytes, slots: list[dict], values: dict) -> bytes:
                         text = "".join(str(values.get(key, "")) for key in keys[position:position + count])
                         position += count
                         nodes = [node for run in segment for node in run.findall(W + "t")]
-                        nodes[0].text = text
+                        nodes[0].text = text.replace("\n", LINE_SEPARATOR)
                         nodes[0].set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
                         for node in nodes[1:]:
                             node.text = ""
@@ -247,9 +264,74 @@ def fill(content: bytes, slots: list[dict], values: dict) -> bytes:
                             if mark.getparent().tag == W + "rPr":
                                 mark.getparent().remove(mark)
                     _replace_slots(paragraph, placeholder_values, PLACEHOLDER)
+                _split_lines(root)
                 payload = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
             target.writestr(item, payload)
     return output.getvalue()
+
+
+# 字段值里的换行先换成这个不可见的分隔符（后面的 {字段} 替换会把普通换行变成段内换行），最后再按它拆段。
+LINE_SEPARATOR = "\u2063"
+
+
+def _split_lines(root) -> None:
+    """字段值里有换行（多个当事人）时，整段复制成几段，每段放一行；段落里其他文字（如“被告：”）每段都保留。"""
+    for paragraph in list(root.iter(W + "p")):
+        node = next((t for t in paragraph.iter(W + "t") if LINE_SEPARATOR in (t.text or "")), None)
+        if node is None:
+            continue
+        lines = node.text.split(LINE_SEPARATOR)
+        node.text = lines[0]
+        anchor = paragraph
+        for line in lines[1:]:
+            clone = deepcopy(paragraph)
+            target = next(t for t in clone.iter(W + "t") if t.text == lines[0])
+            target.text = line
+            anchor.addnext(clone)
+            anchor = clone
+
+
+NUMERALS = "零壹贰叁肆伍陆柒捌玖"
+
+
+def amount_upper(value: str) -> str:
+    """人民币金额大写，如 4500 → 肆仟伍佰元整，1200.5 → 壹仟贰佰元伍角。"""
+    from decimal import Decimal, InvalidOperation
+    text = str(value or "").replace(",", "").replace("，", "").replace("元", "").strip()
+    try:
+        amount = Decimal(text).quantize(Decimal("0.01"))
+    except InvalidOperation:
+        return ""
+    if amount < 0 or amount >= Decimal("1000000000000"):
+        return ""
+    integer, cents = divmod(int(amount * 100), 100)
+    units, sections = ["", "拾", "佰", "仟"], ["", "万", "亿"]
+    words, digits, zero = "", str(integer), False
+    for position, char in enumerate(digits):
+        place = len(digits) - position - 1
+        digit = int(char)
+        if digit:
+            if zero:
+                words += "零"
+            words += NUMERALS[digit] + units[place % 4]
+            zero = False
+        else:
+            zero = True
+        if place % 4 == 0 and place and words and not words.endswith(tuple(sections[1:])):
+            if digits[max(0, position - 3):position + 1].strip("0"):
+                words += sections[place // 4]
+                zero = False
+    words = words + "元" if words else ("" if cents else "零元")
+    jiao, fen = divmod(cents, 10)
+    if not cents:
+        return words + "整"
+    if jiao:
+        words += NUMERALS[jiao] + "角"
+    elif integer:
+        words += "零"
+    if fen:
+        words += NUMERALS[fen] + "分"
+    return words
 
 
 def paragraphs(content: bytes) -> list[str]:
@@ -302,6 +384,77 @@ def _court_keys(status_text: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     return first
 
 
+ADDRESS_KEYS = ("contact_address", "registered_address", "registration_address", "address", "business_address", "invoice_address")
+PHONE_KEYS = ("contact_phone", "phone", "mobile", "invoice_phone")
+AGENT_NAME = re.compile(r'"?[Nn]ame\\?"?\s*:\s*\\?"([^"\\]+)')
+
+
+async def _party_profiles(names: list[str], db: AsyncSession) -> dict[str, dict]:
+    """当事人档案（当事人表优先，没有再看客户表）里的地址、电话、证件号。"""
+    from app.data_models.parties import PartyRecord
+    if not names:
+        return {}
+    profiles: dict[str, dict] = {}
+    for title, data in (await db.execute(select(BusinessRecord.title, BusinessRecord.data).where(
+            BusinessRecord.module == "customer", BusinessRecord.title.in_(names), BusinessRecord.deleted_at.is_(None)))).all():
+        profiles[title.strip()] = dict(data or {})
+    for name, data in (await db.execute(select(PartyRecord.name, PartyRecord.data).where(PartyRecord.name.in_(names)))).all():
+        profiles[name.strip()] = {**profiles.get(name.strip(), {}), **(data or {})}
+    return profiles
+
+
+def _party_line(name: str, identity: dict, profile: dict, *, defendant: bool) -> str:
+    """一位当事人的一行：单位写统一社会信用代码，个人写性别和身份证号（性别按身份证第 17 位）；没有的项不写。"""
+    identity_no = str(identity.get("identity_no") or profile.get("identity_no") or profile.get("credit_code") or "").strip().upper()
+    person = identity.get("organization_type") == "个人" or (len(identity_no) == 18 and identity_no[:17].isdigit() and not identity.get("organization_type")
+                                                             and not profile.get("credit_code"))
+    address, phone = _first(profile, *ADDRESS_KEYS), _first(profile, *PHONE_KEYS)
+    parts = [name]
+    if person:
+        if len(identity_no) == 18 and identity_no[16].isdigit():
+            parts.append("男" if int(identity_no[16]) % 2 else "女")
+        if identity_no:
+            parts.append(f"身份证号码：{identity_no}")
+        if address:
+            parts.append(f"地址：{address}")
+    else:
+        if address:
+            parts.append(f"{'地址' if defendant else '联系地址'}：{address}")
+        if identity_no:
+            parts.append(f"统一社会信用代码：{identity_no}")
+    if phone and defendant:
+        parts.append(f"联系方式：{phone}")
+    return "，".join(parts)
+
+
+async def _party_lines(data: dict, names: list[str], identities_key: str, db: AsyncSession, *, defendant: bool) -> str:
+    identities = {str(item.get("name") or "").strip(): item for item in data.get(identities_key) or [] if isinstance(item, dict)}
+    profiles = await _party_profiles(names, db)
+    return "\n".join(_party_line(name, identities.get(name, {}), profiles.get(name, {}), defendant=defendant) for name in names)
+
+
+def _agent_names_and_firm(data: dict) -> tuple[list[str], str]:
+    """原告方代理人：案件里登记的代理人（新格式是 {name, law_firm}，旧数据是拆散的 JSON 文本）。"""
+    names, firm = [], ""
+    for item in data.get("plaintiff_agents") or []:
+        if isinstance(item, dict):
+            if str(item.get("name") or "").strip():
+                names.append(str(item["name"]).strip())
+                firm = firm or str(item.get("law_firm") or "").strip()
+        else:
+            names.extend(match.strip() for match in AGENT_NAME.findall(str(item)) if match.strip())
+    return list(dict.fromkeys(names)), firm
+
+
+def _amount_text(value) -> str:
+    text = str(value or "").replace(",", "").strip()
+    try:
+        number = float(text)
+    except ValueError:
+        return ""
+    return f"{number:.2f}".rstrip("0").rstrip(".") if number else ""
+
+
 async def case_field_values(record: BusinessRecord, db: AsyncSession, today: datetime | None = None) -> dict[str, str]:
     from app.core.cases import _case_commission_person_tokens
     from app.core.court_display import court_names_by_code
@@ -323,6 +476,14 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
         return "、".join(dict.fromkeys(users.get(item.casefold(), item) for item in items))
 
     today = today or datetime.now()
+    plaintiffs = _names(data.get("plaintiffs") or data.get("plaintiff") or data.get("appellant_names"))
+    defendants = _names(data.get("defendants") or data.get("defendant") or data.get("appellee_names"))
+    agents, agent_firm = _agent_names_and_firm(data)
+    if agents:
+        agent_users = {user.username.casefold(): user.display_name for user in (await db.scalars(select(User).where(
+            User.username.in_(agents) | User.display_name.in_(agents)))).all()}
+        agents = [agent_users.get(name.casefold(), name) for name in agents]
+    compensation = _amount_text(data.get("settlement_amount") or data.get("judgment_amount"))
     return {
         "法院": court,
         "法院案号": _first(data, *case_no_keys),
@@ -337,6 +498,14 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
         "客户名称": record.customer or "",
         "案件编号": record.serial_no,
         "生成日期": f"{today.year}年{today.month}月{today.day}日",
+        "原告信息": await _party_lines(data, plaintiffs, "plaintiff_identities", db, defendant=False),
+        "被告信息": await _party_lines(data, defendants, "defendant_identities", db, defendant=True),
+        # 没登记原告代理人时按开庭律师（和撤诉申请书一致）。
+        "委托诉讼代理人": "、".join(agents) or people(hearing),
+        "代理律所": agent_firm or FIRM_NAME,
+        "赔偿金额": compensation,
+        "赔偿金额大写": amount_upper(compensation) if compensation else "",
+        **FIRM_ACCOUNT,
     }
 
 
@@ -344,10 +513,20 @@ async def _fields(record: BusinessRecord, item: dict, content: bytes, db: AsyncS
     auto = await case_field_values(record, db)
     slots = resolve_slots(scan(content), item.get("mapping"))
     sources = {slot["key"]: slot["source"] for slot in slots}
+    optional = set(item.get("optional") or [])
+    values = {}
+    for key in field_keys(slots):
+        if key in DERIVED_FIELDS:
+            continue
+        values[key] = str(overrides.get(key, auto.get(key, "") if sources[key] == "case" else "")).strip()
+    for key, base in DERIVED_FIELDS.items():
+        if key in sources:
+            values[key] = amount_upper(values.get(base, auto.get(base, ""))) if values.get(base, auto.get(base, "")) else ""
     result = []
     for key in field_keys(slots):
-        value = str(overrides.get(key, auto.get(key, "") if sources[key] == "case" else "")).strip()
-        result.append({"key": key, "value": value, "source": sources[key], "missing": not value,
+        value = values[key]
+        result.append({"key": key, "value": value, "source": sources[key], "missing": not value and key not in optional,
+                       "optional": key in optional, "derived": key in DERIVED_FIELDS, "multiline": key in MULTILINE_FIELDS,
                        "options": (item.get("options") or {}).get(key, [])})
     return result, slots
 
@@ -510,7 +689,7 @@ async def preview_document(case_id: int, template_id: str, body: GenerateInput, 
                            db: AsyncSession = Depends(get_db)):
     """列出字段（系统取的值、缺哪些）和替换后的正文，不保存。"""
     record, item, fields, missing, content, slots = await _render(case_id, template_id, body, identity, db, write=False)
-    filled = fill(content, slots, {field["key"]: field["value"] or "【" + field["key"] + "待填写】" for field in fields})
+    filled = fill(content, slots, {field["key"]: field["value"] or (BLANK if field["optional"] else "【" + field["key"] + "待填写】") for field in fields})
     return {"template": _public(item), "fields": fields, "missing": missing, "paragraphs": paragraphs(filled),
             "filename": f"{record.serial_no}-{item['name']}.docx"}
 
@@ -522,7 +701,7 @@ async def download_preview(case_id: int, template_id: str, body: GenerateInput, 
     record, item, fields, missing, content, slots = await _render(case_id, template_id, body, identity, db, write=False)
     if missing:
         raise HTTPException(422, "还缺：" + "、".join(missing))
-    return _docx_response(fill(content, slots, {field["key"]: field["value"] for field in fields}), f"{record.serial_no}-{item['name']}.docx")
+    return _docx_response(fill(content, slots, {field["key"]: field["value"] or (BLANK if field["optional"] else "") for field in fields}), f"{record.serial_no}-{item['name']}.docx")
 
 
 @router.post("/cases/{case_id}/documents/word-templates/{template_id}/generate", status_code=status.HTTP_201_CREATED)
@@ -535,7 +714,7 @@ async def generate_document(case_id: int, template_id: str, body: GenerateInput,
     record, item, fields, missing, content, slots = await _render(case_id, template_id, body, identity, db, write=True)
     if missing:
         raise HTTPException(422, "还缺：" + "、".join(missing) + "，补齐后再生成")
-    document = fill(content, slots, {field["key"]: field["value"] for field in fields})
+    document = fill(content, slots, {field["key"]: field["value"] or (BLANK if field["optional"] else "") for field in fields})
     safe = "".join(char for char in item["name"] if char not in '\\/:*?"<>|')[:60]
     filename = _case_ai_draft_name(f"{record.serial_no}_{safe}_{datetime.now():%Y%m%d%H%M%S}.docx")
 
