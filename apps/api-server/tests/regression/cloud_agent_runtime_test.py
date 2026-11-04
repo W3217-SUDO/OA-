@@ -286,3 +286,30 @@ def test_cloud_prompt_keeps_deliverables_out_of_sandbox():
     assert "不要在沙箱里生成要交给用户的 Word" in prompt and "把完整正文直接写在本次回答里" in prompt
     assert "第一行写文书标题" in prompt
     assert "mcp__oa__" not in prompt and "普通写入参数齐全即直接执行" in prompt  # OA 业务规则仍随云端一起生效
+
+
+def test_stop_sends_interrupt_to_cloud_session():
+    posted = []
+
+    def handler(request: httpx.Request):
+        if request.url.path.endswith("/events/stream"):
+            async def body():
+                yield b": ready\n\n"
+                await asyncio.sleep(30)  # 云端一直在跑
+            return httpx.Response(200, content=body(), headers={"content-type": "text/event-stream"})
+        posted.append(json.loads(request.content))
+        return httpx.Response(200, json={"data": []})
+
+    async def scenario():
+        async with ArkClient(FAKE_KEY, base_url="https://ark.test/api/v3", transport=httpx.MockTransport(handler)) as client:
+            task = asyncio.create_task(run_turn(client, "sesn-1", [], FakeTools(), _noop, None))
+            await asyncio.sleep(0.2)
+            task.cancel()  # 用户点“停止”
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    asyncio.run(scenario())
+    assert posted[0]["events"][0]["type"] == "user.message"
+    assert posted[-1] == {"events": [{"type": "user.interrupt"}]}

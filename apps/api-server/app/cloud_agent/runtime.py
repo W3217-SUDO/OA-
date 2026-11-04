@@ -264,6 +264,24 @@ def final_answer(messages: list[str], tool_marks: list[int]) -> str:
 
 async def run_turn(client: ArkClient, session_id: str, blocks: list[dict], guarded: WorkspaceTools, on_delta, on_progress,
                    usage=None, active_before: float = 0.0) -> str:
+    """用户点“停止”或本轮超时时，同时让火山那边停下（user.interrupt），不再继续计时，下一条消息也不会排在后面。"""
+    try:
+        return await _run_turn(client, session_id, blocks, guarded, on_delta, on_progress, usage, active_before)
+    except (asyncio.CancelledError, TimeoutError):
+        await _interrupt(client, session_id)
+        raise
+
+
+async def _interrupt(client: ArkClient, session_id: str) -> None:
+    try:
+        await asyncio.wait_for(asyncio.shield(client.request(
+            "POST", f"/sessions/{session_id}/events", json_body={"events": [{"type": "user.interrupt"}]})), 5)
+    except BaseException as exc:  # 中断只是尽力而为，失败只记日志
+        logger.warning("cloud_agent_interrupt_failed session=%s error=%s", session_id, type(exc).__name__)
+
+
+async def _run_turn(client: ArkClient, session_id: str, blocks: list[dict], guarded: WorkspaceTools, on_delta, on_progress,
+                    usage=None, active_before: float = 0.0) -> str:
     pending: dict[str, dict] = {}
     streamed: dict[str, str] = {}
     messages: list[str] = []
