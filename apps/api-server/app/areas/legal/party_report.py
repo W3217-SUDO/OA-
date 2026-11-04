@@ -308,7 +308,8 @@ def render_due_diligence(record, name: str, role: str, detail: dict, risk: dict 
     level = risk_level("可以作为被告" in subject, cancelled, risk, abnormal=bool(detail.get("abnormal") or detail.get("revoke_date")))
     execution, reasons = party_risk.enforceability(risk) if risk else ("", [])
     sections = (risk or {}).get("sections") or {}
-    report_no = f"沪知尽调-{record.serial_no}-{today:%Y%m%d}"
+    # 501368：企业信息查询页不关联案件也能生成，报告编号改用信用代码，“所属案件”写“未关联案件”。
+    report_no = f"沪知尽调-{record.serial_no if record else (detail.get('credit_code') or 'QY')}-{today:%Y%m%d}"
     business_source = business_source or (f"企查查企业工商信息（{str(detail.get('queried_at') or '')[:10]} 查询）"
                                           if detail.get("queried_at") else "企查查企业工商信息")
 
@@ -343,13 +344,13 @@ def render_due_diligence(record, name: str, role: str, detail: dict, risk: dict 
         paragraph.paragraph_format.line_spacing = 1.0
         return paragraph
 
-    cover_line(f"{role}尽职调查报告", 28, before=110, after=4, bold=True, color=GREEN_DARK)
+    cover_line(f"{role or '企业'}尽职调查报告", 28, before=110, after=4, bold=True, color=GREEN_DARK)
     cover_line("Due Diligence Report", 12, before=0, after=26, color=GREY)
     cover_line(name, 18, before=0, after=30, bold=True)
     cover = document.add_table(rows=0, cols=2)
     _borders(cover, LINE, 4, inside=True)
     for label, value in (("被调查企业", name), ("统一社会信用代码", detail.get("credit_code") or ""),
-                         ("所属案件", f"{record.serial_no}  {record.title}"), ("出具单位", FIRM),
+                         ("所属案件", f"{record.serial_no}  {record.title}" if record else "未关联案件"), ("出具单位", FIRM),
                          ("出具日期", f"{today.year} 年 {today.month} 月 {today.day} 日"), ("报告编号", report_no), ("报告性质", "仅供内部参考")):
         cells = cover.add_row().cells
         _shade(cells[0], GREEN_LIGHT)

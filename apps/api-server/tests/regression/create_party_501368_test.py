@@ -84,6 +84,36 @@ class CreatePartyTest(unittest.IsolatedAsyncioTestCase):
             await qcc.lookup_company_library(qcc.CompanyLibraryLookupInput(keyword="合肥鹿山鸣贸易有限公司", refresh=True), LAWYER, db)
             self.assertEqual(len(self.calls), 2, "只有重新查询才再扣一次")
 
+    async def test_library_documents_generate_list_download_without_case(self):
+        import tempfile
+        from pathlib import Path
+        from app.areas.legal import party_risk
+        with tempfile.TemporaryDirectory() as folder, patch("app.core.constants.UPLOAD_ROOT", Path(folder)), \
+                patch.object(party_risk, "provider", self._off):
+            async with self.sessions() as db:
+                with self.assertRaises(HTTPException) as caught:
+                    await qcc.generate_company_library_document(qcc.LibraryDocumentInput(keyword="合肥鹿山鸣贸易有限公司", kind="basic"), LAWYER, db)
+                self.assertEqual(caught.exception.status_code, 409, "库里没有就先查询")
+                await qcc.save_qcc_credentials(qcc.CredentialInput(key="fake-key-12345678", secret="fake-secret-87654321"), ADMIN, db)
+                await qcc.lookup_company_library(qcc.CompanyLibraryLookupInput(keyword="合肥鹿山鸣贸易有限公司"), LAWYER, db)
+                basic = await qcc.generate_company_library_document(qcc.LibraryDocumentInput(keyword="合肥鹿山鸣贸易有限公司", kind="basic"), LAWYER, db)
+                report = await qcc.generate_company_library_document(qcc.LibraryDocumentInput(keyword="91340100AAAAAAAAAA", kind="due_diligence"), LAWYER, db)
+                again = await qcc.generate_company_library_document(qcc.LibraryDocumentInput(keyword="合肥鹿山鸣贸易有限公司", kind="due_diligence"), LAWYER, db)
+                self.assertEqual(len(self.calls), 1, "生成和重新生成都不再调企查查")
+                self.assertEqual((basic["label"], report["label"]), ("企业基本信息表", "企业尽职调查报告"))
+                listed = await qcc.list_company_library_documents("合肥鹿山鸣贸易有限公司", LAWYER, db)
+                self.assertEqual([item["id"] for item in listed["items"]], [again["id"], report["id"], basic["id"]], "旧版本保留，新的在前")
+                response = await qcc.download_company_library_document(report["id"], LAWYER, db)
+                content = Path(response.path).read_bytes()
+                self.assertTrue(content.startswith(b"PK"), "是 Word 文件")
+                import io, zipfile
+                xml = zipfile.ZipFile(io.BytesIO(content)).read("word/document.xml").decode("utf-8")
+                self.assertIn("未关联案件", xml)
+                self.assertIn("企业尽职调查报告", xml)
+
+    async def _off(self, db):
+        return "off"
+
 
 class CompanyInfoMenuDefaultTest(unittest.TestCase):
     def test_party_center_users_get_company_info_page(self):

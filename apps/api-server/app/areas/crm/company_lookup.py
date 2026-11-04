@@ -512,6 +512,106 @@ async def lookup_company_library(body: CompanyLibraryLookupInput, identity: dict
     return {**detail, "roles": await _library_roles(db, str(detail.get("name") or ""), str(detail.get("credit_code") or ""))}
 
 
+# ---------- 企业信息库文档（501368，陶国南 11-04 17:27） ----------
+# 企业基本信息表、尽职调查报告在这里生成和查看，不关联案件：只用企业信息库里已存的工商信息（不扣企查查次数）；
+# 尽调报告的风险数据与案件里相同（30 天内查过的直接用，否则按设置查一次）。每次生成新存一份，旧的保留。
+LIBRARY_DOCUMENT_CATEGORY = "企业信息库文档"
+LIBRARY_DOCUMENT_KINDS = {"basic": "企业基本信息表", "due_diligence": "企业尽职调查报告"}
+
+
+class LibraryDocumentInput(BaseModel):
+    keyword: str = Field(min_length=2, max_length=60, description="企业全称或统一社会信用代码")
+    kind: str = Field(pattern="^(basic|due_diligence)$")
+
+
+def _library_document_key(detail: dict) -> str:
+    return str(detail.get("credit_code") or detail.get("name") or "").strip().upper()
+
+
+def _library_document_dict(item) -> dict:
+    kind, _, key = str(item.remark or "").partition("|")
+    return {"id": item.id, "kind": kind, "label": LIBRARY_DOCUMENT_KINDS.get(kind, ""), "name": item.original_name,
+            "created_by": item.uploader, "created_at": item.created_at, "size": item.size}
+
+
+@router.post(f"{settings.api_prefix}/company-library/documents", status_code=201)
+async def generate_company_library_document(body: LibraryDocumentInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """生成企业基本信息表或尽职调查报告（不关联案件）；只用已存的工商信息，没查过的先查询。"""
+    from uuid import uuid4
+    from app.areas.legal.case_parties import NOT_COVERED, _covered, _risks, _suability
+    from app.areas.legal.party_report import render_company_sheet, render_due_diligence
+    from app.core.constants import UPLOAD_ROOT
+    from app.models import FileAttachment
+    await _require_company_library(identity, db)
+    detail = await company_profile(db, body.keyword.strip())
+    if not detail:
+        raise HTTPException(409, "企业信息库里还没有这家企业，请先点“查企查查”查到后再生成")
+    name = str(detail.get("name") or body.keyword).strip()
+    rows = business_rows(detail)
+    risk, risk_note = None, ""
+    if body.kind == "basic":
+        content = render_company_sheet(detail, business_rows=rows)
+    else:
+        from app.areas.legal import party_risk
+        risk, risk_note = await party_risk.risk_for(db, name=name, credit_code=str(detail.get("credit_code") or ""),
+                                                    username=identity["username"], keywords=[name, body.keyword.strip()])
+        subject, notes = _suability(detail, name)
+        content = render_due_diligence(None, name, "", detail, risk, risk_note=risk_note or "风险扫描接口未开通", subject=subject,
+                                       subject_notes=notes, business_rows=rows, business_risks=_risks(detail),
+                                       not_covered=[item for item in NOT_COVERED if not risk or not _covered(item, risk)])
+    safe = "".join(char for char in name if char not in '\\/:*?"<>|')[:60]
+    filename = f"{LIBRARY_DOCUMENT_KINDS[body.kind]}_{safe}_{_now():%Y%m%d-%H%M}.docx"
+    stored_name = f"{uuid4().hex}.docx"
+    stored_path = UPLOAD_ROOT / stored_name
+    stored_path.write_bytes(content)
+    item = FileAttachment(record_id=None, category=LIBRARY_DOCUMENT_CATEGORY, original_name=filename, stored_name=stored_name,
+                          content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                          size=len(content), path=str(stored_path), uploader=identity["username"],
+                          remark=f"{body.kind}|{_library_document_key(detail)}")
+    try:
+        db.add(item)
+        await db.commit()
+        await db.refresh(item)
+    except Exception:
+        await db.rollback()
+        stored_path.unlink(missing_ok=True)
+        raise
+    return {**_library_document_dict(item), "risk": bool(risk), "risk_note": risk_note}
+
+
+@router.get(f"{settings.api_prefix}/company-library/documents")
+async def list_company_library_documents(keyword: str = Query(min_length=2, max_length=60), identity: dict = Depends(current_identity),
+                                         db: AsyncSession = Depends(get_db)):
+    """这家企业以前生成过的企业基本信息表和尽职调查报告，新的在前。"""
+    from app.models import FileAttachment
+    await _require_company_library(identity, db)
+    detail = await company_profile(db, keyword.strip())
+    keys = {keyword.strip().upper()} | ({_library_document_key(detail), str(detail.get("name") or "").strip().upper()} if detail else set())
+    rows = (await db.scalars(select(FileAttachment).where(
+        FileAttachment.category == LIBRARY_DOCUMENT_CATEGORY,
+        or_(*[FileAttachment.remark.like(f"%|{key}") for key in keys if key]),
+    ).order_by(FileAttachment.id.desc()))).all()
+    return {"items": [_library_document_dict(item) for item in rows]}
+
+
+@router.get(f"{settings.api_prefix}/company-library/documents/{{document_id}}/download")
+async def download_company_library_document(document_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from pathlib import Path
+    from urllib.parse import quote
+    from fastapi.responses import FileResponse
+    from app.core.constants import UPLOAD_ROOT
+    from app.models import FileAttachment
+    await _require_company_library(identity, db)
+    item = await db.get(FileAttachment, document_id)
+    if not item or item.category != LIBRARY_DOCUMENT_CATEGORY:
+        raise HTTPException(404, "文档不存在")
+    path = Path(str(item.path))
+    if not path.is_file() or UPLOAD_ROOT.resolve() not in path.resolve().parents:
+        raise HTTPException(404, "文档文件不存在")
+    return FileResponse(path, media_type=item.content_type or "application/octet-stream",
+                        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(item.original_name)}"})
+
+
 # ---------- 新建对方当事人（501368） ----------
 # 智能体拿到公司全称后查过企查查，用户选“新建对方当事人”时用这里登记：存进当事人档案（DSR 编号），带上已查到的工商信息，
 # 不再调企查查、不扣费；客户或当事人里已有同名或同信用代码的不重复建。当事人中心按案件列出，案件里填为当事人后才进列表。
