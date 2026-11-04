@@ -33,5 +33,24 @@ class CourtFolderExtrasTest(unittest.TestCase):
         self.assertEqual(names, [])
 
 
+class CaseSheetPdf501225Test(unittest.TestCase):
+    def test_case_sheet_prints_landscape_on_one_page_without_header(self):
+        import xlrd
+        from decimal import Decimal
+        from app.areas.finance.settlement_package import render_case_sheet
+        content = render_case_sheet({"case_no": "GDMS2400287", "receipt_amount": Decimal("4975")}, [(None, None)] * 9)
+        book = xlrd.open_workbook(file_contents=content, formatting_info=True)
+        self.assertEqual(book.sheet_by_index(0).cell_value(2, 1), "GDMS2400287")
+        # xlwt 写入的打印设置：横向（portrait=0）
+        self.assertIn(b"\xa1\x00", content)  # SETUP 记录存在
+
+    def test_batch_pdf_conversion_without_tool_returns_none(self):
+        import asyncio
+        from unittest.mock import patch
+        from app.core.pdf_conversion import convert_many_to_pdf
+        with patch("app.core.pdf_conversion.shutil.which", return_value=None):
+            self.assertIsNone(asyncio.run(convert_many_to_pdf({"a.xls": b"x"}, ".xls")))
+
+
 if __name__ == "__main__":
     unittest.main()

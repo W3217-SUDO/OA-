@@ -77,3 +77,34 @@ async def convert_to_pdf(name: str, content: bytes) -> bytes:
             if process.returncode != 0 or not output.is_file():
                 raise HTTPException(502, "PDF 转换没有成功，请稍后重试或下载 Word")
             return output.read_bytes()
+
+
+async def convert_many_to_pdf(files: dict[str, bytes], suffix: str) -> dict[str, bytes] | None:
+    """一批同类文件一次 LibreOffice 转成 PDF（结算单压缩包里每案一张个案结算表，501225）。
+
+    返回 {原名: PDF}；没转成的不在结果里，由调用方说明，不影响原文件下载。服务器没装转换工具时返回 None。"""
+    soffice = shutil.which("soffice")
+    if not soffice:
+        return None
+    if not files:
+        return {}
+    async with _SLOTS:
+        with tempfile.TemporaryDirectory(prefix="oa-pdf-batch-") as work:
+            names = {}
+            for index, (name, content) in enumerate(files.items()):
+                source = Path(work) / f"f{index}{suffix}"
+                source.write_bytes(content)
+                names[source.stem] = name
+            process = await asyncio.create_subprocess_exec(
+                "nice", "-n", "10", soffice, "--headless", "--norestore", "--nologo",
+                f"-env:UserInstallation=file://{work}/profile", "--convert-to", "pdf", "--outdir", work,
+                *(str(Path(work) / f"{stem}{suffix}") for stem in names),
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+                env={"HOME": work, "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"},
+            )
+            try:
+                await asyncio.wait_for(process.wait(), _TIMEOUT_SECONDS + 2 * len(files))
+            except TimeoutError:
+                process.kill()
+                await process.wait()
+            return {name: (Path(work) / f"{stem}.pdf").read_bytes() for stem, name in names.items() if (Path(work) / f"{stem}.pdf").is_file()}
