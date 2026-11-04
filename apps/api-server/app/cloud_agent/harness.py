@@ -49,12 +49,12 @@ def schemas(*, datapro: bool, search: bool) -> list[dict]:
     return [item for item, on in ((DATAPRO_TOOL, datapro), (SEARCH_TOOL, search)) if on]
 
 
-def _clip(value) -> dict:
+def _clip(value, max_chars: int = MAX_RESULT_CHARS) -> dict:
     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
-    return {"result": text[:MAX_RESULT_CHARS], "truncated": len(text) > MAX_RESULT_CHARS}
+    return {"result": text[:max_chars], "truncated": len(text) > max_chars}
 
 
-async def datapro(plan_key: str, arguments: dict) -> dict:
+async def datapro(plan_key: str, arguments: dict, *, max_chars: int = MAX_RESULT_CHARS) -> dict:
     query = arguments.get("query") if isinstance(arguments, dict) else None
     if not isinstance(query, str) or not 2 <= len(query.strip()) <= 20000:
         raise HTTPException(422, "专业数据集 query 需为 2～20000 字")
@@ -76,8 +76,8 @@ async def datapro(plan_key: str, arguments: dict) -> dict:
         result = await session.call_tool(tool.name, {required[0]: query.strip()})
     text = "\n".join(getattr(block, "text", "") for block in result.content if getattr(block, "type", "") == "text")
     if result.is_error:
-        return {"isError": True, "message": "专业数据集查询失败", **_clip(text)}
-    return _clip(text)
+        return {"isError": True, "message": "专业数据集查询失败", **_clip(text, max_chars)}
+    return _clip(text, max_chars)
 
 
 async def doubao_search(plan_key: str, arguments: dict, transport=None) -> dict:

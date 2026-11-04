@@ -54,11 +54,16 @@ function CasePartyInfoModal({ caseId, name, onClose }: { caseId: number; name: s
   const [saving, setSaving] = useState("");
   const saveDocument = async (kind: "basic" | "due_diligence") => {
     setSaving(kind);
+    // 尽调报告要查一次企业风险数据（30 天内查过的直接用），第一次约半分钟。
+    const hide = kind === "due_diligence" ? message.loading("正在查询企业风险数据并生成报告，第一次约半分钟…", 0) : undefined;
     try {
-      const { data } = await api.post<{ file: { original_name?: string; name?: string } }>(`/cases/${caseId}/parties/documents`, { name, kind });
-      message.success(`已存到案件空间：${data.file.original_name || data.file.name || ""}`);
+      const { data } = await api.post<{ file: { original_name?: string; name?: string }; risk?: boolean; risk_note?: string }>(
+        `/cases/${caseId}/parties/documents`, { name, kind });
+      const saved = `已存到案件空间：${data.file.original_name || data.file.name || ""}`;
+      if (kind === "due_diligence" && !data.risk) message.warning(`${saved}。${data.risk_note || "风险数据未查到"}，报告只有工商部分`, 6);
+      else message.success(saved);
     } catch (failure) { message.error(errorText(failure, "生成失败")); }
-    finally { setSaving(""); }
+    finally { hide?.(); setSaving(""); }
   };
   const confirmRefresh = () => Modal.confirm({
     title: "重新查询工商信息？", content: "会再调用一次企查查企业工商信息接口，计费 0.20 元。", okText: "重新查询", cancelText: "取消",

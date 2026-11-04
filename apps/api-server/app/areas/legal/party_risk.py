@@ -15,7 +15,7 @@ ITEM_LIMIT = 20
 
 # 类目：(标题, [(字段, 表头)])；报告按这个顺序出表。
 SECTIONS = {
-    "executed": ("被执行人", [("date", "立案日期"), ("court", "执行法院"), ("amount", "执行标的(元)")]),
+    "executed": ("被执行人", [("date", "立案日期"), ("court", "执行法院"), ("case_no", "案号"), ("amount", "执行标的(元)")]),
     "dishonest": ("失信被执行人", [("date", "立案日期"), ("case_no", "案号"), ("court", "执行法院"), ("performance", "履行情况")]),
     "restricted": ("限制高消费", [("date", "立案日期"), ("court", "法院"), ("reason", "案由"), ("applicant", "申请人")]),
     "end_execution": ("终结本次执行", [("date", "立案日期"), ("end_date", "终本日期"), ("court", "法院"), ("target", "执行标的(元)"), ("unfulfilled", "未履行(元)")]),
@@ -93,7 +93,13 @@ def csv_rows(text: str) -> list[dict]:
     return [dict(zip(keys, row)) for row in reader]
 
 
-def normalize_volc(summary: dict, judicial: list[dict], risks: list[dict], *, queried_at: str) -> dict:
+# 火山“司法诉讼信息”里按案件统计的条数（比 CSV 逐条明细准：同一案件会有多条执行记录）
+JUDICIAL_COUNTS = {"executed": "作为被执行人的案件数", "dishonest": "失信被执行人案件数", "restricted": "限制高消费案件数",
+                   "end_execution": "终本案件总数", "bankruptcy": "破产重整总数", "auction": "司法拍卖案件数",
+                   "filing": "立案总案件数", "court_notice": "开庭公告总数", "judgement": "裁判文书总数"}
+
+
+def normalize_volc(summary: dict, judicial: list[dict], risks: list[dict], *, queried_at: str, judicial_summary: dict | None = None) -> dict:
     name = str(summary.get("企业名称") or "").strip()
     buckets: dict[str, dict[str, dict]] = {key: {} for key in SECTIONS}
 
@@ -105,7 +111,8 @@ def normalize_volc(summary: dict, judicial: list[dict], risks: list[dict], *, qu
         if row.get("company_executed_id"):
             detail = _json(row.get("company_executed_content_details")) or {}
             put("executed", row["company_executed_id"], {"date": _day(detail.get("executed_start_date")), "court": detail.get("executed_court") or "",
-                                                         "case_no": detail.get("executed_case_no") or "", "amount": _money(detail.get("executed_amount"))})
+                                                         "case_no": detail.get("executed_case_no") or row.get("case_no") or "",
+                                                         "amount": _money(detail.get("executed_amount"))})
         if row.get("dishonest_id"):
             detail = _json(row.get("dishonest_content_details")) or {}
             put("dishonest", row["dishonest_id"], {"date": _day(detail.get("start_date") or detail.get("dishonest_start_date")),
@@ -169,15 +176,24 @@ def normalize_volc(summary: dict, judicial: list[dict], risks: list[dict], *, qu
         elif kind == "bankruptcy":
             put("bankruptcy", ident, {"date": _day(row.get("bankruptcy_risk_date")), "court": row.get("bankruptcy_court_name") or "",
                                       "type": row.get("bankruptcy_case_type") or "", "applicant": row.get("bankruptcy_applicant") or ""})
-    amounts = {"executed": "amount", "end_execution": "unfulfilled", "penalty": "amount", "own_tax": "balance", "mortgage": "amount"}
+    # 被执行金额不汇总：同一案件恢复执行等会有多条记录，加总会重复。
+    amounts = {"end_execution": "unfulfilled", "penalty": "amount", "own_tax": "balance", "mortgage": "amount"}
     flags = {label: str(summary.get(key)) == "1" for label, key in (
         ("失信", "是否有失信记录，1有，0无"), ("欠税", "是否有欠税记录，1有，0无"),
         ("经营异常", "是否有经营异常记录，1有，0无"), ("税收违法", "是否有税收违法记录，1有，0无"))}
+    sections = {key: _section(list(items.values()), amount_key=amounts.get(key, ""), latest=key == "own_tax")
+                for key, items in buckets.items() if items}
+    for key, field in JUDICIAL_COUNTS.items():
+        try:
+            official = int((judicial_summary or {}).get(field) or 0)
+        except (TypeError, ValueError):
+            continue
+        if official and key in sections:
+            sections[key]["count"] = official
     return {"source": "volc", "source_label": SOURCE_LABELS["volc"], "queried_at": queried_at, "name": name,
             "credit_code": summary.get("统一社会信用代码") or "", "flags": flags,
             "industry": "／".join(part for part in (summary.get("一级行业名称"), summary.get("二级行业名称")) if part),
-            "sections": {key: _section(list(items.values()), amount_key=amounts.get(key, ""), latest=key == "own_tax")
-                         for key, items in buckets.items() if items}}
+            "sections": sections}
 
 
 # ---------- 企查查 736 企业风险扫描 ----------
@@ -237,8 +253,7 @@ def enforceability(risk: dict) -> tuple[str, list[str]]:
     if count("restricted"):
         reasons.append(f"被限制高消费 {count('restricted')} 次。")
     if count("executed"):
-        total = _yuan(amount("executed"))
-        reasons.append(f"被执行人记录 {count('executed')} 条{f'，执行标的累计 {total}' if total else ''}。")
+        reasons.append(f"作为被执行人的案件 {count('executed')} 件。")
     if count("auction"):
         reasons.append(f"有司法拍卖 {count('auction')} 次，名下财产已被处置。")
     if count("own_tax"):
@@ -279,3 +294,151 @@ def item_text(key: str, item: dict) -> list[str]:
 def stale(risk: dict, days: int = 30) -> bool:
     queried = _day(risk.get("queried_at"))
     return not queried or (date.today() - date.fromisoformat(queried)).days > days
+
+
+# ---------- 查询与存档 ----------
+# 数据源开关：系统配置 party_risk_provider = {"provider": "volc" | "qcc736" | "off"}，默认火山（陶威 11-04 定先用火山试，
+# 企查查企业风险扫描 736 接入保留，买了以后把开关改成 qcc736 即可）。查到的结果整理后按名称、信用代码存档，30 天内再生成报告直接用。
+PROVIDER_KEY = "party_risk_provider"
+RISK_DAYS = 30
+VOLC_QUERY = "{name} 企业风险：司法诉讼、失信被执行、被执行、限制高消费、终本、经营异常、行政处罚、欠税"
+QCC736_PATH = "/ECIInfoOverview/GetInfo"
+MAX_CSV_BYTES = 40 * 1024 * 1024
+
+
+def _risk_key(keyword: str) -> str:
+    import hashlib
+    return "risk_p_" + hashlib.sha256(keyword.strip().encode()).hexdigest()[:40]
+
+
+async def provider(db) -> str:
+    from sqlalchemy import select
+    from app.models import SystemConfig
+    record = await db.scalar(select(SystemConfig).where(SystemConfig.key == PROVIDER_KEY))
+    value = record.value if record is not None and isinstance(record.value, dict) else {}
+    return value.get("provider") if value.get("provider") in ("volc", "qcc736", "off") else "volc"
+
+
+async def stored_risk(db, *keywords: str) -> dict | None:
+    from sqlalchemy import select
+    from app.models import SystemConfig
+    for keyword in [item.strip() for item in keywords if item and item.strip()]:
+        record = await db.scalar(select(SystemConfig).where(SystemConfig.key == _risk_key(keyword)))
+        if record is not None and isinstance((record.value or {}).get("data"), dict):
+            return record.value["data"]
+    return None
+
+
+async def _store_risk(db, keywords: list[str], risk: dict) -> None:
+    from sqlalchemy import select
+    from app.models import SystemConfig
+    for keyword in dict.fromkeys(item.strip() for item in keywords if item and item.strip()):
+        key = _risk_key(keyword)
+        record = await db.scalar(select(SystemConfig).where(SystemConfig.key == key)) or SystemConfig(
+            key=key, label="当事人风险档案", group="外部接口缓存", value={}, description="")
+        record.value = {"data": risk, "keyword": keyword[:60]}
+        db.add(record)
+
+
+async def _download_csv(url: str) -> list[dict]:
+    import httpx
+    from fastapi import HTTPException
+    if not str(url or "").startswith("https://datapro.hqd.cn-beijing.volces.com/"):
+        return []
+    chunks, size = [], 0
+    async with httpx.AsyncClient(timeout=httpx.Timeout(20, read=90), follow_redirects=True, trust_env=False) as client:
+        async with client.stream("GET", url) as response:
+            if response.status_code != 200:
+                raise HTTPException(502, f"火山风险库明细下载失败（{response.status_code}）")
+            async for chunk in response.aiter_bytes():
+                size += len(chunk)
+                if size > MAX_CSV_BYTES:
+                    raise HTTPException(502, "火山风险库明细太大，下载中止")
+                chunks.append(chunk)
+    return csv_rows(b"".join(chunks).decode("utf-8", errors="replace"))
+
+
+def _volc_item(payload, name: str, credit_code: str) -> dict | None:
+    """在返回里找本企业那一条（名称或信用代码对得上）。"""
+    found = []
+
+    def walk(value):
+        if isinstance(value, dict):
+            if isinstance(value.get("企业风险信息"), dict):
+                found.append(value)
+                return
+            for child in value.values():
+                walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                walk(child)
+    walk(payload)
+    for item in found:
+        info = item["企业风险信息"]
+        if (credit_code and info.get("统一社会信用代码") == credit_code) or info.get("企业名称") == name:
+            return item
+    return found[0] if len(found) == 1 and not credit_code else None
+
+
+async def _fetch_volc(db, name: str, credit_code: str) -> dict:
+    from fastapi import HTTPException
+    from app.cloud_agent import config as cloud_config, harness
+    _record, value = await cloud_config.load(db)
+    settings = cloud_config.resolve(value)
+    if not settings.plan_key:
+        raise HTTPException(409, "火山专业数据集未配置（智能体设置 › 云端智能体 › Agent Plan Key）")
+    result = await harness.datapro(settings.plan_key, {"query": VOLC_QUERY.format(name=name)}, max_chars=2_000_000)
+    if result.get("isError") or result.get("truncated"):
+        raise HTTPException(502, "火山风险库查询失败")
+    try:
+        payload = json.loads(result.get("result") or "")
+    except ValueError as exc:
+        raise HTTPException(502, "火山风险库返回格式无法识别") from exc
+    item = _volc_item(payload, name, credit_code)
+    if item is None:
+        raise HTTPException(404, "火山风险库没有查到这家企业")
+    judicial = await _download_csv(item.get("司法诉讼全量数据下载地址"))
+    risks = await _download_csv(item.get("企业风险信息全量数据下载地址"))
+    from datetime import datetime
+    return normalize_volc(item["企业风险信息"], judicial, risks, queried_at=datetime.now().astimezone().isoformat(timespec="seconds"),
+                          judicial_summary=item.get("司法诉讼信息") if isinstance(item.get("司法诉讼信息"), dict) else None)
+
+
+async def _fetch_qcc736(db, name: str, credit_code: str, username: str) -> dict:
+    from fastapi import HTTPException
+    from datetime import datetime
+    from app.areas.crm import company_lookup as qcc
+    key, secret, _ = await qcc.credentials(db)
+    await qcc._check_quota(db, username)
+    keyword = credit_code or name
+    try:
+        payload = await qcc._qcc_get(QCC736_PATH, {"searchKey": keyword}, key, secret)
+    except HTTPException as exc:
+        await qcc._log(db, username, "risk736", keyword, cached=False, count=0, error=str(exc.detail))
+        raise
+    result = payload.get("Result")
+    if not isinstance(result, dict):
+        raise HTTPException(404, "企查查企业风险扫描没有查到这家企业")
+    await qcc._log(db, username, "risk736", keyword, cached=False, count=1)
+    return normalize_qcc736(result, queried_at=datetime.now().astimezone().isoformat(timespec="seconds"))
+
+
+async def risk_for(db, *, name: str, credit_code: str, username: str, keywords: list[str]) -> tuple[dict | None, str]:
+    """生成尽调报告用的风险数据：30 天内查过的直接用；否则按开关查一次（火山 12 AFP/次，企查查 736 6 元/家）并存档。
+    查不到或失败时报告照样生成，风险部分写明原因。返回 (风险数据或 None, 没有数据时的说明)。"""
+    from fastapi import HTTPException
+    source = await provider(db)
+    if source == "off":
+        return None, "风险扫描接口未开通"
+    stored = await stored_risk(db, credit_code, name, *keywords)
+    if stored and stored.get("source") == source and not stale(stored, RISK_DAYS):
+        return stored, ""
+    try:
+        risk = await (_fetch_volc(db, name, credit_code) if source == "volc" else _fetch_qcc736(db, name, credit_code, username))
+    except HTTPException as exc:
+        if stored:
+            return stored, ""
+        return None, f"风险数据查询失败（{exc.detail}）"
+    await _store_risk(db, [credit_code, name, *keywords], risk)
+    await db.commit()
+    return risk, ""

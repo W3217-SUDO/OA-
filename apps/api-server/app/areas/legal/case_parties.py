@@ -232,7 +232,8 @@ class PartyDocumentInput(BaseModel):
 @router.post(f"{settings.api_prefix}/cases/{{case_id}}/parties/documents")
 async def save_case_party_document(case_id: int, body: PartyDocumentInput,
                                    identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    """把当事人工商信息生成 Word 存到案件 AI 空间：基本信息或尽职调查报告；只用已存的工商信息，不调接口。"""
+    """把当事人工商信息生成 Word 存到案件 AI 空间：基本信息或尽职调查报告。工商信息只用已存的；
+    尽职调查报告另取风险数据（30 天内查过的直接用，否则按开关查一次火山企业风险库或企查查 736），查不到也照样出报告。"""
     from app.core.cases import _case_ai_draft_name
     from app.core.constants import WORD_DOCUMENT_CONTENT_TYPE
     from app.core.generated_file_storage import save_generated_file
@@ -253,13 +254,20 @@ async def save_case_party_document(case_id: int, body: PartyDocumentInput,
     safe = "".join(char for char in name if char not in '\\/:*?"<>|')[:60]
     filename = _case_ai_draft_name(f"{record.serial_no}_{label}_{safe}.docx")
 
+    risk, risk_note = None, ""
+    if body.kind == "due_diligence":
+        from app.areas.legal import party_risk
+        risk, risk_note = await party_risk.risk_for(db, name=detail.get("name") or name, credit_code=detail.get("credit_code") or "",
+                                                    username=identity["username"], keywords=_keywords(name, party_identity))
+    sources = "企查查工商信息" + (f"、{risk['source_label']}" if risk else "")
+
     async def on_available(session, item):
-        item.remark = f"{label}（企查查工商信息生成）"
+        item.remark = f"{label}（{sources}生成）"
         session.add(WorkflowEvent(record_id=record.id, action=f"生成{label}", from_status=record.status,
                                   to_status=record.status, operator=identity["username"], comment=filename))
 
     result = await save_generated_file(
-        db, identity, name=filename, content=render_party_docx(record, name, role, body.kind, detail),
+        db, identity, name=filename, content=render_party_docx(record, name, role, body.kind, detail, risk, risk_note=risk_note or "风险扫描接口未开通"),
         content_type=WORD_DOCUMENT_CONTENT_TYPE, source_kind="case_draft", case_record=record, on_available=on_available,
     )
-    return {"file": _attachment_dict(result["attachment"], record)}
+    return {"file": _attachment_dict(result["attachment"], record), "risk": bool(risk), "risk_note": risk_note}

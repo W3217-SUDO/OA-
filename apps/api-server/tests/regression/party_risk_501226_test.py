@@ -70,5 +70,59 @@ class PartyRiskTest(unittest.TestCase):
         self.assertIn("失信被执行人", bare.split("本报告未核查的事项")[-1])
 
 
+class RiskFetchTest(unittest.IsolatedAsyncioTestCase):
+    """查询与存档：30 天内查过的不再查；查失败照样出报告；开关切到 off / qcc736；官方案件数覆盖逐条明细数。"""
+
+    async def asyncSetUp(self):
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+        from sqlalchemy.pool import StaticPool
+        from app.database import Base
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+        async with self.engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        self.sessions = async_sessionmaker(self.engine, expire_on_commit=False)
+        self.calls = 0
+
+    async def asyncTearDown(self):
+        await self.engine.dispose()
+
+    async def fake_volc(self, db, name, credit_code):
+        self.calls += 1
+        from datetime import datetime
+        return {**party_risk.normalize_volc(SUMMARY, party_risk.csv_rows(JUDICIAL), [], queried_at=datetime.now().isoformat()), "name": name}
+
+    async def test_cached_then_failure_and_switch(self):
+        from unittest.mock import patch
+        from fastapi import HTTPException
+        from app.models import SystemConfig
+        async with self.sessions() as db:
+            with patch.object(party_risk, "_fetch_volc", self.fake_volc):
+                first, note = await party_risk.risk_for(db, name="甲公司", credit_code="91320612MA24U8T39J", username="u", keywords=["甲"])
+                again, _ = await party_risk.risk_for(db, name="甲公司", credit_code="", username="u", keywords=["甲"])
+            self.assertEqual((self.calls, note), (1, ""), "30 天内按案件里的名称也能找到，不再查")
+            self.assertEqual(again["sections"]["executed"]["count"], 1)
+
+            async def broken(*args):
+                raise HTTPException(409, "火山专业数据集未配置")
+            with patch.object(party_risk, "_fetch_volc", broken):
+                none, note = await party_risk.risk_for(db, name="乙公司", credit_code="", username="u", keywords=[])
+            self.assertIsNone(none)
+            self.assertIn("风险数据查询失败（火山专业数据集未配置）", note)
+            db.add(SystemConfig(key=party_risk.PROVIDER_KEY, label="", group="", value={"provider": "off"}, description=""))
+            await db.commit()
+            off, note = await party_risk.risk_for(db, name="甲公司", credit_code="", username="u", keywords=[])
+            self.assertEqual((off, note), (None, "风险扫描接口未开通"))
+
+    def test_official_counts_and_item_match(self):
+        risk = party_risk.normalize_volc(SUMMARY, party_risk.csv_rows(JUDICIAL), [], queried_at="2026-11-04",
+                                         judicial_summary={"作为被执行人的案件数": 20, "立案总案件数": 31})
+        self.assertEqual(risk["sections"]["executed"]["count"], 20, "用火山按案件统计的条数")
+        self.assertIsNone(risk["sections"]["executed"]["amount"], "被执行金额不加总，避免重复")
+        payload = {"data": {"items": [{"企业风险信息": {"企业名称": "丙公司", "统一社会信用代码": "X"}},
+                                      {"企业风险信息": {"企业名称": "甲公司", "统一社会信用代码": "91320612MA24U8T39J"}}]}}
+        self.assertEqual(party_risk._volc_item(payload, "甲", "91320612MA24U8T39J")["企业风险信息"]["企业名称"], "甲公司")
+        self.assertIsNone(party_risk._volc_item(payload, "丁公司", ""), "对不上的不硬套")
+
+
 if __name__ == "__main__":
     unittest.main()
