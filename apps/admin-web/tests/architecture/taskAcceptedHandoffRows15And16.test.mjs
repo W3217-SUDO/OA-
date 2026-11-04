@@ -40,7 +40,7 @@ test("received task detail exposes legal lifecycle actions and permission-gated 
 test("list and mobile detail share manual maintenance and explicit phase-task restart", () => {
   assert.match(source, /!selected\?\.auto_completed \|\| selected\.phase_completion_required/);
   assert.match(source, /!communication\.auto_completed \|\| communication\.phase_completion_required/);
-  assert.match(source, /props\.canMaintainTask\(selected\)[\s\S]*?props\.onMaintainTask\(selected\)/);
+  assert.match(source, /props\.canMaintainTask\(row\)[\s\S]*?props\.onMaintainTask\(selectedRows\[0\], selectedRows\)/);
   assert.match(source, /props\.canMaintainTask\(communication\)[\s\S]*?props\.onMaintainTask\(communication\)/);
   assert.match(source, /api\.post\("\/tasks\/batch-update", \{[\s\S]*?task_ids: \[maintenance\.id\]/);
   assert.match(source, /value\.isAfter\(dayjs\(\)\.add\(30, "day"\), "day"\)/);
