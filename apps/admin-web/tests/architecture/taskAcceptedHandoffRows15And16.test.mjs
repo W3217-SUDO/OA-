@@ -42,7 +42,7 @@ test("list and mobile detail share manual maintenance and explicit phase-task re
   assert.match(source, /!communication\.auto_completed \|\| communication\.phase_completion_required/);
   assert.match(source, /props\.canMaintainTask\(row\)[\s\S]*?props\.onMaintainTask\(selectedRows\[0\], selectedRows\)/);
   assert.match(source, /props\.canMaintainTask\(communication\)[\s\S]*?props\.onMaintainTask\(communication\)/);
-  assert.match(source, /api\.post\("\/tasks\/batch-update", \{[\s\S]*?task_ids: \[maintenance\.id\]/);
+  assert.match(source, /api\.post\("\/tasks\/batch-update", \{[\s\S]*?task_ids: ids/);
   assert.match(source, /value\.isAfter\(dayjs\(\)\.add\(30, "day"\), "day"\)/);
   assert.match(source, /onReviewException\(selected, true\)/);
   assert.match(source, /onReviewException\(selected, false\)/);
