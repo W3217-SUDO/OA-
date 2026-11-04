@@ -35,6 +35,7 @@ export interface CaseAssistantDependencies {
     readonly setAgentScreenshots: React.Dispatch<React.SetStateAction<CaseAgentAttachment[]>>;
     readonly setAgentMaterialPickerOpen: React.Dispatch<React.SetStateAction<boolean>>;
     readonly setAgentSending: React.Dispatch<React.SetStateAction<boolean>>;
+    readonly setAgentProgress?: React.Dispatch<React.SetStateAction<string>>;
     readonly stateWithAgentScreenshotPreviews: (nextState: CaseAgentState) => CaseAgentState;
     readonly viewingCounselCase: CaseRow | null;
     readonly refreshCounselDetailAttachments: (caseId: number) => Promise<any>;
@@ -155,6 +156,7 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
         const controller = new AbortController();
         activeCaseAgentRequestRef.current = controller;
         setAgentSending(true);
+        context.setAgentProgress?.("");
         try {
             const response = await fetch(`/api/v1/case-spaces/${agentCase.id}/agent/messages`, {
                 method: "POST",
@@ -199,6 +201,9 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
                                 { id: streamId, role: "assistant", content: streamedContent },
                             ],
                         } : current);
+                    }
+                    else if (event.type === "progress") {
+                        context.setAgentProgress?.(String(event.text || ""));
                     }
                     else if (event.type === "state") {
                         setAgentState(stateWithAgentScreenshotPreviews(event.state));
@@ -258,6 +263,7 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
             if (activeCaseAgentRequestRef.current === controller) {
                 activeCaseAgentRequestRef.current = null;
                 setAgentSending(false);
+                context.setAgentProgress?.("");
             }
         }
     };

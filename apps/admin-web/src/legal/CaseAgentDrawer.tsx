@@ -61,6 +61,8 @@ interface CaseAgentDrawerProps {
   agentStatus: CaseAgentStatus | null;
   agentLoading: boolean;
   agentSending: boolean;
+  /** 智能体正在做的步骤（如“正在调用：修改案件信息…”），没有时显示默认提示。 */
+  agentProgress?: string;
   agentSkillId: string;
   setAgentSkillId: (id: string) => void;
   loadCaseAgent: (row: CaseRow, resetMaterials?: boolean) => Promise<unknown>;
@@ -108,6 +110,7 @@ export const CaseAgentDrawer = ({
   agentStatus,
   agentLoading,
   agentSending,
+  agentProgress,
   agentSkillId,
   setAgentSkillId,
   loadCaseAgent,
@@ -273,7 +276,7 @@ export const CaseAgentDrawer = ({
             <div className="case-agent-bubble">{item.attachments?.length ? <div className="case-agent-message-attachments">{item.attachments.map((attachment) => attachment.preview_url ? <figure key={attachment.id}><Image src={attachment.preview_url} alt={attachment.name} preview /><figcaption>{attachment.name}</figcaption></figure> : <Tag key={attachment.id}>{attachment.name}</Tag>)}</div> : null}{item.content}</div>
           </div>;
           })}
-          {(agentLoading || agentSending) && <div className="case-agent-thinking"><AgentMascot pose="think" height={30} bob /> {agentSending ? "正在分析案件空间..." : "正在载入会话..."}</div>}
+          {(agentLoading || agentSending) && <div className="case-agent-thinking"><AgentMascot pose="think" height={30} bob /> {agentSending ? (agentProgress || "正在理解您的问题…") : "正在载入会话..."}</div>}
           <AgentToolResult result={[agentState?.structured_results, ...(agentState?.pending_actions || []).filter((item) => item.status === "approved").map((item) => item.execution_result)]} />
           <div ref={agentMessagesEndRef} />
         </div>

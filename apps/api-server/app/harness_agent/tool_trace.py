@@ -62,6 +62,13 @@ def describe(name: str, arguments) -> tuple[str, str]:
         label = "运行技能脚本"
     elif name == "harness_read_skill_resource":
         label = "读取技能资料"
+    elif name.startswith("biz_"):
+        # 办事工具显示中文名（陶国南 11-05：等待时显示实际步骤）。
+        from app.agent_mcp.business_tools import TOOLS
+        tool = TOOLS.get(name)
+        label = tool.title.split("（")[0] if tool else name
+    elif name in ("volc_professional_data", "doubao_search"):
+        label = "查询专业数据集" if name == "volc_professional_data" else "联网搜索"
     detail = json.dumps(_redact(shown), ensure_ascii=False, default=str)
     return label, detail if len(detail) <= _DETAIL_LIMIT else detail[:_DETAIL_LIMIT] + "…"
 

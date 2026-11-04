@@ -68,9 +68,36 @@ CASE_INFO_EDIT_RULES = (
     "内部费用、案件费用等），只依据上面的当前案件空间数据（案件基本信息）和对应的修改接口；"
     "不要读取案件文档、文书、附件或 AI 空间文件，也不要为此再查询整个案件空间或搜索文档类工具。"
     "只有用户明确要求按某份文件内容填写时，才读取那一份文件。"
+    # 陶国南 11-05：常改项一次出确认卡片，不在 25 组里逐个搜功能。
+    "判决/调解金额、诉讼标的、法院信息（法院、案号、法庭、法官、书记员、立案/开庭/判决日期、判决文书号）、开庭律师、案件阶段，"
+    "直接调用 biz_case_update_info（case_id 用当前案件 ID）：先不带 confirm 拿执行计划，用户同意后加 confirm=true 生成确认卡片；"
+    "不要为这些项目调用 oa_list_tool_groups 或 oa_search_tools。"
 )
 
+# 陶国南 11-05：改、填案件信息时不带整个案件空间（费用、文档、任务、线索、检查等），只带案件基本信息，省时间也省费用。
+_EDIT_VERBS = re.compile(r"(改|修改|填|填写|录入|更新|设为|设置为|变更|调整|补上|补填|写上|换成)")
+_EDIT_FIELDS = re.compile(r"(判决金额|调解金额|诉讼标的|标的额|标的|金额|法院|案号|法庭|法官|书记员|开庭律师|开庭时间|开庭日期|立案日期|判决日期|"
+                          r"判决文书|阶段|当事人|原告|被告|第三人|案由|提醒|案件事件|公证|基本信息|案件名称)")
+
+
+def is_case_info_edit_request(message: str) -> bool:
+    """用户这一句是不是在改、填案件信息（要读文书、做分析的不算）。"""
+    text = str(message or "")
+    if len(text) > 200 or re.search(r"(分析|总结|归纳|起草|生成|审阅|读取|文书内容|根据.{0,6}(文件|附件|判决书|文书))", text):
+        return False
+    return bool(_EDIT_VERBS.search(text) and _EDIT_FIELDS.search(text))
+
+
+def slim_case_snapshot(context: dict) -> dict:
+    """只保留案件基本信息、人员和本人能做的操作；费用、文档、任务、线索、检查结果等不带。"""
+    keep = ("schema_version", "space", "case", "people", "capabilities")
+    slim = {key: context[key] for key in keep if key in context}
+    slim["scope_note"] = "本轮是修改或填写案件信息，只提供案件基本信息；需要其他资料时按用户要求再查。"
+    return slim
+
 _MODEL_CHUNK_CALLBACK: ContextVar[Callable[[str], None] | None] = ContextVar("model_chunk_callback", default=None)
+# 陶国南 11-05：等待时显示实际步骤（正在调用：修改案件信息…），不再只显示固定的“正在分析案件空间”。
+_MODEL_PROGRESS_CALLBACK: ContextVar[Callable[[str], None] | None] = ContextVar("model_progress_callback", default=None)
 
 _CASE_SELECTION: ContextVar[dict[str, Any] | None] = ContextVar("oa_case_selection", default=None)
 
@@ -453,7 +480,8 @@ class CaseAgentRuntime:
         from .harness_agent.case_execution import request_case_model
 
         return await request_case_model(snapshot, messages, skill, request_images,
-                                        selection=_CASE_SELECTION.get(), callback=_MODEL_CHUNK_CALLBACK.get())
+                                        selection=_CASE_SELECTION.get(), callback=_MODEL_CHUNK_CALLBACK.get(),
+                                        progress=_MODEL_PROGRESS_CALLBACK.get())
 
     @staticmethod
     def thread_id(case_id: int, operator: str, agent_id: int | None = None, conversation_id: int | None = None) -> str:
@@ -630,6 +658,7 @@ class CaseAgentRuntime:
 
         async def run() -> None:
             token = _MODEL_CHUNK_CALLBACK.set(lambda content: queue.put_nowait({"type": "delta", "content": content}))
+            progress_token = _MODEL_PROGRESS_CALLBACK.set(lambda text: queue.put_nowait({"type": "progress", "text": text}))
             try:
                 state = await self.invoke(**kwargs)
                 await queue.put({"type": "state", "state": state})
@@ -637,6 +666,7 @@ class CaseAgentRuntime:
                 await queue.put({"type": "error", "detail": str(exc)})
             finally:
                 _MODEL_CHUNK_CALLBACK.reset(token)
+                _MODEL_PROGRESS_CALLBACK.reset(progress_token)
                 await queue.put({"type": "done"})
 
         task = asyncio.create_task(run())

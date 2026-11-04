@@ -542,6 +542,9 @@ async def send_case_agent_message(
     proposed_action = body.proposed_action.model_dump() if body.proposed_action else None
     from app.core.permissions import _agent_message_skill_for_identity
     selected_skill, clean_message = await _agent_message_skill_for_identity(body.skill_id, body.message, identity, db)
+    from app.case_agent import is_case_info_edit_request, slim_case_snapshot
+    if is_case_info_edit_request(clean_message) and not body.document_ids and not body.attachment_ids:
+        context = slim_case_snapshot(context)
     if proposed_action and not context["capabilities"].get("can_write"):
         raise HTTPException(status_code=403, detail="当前账号无权为该案件发起写操作")
     images: list[dict[str, object]] = []

@@ -317,7 +317,8 @@ async def _run_turn(client: ArkClient, session_id: str, blocks: list[dict], guar
             elif kind in ("agent.tool_use", "agent.mcp_tool_use"):
                 tool_marks.append(len(messages))
                 if on_progress:
-                    await on_progress("正在调用：" + str(event.get("name") or "云端工具"))
+                    await on_progress("正在调用：" + {"web_fetch": "上网读取网页", "web_search": "联网搜索"}.get(
+                        str(event.get("name") or ""), "云端临时空间"))
             elif kind == "span.model_request_end" and usage is not None:
                 usage.model_request(event)
             elif kind == "session.usage" and usage is not None:

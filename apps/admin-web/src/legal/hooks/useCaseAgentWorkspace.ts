@@ -38,6 +38,8 @@ export function useCaseAgentWorkspace({
   const [agentState, setAgentState] = useState<CaseAgentState | null>(null);
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentSending, setAgentSending] = useState(false);
+  // 陶国南 11-05：等待时显示智能体正在做的步骤。
+  const [agentProgress, setAgentProgress] = useState("");
   const [agentDecisionLoading, setAgentDecisionLoading] = useState("");
   const [agentInput, setAgentInput] = useState("");
   const [agentSkillId, setAgentSkillId] = useState(DEFAULT_AGENT_SKILL);
@@ -141,6 +143,7 @@ export function useCaseAgentWorkspace({
     get agentScreenshots() { return agentScreenshots; },
     get agentState() { return agentState; },
     get agentSending() { return agentSending; },
+    get setAgentProgress() { return setAgentProgress; },
     get activeCaseAgentRequestRef() { return activeCaseAgentRequestRef; },
     get activeAgentLoadRequestRef() { return activeAgentLoadRequestRef; },
     get activeAgentDocumentsRequestRef() { return activeAgentDocumentsRequestRef; },
@@ -245,7 +248,7 @@ export function useCaseAgentWorkspace({
 
   const drawerProps: DrawerProps = {
     agentOpen, agentRevealKey, closeCaseAgent, agentCase, agentDrawerWidth, startAgentDrawerResize,
-    agentStatus, agentLoading, agentSending, agentSkillId, setAgentSkillId,
+    agentStatus, agentLoading, agentSending, agentProgress, agentSkillId, setAgentSkillId,
     openAgentFolder, agentConversations, conversationId, switchCaseConversation, createCaseConversation,
     loadCaseAgent: (row: CaseRow, resetMaterials?: boolean) => loadCaseAgent(row, resetMaterials, agentId ?? undefined, conversationId ?? undefined, agentSkillId), agentState, agentDecisionLoading, decideCaseAgentAction,
     restoreCaseAgentAction, agentHistoryExpanded, setAgentHistoryExpanded,
