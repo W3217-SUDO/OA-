@@ -360,7 +360,8 @@ async def _call_tool(name: str, arguments: dict, *, conversation_id: str | None 
         target, changes, original = await _original_changes(spec, params, db)
         from app.agent_mcp.display_labels import display_maps, record_display_maps
         labels = display_maps(params)
-        records = await record_display_maps(params, db)  # 501634：编号显示成案号、名称
+        # 501634：编号、账号、部门代码显示成案号、名称、姓名、部门名；改前的值也一起查，确认窗口写“原值 → 新值”。
+        records = await record_display_maps({"params": params, "before": {change["field"]: change.get("before") for change in changes}}, db)
         labels = {"field_labels": {**labels["field_labels"], **records["field_labels"]},
                   "value_labels": {**labels["value_labels"], **records["value_labels"]}}
         preview = {

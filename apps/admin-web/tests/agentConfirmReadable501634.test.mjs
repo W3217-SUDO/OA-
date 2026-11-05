@@ -51,3 +51,27 @@ test("确认信息：编号显示成案号、名称；换不了的编号、内�
   assert.doesNotMatch(text, /501332|280154|abc123|999|其他信息/);
   assert.match(text, /另有 2 项系统内部参数未显示/);
 });
+
+test("逐字段“原值 → 新值”：只列改了的，原来没有写（空），没变的只说几项", async () => {
+  const { AgentOperationPreview } = await loadPreview();
+  const action = { id: "r2", type: "mcp.call", status: "pending", summary: "修改案件（案号：HZMS2650002）", payload: { request_id: "r2" }, preview: {
+    operation_name: "修改案件", method: "PUT", path: "/cases/501332/normal-basic", requires_confirmation: true,
+    params: { path: { case_id: 501332 }, query: {}, body: { cause_or_charge: "离婚纠纷", case_phase: "新案待分配", title: "10.30测试客户", handling_lawyers: ["System"] } },
+    changes: [
+      { field: "cause_or_charge", before: "侵害商标权纠纷", before_read: true, after: "离婚纠纷" },
+      { field: "case_phase", before: null, before_read: true, after: "新案待分配" },
+      { field: "title", before: "10.30测试客户", before_read: true, after: "10.30测试客户" },
+      { field: "handling_lawyers", before: ["System"], before_read: true, after: ["System"] },
+    ],
+    field_labels: { case_id: "案号", cause_or_charge: "案由", case_phase: "案件阶段", title: "名称", handling_lawyers: "经办律师" },
+    value_labels: { case_id: { "501332": "HZMS2650002" }, handling_lawyers: { System: "系统" } },
+  } };
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(AgentOperationPreview, { action, target: "HZMS2650002" })); });
+  const text = textOf(renderer.toJSON());
+  assert.match(text, /案由：侵害商标权纠纷 → 离婚纠纷/);
+  assert.match(text, /案件阶段：（空） → 新案待分配/);
+  assert.match(text, /其余 2 项保持不变/);
+  assert.doesNotMatch(text, /名称：10\.30测试客户 →/);
+  assert.equal((text.match(/离婚纠纷/g) || []).length, 1, "提交字段不再重复列一遍");
+});

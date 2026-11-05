@@ -21,6 +21,8 @@ class _FakeResult:
 class _FakeDb:
     async def execute(self, statement):
         sql = str(statement)
+        if "FROM departments" in sql:
+            return _FakeResult([SimpleNamespace(id=7, code="BJ-OFFICE", name="北京分所")])
         if "FROM users" in sql:
             return _FakeResult([SimpleNamespace(username="fanwl", display_name="范文玲")])
         if "business_records.owner" in sql and "business_records.serial_no" not in sql:
@@ -63,6 +65,17 @@ class AgentConfirmReadable501634Test(unittest.TestCase):
         preview = _preview()
         self.assertEqual(preview["value_labels"]["handling_lawyers"], {"System": "系统", "fanwl": "范文玲"})
         self.assertEqual(value_label("handling_lawyers", "System", preview["value_labels"]), "系统")
+
+    def test_department_codes_and_ids_show_names(self):
+        maps = asyncio.run(record_display_maps({"body": {"department": "BJ-OFFICE", "department_id": 7}}, _FakeDb()))
+        self.assertEqual(maps["value_labels"]["department"], {"BJ-OFFICE": "北京分所"})
+        self.assertEqual(maps["value_labels"]["department_id"], {"7": "北京分所"})
+        self.assertEqual(maps["field_labels"]["department_id"], "部门")
+
+    def test_service_resolves_before_values_too(self):
+        import inspect
+        from app.agent_mcp import service
+        self.assertIn('"before": {change["field"]: change.get("before") for change in changes}', inspect.getsource(service))
 
     def test_unresolved_ids_are_not_shown(self):
         summary = summary_from_preview(_preview(with_records=False))

@@ -832,21 +832,18 @@ test("real approval preview loads the shared table and preserves original values
     preview: { changes: [{ field: "handling_lawyers", before: "原律师", before_read: true, after: "新律师" }] },
   };
   const preview = AgentOperationPreview({ action });
-  const table = React.Children.toArray(preview.props.children).find((child) => child.type?.name === "ResizableTable");
-  assert.ok(table, "预览必须加载真实的统一列宽组件");
-  assert.equal(table.props.rowKey, "field");
-  assert.equal(table.props.pagination, false);
-  assert.equal(table.props.scroll.x, 480);
-  assert.equal(table.props.dataSource, action.preview.changes);
-  assert.equal(table.props.columns[0].render("handling_lawyers"), "经办律师");
-  const before = table.props.columns[1].render;
-  const after = table.props.columns[2].render;
-  assert.equal(before("原律师", { before_read: true }).props.children, "原律师");
-  assert.equal(before("原律师", { before_read: false }).props.children, "未读取");
-  assert.equal(before(undefined, { before_read: true }).props.children, "未读取");
-  assert.equal(before(null, { before_read: true }).props.children, "空值");
-  assert.equal(after("新律师").props.children, "新律师");
-  assert.equal(after("").props.children, "空字符串");
+  // 501634（tgn 11-05）：改前改后改成逐字段一行“字段：原值 → 新值”，原来没有值写“（空）”。
+  const lines = React.Children.toArray(preview.props.children).find((child) => child.type?.name === "ChangeLines");
+  assert.ok(lines, "预览按字段列出原值 → 新值");
+  assert.equal(lines.props.changes, action.preview.changes);
+  const flat = (node) => node == null || typeof node === "boolean" ? "" : typeof node === "string" || typeof node === "number" ? String(node)
+    : Array.isArray(node) ? node.map(flat).join("") : typeof node.type === "function" ? flat(node.type(node.props)) : flat(node.props?.children);
+  assert.match(flat(lines), /经办律师：原律师 → 新律师/);
+  const render = (changes) => flat(lines.type({ ...lines.props, changes }));
+  assert.match(render([{ field: "handling_lawyers", before: "原律师", before_read: false, after: "新律师" }]), /（未读取原值） → 新律师/);
+  assert.match(render([{ field: "handling_lawyers", before: null, before_read: true, after: "新律师" }]), /（空） → 新律师/);
+  assert.match(render([{ field: "handling_lawyers", before: "原律师", before_read: true, after: "" }]), /原律师 → （空）/);
+  assert.match(render([{ field: "handling_lawyers", before: "同一人", before_read: true, after: "同一人" }]), /没有字段发生变化/);
   // 501137：参数名、代码值、嵌套对象都显示中文，不出现“字段信息”和英文代码。
   const { readableValue } = loadModule("../AgentOperationPreview.tsx", {});
   const labelled = { field_labels: { task_id: "任务ID", action: "动作" }, value_labels: { action: { complete: "完成任务" } } };
@@ -854,7 +851,7 @@ test("real approval preview loads the shared table and preserves original values
   assert.equal(readableValue({ action: "handoff", unknown_code: true }), "动作：转交任务\n其他信息：是");
   assert.equal(readableValue({ court: { level: "second", hearing_date: "2026-11-20" } }), "法院：\n  审级：二审\n  开庭日期：2026-11-20");
   const created = AgentOperationPreview({ action: { ...action, preview: { ...action.preview, create: { title: "新建任务" } } } });
-  assert.equal(React.Children.toArray(created.props.children).some((child) => child.type === table.type), false);
+  assert.equal(React.Children.toArray(created.props.children).some((child) => child.type === lines.type), false);
   const mcp = { id: "r1", type: "mcp.call", summary: "修改案件", payload: { request_id: "r1" }, preview: {
     operation_name: "修改案件字段", method: "PATCH", path: "/cases/8", params: { body: { title: "新名称" } }, requires_confirmation: true,
   } };

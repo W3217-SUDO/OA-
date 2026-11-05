@@ -1,7 +1,6 @@
 import { Alert, Descriptions, Radio, Space, Tag } from "antd";
 import { useState } from "react";
 import { isAxiosError } from "axios";
-import Table from "./components/ResizableTable";
 import "./agent-center.css";
 
 export type AgentActionPreview = {
@@ -201,6 +200,24 @@ const ParameterValues = ({ values, preview }: { values: Record<string, unknown>;
   </div>)}
 </div>;
 
+// 501634（tgn 11-05）：每个要改的字段一行“字段：原值 → 新值”，原来没有值写“（空）”；没变的不列，只说保持不变几项。
+const isEmptyValue = (value: unknown) => value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length);
+const sameValue = (a: unknown, b: unknown) => (isEmptyValue(a) && isEmptyValue(b)) || JSON.stringify(a) === JSON.stringify(b);
+const changeText = (value: unknown, preview: AgentActionPreview | undefined, field: string) => isEmptyValue(value) ? "（空）" : valueText(value, preview, field);
+type ChangeRow = { field: string; before?: unknown; before_read?: boolean; after: unknown };
+const ChangeLines = ({ changes, preview }: { changes: ChangeRow[]; preview?: AgentActionPreview }) => {
+  const visible = changes.filter((change) => !HIDDEN_PARAMETER_FIELDS.has(change.field) && !isInternalParameter(change.field, change.after, preview));
+  const changed = visible.filter((change) => change.before_read !== true || !sameValue(change.before, change.after));
+  const unchanged = visible.length - changed.length;
+  return <section className="agent-action-changes">
+    <strong>修改内容</strong>
+    {changed.length ? changed.map((change) => <div key={change.field} className="agent-action-change-line" style={{ overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>
+      <b>{parameterLabel(change.field, preview)}</b>：{change.before_read === true ? changeText(change.before, preview, change.field) : "（未读取原值）"} → {changeText(change.after, preview, change.field)}
+    </div>) : <div>没有字段发生变化</div>}
+    {unchanged > 0 && <small className="agent-action-hidden-note">其余 {unchanged} 项保持不变。</small>}
+  </section>;
+};
+
 // 卡片上的选择按确认请求编号记住；各处“批准”按钮提交时带上（agentChoiceBody），没选时提示（agentChoiceMissing）。
 const AGENT_CHOICES = new Map<string, string | number>();
 const choiceKey = (action: AgentApprovalAction) => String((action.payload as { request_id?: unknown } | undefined)?.request_id || action.id);
@@ -243,6 +260,8 @@ export function AgentOperationPreview({ action, target }: { action: AgentApprova
       <Descriptions.Item label="当前信息">{userFacingAgentText(preview.original_values)}</Descriptions.Item>
     </Descriptions>}
     {preview?.params && Object.entries(preview.params).map(([group, value]) => {
+      // 501634：有逐字段“原值 → 新值”时，提交的字段不再重复列一遍。
+      if (group === "body" && !preview?.create && preview?.changes?.length) return null;
       const objectValue = value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
       if (objectValue && !visibleParameterEntries(objectValue, preview).length) return null;
       return <section key={group}>
@@ -254,15 +273,7 @@ export function AgentOperationPreview({ action, target }: { action: AgentApprova
       </section>;
     })}
     {preview?.create && <section><strong>确认信息</strong><ParameterValues values={preview.create} preview={preview} /></section>}
-    {!preview?.create && !!preview?.changes?.length && <Table
-      size="small" bordered pagination={false} rowKey="field" dataSource={preview.changes}
-      scroll={{ x: 480 }}
-      columns={[
-        { title: "字段", dataIndex: "field", width: 130, render: (field: string) => parameterLabel(field, preview) },
-        { title: "修改前", dataIndex: "before", render: (value: unknown, change: { field?: string; before_read?: boolean }) => <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{change.before_read === true ? valueText(value, preview, change?.field) : "未读取"}</span> },
-        { title: "修改后", dataIndex: "after", render: (value: unknown, change?: { field: string }) => <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{valueText(value, preview, change?.field)}</span> },
-      ]}
-    />}
+    {!preview?.create && !!preview?.changes?.length && <ChangeLines changes={preview.changes} preview={preview} />}
     {!preview?.params && !preview?.create && !preview?.changes?.length && action.payload && <section>
       <strong>确认信息</strong><ParameterValues values={action.payload} preview={preview} />
     </section>}

@@ -70,6 +70,10 @@ def _is_person_field(name: str) -> bool:
     return name.endswith(_PERSON_SUFFIXES)
 
 
+def _is_department_field(name: str) -> bool:
+    return name in {"department", "departments", "department_id", "department_ids", "parent_department_id"} or name.endswith("_department")
+
+
 def _record_label(name: str, module: str) -> str:
     if module in _CASE_MODULES or name.startswith("case"):
         return "案号"
@@ -104,6 +108,24 @@ async def _person_names(accounts: set[str], db) -> dict[str, str]:
     return names
 
 
+async def _department_names(items: set, db) -> dict:
+    """部门编号/代码 → 部门名称，只读。"""
+    from sqlalchemy import or_, select
+    from app.models import Department
+    ids = sorted(item for item in items if isinstance(item, int))[:200]
+    codes = sorted(item for item in items if isinstance(item, str))[:200]
+    try:
+        rows = (await db.execute(select(Department.id, Department.code, Department.name).where(
+            or_(Department.id.in_(ids or [-1]), Department.code.in_(codes or ["\u0000"]))))).all()
+    except Exception:
+        return {}
+    names: dict = {}
+    for row in rows:
+        names[row.id] = row.name
+        names[row.code] = row.name
+    return names
+
+
 async def record_display_maps(params: dict, db) -> dict:
     """501634（tgn 11-05）：确认窗口里不出现内部编号，参数里的记录编号换成案号（案件）、名称（客户等）。
     只读查询，只用于显示；执行仍用原参数。"""
@@ -111,11 +133,16 @@ async def record_display_maps(params: dict, db) -> dict:
     from app.models import BusinessRecord
     wanted: dict[str, set[int]] = {}
     people: dict[str, set[str]] = {}
+    departments: dict[str, set] = {}
 
     def walk(value):
         if isinstance(value, dict):
             for name, item in value.items():
-                if name not in _ID_FIELD_SKIP and (name == "id" or name.endswith(_ID_SUFFIXES)):
+                if _is_department_field(name):
+                    for one in (item if isinstance(item, list) else [item]):
+                        if (isinstance(one, int) and not isinstance(one, bool)) or (isinstance(one, str) and one.strip() and one.strip().isascii()):
+                            departments.setdefault(name, set()).add(one.strip() if isinstance(one, str) else one)
+                elif name not in _ID_FIELD_SKIP and (name == "id" or name.endswith(_ID_SUFFIXES)):
                     for one in (item if isinstance(item, list) else [item]):
                         if isinstance(one, int) and not isinstance(one, bool) and one > 0:
                             wanted.setdefault(name, set()).add(one)
@@ -139,6 +166,14 @@ async def record_display_maps(params: dict, db) -> dict:
                 shown = "系统" if account.lower() in _SYSTEM_ACCOUNTS else names.get(account.lower())
                 if shown:
                     values.setdefault(name, {})[account] = shown
+    if departments:
+        names = await _department_names(set().union(*departments.values()), db)
+        for name, items in departments.items():
+            for item in items:
+                if names.get(item):
+                    values.setdefault(name, {})[str(item)] = names[item]
+            if name.endswith(("_id", "_ids")):
+                fields[name] = "部门"
     if not ids:
         return {"field_labels": fields, "value_labels": values}
     try:
