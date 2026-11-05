@@ -17,3 +17,9 @@ test("拒绝走拒绝弹窗，必须写拒绝理由", () => {
   assert.match(modals, /dialog\?\.action === "reject" \? "拒绝理由" : "派发说明"/);
   assert.match(modals, /name="comment"\s*rules=\{\[\{ required: true \}\]\}/);
 });
+
+test("公司发起的任务：操作按钮只给管理员和有批量修改任务权限的人，其他人只读", () => {
+  assert.match(page, /const canManageCompanyCreatedTask =\s*initialView === "task-company-created" && roleActionAllowed\("task\.batch\.update"\);/);
+  assert.match(page, /const companyCreatedReadOnly = initialView === "task-company-created" && !canManageCompanyCreatedTask;/);
+  assert.match(page, /const hideTaskFooter =\s*companyCreatedReadOnly \|\|/);
+});

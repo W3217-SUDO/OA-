@@ -27,6 +27,8 @@ def validate_task_lifecycle(task: BusinessRecord, identity: dict, action: str, c
 
 
 COMPANY_TASK_MENU = "task-company-accepted"
+# 501629（tgn 11-05）：“公司发起的任务”的操作也只给管理员和有“批量修改任务”权限的人。
+COMPANY_TASK_MENUS = frozenset({COMPANY_TASK_MENU, "task-company-created"})
 
 
 async def task_actor_identity(identity: dict, db) -> dict:
@@ -41,7 +43,7 @@ async def task_actor_identity(identity: dict, db) -> dict:
         return {**actual, "role": "admin"}
     permission = await _permission_payload_for_identity(actual, db)
     actions = set(permission.get("action_keys") or [])
-    if COMPANY_TASK_MENU in set(permission.get("menu_keys") or []) and ("*" in actions or "task.batch.update" in actions):
+    if COMPANY_TASK_MENUS & set(permission.get("menu_keys") or []) and ("*" in actions or "task.batch.update" in actions):
         return {**actual, "role": "admin", "_task_proxy": True}
     return {**actual, "role": "user" if actual.get("role") == "admin" else actual.get("role")}
 

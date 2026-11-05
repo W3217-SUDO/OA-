@@ -113,6 +113,9 @@ def task_reject_block_reason(record: BusinessRecord) -> str:
         return "当前状态不能拒绝任务"
     if str(data.get("initiator") or "").strip() == str(record.owner or "").strip():
         return "自己发给自己的任务不能拒绝"
+    # tgn 11-05：系统自动发的任务（发起人是系统，或超期提醒、按案件阶段自动生成的任务）不能拒绝，只能完成或转交。
+    if str(data.get("initiator") or "").strip().lower() in {"", "system"} or _task_creation_mode(data) == "自动":
+        return "系统自动发的任务不能拒绝，请完成或转交"
     if task_received_by_handoff(data):
         return "转交来的任务不能拒绝，请转交或完成"
     return ""

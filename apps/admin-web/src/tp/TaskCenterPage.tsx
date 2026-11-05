@@ -172,11 +172,14 @@ export default function TaskCenterPage({
   const canManageAcceptedTask =
     (isPersonalView && isAccepted) ||
     (initialView === "task-company-accepted" && roleActionAllowed("task.batch.update"));
+  // 501629（tgn 11-05）：公司发起的任务的操作按钮只给管理员和有“批量修改任务”权限的人，其他人只能查看（后端同样校验）。
   const canManageCompanyCreatedTask =
-    initialView === "task-company-created";
+    initialView === "task-company-created" && roleActionAllowed("task.batch.update");
   const isInitiatedTaskContext = canManageInitiatedTask || canManageCompanyCreatedTask;
   const isAcceptedTaskContext = canManageAcceptedTask;
+  const companyCreatedReadOnly = initialView === "task-company-created" && !canManageCompanyCreatedTask;
   const hideTaskFooter =
+    companyCreatedReadOnly ||
     taskMeta.total === 0 &&
     (isUnread ||
       isCreated ||

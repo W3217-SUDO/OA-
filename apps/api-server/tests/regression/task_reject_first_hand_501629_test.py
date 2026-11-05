@@ -6,8 +6,8 @@ from types import SimpleNamespace
 from app.core.tasks import task_received_by_handoff, task_reject_block_reason
 
 
-def _task(status="待处理", owner="lisi", **data):
-    return SimpleNamespace(status=status, owner=owner, data={"initiator": "zhangsan", **data})
+def _task(status="待处理", owner="lisi", initiator="zhangsan", **data):
+    return SimpleNamespace(status=status, owner=owner, data={"initiator": initiator, **data})
 
 
 class TaskRejectFirstHand501629Test(unittest.TestCase):
@@ -30,6 +30,21 @@ class TaskRejectFirstHand501629Test(unittest.TestCase):
         self.assertFalse(task_received_by_handoff({"handoff_from": "lisi", "resent_at": "2026-11-05T22:00:00"}))
         self.assertFalse(task_received_by_handoff({"handoff_from": "lisi", "received_by_handoff": False}))
         self.assertEqual(task_reject_block_reason(_task(handoff_from="wangwu", received_by_handoff=False)), "")
+
+    def test_automatic_task_cannot_be_rejected(self):
+        self.assertIn("系统自动发的任务不能拒绝", task_reject_block_reason(_task(initiator="system")))
+        self.assertIn("系统自动发的任务不能拒绝", task_reject_block_reason(_task(task_type="自动任务")))
+        self.assertIn("系统自动发的任务不能拒绝", task_reject_block_reason(_task(auto_task_type="超期提醒")))
+        self.assertEqual(task_reject_block_reason(_task(creation_mode="旧系统")), "")
+
+    def test_company_created_actions_use_real_permission(self):
+        from app.areas.tp import router
+        from app.core import task_lifecycle_policy as policy
+
+        self.assertEqual(policy.COMPANY_TASK_MENUS, frozenset({"task-company-accepted", "task-company-created"}))
+        for handler in (router.confirm_task, router.resend_task, router.restart_task):
+            self.assertIn("task_actor_identity(identity, db)", inspect.getsource(handler))
+        self.assertIn('if actor.get("role") != "admin" and data.get("initiator") != identity["username"]:', inspect.getsource(router.batch_task_lifecycle) if hasattr(router, "batch_task_lifecycle") else inspect.getsource(router))
 
     def test_router_enforces_rule_and_marks_handoffs(self):
         from app.areas.tp import router

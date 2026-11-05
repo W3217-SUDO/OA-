@@ -898,7 +898,7 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
         elif body.action == "complete":
             validate_task_lifecycle(task, actor, "complete", comment)
         elif body.action == "confirm":
-            if identity.get("role") != "admin" and data.get("initiator") != identity["username"]:
+            if actor.get("role") != "admin" and data.get("initiator") != identity["username"]:  # 501629：代办按真实权限
                 raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅任务发起人可以批量确认完成")
             if task.status not in {"待确认", "已完成", "已拒绝"}:
                 raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 当前状态不能批量确认")
@@ -1090,7 +1090,8 @@ async def resend_task(task_id: int, body: TaskHandoffInput, identity: dict = Dep
         _active_task_username, _add_task_message_notifications, _task_dict, _task_or_404,
     )
     task = await _task_or_404(task_id, db); data = task.data or {}
-    if identity.get("role") != "admin" and data.get("initiator") != identity["username"]:
+    from app.core.task_lifecycle_policy import task_actor_identity
+    if (await task_actor_identity(identity, db)).get("role") != "admin" and data.get("initiator") != identity["username"]:  # 501629：代办按真实权限
         raise HTTPException(status_code=403, detail="只有任务发起人可以重新派发")
     if task.status != "已拒绝": raise HTTPException(status_code=409, detail="只有已拒绝任务可以重新派发")
     previous_owner = task.owner
@@ -1497,7 +1498,8 @@ async def restart_task(task_id: int, body: TaskActionInput, identity: dict = Dep
     if task.status == "已完成" and data.get("auto_completed") and not requires_phase_completion(task):
         raise HTTPException(status_code=409, detail="任务已自动完成，请新建后续任务")
     if task.status in {"待确认", "已完成", "已拒绝"}:
-        if identity.get("role") != "admin" and data.get("initiator") != identity["username"]: raise HTTPException(status_code=403, detail="只有发起人可以退回重启")
+        from app.core.task_lifecycle_policy import task_actor_identity
+        if (await task_actor_identity(identity, db)).get("role") != "admin" and data.get("initiator") != identity["username"]: raise HTTPException(status_code=403, detail="只有发起人可以退回重启")
     elif identity.get("role") != "admin" and task.owner != identity["username"]:
         raise HTTPException(status_code=403, detail="只有任务负责人可以开始任务")
     if task.status == "已停止" and ((data.get("exception_request") or {}).get("action") != "挂起" or (data.get("exception_request") or {}).get("status") != "已通过"):
@@ -1606,7 +1608,8 @@ async def confirm_task(task_id: int, body: TaskActionInput, identity: dict = Dep
         _add_task_message_notifications, _advance_case_from_fixed_task, _task_dict, _task_or_404,
     )
     task = await _task_or_404(task_id, db); data = task.data or {}
-    if identity.get("role") != "admin" and data.get("initiator") != identity["username"]: raise HTTPException(status_code=403, detail="只有任务发起人可以确认完成")
+    from app.core.task_lifecycle_policy import task_actor_identity
+    if (await task_actor_identity(identity, db)).get("role") != "admin" and data.get("initiator") != identity["username"]: raise HTTPException(status_code=403, detail="只有任务发起人可以确认完成")  # 501629：代办按真实权限
     if task.status not in {"待确认", "已完成", "已拒绝"}: raise HTTPException(status_code=409, detail="当前状态不能确认完成")
     previous = task.status
     task.status = "已验收"; task.data = {**data, "confirmed_at": datetime.now().isoformat(timespec="seconds"), "completion_auto_confirm_at": ""}
