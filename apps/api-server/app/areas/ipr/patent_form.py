@@ -43,8 +43,9 @@ async def apply_patent_form(data: dict, values: dict, db: AsyncSession) -> None:
                     case_origin_people_name=names.get(account, account))
     if "case_manager" in people:
         account = people["case_manager"]
-        data.update(case_manager=account, case_manager_username=account, business_owner=account, case_officer=account,
-                    case_officer_name=names.get(account, account))
+        # 分支3“我的案件”：案件管理人认 business_owner / business_owner_name，处理人认 case_officer / case_officer_name。
+        data.update(case_manager=account, case_manager_username=account, business_owner=account, business_owner_name=names.get(account, account),
+                    case_officer=account, case_officer_name=names.get(account, account))
     if "card_no" in values:
         card_no = str(values["card_no"] or "").strip()
         if card_no and not CARD_NO.fullmatch(card_no):

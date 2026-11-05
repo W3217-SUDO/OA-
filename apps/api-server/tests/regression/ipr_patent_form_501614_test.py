@@ -25,7 +25,7 @@ class PatentFormTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((data["agent"], data["procurator"], data["procurator_name"]), ("mengfei", "mengfei", "孟飞"))
         self.assertEqual((data["writer"], data["copywriter_name"]), ("zy", "张一"))
         self.assertEqual((data["case_source"], data["case_origin_people"], data["case_origin_people_name"]), ("mengfei", "mengfei", "孟飞"))
-        self.assertEqual((data["business_owner"], data["case_officer"], data["case_officer_name"]), ("zy", "zy", "张一"))
+        self.assertEqual((data["business_owner"], data["business_owner_name"], data["case_officer"], data["case_officer_name"]), ("zy", "张一", "zy", "张一"))
 
     async def test_fields_flags_and_rate(self):
         data = await self._apply({"card_no": "91310000ABC", "inventor": "李四", "authorization_date": date(2026, 1, 2),
