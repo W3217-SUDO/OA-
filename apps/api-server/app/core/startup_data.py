@@ -180,6 +180,9 @@ async def initialize_startup_data(
                 # BUG20261030004：知识产权中心按老系统重新排序、“案件自定义文件导入”挪到“案件文件”下；管理员手工改过的不动。
                 key.startswith("ipr-") and existing_menus[key].updated_by == "system"
             ) or (
+                # BUG20261105026（思法汇成 11-05）：“知识产权中心”改名“知产非诉”，只改显示名；管理员手工改过的不动。
+                key == "ipr" and existing_menus[key].updated_by == "system"
+            ) or (
                 # BUG 500788：三张执行进度表合并，菜单名改为“执行进度案件统计”；
                 # BUG 500799：“员工业绩ROI统计”改名为“员工业绩统计中心”（菜单、面包屑、标签页都取这里的名字）。
                 key in {"reports-execution-1", "reports-staff-roi"} and existing_menus[key].updated_by == "system"

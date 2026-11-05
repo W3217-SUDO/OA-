@@ -1811,7 +1811,7 @@ export default function ContractCenterPage({
         <p>合同：{caseKindChoice?.serial_no}　客户：{caseKindChoice?.customer}</p>
         <p>请选择案件类别：</p>
         <Space size="middle" wrap>
-          <Button type="primary" onClick={() => chooseCaseKind("ipr")}>非诉案件（知识产权中心）</Button>
+          <Button type="primary" onClick={() => chooseCaseKind("ipr")}>非诉案件（知产非诉）</Button>
           <Button type="primary" onClick={() => chooseCaseKind("case")}>诉讼案件（案件中心）</Button>
         </Space>
       </Modal>

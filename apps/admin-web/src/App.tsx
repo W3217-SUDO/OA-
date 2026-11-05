@@ -406,7 +406,7 @@ const menuItems: NavItem[] = [
   },
   {
     key: "ipr",
-    label: "知识产权中心",
+    label: "知产非诉",
     children: [
       { key: "ipr-patent-annual-fee", label: "专利年费" },
       { key: "ipr-case-reboot", label: "案件重提" },
