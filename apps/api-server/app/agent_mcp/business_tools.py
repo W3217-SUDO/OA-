@@ -769,7 +769,8 @@ async def _clues_to_cases(run: Run, args: dict) -> dict:
 # ---------- 04 案件管理 ----------
 
 @business_tool("biz_case_overview", "案件总览（费用/附件/任务/办案指引）",
-               "按我方案号查案件，并带出案件费用、附件、任务和办案指引（含付款三要素是否齐全的提示）。",
+               "按我方案号查案件，并带出案件费用（含经办人、建单日期、付款和退费情况）、附件、任务和办案指引（含付款三要素是否齐全的提示）。"
+               "问本案有哪些费用、附件、任务时调用一次本工具就够，直接用结果回答，不要再搜索其他工具。",
                CASE_REF, write=False,
                uses=("oa_search_ordinary_cases_post", "oa_get_record_get", "oa_list_case_relations_get", "oa_list_attachments_get",
                      "oa_list_case_tasks_get", "oa_get_case_workflow_guide_get", "oa_user_directory_get"))
@@ -781,10 +782,22 @@ async def _case_overview(run: Run, args: dict) -> dict:
     files = await run.read("oa_list_attachments_get", {"query": {"record_id": case["id"], "page_size": 100}}, "案件附件")
     tasks = await run.read("oa_list_case_tasks_get", {"path": {"case_id": case["id"]}}, "案件任务")
     guide = await run.read("oa_get_case_workflow_guide_get", {"path": {"case_id": case["id"]}}, "办案指引")
-    return {"case": detail, "people": await _case_people(run, detail), "fees": [_brief(row, "id", "serial_no", "title", "status") | {
-        key: (row.get("data") or {}).get(key) for key in ("fee_type", "amount", "expense_scope", "paid_amount", "payment_requested_amount", "refund_amount")}
-        for row in _items(fees)], "attachments": [_brief(row, "id", "original_name", "category", "created_at") for row in _items(files)],
-            "tasks": _items(tasks) or tasks, "workflow_guide": guide}
+    people = await _case_people(run, detail)
+    fee_rows = _items(fees)
+    # 11-05 实测“这个案件有哪些费用”：费用只给了金额，模型为找经办人、建单日期、退费情况又搜了 8 次工具；这里一次给全。
+    handlers = {str((row.get("data") or {}).get("handler") or "").strip() for row in fee_rows} - {""}
+    directory = await _directory_names(run) if handlers else {}
+    fee_keys = ("fee_type", "expense_subtype", "amount", "expense_scope", "paid_amount", "payment_requested_amount", "payment_status",
+                "payee", "refund_amount", "refund_requested_amount", "refund_status_label", "refund_fee")
+    return {"case": detail, "people": people, "fees": [
+        _brief(row, "id", "serial_no", "title", "status", "created_at")
+        | {key: value for key in fee_keys if (value := (row.get("data") or {}).get(key)) not in (None, "")}
+        | ({"handler": _person(directory.get(str((row.get("data") or {}).get("handler")).strip().lower()), (row.get("data") or {}).get("handler"))}
+           if (row.get("data") or {}).get("handler") else {})
+        for row in fee_rows],
+        "attachments": [_brief(row, "id", "original_name", "category", "created_at") for row in _items(files)],
+        "tasks": _items(tasks) or tasks, "workflow_guide": guide,
+        "note": "本案费用、附件、任务、办案指引都在这里，直接据此回答，不要再搜索其他工具。"}
 
 
 # 案件上只存账号的人员字段（经办律师等已存姓名的不在此列）：由系统按账号取真实姓名（501140）。

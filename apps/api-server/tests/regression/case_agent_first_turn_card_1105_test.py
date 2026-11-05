@@ -107,6 +107,25 @@ class DefaultSlimContextTest(unittest.TestCase):
         self.assertIn("全部案件空间", CASE_INFO_EDIT_RULES)
 
 
+class OverviewFeesTest(unittest.IsolatedAsyncioTestCase):
+    async def test_fees_carry_handler_date_and_refund(self):
+        async def fake_call(name, args):
+            if name == "oa_get_record_get":
+                return {"id": 1, "serial_no": "HZMS1", "data": {}}
+            if name == "oa_list_case_relations_get":
+                return {"fees": [{"id": 7, "serial_no": "FY1", "title": "一审诉讼费", "status": "草稿", "created_at": "2026-10-14",
+                                  "data": {"amount": 100, "handler": "fanwl", "refund_amount": 50, "refund_status_label": "未到账"}}]}
+            if name == "oa_user_directory_get":
+                return [{"username": "fanwl", "display_name": "范文玲"}]
+            return []
+
+        with patch.object(business_tools, "get_auth_context", return_value=_context()):
+            result = await business_tools.run_business_tool("biz_case_overview", {"case_id": 1}, call=fake_call)
+        fee = result["fees"][0]
+        self.assertEqual((fee["handler"], fee["created_at"], fee["refund_amount"], fee["refund_status_label"]), ("范文玲", "2026-10-14", 50, "未到账"))
+        self.assertIn("不要再搜索其他工具", result["note"])
+
+
 class PromptOnlySlimTest(unittest.TestCase):
     def test_model_prompt_is_slim_but_snapshot_keeps_targets(self):
         from app.case_agent import build_case_model_messages
