@@ -1,4 +1,3 @@
-import { POPUP_WIDTH } from "../components/common/popupSize";
 import { CaseAgentDock } from "./CaseAgentDock";
 import {
 CheckOutlined,
@@ -15,12 +14,12 @@ ReloadOutlined,
 SendOutlined,
 StopOutlined,
 } from "@ant-design/icons";
-import { Alert,Button,Dropdown,Image,Input,message,Modal,Popover,Select,Space,Tag,Tooltip,Tree } from "antd";
+import { Alert,Button,Dropdown,Image,Input,message,Popover,Select,Space,Tag,Tooltip,Tree } from "antd";
 import "../agentPending.css";
 import "../composerSingleBox.css";
 import { actionResultLine, mergeByTime } from "../agentActionResult";
 import { useEffect, useState } from "react";
-import { AgentOperationPreview, agentOperationName, hasAgentOperationPreview } from "../AgentOperationPreview";
+import { CaseAgentConfirmFloat } from "./CaseAgentConfirmFloat";
 import { AgentToolResult } from "../AgentToolResult";
 import { NO_AGENT_SKILL_OPTION } from "../agentSkillRouting";
 import { api } from "../api";
@@ -146,8 +145,12 @@ export const CaseAgentDrawer = ({
   stopCaseAgentResponse,
   agentMessagesEndRef,
 }: CaseAgentDrawerProps) => {
-  const [activeAction, setActiveAction] = useState<CaseAgentAction | null>(null);
-  useEffect(() => { setActiveAction(null); }, [agentCase?.id, agentOpen]);
+  // 501634：浮动确认窗口。currentId 是正在看的那项；minimizedIds 是点了“缩小”的（不算处理，仍待确认）。
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [minimizedIds, setMinimizedIds] = useState<string[]>([]);
+  // 换案件或重新打开智能体：缩小记录清空，还有待确认的会再弹出来。
+  useEffect(() => { setConfirmOpen(false); setConfirmId(null); setMinimizedIds([]); }, [agentCase?.id, agentOpen]);
   // 按固定模板生成文书（陶国南 11-03）：说“生成撤诉申请书”或点按钮，打开模板填字段，不让智能体改写正文。
   const [wordTemplates, setWordTemplates] = useState<WordTemplate[]>([]);
   const [wordTemplate, setWordTemplate] = useState<{ open: boolean; id?: string }>({ open: false });
@@ -166,15 +169,14 @@ export const CaseAgentDrawer = ({
   };
   // 501298：确认或驳回成功后卡片收起，对话里留一行结果；失败的留在卡片里写明原因。
   const [decisionFailures, setDecisionFailures] = useState<Record<string, string>>({});
-  const decideActiveAction = async (decision: "approved" | "rejected") => {
-    if (!activeAction || agentDecisionLoading) return;
-    const failure = await decideCaseAgentAction(activeAction, decision);
+  const decideAction = async (action: CaseAgentAction, decision: "approved" | "rejected") => {
+    if (agentDecisionLoading) return;
+    const failure = await decideCaseAgentAction(action, decision);
     setDecisionFailures((current) => {
       const next = { ...current };
-      if (failure) next[activeAction.id] = failure; else delete next[activeAction.id];
+      if (failure) next[action.id] = failure; else delete next[action.id];
       return next;
     });
-    setActiveAction(null);
   };
   // 正在执行的（可能是在智能体中心批准的）仍列在这里，按钮置灰。
   const waitingActions = (agentState?.pending_actions || []).filter((action) => action.status === "pending" || action.status === "executing");
@@ -186,6 +188,15 @@ export const CaseAgentDrawer = ({
     return line && { ...line, text: line.text + via };
   };
   const decidedActions = (agentState?.pending_actions || []).filter((action) => caseResultLine(action));
+  // 501634：有新的待确认（没点过缩小的）就弹出浮动确认窗口；都处理完就关掉。
+  const waitingKey = waitingActions.map((action) => action.id).join(",");
+  useEffect(() => {
+    if (!waitingActions.length) { setConfirmOpen(false); return; }
+    const fresh = waitingActions.find((action) => !minimizedIds.includes(action.id));
+    if (fresh && !confirmOpen) { setConfirmId(fresh.id); setConfirmOpen(true); }
+  }, [waitingKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const minimizeConfirm = () => { setMinimizedIds((current) => Array.from(new Set([...current, ...waitingActions.map((action) => action.id)]))); setConfirmOpen(false); };
+  const openConfirm = () => { setConfirmId((current) => waitingActions.some((action) => action.id === current) ? current : waitingActions[0]?.id || null); setConfirmOpen(true); };
   const shownMessages = (agentHistoryExpanded ? agentState?.messages : agentState?.messages?.slice(-8)) || [];
   const firstShownAt = !agentHistoryExpanded && (agentState?.messages?.length || 0) > 8 ? shownMessages[0]?.created_at : undefined;
   const timeline = mergeByTime(shownMessages, decidedActions.filter((action) => !firstShownAt || !action.decided_at || Date.parse(action.decided_at) >= Date.parse(firstShownAt)),
@@ -203,6 +214,7 @@ export const CaseAgentDrawer = ({
       idleTab={agentIdleTab}
       onExpandIdle={openIdleAgent}
       tabAlert={agentTabAlert}
+      pendingCount={waitingActions.length}
       title={<span><AgentIcon size={20} /> 案件智能体：{agentCase?.serial_no || ""}</span>}
       onClose={closeCaseAgent}
     >
@@ -240,29 +252,14 @@ export const CaseAgentDrawer = ({
           </Popover>
         </div>
         {!agentLoading && !agentStatus?.ready && <Alert type="warning" showIcon title="案件智能体暂未就绪" description="请检查模型与 DPH 运行环境后重试。" />}
-        {waitingActions.length ? <section className="case-agent-actions agent-pending-card">
-          <div className="case-agent-section-title agent-pending-title">
-            <Tag className="agent-pending-tag">待确认</Tag>
-            待审批操作
-          </div>
-          <Alert type="info" showIcon title="写入须人工确认后执行，原业务权限与审批规则不变。" />
-          {[...waitingActions].reverse().map((action) => <div className="case-agent-action" key={action.id}>
-            <div>
-              <strong>{action.summary}</strong>
-              <span>{agentOperationName(action)}</span>
-              {decisionFailures[action.id] && <div className="agent-action-failure" role="alert">未执行：{decisionFailures[action.id]}</div>}
-            </div>
-            <Space>
-              <Button size="small" className="agent-btn-confirm" icon={<CheckOutlined />} disabled={actionDisabled(action)} loading={agentDecisionLoading === action.id} onClick={() => setActiveAction(action)}>{action.status === "executing" ? "正在执行" : (action as { preparing?: boolean }).preparing ? "回复写完即可确认" : "查看并确认"}</Button>
-            </Space>
-          </div>)}
-        </section> : null}
-        <Modal open={Boolean(activeAction)} title="案件智能体操作确认" width={POPUP_WIDTH.md} maskClosable={!agentDecisionLoading} onCancel={() => { if (!agentDecisionLoading) setActiveAction(null); }} footer={activeAction ? [
-          <Button key="reject" className="agent-btn-cancel" icon={<CloseOutlined />} disabled={actionDisabled(activeAction)} onClick={() => void decideActiveAction("rejected")}>驳回，不修改</Button>,
-          <Button key="approve" className="agent-btn-confirm" icon={<CheckOutlined />} disabled={actionDisabled(activeAction) || !hasAgentOperationPreview(activeAction)} loading={agentDecisionLoading === activeAction.id} onClick={() => void decideActiveAction("approved")}>批准并执行</Button>,
-        ] : null}>
-          {activeAction && <div style={{ maxHeight: "60vh", overflowY: "auto" }}><AgentOperationPreview action={activeAction} target={agentCase?.serial_no} /></div>}
-        </Modal>
+        {/* 501634：待确认的卡片不再夹在对话里，缩小后这里显示入口，点开浮动确认窗口。 */}
+        {waitingActions.length && !confirmOpen ? <button type="button" className="case-agent-pending-pill" onClick={openConfirm}>
+          <span className="agent-pending-tag">待确认 {waitingActions.length}</span>
+          <span>有 {waitingActions.length} 项操作等你确认，点击处理</span>
+        </button> : null}
+        {confirmOpen && <CaseAgentConfirmFloat actions={[...waitingActions].reverse()} currentId={confirmId} target={agentCase?.serial_no}
+          failures={decisionFailures} decisionLoading={agentDecisionLoading} disabled={actionDisabled}
+          onSelect={setConfirmId} onDecide={(action, decision) => void decideAction(action, decision)} onMinimize={minimizeConfirm} />}
         <div className="case-agent-messages" aria-live="polite">
           {!agentLoading && !agentState?.messages?.length && <div className="case-agent-empty">
             <AgentMascot pose="wave" height={110} blink className="case-agent-empty-mascot" />

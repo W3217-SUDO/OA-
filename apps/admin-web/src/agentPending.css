@@ -32,3 +32,56 @@
 :root[data-theme="dark"] .agent-action-result.is-rejected { background: #262626; color: #a6a6a6; }
 :root[data-theme="dark"] .agent-action-result.is-restored { background: #111a2c; color: #69b1ff; }
 :root[data-theme="dark"] .agent-action-failure { color: #ff7875; }
+
+/* 501634（tgn 11-05）：写入确认卡片改成单独浮动的确认窗口。窗口渲染在智能体窗口（z-index 1500）里，
+   用 position:fixed 浮在页面中间，智能体随页签缓存一起藏时它也藏。只用 min()/vh，不用 :has、dvh、color-mix、@container（钉钉 Chrome 100）。 */
+.case-agent-confirm-float {
+  position: fixed;
+  z-index: 1650;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, calc(100vw - 32px));
+  max-height: 80vh;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, .28);
+  overflow: hidden;
+}
+.case-agent-confirm-float-header { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 10px 6px 14px; }
+.case-agent-confirm-float-header .agent-pending-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.case-agent-confirm-float-tools { display: flex; flex: none; align-items: center; gap: 2px; }
+.case-agent-confirm-float-count { padding: 0 4px; color: #873800; font-size: 12px; white-space: nowrap; }
+.case-agent-confirm-float-note { flex: none; margin: 0 14px 8px; color: #873800; font-size: 12px; }
+.case-agent-confirm-float-body { flex: 1; min-height: 0; padding: 10px 14px; overflow-y: auto; background: #fff; border-top: 1px solid #ffd591; border-bottom: 1px solid #ffd591; }
+.case-agent-confirm-float-footer { display: flex; flex: none; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; padding: 10px 14px; }
+.case-agent-confirm-float-status { margin-right: auto; color: #873800; font-size: 12px; }
+.case-agent-pending-pill {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 12px;
+  border: 0;
+  border-bottom: 1px solid #ffc069;
+  border-left: 5px solid #d46b08;
+  background: #fff7e6;
+  color: #613400;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.case-agent-pending-pill .agent-pending-tag { flex: none; padding: 1px 8px; border: 1px solid #ffc069; border-radius: 4px; background: #ffe7ba; color: #873800; }
+.case-agent-pending-pill:hover, .case-agent-pending-pill:focus-visible { background: #ffe7ba; }
+.case-agent-dock-tab-pending { padding: 4px 2px; border-radius: 4px; background: #d46b08; color: #fff; font-size: 12px; font-weight: 600; letter-spacing: 1px; }
+@media (max-width: 767px) {
+  .case-agent-confirm-float { top: auto; right: 0; bottom: 0; left: 0; width: auto; max-height: 85vh; transform: none; border-radius: 12px 12px 0 0; }
+  .case-agent-confirm-float-footer .ant-btn { min-height: 44px; }
+}
+:root[data-theme="dark"] .case-agent-confirm-float-body { background: #1f1f1f; border-color: #7c4a03; }
+:root[data-theme="dark"] .case-agent-confirm-float-note, :root[data-theme="dark"] .case-agent-confirm-float-count, :root[data-theme="dark"] .case-agent-confirm-float-status { color: #ffd591; }
+:root[data-theme="dark"] .case-agent-pending-pill { border-color: #7c4a03; border-left-color: #d89614; background: #2b2111; color: #ffd591; }
+:root[data-theme="dark"] .case-agent-pending-pill .agent-pending-tag { border-color: #7c4a03; background: #443111; color: #ffd591; }

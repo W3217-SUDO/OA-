@@ -70,9 +70,11 @@ type Props = { open: boolean; title: ReactNode; onClose: () => void; children: R
   /** 501185（陶国南 11-03 11:11）：案件详情打开着、智能体没开时，右侧默认显示收起状态的小按钮，点了才展开（手机不显示）。 */
   idleTab?: boolean; onExpandIdle?: () => void;
   /** 案件有已逾期或 7 天内到期的提醒（方案 C 的红点）。 */
-  tabAlert?: boolean; tabEffect?: CaseAgentTabEffect };
+  tabAlert?: boolean; tabEffect?: CaseAgentTabEffect;
+  /** 501634：待确认的智能体操作数，收起到侧边时按钮上显示“待确认 N”。 */
+  pendingCount?: number };
 
-export function CaseAgentDock({ open, title, onClose, children, revealKey = 0, idleTab = false, onExpandIdle, tabAlert = false, tabEffect = CASE_AGENT_TAB_EFFECT }: Props) {
+export function CaseAgentDock({ open, title, onClose, children, revealKey = 0, idleTab = false, onExpandIdle, tabAlert = false, tabEffect = CASE_AGENT_TAB_EFFECT, pendingCount = 0 }: Props) {
   const [viewport, setViewport] = useState(readViewport);
   const [rect, setRect] = useState<WindowRect>(() => visibleRect(readRect(), viewport));
   const [collapsed, setCollapsed] = useState(false);
@@ -151,6 +153,7 @@ export function CaseAgentDock({ open, title, onClose, children, revealKey = 0, i
     className={`case-agent-dock-tab ${tabEffect === "alert" ? "is-breathe is-blink" : `is-${tabEffect}`}${alert ? " has-alert" : ""}`}
     aria-label="展开案件智能体" title={alert ? "案件有临期或逾期提醒，点开智能体看看" : "展开案件智能体"} onClick={onClick}>
     <AgentHeadIcon size={26} />{alert && <i className="case-agent-dock-tab-dot" aria-hidden="true" />}<span>案件智能体</span>
+    {pendingCount > 0 && <b className="case-agent-dock-tab-pending">待确认 {pendingCount}</b>}
   </button>, document.body);
   if (!open) {
     if (!idleTab || viewport.mobile || !onExpandIdle) return null;

@@ -8,13 +8,14 @@ const read = (path) => fs.readFileSync(new URL(path, import.meta.url), "utf8");
 test("待确认卡片有边框、左侧色条、浅色底和“待确认”标签", () => {
   const css = read("../src/agentPending.css");
   assert.match(css, /\.agent-pending-card \{[^}]*border-left: 5px solid #d46b08;[^}]*background: #fff7e6;/);
-  const drawer = read("../src/legal/CaseAgentDrawer.tsx");
+  // 501634：案件智能体的待确认卡片改成浮动确认窗口。
+  const drawer = read("../src/legal/CaseAgentConfirmFloat.tsx");
   assert.match(drawer, /<Tag className="agent-pending-tag">待确认<\/Tag>/);
   assert.match(read("../src/personal-agent/AssistantPanel.tsx"), /<Tag className="agent-pending-tag">待确认<\/Tag>/);
 });
 
 test("确认按钮淡色底块加文字和图标，主次靠底色深浅，不用红色 danger", () => {
-  const drawer = read("../src/legal/CaseAgentDrawer.tsx");
+  const drawer = read("../src/legal/CaseAgentConfirmFloat.tsx");
   assert.match(drawer, /className="agent-btn-cancel" icon=\{<CloseOutlined \/>\}[^\n]*>驳回，不修改</);
   assert.match(drawer, /className="agent-btn-confirm" icon=\{<CheckOutlined \/>\}/);
   assert.doesNotMatch(drawer, /key="reject" danger/);
