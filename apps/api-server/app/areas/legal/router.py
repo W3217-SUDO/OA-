@@ -371,6 +371,16 @@ async def batch_update_cases(body: CaseBatchUpdateInput, identity: dict = Depend
         handling_lawyers, handling_usernames = await _resolve_active_case_people(body.handling_lawyers, db, field_name="经办律师")
         if not handling_lawyers:
             raise HTTPException(status_code=422, detail="请至少保留一名有效经办律师")
+    source_value: str | None = None
+    source_username: str | None = None
+    if body.source_lawyer is not None:
+        # 501583（fwl 11-05）：批量修改案源人，规则同详情里单个修改（501293：只能一人、从在职人员里选）。
+        source_values, source_usernames = await _resolve_active_case_people(
+            [body.source_lawyer] if body.source_lawyer.strip() else [], db, field_name="案源人",
+        )
+        if not source_values:
+            raise HTTPException(status_code=422, detail="请选择一位案源人")
+        source_value, source_username = source_values[0], (source_usernames[0] if source_usernames else "")
     if body.assistant is not None:
         assistant_values, assistant_usernames = await _resolve_active_case_people([body.assistant] if body.assistant.strip() else [], db, field_name="律师助理")
         assistant_value = assistant_values[0] if assistant_values else ""
@@ -416,8 +426,14 @@ async def batch_update_cases(body: CaseBatchUpdateInput, identity: dict = Depend
             changes.append(f"案件阶段：{data.get('case_stage') or case.status} → {body.case_stage.strip()}")
             data["case_stage"] = body.case_stage.strip()
         if body.source_lawyer is not None:
-            changes.append(f"案源人：{data.get('source_lawyer', '')} → {body.source_lawyer.strip()}")
-            data["source_lawyer"] = body.source_lawyer.strip()
+            # 写到详情、提成、业绩排行都读的 business_owner/source_person（原来只写 source_lawyer，没人读）。
+            previous_source = data.get("business_owner") or data.get("source_person") or data.get("source_lawyer") or ""
+            changes.append(f"案源人：{previous_source} → {source_value}")
+            data.update({"business_owner": source_value, "source_person": source_value, "source_lawyer": source_value,
+                         "business_owner_username": source_username, "source_person_username": source_username})
+            for key in ("business_owner_usernames", "source_person_usernames"):
+                if key in data:
+                    data[key] = [source_username] if source_username else []
         if body.litigation_amount is not None:
             changes.append(f"诉讼标的：{data.get('litigation_amount', 0)} → {body.litigation_amount}")
             data["litigation_amount"] = body.litigation_amount

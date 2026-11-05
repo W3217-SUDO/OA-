@@ -17,6 +17,8 @@ export function CaseOperationsMenu({ selected, capabilities, canAssignTeam, canC
       { key: "batch-hearing-lawyer", label: "修改开庭律师" },
       { key: "batch-handling-lawyer", label: "修改经办律师" },
       { key: "batch-assistant", label: "修改律师助理" },
+      // 501583（fwl 11-05）：批量修改案源人，权限同批量修改开庭/经办律师。
+      { key: "batch-source-person", label: "修改案源人" },
     ] : []),
     ...(canChangePhase ? [{ key: "batch-stage", label: "修改案件阶段" }] : []),
   ];

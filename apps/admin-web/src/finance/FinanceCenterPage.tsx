@@ -4177,7 +4177,8 @@ function FinanceCenterContent({
       const linked = selectedSettlementCases();
       if (linked.length) void openRecordFiles(linked[0], "普通附件", linked);
     }
-    if (key === "batch-modify") openSelectedSettlementBatch();
+    // “批量修改”下的各项（开庭律师、经办律师、律师助理、案源人、案件阶段）都打开同一个批量修改窗口（501583）。
+    if (key === "batch-modify" || ["hearing_lawyer", "handling_lawyers", "assistant", "source_lawyer", "case_stage"].includes(key)) openSelectedSettlementBatch();
     if (
       ["authorization", "law-firm-letter", "identity", "settlement"].includes(
         key,

@@ -4544,6 +4544,7 @@ export default function CaseCenterPage({
           <Form.Item label="开庭律师" name="hearing_lawyer"><Input placeholder="不修改则留空" /></Form.Item>
           <Form.Item label="经办律师" name="handling_lawyers"><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseLawyerOptions} placeholder="不修改则留空"/></Form.Item>
           <div className="form-grid"><Form.Item label="律师助理" name="assistant"><KeywordPersonSelect allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="不修改则留空"/></Form.Item><Form.Item label="案件阶段" name="case_stage"><Input placeholder="不修改则留空"/></Form.Item></div>
+          <Form.Item label="案源人" name="source_lawyer" extra="只能一人；已提交、审核或发放的提成不变，草稿提成按新案源人重算"><KeywordPersonSelect allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="不修改则留空"/></Form.Item>
           <Form.Item label="修改说明" name="comment"><Input.TextArea rows={3}/></Form.Item>
         </Form>
       </Modal>

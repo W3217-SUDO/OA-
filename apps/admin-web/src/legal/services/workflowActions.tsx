@@ -1047,7 +1047,9 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
             payload.assistant = values.assistant;
         if (values.case_stage !== undefined)
             payload.case_stage = values.case_stage;
-        if (payload.hearing_lawyer === undefined && payload.handling_lawyers === undefined && payload.assistant === undefined && payload.case_stage === undefined)
+        if (values.source_lawyer)
+            payload.source_lawyer = values.source_lawyer;
+        if (payload.hearing_lawyer === undefined && payload.handling_lawyers === undefined && payload.assistant === undefined && payload.case_stage === undefined && payload.source_lawyer === undefined)
             return message.warning("请至少填写一个需要修改的字段");
         try {
             const { data } = await api.post("/cases/batch-update", payload);
