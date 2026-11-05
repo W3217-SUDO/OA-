@@ -216,7 +216,9 @@ export function TaskBatchModal(props: TaskBatchModalProps) {
               ? "仅任务发起人或管理员可撤回；任一任务不符合条件时整批不会提交。"
               : taskBatchAction === "confirm"
                 ? "仅任务发起人或管理员可验收待确认任务；任一任务不符合条件时整批不会提交。"
-                : "系统将逐条核验负责人、状态和权限；任一任务不符合条件时整批不会提交。"
+                : taskBatchAction === "complete"
+                  ? "规则同单条完成：只能完成自己负责、未结束的任务，按案件阶段自动完成的任务不能手动完成；不符合的会跳过并列出原因，其余照常提交，等发起人验收。"
+                  : "系统将逐条核验负责人、状态和权限；任一任务不符合条件时整批不会提交。"
         }
         style={{ marginBottom: 16 }}
       />
@@ -231,7 +233,7 @@ export function TaskBatchModal(props: TaskBatchModalProps) {
           </Form.Item>
         )}
         <Form.Item
-          label={taskBatchAction === "withdraw" ? "撤回原因" : "操作说明"}
+          label={taskBatchAction === "withdraw" ? "撤回原因" : taskBatchAction === "complete" ? "完成说明（选填）" : "操作说明"}
           name="comment"
           rules={
             taskBatchAction === "withdraw"

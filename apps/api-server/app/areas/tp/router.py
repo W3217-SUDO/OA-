@@ -857,6 +857,21 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
         recipient = await _active_task_username(body.recipient, db, field_name="接收人")
     if body.action == "withdraw" and not comment:
         raise HTTPException(status_code=422, detail="批量撤回任务必须填写撤回原因")
+    if body.action == "complete":
+        # 批量完成（501579 lingyi 11-05）：规则同单条完成，不符合的几条跳过并说明原因，其余照常提交；全部不符合仍报错
+        valid, skipped = [], []
+        for task in ordered_tasks:
+            try:
+                validate_task_lifecycle(task, identity, "complete", comment)
+            except HTTPException as exc:
+                if len(ordered_tasks) == 1:
+                    raise
+                skipped.append({"id": task.id, "serial_no": task.serial_no, "title": task.title, "reason": str(exc.detail)})
+                continue
+            valid.append(task)
+        if not valid:
+            raise HTTPException(status_code=409, detail="；".join(item["reason"] for item in skipped))
+        ordered_tasks = valid
 
     # Validate the full selection before changing any record, so a mixed
     # selection never creates a partial lifecycle result.
@@ -973,7 +988,8 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
     await db.commit()
     for task in ordered_tasks:
         await db.refresh(task)
-    return {"updated": len(ordered_tasks), "action": body.action, "items": [_task_dict(task) for task in ordered_tasks]}
+    return {"updated": len(ordered_tasks), "action": body.action, "items": [_task_dict(task) for task in ordered_tasks],
+            "skipped": skipped if body.action == "complete" else []}
 
 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/accept")
