@@ -810,7 +810,8 @@ export default function IprCenterPage({
       customer: record.customer,
       title: record.title,
       application_no: record.data.application_no,
-      application_type: record.data.application_type,
+      // 501611：没填申请类型的旧案件，编辑时默认选中旧系统的案件类型，点保存才写入。
+      application_type: record.data.application_type || record.data.case_type_name,
       applicant: record.data.applicant,
       case_manager: record.data.case_manager,
       application_date: record.data.application_date
@@ -841,7 +842,7 @@ export default function IprCenterPage({
       customer: record.customer,
       title: `${record.title}（复制）`,
       application_no: record.data.application_no,
-      application_type: record.data.application_type,
+      application_type: record.data.application_type || record.data.case_type_name,
       applicant: record.data.applicant,
       case_manager: record.data.case_manager,
       application_date: record.data.application_date

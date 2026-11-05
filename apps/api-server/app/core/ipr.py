@@ -250,7 +250,7 @@ def _ipr_case_export_values(row: BusinessRecord) -> list[object]:
     data = row.data or {}
     return [
         row.serial_no, data.get("case_kind"), row.title, row.customer,
-        data.get("application_no"), data.get("application_type"), data.get("applicant"),
+        data.get("application_no"), data.get("application_type") or data.get("case_type_name"), data.get("applicant"),
         data.get("case_phase") or "", data.get("case_manager") or row.owner,
         data.get("agent") or "", data.get("writer") or data.get("copywriter_name") or "",
         data.get("case_source") or data.get("case_origin_people_name") or "",
@@ -610,7 +610,7 @@ def _ipr_case_document_bytes(record: BusinessRecord, document_type: str) -> tupl
         ("案件名称", record.title or "【待补充】"),
         ("客户", record.customer or "【待补充】"),
         ("申请号/注册号", data.get("application_no") or "【待补充】"),
-        ("申请类型", data.get("application_type") or "【待补充】"),
+        ("申请类型", data.get("application_type") or data.get("case_type_name") or "【待补充】"),
         ("申请人/权利人", data.get("applicant") or "【待补充】"),
         ("案件负责人", data.get("case_manager") or "【待补充】"),
         ("申请日期", data.get("application_date") or "【待补充】"),

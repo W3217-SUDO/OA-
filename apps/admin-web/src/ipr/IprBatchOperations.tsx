@@ -1,5 +1,6 @@
 import { POPUP_WIDTH } from "../components/common/popupSize";
 import { Alert,Button,Card,DatePicker,Descriptions,Form,Input,InputNumber,Modal,Select } from "antd";
+import { IprApplicationTypeSelect } from "./IprApplicationTypeSelect";
 import dayjs from "dayjs";
 import type { Customer,IprBatchCreateError,IprFileType,IprRecord } from "./types";
 
@@ -225,7 +226,7 @@ export function IprBatchOperations({
                         name={[field.name, "application_type"]}
                         label="申请类型"
                       >
-                        <Input />
+                        <IprApplicationTypeSelect />
                       </Form.Item>
                       <Form.Item
                         {...field}

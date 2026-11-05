@@ -94,7 +94,8 @@ export function IprCaseDetailHeader({ detail, onOpenRebootCase, onSaved }: IprCa
           {
             key: "type",
             label: "申请类型",
-            children: detail.data.application_type || "—",
+            // 501611：没填申请类型的旧系统案件显示旧系统的案件类型（不改数据）。
+            children: detail.data.application_type || detail.data.case_type_name || "—",
           },
           {
             key: "applicant",

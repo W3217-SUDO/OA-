@@ -654,7 +654,7 @@ async def list_system_parameter_options(category: str, include_inactive: bool = 
     from app.core.finance import (
         _fee_type_catalog, _fee_type_catalog_aliases,
     )
-    if category not in {"notary_office", "fee_type", "case_file_type"}:
+    if category not in {"notary_office", "fee_type", "case_file_type", "ipr_application_type"}:
         raise HTTPException(status_code=422, detail="当前参数分类不提供业务选项")
     if category == "fee_type":
         items = (await db.scalars(select(SystemParameter).where(

@@ -10,6 +10,7 @@ Select,
 Space,
 } from "antd";
 import type { Customer,IprRecord } from "./types";
+import { IprApplicationTypeSelect } from "./IprApplicationTypeSelect";
 
 interface IprCaseCreateModalProps {
   open: boolean;
@@ -104,7 +105,7 @@ export function IprCaseCreateModal({ open, editing, form, customers, deadlineOff
               <Input />
             </Form.Item>
             <Form.Item name="application_type" label="申请类型">
-              <Input placeholder="如发明、实用新型、外观设计、注册商标" />
+              <IprApplicationTypeSelect />
             </Form.Item>
             <Form.Item name="applicant" label="申请人/权利人">
               <Input />
