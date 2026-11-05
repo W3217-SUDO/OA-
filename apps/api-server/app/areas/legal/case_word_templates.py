@@ -72,6 +72,9 @@ DERIVED_FIELDS = {"赔偿金额大写": "赔偿金额"}
 # 陶国南 11-04 14:19：律所用系统所在的上海沪知律师事务所，收款账户用沪知所的账户——
 # 取系统参数“付款单位”里的上海沪知律师事务所（户名/开户行/账号），那里改了这里跟着变。
 FIRM_NAME = "上海沪知律师事务所"
+# 陶国南 11-05 09:54：申请书的送达地址固定写沪知所地址。取系统参数“付款单位”里上海沪知律师事务所的 address（参数里改了这里跟着变），
+# 参数里还没填时用这个地址。
+FIRM_ADDRESS = "上海市静安区江场路1228弄20号五牛控股大厦603室"
 # 留空的字段在文书里留几个全角空格，方便打印后手写。
 BLANK = "\u3000" * 4
 
@@ -470,7 +473,7 @@ CN_ORDINALS = "一二三四五六七八九十"
 
 def _applicant_block(name: str, label: str, identity: dict, profile: dict, *, applicant: bool) -> list[str]:
     """申请书里一位申请人/被申请人的几行（陶国南 11-05 样本格式）：单位写统一社会信用代码、法定代表人和职务、住所；
-    个人写性别、身份证号码、住址。法定代表人取当事人档案（多数没填），职务系统里没有，没有的留空格打印后手写。"""
+    个人写性别、身份证号码、住址。法定代表人取当事人档案（多数没填），职务系统里没有，没有的留空格打印后手写；送达地址写沪知所地址。"""
     identity_no = str(identity.get("identity_no") or profile.get("identity_no") or profile.get("credit_code") or "").strip().upper()
     address = _first(profile, *ADDRESS_KEYS)
     if address == name:
@@ -496,7 +499,7 @@ async def _applicant_lines(data: dict, names: list[str], identities_key: str, db
             continue
         lines += _applicant_block(name, label, identities.get(name, {}), profiles.get(name, {}), applicant=applicant)
     if applicant:
-        lines.append(f"送达地址：{BLANK}")
+        lines.append(f"送达地址：{await firm_address(db)}")
     return "\n".join(lines)
 
 
@@ -518,6 +521,14 @@ def _amount_text(value) -> str:
     except ValueError:
         return ""
     return f"{number:.2f}".rstrip("0").rstrip(".") if number else ""
+
+
+async def firm_address(db: AsyncSession) -> str:
+    from app.models import SystemParameter
+    rows = (await db.scalars(select(SystemParameter).where(SystemParameter.category == "payment_type", SystemParameter.name == FIRM_NAME,
+                                                          SystemParameter.is_active.is_(True)).order_by(SystemParameter.id))).all()
+    return next((str((row.extra or {}).get("address") or "").strip() for row in rows if str((row.extra or {}).get("address") or "").strip()),
+                FIRM_ADDRESS)
 
 
 async def firm_account(db: AsyncSession) -> dict[str, str]:
