@@ -297,11 +297,16 @@ async def _monitored_fee_rows(identity: dict, db: AsyncSession, start: date, end
     return rows
 
 
+def _search_key(value) -> str:
+    """501601（高勤兰 11-05）：搜索时去掉所有空格（含全角空格）、不分大小写，再按包含匹配。"""
+    return "".join(str(value or "").split()).replace("\u3000", "").casefold()
+
+
 def _filter_rows(rows: list[dict], filters: dict[str, str], date_from: date | None, date_to: date | None) -> list[dict]:
     for name, value in filters.items():
-        word = (value or "").strip()
+        word = _search_key(value)
         if word:
-            rows = [row for row in rows if any(word in str(row[field]) for field in _FILTER_FIELDS[name])]
+            rows = [row for row in rows if any(word in _search_key(row[field]) for field in _FILTER_FIELDS[name])]
     if date_from:
         rows = [row for row in rows if row["application_date"] >= date_from]
     if date_to:
