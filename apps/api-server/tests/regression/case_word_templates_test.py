@@ -174,7 +174,7 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
         response = await self.client.get(API + "/case-word-templates")
         self.assertEqual(response.status_code, 200, response.text)
         listed = response.json()["items"]
-        builtin = [item["id"] for item in module.BUILTIN_TEMPLATES if item["id"] != "withdrawal-application"]
+        builtin = [item for item in module.LITIGATION_ORDER if item != "withdrawal-application"]
         self.assertEqual([item["id"] for item in listed], [*builtin, template_id], "停用的模板普通用户看不到")
         self.assertEqual(next(item for item in listed if item["id"] == template_id)["options"], {"诉讼请求": ["停止侵权"]})
         self.assertEqual((await self.client.post(self.url("withdrawal-application", "preview"), json={})).status_code, 409)
@@ -193,6 +193,13 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
             files = (await db.scalars(select(FileAttachment).where(FileAttachment.category == "案件文书模板"))).all()
         self.assertTrue(next(item for item in config.value["items"] if item["id"] == template_id)["deleted_at"], "删除只做逻辑删除")
         self.assertEqual(len(files), 2, "旧模板文件保留")
+
+    def test_list_follows_litigation_order(self):
+        """陶国南 11-05：起诉状、送达地址确认书在前，执行和解、执行结案在最后；每个内置模板都排进了顺序。"""
+        self.assertEqual(sorted(module.LITIGATION_ORDER), sorted(item["id"] for item in module.BUILTIN_TEMPLATES))
+        names = [item["name"] for item in module._merged({"items": [{"id": "t-x", "name": "上传的", "attachment_id": 1}]})]
+        self.assertEqual(names[:3], ["民事起诉状（要素式·不正当竞争纠纷）", "民事起诉状（要素式·侵害商标权纠纷）", "送达地址确认书"])
+        self.assertEqual(names[-3:], ["执行和解协议", "执行结案申请书", "上传的"])
 
     async def test_underlined_template_upload_recognizes_fields_and_mapping_can_change(self):
         self.identity = ADMIN

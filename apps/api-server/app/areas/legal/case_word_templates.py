@@ -164,6 +164,19 @@ async def _config(db: AsyncSession, *, lock: bool = False) -> tuple[SystemConfig
     return record, deepcopy(record.value or {}) if record else {"items": []}
 
 
+# 陶国南 11-05：生成文书清单按诉讼流程从前往后排——起诉 → 审理中 → 调解/撤诉/判决后 → 执行放最后。
+# 不在这里的（以后新加的内置模板、上传的模板）排在后面，按原来的先后。
+LITIGATION_ORDER = (
+    "element-complaint-unfair-competition", "element-complaint-trademark",  # 起诉
+    "delivery-address", "mediation-agreement", "property-preservation",  # 立案前后
+    "non-public-hearing", "change-claims", "hearing-memo",  # 审理中
+    "mediation-agreement-litigation", "withdrawal-application",  # 调解/撤诉
+    "court-refund-account", "case-summary",  # 判决后、结案
+    "execution-settlement-agreement", "execution-closing-application",  # 执行
+)
+_ORDER_RANK = {template_id: rank for rank, template_id in enumerate(LITIGATION_ORDER)}
+
+
 def _merged(value: dict) -> list[dict]:
     """内置模板 + 配置里的修改（改名、停用、换文件、常用选项）+ 上传的模板；已删除的不返回。"""
     overrides = {item["id"]: item for item in value.get("items", [])}
@@ -171,6 +184,7 @@ def _merged(value: dict) -> list[dict]:
     for builtin in BUILTIN_TEMPLATES:
         items.append({"builtin": True, "is_active": True, "attachment_id": None, **builtin, **overrides.get(builtin["id"], {})})
     items.extend({"builtin": False, **item} for item in value.get("items", []) if item["id"] not in {b["id"] for b in BUILTIN_TEMPLATES})
+    items.sort(key=lambda item: _ORDER_RANK.get(item["id"], len(_ORDER_RANK)))  # 稳定排序：没列出的保持原来先后
     return [item for item in items if not item.get("deleted_at")]
 
 
