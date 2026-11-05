@@ -22,6 +22,17 @@ from .business_tools import TOOLS as BUSINESS_TOOLS, is_business_tool, run_busin
 
 MAX_TOOL_CALLS = 24
 TOOL_RESULT_SINK: ContextVar[list[dict[str, Any]] | None] = ContextVar("oa_model_tool_results", default=None)
+# 陶国南 11-05 07:48：确认卡片一生成就推给页面，不等整轮回复结束。
+PENDING_ACTION_SINK: ContextVar[Callable[[dict[str, Any]], None] | None] = ContextVar("oa_pending_action_sink", default=None)
+
+
+def _announce_pending(action: dict[str, Any]) -> None:
+    sink = PENDING_ACTION_SINK.get()
+    if sink is not None:
+        try:
+            sink(action)
+        except Exception:  # 推送失败不影响本轮，卡片仍随最终状态返回
+            pass
 MODEL_TOOLS = [
     {
         "type": "function",
@@ -151,6 +162,7 @@ class ModelToolSession:
                     raise RuntimeError("oa_pending_request_invalid")
                 self.pending_actions.append({"type": "mcp.call", "summary": str(result["summary"]),
                                              "payload": {"request_id": request_id}, "preview": preview})
+                _announce_pending(self.pending_actions[-1])
             return {"result": result}
         if name != "oa_call_tool":
             raise HTTPException(status_code=422, detail="模型只能使用 OA 工具发现与受控调用")
@@ -183,6 +195,7 @@ class ModelToolSession:
                 "payload": {"request_id": request_id},
                 "preview": preview,
             })
+            _announce_pending(self.pending_actions[-1])
             self._prepared[call_key] = result
         self._collect_resources(result)
         return result

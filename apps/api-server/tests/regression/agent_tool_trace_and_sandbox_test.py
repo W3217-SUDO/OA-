@@ -36,7 +36,8 @@ class ToolTraceTest(unittest.IsolatedAsyncioTestCase):
         await tools.execute("oa_call_tool", {"name": "list_customers", "arguments": {"customer_name": "张三", "api_token": "abc"}})
         self.assertEqual(len(trace), 1)
         entry = trace[0]
-        self.assertIn("list_customers", entry["label"])  # 显示实际调用的业务工具，而不是外层 oa_call_tool
+        # 陶国南 11-05：只显示中文功能名、不带英文接口名；目录里查不到中文名的写“调用业务功能”。
+        self.assertEqual(entry["label"], "调用业务功能")
         self.assertIn("张三", entry["detail"])
         self.assertNotIn("abc", entry["detail"])  # 密钥类参数不显示
         self.assertTrue(entry["ok"])

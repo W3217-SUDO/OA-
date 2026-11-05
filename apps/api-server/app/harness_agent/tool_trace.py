@@ -47,7 +47,9 @@ def describe(name: str, arguments) -> tuple[str, str]:
     arguments = arguments if isinstance(arguments, dict) else {}
     label, shown = name, arguments
     if name == "oa_call_tool" and isinstance(arguments.get("name"), str):
-        label = _title(arguments["name"]) + "（" + arguments["name"] + "）"
+        # 陶国南 11-05：只显示中文功能名，不带英文接口名；没有中文名时写“调用业务功能”。
+        title = _title(arguments["name"])
+        label = title if title != arguments["name"] else "调用业务功能"
         shown = arguments.get("arguments") or {}
     elif name == "oa_search_tools":
         label = "搜索业务工具"

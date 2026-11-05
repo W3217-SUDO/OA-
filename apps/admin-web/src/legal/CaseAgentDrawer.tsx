@@ -182,7 +182,7 @@ export const CaseAgentDrawer = ({
   const firstShownAt = !agentHistoryExpanded && (agentState?.messages?.length || 0) > 8 ? shownMessages[0]?.created_at : undefined;
   const timeline = mergeByTime(shownMessages, decidedActions.filter((action) => !firstShownAt || !action.decided_at || Date.parse(action.decided_at) >= Date.parse(firstShownAt)),
     (item) => item.created_at, (action) => action.decided_at || action.requested_at);
-  const actionDisabled = (action: CaseAgentAction) => Boolean(agentDecisionLoading) || (action.type !== "mcp.call" && !counselDetailCapabilities.can_write);
+  const actionDisabled = (action: CaseAgentAction) => Boolean(agentDecisionLoading) || Boolean((action as { preparing?: boolean }).preparing) || (action.type !== "mcp.call" && !counselDetailCapabilities.can_write);
   const selectedSkill = (agentStatus?.skills || []).find((item) => item.id === agentSkillId);
   const quickPrompts = selectedSkill?.quick_prompts?.length
     ? selectedSkill.quick_prompts
@@ -245,7 +245,7 @@ export const CaseAgentDrawer = ({
               {decisionFailures[action.id] && <div className="agent-action-failure" role="alert">未执行：{decisionFailures[action.id]}</div>}
             </div>
             <Space>
-              <Button size="small" className="agent-btn-confirm" icon={<CheckOutlined />} disabled={actionDisabled(action)} loading={agentDecisionLoading === action.id} onClick={() => setActiveAction(action)}>查看并确认</Button>
+              <Button size="small" className="agent-btn-confirm" icon={<CheckOutlined />} disabled={actionDisabled(action)} loading={agentDecisionLoading === action.id} onClick={() => setActiveAction(action)}>{(action as { preparing?: boolean }).preparing ? "回复写完即可确认" : "查看并确认"}</Button>
             </Space>
           </div>)}
         </section> : null}

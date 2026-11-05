@@ -476,7 +476,8 @@ async def prepare_business_request(tool, values: dict, plan: dict, *, conversati
         "operation_name": tool.title, "tool_name": tool.name, "method": "POST",
         "path": f"业务工具 {tool.name}", "path_template": f"/business-tools/{tool.name}",
         "params": {"path": {}, "query": {}, "body": values, "steps": "\n".join(steps)},
-        "original_values": "按下列步骤依次办理，任一步失败即停止", "requires_confirmation": True,
+        "original_values": ("；".join(plan["changes"]) if plan.get("changes") else "按下列步骤依次办理，任一步失败即停止"),
+        "requires_confirmation": True,
         **display_maps({"body": values}, tool.properties),
     }
     async with SessionLocal() as db:

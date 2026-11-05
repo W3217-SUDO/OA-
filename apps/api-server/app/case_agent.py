@@ -68,9 +68,14 @@ CASE_INFO_EDIT_RULES = (
     "内部费用、案件费用等），只依据上面的当前案件空间数据（案件基本信息）和对应的修改接口；"
     "不要读取案件文档、文书、附件或 AI 空间文件，也不要为此再查询整个案件空间或搜索文档类工具。"
     "只有用户明确要求按某份文件内容填写时，才读取那一份文件。"
+    # 陶国南 11-05 07:44：所有请求默认只带案件基本信息。
+    "所有请求默认只提供案件基本信息和系统案件检查结果，不提供整个案件空间；需要费用、合同、文档、任务、线索、期限等时，"
+    "按需调用对应查询工具（案件费用、附件、任务、办案指引用 biz_case_overview），只查回答本问题需要的部分；"
+    "只有用户明确说“查全部案件空间”“看整个案件”时，才会提供全部资料。"
     # 陶国南 11-05：常改项一次出确认卡片，不在 25 组里逐个搜功能。
     "判决/调解金额、诉讼标的、法院信息（法院、案号、法庭、法官、书记员、立案/开庭/判决日期、判决文书号）、开庭律师、案件阶段，"
-    "直接调用 biz_case_update_info（case_id 用当前案件 ID）：先不带 confirm 拿执行计划，用户同意后加 confirm=true 生成确认卡片；"
+    "直接调用 biz_case_update_info（case_id 用当前案件 ID），第一次就带 confirm=true，直接生成确认卡片（卡片写明每项从多少改成多少），"
+    "用户点批准才执行；不要先给文字计划、不要等用户回复“确认”，卡片就是确认；回复里一句话说明已生成卡片、请在卡片上批准即可；"
     "不要为这些项目调用 oa_list_tool_groups 或 oa_search_tools。"
     + "\n" + "案件信息字段对照（陶国南 11-05：听到哪项就知道是案件详情哪个区块、哪个字段，直接办，不到处找）：" + "\n" + "{CASE_FIELD_MAP}"
 )
@@ -121,12 +126,23 @@ def is_case_info_edit_request(message: str) -> bool:
     return bool(_EDIT_VERBS.search(text) and _EDIT_FIELDS.search(text))
 
 
-def slim_case_snapshot(context: dict) -> dict:
-    """只保留案件基本信息、人员和本人能做的操作；费用、文档、任务、线索、检查结果等不带。"""
-    keep = ("schema_version", "space", "case", "people", "capabilities")
+def slim_case_snapshot(context: dict, *, keep_check: bool = False) -> dict:
+    """只保留案件基本信息、人员和本人能做的操作；费用、文档、任务、线索等不带。
+    keep_check=True 时带上系统算好的案件检查结果（“归纳案件情况”“优先待办事项”要用，内容很短）。"""
+    keep = ("schema_version", "space", "case", "people", "capabilities", "document_readings", *(("case_check",) if keep_check else ()))
     slim = {key: context[key] for key in keep if key in context}
-    slim["scope_note"] = "本轮是修改或填写案件信息，只提供案件基本信息；需要其他资料时按用户要求再查。"
+    slim["scope_note"] = ("本轮只提供案件基本信息。需要费用、合同、文档、任务、线索、期限等其他资料时，"
+                          "按需调用对应查询工具（如 biz_case_overview），不要一次查全部；用户说“查全部案件空间”时才会提供全部资料。")
     return slim
+
+
+# 陶国南 11-05 07:44：除非用户让查全部案件空间，否则都不带整个案件空间。
+_FULL_SPACE = re.compile(r"(全部案件空间|整个案件空间|案件空间全部|查全部|看整个案件|整个案件|全部资料|所有资料|全面分析|完整分析)")
+
+
+def is_full_space_request(message: str) -> bool:
+    """用户明确要看整个案件空间时才带全部资料。"""
+    return bool(_FULL_SPACE.search(str(message or "")))
 
 _MODEL_CHUNK_CALLBACK: ContextVar[Callable[[str], None] | None] = ContextVar("model_chunk_callback", default=None)
 # 陶国南 11-05：等待时显示实际步骤（正在调用：修改案件信息…），不再只显示固定的“正在分析案件空间”。
@@ -293,6 +309,10 @@ def build_case_model_messages(
     request_images: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     from .agent_mcp.model_context import MODEL_QUERY_RULES, model_result_view
+    scope = snapshot.get("_model_scope")
+    if scope in ("basic", "basic_edit"):
+        # 陶国南 11-05 07:44：除非用户让查全部案件空间，模型只看案件基本信息（改信息时连检查结果也不带）。
+        snapshot = slim_case_snapshot(snapshot, keep_check=scope == "basic")
     prioritized_snapshot = {
         "document_readings": snapshot.get("document_readings") or [],
         # 501222：检查结果放前面，长案件截断时也保得住。
@@ -692,6 +712,17 @@ class CaseAgentRuntime:
         async def run() -> None:
             token = _MODEL_CHUNK_CALLBACK.set(lambda content: queue.put_nowait({"type": "delta", "content": content}))
             progress_token = _MODEL_PROGRESS_CALLBACK.set(lambda text: queue.put_nowait({"type": "progress", "text": text}))
+            from .agent_mcp.model_tools import PENDING_ACTION_SINK
+
+            def announce(action: dict[str, Any]) -> None:
+                # 先显示卡片（按钮在本轮回复写完、正式记录后才可点），最终 state 事件再替换成正式卡片。
+                request_id = str((action.get("payload") or {}).get("request_id") or "")
+                queue.put_nowait({"type": "pending_action", "action": {
+                    "id": "preparing-" + request_id, "type": action.get("type"), "summary": action.get("summary"),
+                    "preview": action.get("preview"), "status": "pending", "preparing": True, "requested_at": _now()}})
+                queue.put_nowait({"type": "progress", "text": "已生成确认卡片，请在上方查看"})
+
+            sink_token = PENDING_ACTION_SINK.set(announce)
             try:
                 state = await self.invoke(**kwargs)
                 await queue.put({"type": "state", "state": state})
@@ -700,6 +731,7 @@ class CaseAgentRuntime:
             finally:
                 _MODEL_CHUNK_CALLBACK.reset(token)
                 _MODEL_PROGRESS_CALLBACK.reset(progress_token)
+                PENDING_ACTION_SINK.reset(sink_token)
                 await queue.put({"type": "done"})
 
         task = asyncio.create_task(run())

@@ -19,7 +19,7 @@ export function ToolTrace({ trace }: { trace?: ToolCallRecord[] }) {
             {trace.map((item, index) => (
               <li key={`${item.name}-${index}`}>
                 <span className={item.ok ? "is-ok" : "is-failed"}>{item.ok ? <CheckCircleOutlined /> : <CloseCircleOutlined />}</span>
-                <strong>{item.label}</strong>
+                <strong>{String(item.label || "").replace(/（[A-Za-z0-9_.]+）$/, "")}</strong>
                 {item.ms > 0 && <small>{item.ms >= 1000 ? `${(item.ms / 1000).toFixed(1)} 秒` : `${item.ms} 毫秒`}</small>}
                 {item.detail && <code title={item.detail}>{item.detail}</code>}
               </li>

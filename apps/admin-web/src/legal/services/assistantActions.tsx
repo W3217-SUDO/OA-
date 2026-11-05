@@ -205,6 +205,13 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
                     else if (event.type === "progress") {
                         context.setAgentProgress?.(String(event.text || ""));
                     }
+                    else if (event.type === "pending_action" && event.action?.id) {
+                        // 陶国南 11-05：确认卡片一生成就显示；本轮结束时 state 事件换成可批准的正式卡片。
+                        setAgentState((current) => current ? {
+                            ...current,
+                            pending_actions: [...(current.pending_actions || []).filter((item) => item.id !== event.action.id), event.action],
+                        } : current);
+                    }
                     else if (event.type === "state") {
                         setAgentState(stateWithAgentScreenshotPreviews(event.state));
                     }
@@ -251,6 +258,7 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
                     : String(rawDetail);
                 setAgentState((current) => current ? {
                     ...current,
+                    pending_actions: (current.pending_actions || []).filter((item) => !String(item.id || "").startsWith("preparing-")),
                     messages: [
                         ...current.messages.filter((item) => !String(item.id || "").startsWith("stream-")),
                         { id: `error-${Date.now()}`, role: "assistant", content: visibleDetail },
