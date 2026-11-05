@@ -11,6 +11,9 @@ EventTypeId=4）不进年费监控。老系统费用表迁移后放在 legacy_ip
 280146（高勤兰 11-02 举例 SHPD1711392 等，tgn 11-04 21:50 确认）：沪知老知识产权系统迁移来的专利，老系统 2018 年 12 月后不再更新，
 阶段一直停在“年费监控”；没有任何后续记录（OA 里没有年费记录、没有在 HD 系统继续办理、也没有同一专利的其他案件）的视为已失效，
 不进年费监控和年费清单。只改这里的筛选，不改案件数据；案件上手动点过“加入年费监控”的照常监控。
+280146（高勤兰 11-05 举例 HDPU1600401、HDPU1600400）：照老系统，最后一个年度缴完后，在专利权到期日前一天（申请日 + 保护期 - 1 天）
+再列一行“专利权到期”：阶段不是失效的才列，年度、年费为 0，“本案通/回/付”显示“专利权到期”；导出 Excel/Word 照列，
+Word 里这一行滞纳金、手续费按 0 算。
 """
 from calendar import monthrange
 from urllib.parse import quote
@@ -220,6 +223,8 @@ def _out_of_monitor(row: dict) -> bool:
 
 
 def _amounts_text(row: dict) -> str:
+    if row.get("term_expired"):
+        return "专利权到期"
     if not row["informed"]:
         return "未通知"
     return "/".join(str(round(row[key] or 0)) for key in ("inform_amount", "gained_amount", "bill_amount"))
@@ -248,6 +253,28 @@ async def _monitored_fee_rows(identity: dict, db: AsyncSession, start: date, end
         legacy_key = int(legacy_id) if legacy_id.isdigit() else None
         term, first_paid = _term_years(kind, application_date), _first_paid_year_no(data, application_date)
         relief = _relief_rate(data)
+        base = {
+            "case_id": record.id, "serial_no": record.serial_no,
+            "case_name": data.get("case_name") or record.title or "", "case_type": data.get("case_type") or "",
+            "case_phase": data.get("case_phase") or "",
+            "customer": record.customer or "", "customer_record_id": data.get("customer_record_id"),
+            "granted": bool(_parse_date(data.get("authorization_date"))) or str(data.get("case_phase") or "") in _GRANTED_PHASES,
+            "applicant": data.get("applicant_name") or data.get("applicant") or record.customer or "",
+            "application_no": data.get("application_no") or "", "application_date": application_date,
+            "procurator": data.get("procurator_name") or data.get("procurator") or "",
+            "case_source": data.get("case_origin_people_name") or "",
+            "writer": data.get("copywriter_name") or data.get("writer") or "",
+            "relief_rate": round(relief * 100), "monitor_blocked": legacy_key is not None and (source, legacy_key) in blocked,
+            "term_expired": False,
+        }
+        expiry_due = _add_months(application_date, 12 * term) - date.resolution
+        if start <= expiry_due <= end and "失效" not in str(data.get("case_phase") or ""):
+            rows.append({
+                **base, "fee_year": expiry_due.year, "year_no": term + 1, "due_date": expiry_due,
+                "period_start": expiry_due, "period_end": expiry_due, "annual_fee": 0, "informed": False,
+                "inform_amount": 0, "gained_amount": 0, "bill_amount": 0, "late_fee_billed": 0, "paid": False,
+                "term_expired": True,
+            })
         for year_no in range(first_paid + 1, term + 1):
             period_start = _add_months(application_date, 12 * (year_no - 1))
             due = period_start - date.resolution
@@ -257,24 +284,14 @@ async def _monitored_fee_rows(identity: dict, db: AsyncSession, start: date, end
                 continue
             fee = legacy.get((source, legacy_key, year_no)) or {} if legacy_key is not None else {}
             rows.append({
-                "case_id": record.id, "serial_no": record.serial_no,
-                "case_name": data.get("case_name") or record.title or "", "case_type": data.get("case_type") or "",
-                "case_phase": data.get("case_phase") or "",
-                "customer": record.customer or "", "customer_record_id": data.get("customer_record_id"),
-                "granted": bool(_parse_date(data.get("authorization_date"))) or str(data.get("case_phase") or "") in _GRANTED_PHASES,
-                "applicant": data.get("applicant_name") or data.get("applicant") or record.customer or "",
-                "application_no": data.get("application_no") or "", "application_date": application_date,
-                "procurator": data.get("procurator_name") or data.get("procurator") or "",
-                "case_source": data.get("case_origin_people_name") or "",
-                "writer": data.get("copywriter_name") or data.get("writer") or "",
+                **base,
                 "fee_year": due.year, "year_no": year_no, "due_date": due, "period_start": period_start,
                 "period_end": _add_months(period_start, 12) - date.resolution,
-                "annual_fee": round(_standard_fee(kind, year_no) * (1 - relief)), "relief_rate": round(relief * 100),
+                "annual_fee": round(_standard_fee(kind, year_no) * (1 - relief)),
                 "informed": bool(fee.get("informed")),
                 "inform_amount": fee.get("inform_amount", 0), "gained_amount": fee.get("gained_amount", 0),
                 "bill_amount": fee.get("bill_amount", 0), "late_fee_billed": fee.get("late_fee", 0),
                 "paid": bool(fee.get("paid")),
-                "monitor_blocked": legacy_key is not None and (source, legacy_key) in blocked,
             })
     rows.sort(key=lambda item: (item["due_date"], item["serial_no"]))
     return rows
@@ -349,7 +366,7 @@ def _export_values(row: dict) -> list[str]:
     amounts = _amounts_text(row)
     return [
         row["applicant"], row["case_name"], row["case_type"], row["serial_no"], row["application_no"], str(row["application_date"]),
-        f"第{row['year_no']}年度：{row['period_start']}至{row['period_end']}", str(row["annual_fee"]), f"{row['relief_rate']}%",
+        "0" if row.get("term_expired") else f"第{row['year_no']}年度：{row['period_start']}至{row['period_end']}", str(row["annual_fee"]), f"{row['relief_rate']}%",
         row["case_source"], amounts,
     ]
 
@@ -370,12 +387,17 @@ async def export_ipr_annual_fee_monitor_excel(query: _ListQuery = Depends(), ide
 
 def _late_fee(row: dict, today: date) -> int:
     """滞纳金：逾期不满一个月不收，之后每满一个月加收当年全额年费的 5%（模板所引专利法实施细则规定）。"""
-    if row["due_date"] >= today:
+    if row.get("term_expired") or row["due_date"] >= today:
         return 0
     months = 0
     while months < 6 and _add_months(row["due_date"], months + 1) < today:
         months += 1
     return round(row["annual_fee"] * 0.05 * months)
+
+
+def _handling_fee(row: dict) -> int:
+    """专利权到期那一行不缴年费，手续费也按 0（280146）。"""
+    return 0 if row.get("term_expired") else _HANDLING_FEE
 
 
 def _fill_placeholders(paragraph, values: dict[str, str]) -> None:
@@ -431,7 +453,8 @@ async def export_ipr_annual_fee_monitor_word(query: _ListQuery = Depends(), iden
     # 老系统滞纳金是单独请款（11021/21021/31021），有就用请款金额，没有按规定估算。
     late_fees = [round(row["late_fee_billed"]) if row["late_fee_billed"] else _late_fee(row, today) for row in rows]
     annual_total = sum(row["annual_fee"] for row in rows) + sum(late_fees)
-    handling_total = _HANDLING_FEE * len(rows)
+    handling_fees = [_handling_fee(row) for row in rows]
+    handling_total = sum(handling_fees)
     values = await _customer_letter_fields(rows[0]["customer_record_id"], rows[0]["customer"], db)
     values.update({
         "$FWR": str(today), "$1": str(min(row["due_date"] for row in rows)),
@@ -449,11 +472,11 @@ async def export_ipr_annual_fee_monitor_word(query: _ListQuery = Depends(), iden
         if "$" in paragraph.text:
             _fill_placeholders(paragraph, ordered)
     fee_table = document.tables[-1]
-    for index, (row, late) in enumerate(zip(rows, late_fees), start=1):
+    for index, (row, late, handling) in enumerate(zip(rows, late_fees, handling_fees), start=1):
         cells = fee_table.add_row().cells
         for cell, value in zip(cells, [
             str(index), row["serial_no"], row["case_name"], row["application_no"], str(row["application_date"]),
-            f"第{row['year_no']}年度", str(row["annual_fee"]), str(late), str(_HANDLING_FEE),
+            "0" if row.get("term_expired") else f"第{row['year_no']}年度", str(row["annual_fee"]), str(late), str(handling),
         ]):
             cell.text = value
     buffer = io.BytesIO()

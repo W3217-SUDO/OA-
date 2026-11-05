@@ -24,6 +24,7 @@ type FeeRow = {
   period_end: string;
   informed: boolean;
   annual_fee: number;
+  term_expired?: boolean;
   relief_rate: number;
   inform_amount: number;
   gained_amount: number;
@@ -252,11 +253,11 @@ export default function IprAnnualFeePage({ onNavigate }: { onNavigate?: (route: 
             { title: "案件编号", dataIndex: "serial_no", width: 130, render: (value: string, row) => <Button type="link" size="small" style={{ padding: 0 }} onClick={() => openCase(row)}>{value}</Button> },
             { title: "申请号", dataIndex: "application_no", width: 150 },
             { title: "申请日", dataIndex: "application_date", width: 100 },
-            { title: "年度", key: "year", width: 200, render: (_: unknown, row) => <>第{row.year_no}年度：<br />{row.period_start}至{row.period_end}</> },
+            { title: "年度", key: "year", width: 200, render: (_: unknown, row) => row.term_expired ? "0" : <>第{row.year_no}年度：<br />{row.period_start}至{row.period_end}</> },
             { title: "年费", dataIndex: "annual_fee", width: 80, align: "right" },
             { title: "费减", dataIndex: "relief_rate", width: 70, align: "right", render: (value: number) => `${value}%` },
             { title: "案源人", dataIndex: "case_source", width: 90 },
-            { title: "本案通/回/付", key: "amounts", width: 130, render: (_: unknown, row) => row.informed ? `${amountText(row.inform_amount)}/${amountText(row.gained_amount)}/${amountText(row.bill_amount)}` : "未通知" },
+            { title: "本案通/回/付", key: "amounts", width: 130, render: (_: unknown, row) => row.term_expired ? "专利权到期" : row.informed ? `${amountText(row.inform_amount)}/${amountText(row.gained_amount)}/${amountText(row.bill_amount)}` : "未通知" },
           ]}
         />
         <Space wrap style={{ marginTop: 8 }}>
