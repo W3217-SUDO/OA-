@@ -70,7 +70,8 @@ export const originalFinanceTitles: Record<string, string> = {
     "finance-internal-settle": "内部提成-待结算",
     "finance-internal-archive": "内部提成-待归档",
     "finance-internal-audit": "请款单审批",
-    "finance-internal-fee-audit": "请款单审批",
+    // 500930：页面标题和菜单名一致。
+    "finance-internal-fee-audit": "内部费用-待审核",
     "finance-internal-refused": "请款单列表",
     "finance-internal-void": "请款单列表",
     "finance-internal-refund-audit": "请款单审批",

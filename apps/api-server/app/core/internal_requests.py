@@ -206,7 +206,40 @@ async def internal_review_rows(identity: dict, db: AsyncSession, kind: str) -> l
         return (str(data.get("internal_payment_submitted_at") or data.get("payment_applied_at")
                     or data.get("application_date") or row.get("created_at") or ""), row["id"])
     grouped.sort(key=application_order, reverse=True)
+    if kind == "other":
+        # 500930（shenhe 11-05 选 A）：“内部费用-待审核”只留“内部费用”大类里的非提成类费用，
+        # 提成类（含旧系统导入、没标提成分类的提成明细）都去“内部提成-待审核”；其他大类的费用也不进这里。
+        # 没写费用类型名称的内部费用（新建时只选了“内部费用”）仍按内部费用留在这里。
+        allowed = await internal_non_commission_fee_names(db)
+        grouped = [row for row in grouped if keep_in_internal_fee_review(row, allowed)]
     return await apply_finance_person_displays(grouped, db)
+
+
+def keep_in_internal_fee_review(row: dict, allowed: set[str]) -> bool:
+    name = _fee_name(row)
+    if name:
+        return name in allowed
+    return str((row.get("data") or {}).get("fee_type") or "") in {"内部费用", "INTERNAL"}
+
+
+def _normalized_fee_name(value) -> str:
+    return str(value or "").strip().replace("（", "(").replace("）", ")")
+
+
+def _fee_name(row: dict) -> str:
+    data = row.get("data") or {}
+    return _normalized_fee_name(data.get("fee_type_name") or row.get("fee_type_name") or data.get("expense_subtype"))
+
+
+async def internal_non_commission_fee_names(db: AsyncSession) -> set[str]:
+    """系统参数“费用类型”里挂在“内部费用”下、名称不含“提成”的类型（参数里增删类型，这里跟着变）。"""
+    from app.models import SystemParameter
+
+    rows = (await db.scalars(select(SystemParameter).where(
+        SystemParameter.category == "fee_type", SystemParameter.is_active.is_(True),
+    ))).all()
+    return {_normalized_fee_name(row.name) for row in rows
+            if (row.extra or {}).get("parent_code") == "INTERNAL" and "提成" not in str(row.name or "")}
 
 
 async def review_internal_applications(
