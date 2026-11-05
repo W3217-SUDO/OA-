@@ -255,7 +255,19 @@ async def list_ipr_case_file_custom_import_candidates(batch_id: int, identity: d
     await _require_record_module_menu("ipr_case", identity, db, action="查看")
     await _ensure_ipr_custom_import_batch_visible(batch_id, identity, db)
     rows = list((await db.scalars(select(IprCaseFileCustomImportCandidate).where(IprCaseFileCustomImportCandidate.batch_id == batch_id).order_by(IprCaseFileCustomImportCandidate.id))).all())
-    return {"items": [_ipr_custom_candidate_dict(row) for row in rows], "total": len(rows)}
+    # 501619（范文玲 11-05）：列表照旧系统补“案件编号、案件类型、申请号”，老案件（未匹配在办）也按案号显示。
+    case_ids = {row.ipr_case_id for row in rows if row.ipr_case_id}
+    linked = {item.id: item for item in (await db.scalars(select(BusinessRecord).where(BusinessRecord.id.in_(case_ids)))).all()} if case_ids else {}
+    items = []
+    for row in rows:
+        item = _ipr_custom_candidate_dict(row)
+        record = linked.get(row.ipr_case_id) if row.ipr_case_id else None
+        data = (record.data or {}) if record else {}
+        item["case_serial_no"] = record.serial_no if record else ""
+        item["case_type"] = str(data.get("case_type") or data.get("case_kind") or row.case_kind or "")
+        item["application_no"] = item.get("application_no") or str(data.get("application_no") or "")
+        items.append(item)
+    return {"items": items, "total": len(rows)}
 
 @router.post(f"{settings.api_prefix}/ipr/case-files/custom-import-candidates/{{candidate_id}}/match")
 async def match_ipr_case_file_custom_import_candidate(candidate_id: int, body: IprCaseFileCustomCandidateMatchInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):

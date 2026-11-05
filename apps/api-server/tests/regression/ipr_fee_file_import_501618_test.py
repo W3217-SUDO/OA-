@@ -104,6 +104,27 @@ class IprFeeFileImport501618Test(unittest.IsolatedAsyncioTestCase):
         rows = sorted((item.category, item.record_id == self.case_id, item.invoice_record_id is not None) for item in await self.attachments())
         self.assertEqual(rows, [("发票", True, True), ("发票文件", False, True)])
 
+    async def test_custom_import_candidates_show_case_columns_501619(self):
+        from app.models import IprCaseFileCustomImportBatch, IprCaseFileCustomImportCandidate
+        async with self.sessions() as db:
+            batch = IprCaseFileCustomImportBatch(source_filename="A21800025W1.pdf", source_path="x", source_size=3, status="待确认", total_count=2, error_count=0, imported_count=0,
+                                                 created_by="gql618", department="知产部")
+            db.add(batch)
+            await db.flush()
+            db.add_all([
+                IprCaseFileCustomImportCandidate(batch_id=batch.id, ipr_case_id=self.case_id, custom_filename="A21800025W1.pdf", parsed_case_no="21800025",
+                                                 parsed_document_no="1", case_kind="专利", application_no="", file_type="x", errors=[], status="待确认"),
+                IprCaseFileCustomImportCandidate(batch_id=batch.id, ipr_case_id=None, custom_filename="A1W2.pdf", parsed_case_no="1",
+                                                 parsed_document_no="2", case_kind="", application_no="", file_type="x", errors=["未找到案件"], status="待修正"),
+            ])
+            await db.commit()
+            batch_id = batch.id
+        response = await self.client.get(f"{API}/ipr/case-files/custom-import-batches/{batch_id}/candidates")
+        self.assertEqual(response.status_code, 200, response.text)
+        first, second = response.json()["items"]
+        self.assertEqual((first["case_serial_no"], first["case_type"], first["application_no"]), ("SHPU1800025", "专利", "2018000001"))
+        self.assertEqual((second["case_serial_no"], second["case_type"]), ("", ""))
+
 
 if __name__ == "__main__":
     unittest.main()
