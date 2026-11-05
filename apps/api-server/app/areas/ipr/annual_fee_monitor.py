@@ -411,6 +411,28 @@ def _handling_fee(row: dict) -> int:
     return 0 if row.get("term_expired") else _HANDLING_FEE
 
 
+_AMOUNT_PAD = "\u3000\u3000"
+
+
+def _even_amount_sentence(paragraphs) -> None:
+    """280146（高勤兰 11-05 14:02）：Word 里“应缴年费合计为……总计为……元”这句，三个金额统一成前后各两个全角空格、连同金额加下划线，
+    句末改中文句号；字体沿用原句第一段文字。"""
+    from copy import deepcopy
+    for paragraph in paragraphs:
+        if "$2" not in paragraph.text or "$4" not in paragraph.text or not paragraph.runs:
+            continue
+        base = paragraph.runs[0]._r.rPr
+        for run in list(paragraph.runs):
+            run._r.getparent().remove(run._r)
+        for piece, underline in (("贵方此次应支付我方费用应缴年费合计为：", False), (f"{_AMOUNT_PAD}$2{_AMOUNT_PAD}", True),
+                                ("元；年费手续费为100元/项，合计为：", False), (f"{_AMOUNT_PAD}$3{_AMOUNT_PAD}", True),
+                                ("元；总计为：", False), (f"{_AMOUNT_PAD}$4{_AMOUNT_PAD}", True), ("元。", False)):
+            run = paragraph.add_run(piece)
+            if base is not None:
+                run._r.insert(0, deepcopy(base))
+            run.underline = True if underline else None
+
+
 def _fill_placeholders(paragraph, values: dict[str, str]) -> None:
     """先在单个 run 内替换保留格式；占位符被拆在多个 run 里时整段合并后替换。"""
     for run in paragraph.runs:
@@ -478,6 +500,7 @@ async def export_ipr_annual_fee_monitor_word(query: _ListQuery = Depends(), iden
         for cells in table.rows:
             for cell in cells.cells:
                 paragraphs.extend(cell.paragraphs)
+    _even_amount_sentence(paragraphs)
     # $1~$4 之外的占位符更长，先替换长的，避免 $1 误伤其它占位符。
     ordered = dict(sorted(values.items(), key=lambda item: -len(item[0])))
     for paragraph in paragraphs:
