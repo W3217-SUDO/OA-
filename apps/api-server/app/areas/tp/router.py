@@ -454,6 +454,9 @@ async def list_tasks(
         "overdue": 0, "reminders": 0,
     }
     summary_status_counts: dict[str, int] = {}
+    # 501629：任务条件里排除调查任务要逐条解析 JSON，全表一遍约 1 秒；这里扫一遍顺便记下符合条件的 id，
+    # 后面逐批读取只按 id 取，不再每批重新扫全部任务（公司任务原来 30 批 × 每批全扫，要 13～35 秒）。
+    candidate_ids: list[int] = []
     summary_fields = (
         "initiator", "collaborators", "source", "deadline",
         "task_end_time", "TaskEndTime", "rejected_at", "completion_submitted_at",
@@ -462,6 +465,7 @@ async def list_tasks(
         db, task_conditions, ("id", "status", "owner"), summary_fields,
         ("initiator", "collaborators"),
     ):
+        candidate_ids.append(task.id)
         if not task_scope_visible(task, scope, relation, username, department_usernames):
             continue
         _, days_remaining, effective_status, reminder_due, _ = _task_schedule_state(task)
@@ -579,16 +583,13 @@ async def list_tasks(
                     continue
                 matched.append(item)
 
-        after_id = 0
-        while True:
+        candidate_ids.sort()
+        for offset in range(0, len(candidate_ids), 256):
             task_batch = [task async for task in stream_task_rows(
-                db, task_conditions, candidate_columns, candidate_data_fields,
+                db, [BusinessRecord.module == "task", BusinessRecord.id.in_(candidate_ids[offset:offset + 256])],
+                candidate_columns, candidate_data_fields,
                 ("initiator", "collaborators", "source", "priority"),
-                after_id=after_id, limit=256,
             )]
-            if not task_batch:
-                break
-            after_id = task_batch[-1].id
             batch = [
                 task_filter_row(task, relation)
                 for task in task_batch
