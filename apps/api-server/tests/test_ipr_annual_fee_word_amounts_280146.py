@@ -16,9 +16,9 @@ class WordAmountSentenceTest(unittest.TestCase):
         target = next(p for p in paragraphs if "$2" in p.text)
         monitor._fill_placeholders(target, {"$2": "3600", "$3": "300", "$4": "3900"})
         pad = "　　"
-        self.assertEqual(target.text, f"贵方此次应支付我方费用应缴年费合计为：{pad}3600{pad}元；年费手续费为100元/项，合计为：{pad}300{pad}元；总计为：{pad}3900{pad}元。")
+        self.assertEqual(target.text, f"贵方此次应支付我方费用应缴年费合计为：{pad}3600{pad}元；年费手续费为{pad}100{pad}元/项，合计为：{pad}300{pad}元；总计为：{pad}3900{pad}元。")
         underlined = [run.text for run in target.runs if run.underline]
-        self.assertEqual(underlined, [f"{pad}3600{pad}", f"{pad}300{pad}", f"{pad}3900{pad}"])
+        self.assertEqual(underlined, [f"{pad}3600{pad}", f"{pad}100{pad}", f"{pad}300{pad}", f"{pad}3900{pad}"])
 
 
 if __name__ == "__main__":

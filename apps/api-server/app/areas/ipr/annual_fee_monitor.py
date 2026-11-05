@@ -415,7 +415,7 @@ _AMOUNT_PAD = "\u3000\u3000"
 
 
 def _even_amount_sentence(paragraphs) -> None:
-    """280146（高勤兰 11-05 14:02）：Word 里“应缴年费合计为……总计为……元”这句，三个金额统一成前后各两个全角空格、连同金额加下划线，
+    """280146（高勤兰 11-05 14:02）：Word 里“应缴年费合计为……总计为……元”这句，四个金额（含手续费单价，高勤兰 14:20）统一成前后各两个全角空格、连同金额加下划线，
     句末改中文句号；字体沿用原句第一段文字。"""
     from copy import deepcopy
     for paragraph in paragraphs:
@@ -425,7 +425,8 @@ def _even_amount_sentence(paragraphs) -> None:
         for run in list(paragraph.runs):
             run._r.getparent().remove(run._r)
         for piece, underline in (("贵方此次应支付我方费用应缴年费合计为：", False), (f"{_AMOUNT_PAD}$2{_AMOUNT_PAD}", True),
-                                ("元；年费手续费为100元/项，合计为：", False), (f"{_AMOUNT_PAD}$3{_AMOUNT_PAD}", True),
+                                ("元；年费手续费为", False), (f"{_AMOUNT_PAD}{_HANDLING_FEE}{_AMOUNT_PAD}", True),
+                                ("元/项，合计为：", False), (f"{_AMOUNT_PAD}$3{_AMOUNT_PAD}", True),
                                 ("元；总计为：", False), (f"{_AMOUNT_PAD}$4{_AMOUNT_PAD}", True), ("元。", False)):
             run = paragraph.add_run(piece)
             if base is not None:
