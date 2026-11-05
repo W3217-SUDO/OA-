@@ -87,6 +87,10 @@ BUILTIN_TEMPLATES = [{
     # 陶国南 11-05 12:19：法院统一格式的要素式起诉状。当事人几块按当事人类型（自然人/单位）复制填写，诉请和事实由律师填。
     "id": "element-complaint-unfair-competition", "name": "民事起诉状（要素式·不正当竞争纠纷）", "file": "ELEMENT_COMPLAINT_UNFAIR_COMPETITION_DOCX",
     "options": {}, "optional": [], "form": "element_complaint",
+}, {
+    # 陶国南 11-05 12:20：商标侵权版是法院“实例”，改成空白表（示例值清空、勾选改回□），生成逻辑同不正当竞争版。
+    "id": "element-complaint-trademark", "name": "民事起诉状（要素式·侵害商标权纠纷）", "file": "ELEMENT_COMPLAINT_TRADEMARK_DOCX",
+    "options": {}, "optional": [], "form": "element_complaint",
 }]
 # 系统自动取值的字段；模板里出现其他占位字段时，按“需要人工填写”处理。
 AUTO_FIELDS = ("法院", "法院案号", "原告", "被告", "第三人", "案由", "开庭律师", "经办律师", "律师助理", "客户名称", "案件编号", "生成日期",

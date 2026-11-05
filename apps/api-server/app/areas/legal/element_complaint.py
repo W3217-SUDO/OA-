@@ -1,4 +1,4 @@
-"""要素式民事起诉状（法院统一格式，陶国南 11-05 12:19 给的不正当竞争纠纷版）：当事人几块按当事人类型填写。
+"""要素式民事起诉状（法院统一格式，陶国南 11-05 12:19/12:20 给的不正当竞争、商标侵权两版）：当事人几块按当事人类型填写。
 
 表格本身不改（法院要求不得改变要素内容、格式）。原告、被告、第三人各有“自然人”“法人、非法人组织”两块：
 有几位就把对应那一块复制几份（表格说明允许多原告、多被告复制），逐份填进系统里有的信息；某一类一个都没有的，
@@ -14,13 +14,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 from lxml import etree
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
-# （表格序号, [行号]）：表格按正文顺序数（不含嵌套表格）。
-BLOCKS = {
-    "原告": {"person": (0, [2]), "org": (0, [3, 4, 5])},
-    "被告": {"person": (1, [1]), "org": (1, [2, 3, 4])},
-    "第三人": {"person": (1, [5]), "org": (2, [0, 1, 2])},
-}
-AGENT_ROW = (1, 0)
+ROLES = ("第三人", "原告", "被告")
 CHECKED = "☑"
 
 
@@ -99,16 +93,45 @@ def fill_element_complaint(content: bytes, parties: dict) -> bytes:
     return output.getvalue()
 
 
+def _label(row) -> str:
+    cell = row.find(W + "tc")
+    return re.sub(r"\s+", "", "".join(node.text or "" for node in cell.iter(W + "t"))) if cell is not None else ""
+
+
+def _continues(row) -> bool:
+    """纵向合并的续行（左边标签格是上一行的延续）。"""
+    cell = row.find(W + "tc")
+    merge = cell.find(f"{W}tcPr/{W}vMerge") if cell is not None else None
+    return merge is not None and merge.get(W + "val") in (None, "continue")
+
+
+def _blocks(tables) -> tuple[list, object]:
+    """按左边标签找出各当事人块：（表格, [行], 身份, 自然人/单位）；以及委托诉讼代理人那一行。
+    两份要素式起诉状（不正当竞争、商标侵权）行数不同，都按标签认。"""
+    blocks, agent = [], None
+    for table in tables:
+        current = None
+        for row in _rows(table):
+            label = _label(row)
+            if current is not None and _continues(row) and not label:
+                current[1].append(row)
+                continue
+            current = None
+            if label.startswith("委托诉讼代理人") and agent is None:
+                agent = row
+                continue
+            role = next((name for name in ROLES if label.startswith(name)), None)
+            kind = "person" if "自然人" in label else "org" if "法人" in label else None
+            if role and kind:
+                current = (table, [row], role, kind)
+                blocks.append(current)
+    return blocks, agent
+
+
 def _fill_document(payload: bytes, parties: dict) -> bytes:
     root = etree.fromstring(payload)
-    tables = _top_tables(root.find(W + "body"))
-    # 同一张表里从下往上处理，复制出来的行不影响上面各块的行号。
-    jobs = [(table, rows, role, kind) for role, kinds in BLOCKS.items() for kind, (table, rows) in kinds.items()]
-    jobs.sort(key=lambda job: (job[0], -job[1][0]))
-    agent_row = _rows(tables[AGENT_ROW[0]])[AGENT_ROW[1]]
-    for table_index, row_numbers, role, kind in jobs:
-        table_rows = _rows(tables[table_index])
-        block = [table_rows[number] for number in row_numbers]
+    blocks, agent_row = _blocks(_top_tables(root.find(W + "body")))
+    for _table, block, role, kind in blocks:
         members = [party for party in parties.get(role, []) if party["person"] == (kind == "person")]
         if not members:
             continue
@@ -122,7 +145,7 @@ def _fill_document(payload: bytes, parties: dict) -> bytes:
         for rows, party in zip(copies, members):
             _fill_rows(rows, filler, party)
     agents = parties.get("agents", "")
-    if agents:
+    if agents and agent_row is not None:
         for paragraph in agent_row.iter(W + "p"):
             text = _text(paragraph)
             new = text
@@ -140,6 +163,8 @@ def _fill_document(payload: bytes, parties: dict) -> bytes:
         new = text
         if text.startswith("具状人（签字、盖章）："):
             new = _after(_after(text, "具状人（签字、盖章）：", plaintiffs), "日期：", parties.get("date", ""))
+        elif re.match(r"^日期：\s*年\s*月\s*日\s*$", text):
+            new = f"日期：{parties.get('date', '')}"
         elif text.strip() == "提交人：":
             new = _after(text, "提交人：", plaintiffs)
         elif text.strip() == "提交时间：":

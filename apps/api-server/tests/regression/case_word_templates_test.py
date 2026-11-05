@@ -417,10 +417,21 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("具状人（签字、盖章）：青岛尚美数智科技集团有限公司", text)
         download = await self.client.post(self.url("element-complaint-unfair-competition", "download"), json={"values": {}})
         self.assertEqual(download.status_code, 200, download.text)
+        trademark = (await self.client.post(self.url("element-complaint-trademark", "preview"), json={"values": {}})).json()
+        tm = "\n".join(trademark["paragraphs"])
+        self.assertNotIn("×", tm)
+        self.assertNotIn("实例", tm)
+        self.assertIn("有☑\n姓名：沈建锋\n单位：上海沪知律师事务所", tm)
+        self.assertIn("姓名：刘某杰\n性别：男□    女☑", tm)
+        self.assertEqual(tm.count("名称：甲店") + tm.count("名称：北京三快在线科技有限公司"), 2)
+        self.assertIn("法定代表人 / 负责人：王某", tm)
+        self.assertIn("统一社会信用代码：91110108MA0000000X", tm)
+        self.assertIn("具状人（签字、盖章）：青岛尚美数智科技集团有限公司", tm)
+        self.assertRegex(tm, r"日期：\d{4}年\d{1,2}月\d{1,2}日")
         for item in module.BUILTIN_TEMPLATES:
-            if item["id"] in {"hearing-memo", "element-complaint-unfair-competition"}:
+            if item["id"] in {"hearing-memo", "element-complaint-unfair-competition", "element-complaint-trademark"}:
                 raw = "\n".join(module.paragraphs(await module._template_bytes(item, None)))
-                for leaked in ("陶勇刚", "Lillian", "tongyingchao"):
+                for leaked in ("陶勇刚", "Lillian", "tongyingchao", "×", "387653", "实例"):
                     self.assertNotIn(leaked, raw)
 
     def test_handling_result_draft(self):
