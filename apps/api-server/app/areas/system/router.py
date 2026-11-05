@@ -1041,6 +1041,38 @@ async def update_dashboard_portal_settings(body: SystemConfigUpdate, identity: d
     return {"value": item.value, "updated_by": item.updated_by, "updated_at": item.updated_at}
 
 
+@router.get(f"{settings.api_prefix}/system/task-scopes/{{kind}}")
+async def get_task_scope_settings(kind: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """501580 系统参数“自动任务”/“逾期扣款”：取消勾选的部门和人事角色，及全部可选部门、角色。"""
+    from app.core.permissions import _require_admin
+    from app.core.task_scopes import DEFAULT_SCOPE, SCOPES, load_scope, scope_options
+
+    if kind not in SCOPES:
+        raise HTTPException(status_code=404, detail="设置不存在")
+    _require_admin(identity)
+    return {"value": await load_scope(db, SCOPES[kind]["key"]), "defaults": DEFAULT_SCOPE, **await scope_options(db)}
+
+
+@router.put(f"{settings.api_prefix}/system/task-scopes/{{kind}}")
+async def update_task_scope_settings(kind: str, body: SystemConfigUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import _require_admin
+    from app.core.system import _system_audit
+    from app.core.task_scopes import SCOPES, validate_scope
+
+    if kind not in SCOPES:
+        raise HTTPException(status_code=404, detail="设置不存在")
+    _require_admin(identity)
+    key, title = SCOPES[kind]["key"], SCOPES[kind]["title"]
+    value = validate_scope(body.value)
+    item = await db.scalar(select(SystemConfig).where(SystemConfig.key == key))
+    if not item:
+        raise HTTPException(status_code=404, detail=f"{title}设置不存在，请重启服务后再试")
+    item.value = value; item.updated_by = identity["username"]
+    await _system_audit(db, identity, f"更新{title}设置", f"系统配置:{key}", value)
+    await db.commit(); await db.refresh(item)
+    return {"value": item.value, "updated_by": item.updated_by, "updated_at": item.updated_at}
+
+
 @router.get(f"{settings.api_prefix}/system/cache")
 @router.get(f"{settings.api_prefix}/system/caches", include_in_schema=False)
 async def list_system_caches(keyword: str = "", page: int | None = Query(None, ge=1), page_size: int | None = Query(None, ge=1, le=200), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):

@@ -66,6 +66,8 @@ _PAGE_MENU_PREFIXES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("/system/security-policy", ("@root:system",)),
     ("/system/configs", ("system-management-config", "@root:system")),
     ("/system/dashboard-portals", ("system-parameters-dashboard-portals", "system-parameters", "@root:system")),
+    ("/system/task-scopes/automatic-task", ("system-parameters-automatic-task", "@root:system")),
+    ("/system/task-scopes/overdue-penalty", ("system-parameters-overdue-penalty", "@root:system")),
     ("/system/caches", ("system-management-cache", "@root:system")),
     ("/system/recycle-bin", ("system-management-recycle", "@root:system")),
     ("/system/change-logs", ("system-management-changes", "@root:system")),

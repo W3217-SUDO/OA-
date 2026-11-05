@@ -683,6 +683,8 @@ const menuItems: NavItem[] = [
           { key: "system-parameters-court-officer", label: "法院工作人员" },
           { key: "system-parameters-dashboard-portals", label: "首页分端待办" },
           { key: "system-parameters-api-settings", label: "API 设置" },
+          { key: "system-parameters-automatic-task", label: "自动任务" },
+          { key: "system-parameters-overdue-penalty", label: "逾期扣款" },
         ],
       },
       { key: "system-law-firms", label: "律所档案" },

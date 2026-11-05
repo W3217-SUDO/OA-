@@ -167,6 +167,18 @@ async def _people(case_record: BusinessRecord, db: AsyncSession) -> tuple[User |
     return lawyer, assistant, hearing_lawyer
 
 
+async def _owner_excluded(owner: User, db: AsyncSession) -> bool:
+    """501580：系统中心“自动任务”里取消勾选的部门/角色的人不再收到自动任务。"""
+    from app.core.task_scopes import AUTOMATIC_TASK_SCOPE_KEY, load_scope, username_excluded
+
+    import time
+
+    info = db.info.setdefault("automatic_task_scope", {})
+    if "scope" not in info or time.monotonic() - info["loaded_at"] > 60:
+        info.update(scope=await load_scope(db, AUTOMATIC_TASK_SCOPE_KEY), users={}, loaded_at=time.monotonic())
+    return await username_excluded(owner.username, info["scope"], db, info["users"])
+
+
 async def _create(
     case_record: BusinessRecord, db: AsyncSession, *,
     number: int, title: str, owner: User | None, initiator: User | None,
@@ -177,6 +189,12 @@ async def _create(
         warn_automatic_task(
             "case automatic task skipped: case_id=%s rule=%s reason=required_person_missing",
             case_record.id, number,
+        )
+        return None
+    if await _owner_excluded(owner, db):
+        warn_automatic_task(
+            "case automatic task skipped: case_id=%s rule=%s reason=owner_excluded_by_scope owner=%s",
+            case_record.id, number, owner.username,
         )
         return None
     from app.core.tasks import _materialize_legacy_case_task

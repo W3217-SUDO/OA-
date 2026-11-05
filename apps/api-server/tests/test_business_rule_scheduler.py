@@ -18,7 +18,11 @@ from app.models import BusinessRecord, Notification, User, WorkflowEvent
 
 
 POSTGRES_URL = os.environ.get("BUSINESS_RULE_TEST_POSTGRES_URL", "")
-TABLES = [model.__table__ for model in (BusinessRecord, User, WorkflowEvent, Notification)]
+# 501580：超期绩效会读系统配置“逾期扣款”（没有这行配置时按默认，一切照旧）。
+from app.data_models.parameters import SystemConfig  # noqa: E402
+from app.data_models.identity import JobRole  # noqa: E402
+
+TABLES = [model.__table__ for model in (BusinessRecord, User, WorkflowEvent, Notification, SystemConfig, JobRole)]
 
 
 class BusinessRuleAssertions:

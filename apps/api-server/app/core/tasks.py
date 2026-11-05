@@ -551,8 +551,15 @@ async def _apply_task_overdue_performance(db: AsyncSession) -> bool:
     ))).all())
     changed = False
     exempt_ids = await _migrated_batch_auto_task_ids(tasks, db)
+    # 501580：系统中心“逾期扣款”里取消勾选的部门/角色的人不再记超期绩效；已记的保留不动。
+    from app.core.task_scopes import OVERDUE_PENALTY_SCOPE_KEY, load_scope, username_excluded
+
+    penalty_scope = await load_scope(db, OVERDUE_PENALTY_SCOPE_KEY)
+    excluded_cache: dict = {}
     for task in tasks:
         if task.status in terminal or task.id in exempt_ids:
+            continue
+        if await username_excluded(task.owner, penalty_scope, db, excluded_cache):
             continue
         data = task.data or {}
         try:

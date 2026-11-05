@@ -34,6 +34,7 @@ import { SystemSecurityPolicy } from "./SystemSecurityPolicy";
 import { SystemCompanySettings } from "./SystemCompanySettings";
 import { SystemShareSettings } from "./SystemShareSettings";
 import { SystemDashboardPortals } from "./SystemDashboardPortals";
+import { SystemTaskScopes } from "./SystemTaskScopes";
 import { SystemApiSettings } from "./SystemApiSettings";
 
 export default function SystemCenterPage({
@@ -757,6 +758,10 @@ export default function SystemCenterPage({
     );
   } else if (initialView === "system-parameters-dashboard-portals") {
     content = <SystemDashboardPortals />;
+  } else if (initialView === "system-parameters-automatic-task") {
+    content = <SystemTaskScopes kind="automatic-task" />;
+  } else if (initialView === "system-parameters-overdue-penalty") {
+    content = <SystemTaskScopes kind="overdue-penalty" />;
   } else if (initialView === "system-parameters-api-settings") {
     content = <SystemApiSettings />;
   } else if (initialView === "system-parameters-company") {

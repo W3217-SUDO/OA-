@@ -208,6 +208,9 @@ DEFAULT_SYSTEM_MENUS += [
     ("system-parameters-dashboard-portals", "system-parameters", "首页分端待办", "", 14),
     # 501106：外部接口凭据（企查查等），只有系统管理员能看（陶威 11-02 23:27）。
     ("system-parameters-api-settings", "system-parameters", "API 设置", "", 15),
+    # 501580：自动任务、逾期扣款按部门/角色排除，各自单独授权（陶国南 11-05）。
+    ("system-parameters-automatic-task", "system-parameters", "自动任务", "", 16),
+    ("system-parameters-overdue-penalty", "system-parameters", "逾期扣款", "", 17),
     ("system-law-firms", "system", "律所档案", "", 13),
     ("system-management-cache", "system-management", "缓存管理", "", 1),
     ("system-management-recycle", "system-management", "回收站", "", 4),
@@ -533,6 +536,16 @@ DEFAULT_SYSTEM_CONFIGS = {
         "label": "案件自动任务交接人员", "group": "业务配置",
         "description": "按公司配置公证书交接人员与证物仓库管理员；未配置时对应任务不生成并记录诊断。",
         "value": {"companies": {}},
+    },
+    "automatic_task_scope": {
+        "label": "自动任务", "group": "业务配置",
+        "description": "取消勾选的部门或角色的人不再收到系统自动任务（全部 15 类），改为手动；已发出的任务不追溯。",
+        "value": {"excluded_departments": [], "excluded_roles": []},
+    },
+    "task_overdue_penalty_scope": {
+        "label": "逾期扣款", "group": "业务配置",
+        "description": "取消勾选的部门或角色的人任务超期不再记超期绩效；已记的绩效和老系统迁来的扣款不追溯。",
+        "value": {"excluded_departments": [], "excluded_roles": []},
     },
     "dashboard_portals": {
         "label": "首页分端待办", "group": "业务配置",

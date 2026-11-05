@@ -577,6 +577,9 @@ def _validate_system_config(key: str, value: dict) -> dict:
     elif key == "dashboard_portals":
         from app.core.dashboard_portals import validate_config
         value = validate_config(value)
+    elif key in {"automatic_task_scope", "task_overdue_penalty_scope"}:
+        from app.core.task_scopes import validate_scope
+        value = validate_scope(value)
     elif key == "conflict_auto_review":
         if set(value) != {"enabled"} or not isinstance(value["enabled"], bool):
             raise HTTPException(status_code=422, detail="自动利冲审查开关必须为布尔值")
