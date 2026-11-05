@@ -36,38 +36,56 @@ const actions = [
   { id: "a2", summary: "新增期限", status: "executing", type: "mcp.call", table: { mode: "create", rows: [{ field: "title", label: "期限名称", after: "举证期限" }] } },
 ];
 
-test("浮动窗口直接批准/驳回；缩小只收起不处理；多项可翻页", async () => {
+test("一项时直接批准/驳回；缩小只收起不处理", async () => {
   const CaseAgentConfirmFloat = await loadFloat();
   const calls = [];
-  let current = "a1";
-  const props = () => ({ actions, currentId: current, target: "HZMS2650002", failures: {}, decisionLoading: "", disabled: (a) => a.status === "executing",
-    onSelect: (id) => { current = id; calls.push(["select", id]); }, onDecide: (a, d) => calls.push(["decide", a.id, d]), onMinimize: () => calls.push(["minimize"]) });
   let renderer;
-  await act(async () => { renderer = create(React.createElement(CaseAgentConfirmFloat, props())); });
+  const props = { actions: [actions[0]], failures: {}, decisionLoading: "", disabled: (a) => a.status === "executing",
+    onDecide: async (a, d) => { calls.push(["decide", a.id, d]); return ""; }, onMinimize: () => calls.push(["minimize"]) };
+  await act(async () => { renderer = create(React.createElement(CaseAgentConfirmFloat, props)); });
   const button = (label) => renderer.root.findAllByType("button").find((b) => b.props.children === label || b.props["aria-label"] === label);
   const shown = textOf(renderer.toJSON());
   assert.match(shown, /^待确认修改\/编辑确认：修改案件基本信息/, "tgn 11-05 07:22：标题只写动了哪块");
-  assert.doesNotMatch(shown, /案号/, "不写案号、不再有操作名小字");
-  assert.match(shown, /第 1\/2 项/);
+  assert.doesNotMatch(shown, /案号|第 1\/|驳回此项/, "不写案号、不翻页；只有一项时没有“驳回此项”");
   assert.match(shown, /字段现状改为案由侵害商标权纠纷离婚纠纷/, "修改：字段 / 现状 / 改为");
-  assert.doesNotMatch(shown, /写入须人工确认|另有/, "不再有重复说明");
   await act(async () => button("缩小确认窗口").props.onClick());
   assert.deepEqual(calls, [["minimize"]], "缩小不能批准或驳回");
   await act(async () => button("批准并执行").props.onClick());
   await act(async () => button("驳回，不修改").props.onClick());
   assert.deepEqual(calls.slice(1), [["decide", "a1", "approved"], ["decide", "a1", "rejected"]]);
-  await act(async () => button("下一项").props.onClick());
-  await act(async () => renderer.update(React.createElement(CaseAgentConfirmFloat, props())));
-  assert.equal(button("批准并执行").props.disabled, true, "正在执行的不能重复批准");
-  assert.equal(button("驳回，不修改").props.disabled, true);
-  assert.match(textOf(renderer.toJSON()), /正在执行/);
-  assert.match(textOf(renderer.toJSON()), /字段内容期限名称举证期限/, "新增：字段 / 内容，没有现状列");
+});
+
+test("一句话拆成几项（tgn 11-05 07:47）：一个窗口全部列出，全部批准逐项办，失败就停；每项可单独驳回", async () => {
+  const CaseAgentConfirmFloat = await loadFloat();
+  const items = [actions[0], { ...actions[0], id: "a3", table: { mode: "change", rows: [{ field: "handling_lawyers", label: "经办律师", before: "曹志刚", after: "曹志刚、沈建锋" }] } }, actions[1]];
+  const calls = [];
+  let fail = "";
+  let renderer;
+  const props = () => ({ actions: items, failures: {}, decisionLoading: "", disabled: (a) => a.status === "executing",
+    onDecide: async (a, d) => { calls.push([a.id, d]); return a.id === fail ? "原因" : ""; }, onMinimize() {} });
+  await act(async () => { renderer = create(React.createElement(CaseAgentConfirmFloat, props())); });
+  const buttons = () => renderer.root.findAllByType("button");
+  const button = (label) => buttons().find((b) => b.props.children === label);
+  const shown = textOf(renderer.toJSON());
+  assert.match(shown, /共 3 项修改，请一起确认/);
+  assert.match(shown, /案由侵害商标权纠纷离婚纠纷/);
+  assert.match(shown, /经办律师曹志刚曹志刚、沈建锋/, "第二项也直接显示，不用翻页");
+  assert.match(shown, /正在执行/);
+  assert.equal(buttons().filter((b) => b.props.children === "驳回此项").length, 3);
+  await act(async () => button("全部批准并执行").props.onClick());
+  assert.deepEqual(calls, [["a1", "approved"], ["a3", "approved"]], "正在执行的那项跳过，按顺序逐项批准");
+  calls.length = 0; fail = "a1";
+  await act(async () => button("全部批准并执行").props.onClick());
+  assert.deepEqual(calls, [["a1", "approved"]], "有一项没执行成功就停下");
+  calls.length = 0;
+  await act(async () => buttons().filter((b) => b.props.children === "驳回此项")[1].props.onClick());
+  assert.deepEqual(calls, [["a3", "rejected"]]);
 });
 
 test("没有待确认时不渲染", async () => {
   const CaseAgentConfirmFloat = await loadFloat();
   let renderer;
-  await act(async () => { renderer = create(React.createElement(CaseAgentConfirmFloat, { actions: [], currentId: null, failures: {}, decisionLoading: "", disabled: () => false, onSelect() {}, onDecide() {}, onMinimize() {} })); });
+  await act(async () => { renderer = create(React.createElement(CaseAgentConfirmFloat, { actions: [], failures: {}, decisionLoading: "", disabled: () => false, onDecide() {}, onMinimize() {} })); });
   assert.equal(renderer.toJSON(), null);
 });
 

@@ -66,6 +66,34 @@ _PERSON_SUFFIXES = ("_username", "owner", "lawyer", "lawyers", "investigator", "
 _SYSTEM_ACCOUNTS = {"system", "feedback-bot"}
 
 
+def _split_people(value: str) -> list[str]:
+    return [part for part in re.split(r"[,，、;；\s]+", str(value or "").strip()) if part]
+
+
+_ACCOUNT = re.compile(r"^[A-Za-z][A-Za-z0-9_.@-]*$")
+_PERSON_LABEL = re.compile(r"律师|助理|案源|调查员|负责人|经办人|承办人|管理人|代理人")
+
+
+async def humanize_change_rows(rows: list[dict], db) -> list[dict]:
+    """501634：业务工具算出的“原值 → 新值”里，人员一项的账号换成姓名（如 caozg、shenjf → 曹志刚、沈建锋）。只读，只用于显示。"""
+    wanted: set[str] = set()
+    for row in rows:
+        if _PERSON_LABEL.search(str(row.get("field") or "")):
+            for key in ("before", "after"):
+                wanted.update(part for part in _split_people(row.get(key)) if _ACCOUNT.match(part))
+    if not wanted:
+        return rows
+    names = await _person_names(wanted, db)
+
+    def shown(value):
+        parts = _split_people(value)
+        if not parts or not any(_ACCOUNT.match(part) for part in parts):
+            return value
+        return "、".join("系统" if part.lower() in _SYSTEM_ACCOUNTS else names.get(part.lower(), part) for part in parts)
+    return [{**row, "before": shown(row.get("before")), "after": shown(row.get("after"))}
+            if _PERSON_LABEL.search(str(row.get("field") or "")) else row for row in rows]
+
+
 def _is_person_field(name: str) -> bool:
     return name.endswith(_PERSON_SUFFIXES)
 
@@ -133,6 +161,7 @@ async def record_display_maps(params: dict, db) -> dict:
     from app.models import BusinessRecord
     wanted: dict[str, set[int]] = {}
     people: dict[str, set[str]] = {}
+    joined: dict[str, set[str]] = {}
     departments: dict[str, set] = {}
 
     def walk(value):
@@ -149,7 +178,11 @@ async def record_display_maps(params: dict, db) -> dict:
                 elif _is_person_field(name):
                     for one in (item if isinstance(item, list) else [item]):
                         if isinstance(one, str) and one.strip() and one.strip().isascii():
-                            people.setdefault(name, set()).add(one.strip())
+                            # 501634（tgn 11-05 07:47）：“haoyun,baoyulin”这种逗号连写的多人也逐个换成姓名。
+                            for account in _split_people(one):
+                                people.setdefault(name, set()).add(account)
+                            if len(_split_people(one)) > 1:
+                                joined.setdefault(name, set()).add(one.strip())
                 walk(item)
         elif isinstance(value, list):
             for item in value:
@@ -166,6 +199,11 @@ async def record_display_maps(params: dict, db) -> dict:
                 shown = "系统" if account.lower() in _SYSTEM_ACCOUNTS else names.get(account.lower())
                 if shown:
                     values.setdefault(name, {})[account] = shown
+        for name, items in joined.items():
+            for item in items:
+                parts = [values.get(name, {}).get(account) for account in _split_people(item)]
+                if all(parts):
+                    values.setdefault(name, {})[item] = "、".join(parts)
     if departments:
         names = await _department_names(set().union(*departments.values()), db)
         for name, items in departments.items():

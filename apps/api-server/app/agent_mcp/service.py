@@ -509,6 +509,9 @@ async def prepare_business_request(tool, values: dict, plan: dict, *, conversati
         **display_maps({"body": values}, tool.properties),
     }
     async with SessionLocal() as db:
+        if preview.get("changes"):
+            from app.agent_mcp.display_labels import humanize_change_rows
+            preview["changes"] = await humanize_change_rows(preview["changes"], db)
         return await _create_pending_request(
             identity, db, tool_name=tool.name, fingerprint=business_fingerprint(tool), arguments=values, params={"body": values},
             preview=preview, case_origin=trusted_case_origin(), conversation_id=conversation_id, kind="business")

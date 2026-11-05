@@ -169,14 +169,16 @@ export const CaseAgentDrawer = ({
   };
   // 501298：确认或驳回成功后卡片收起，对话里留一行结果；失败的留在卡片里写明原因。
   const [decisionFailures, setDecisionFailures] = useState<Record<string, string>>({});
-  const decideAction = async (action: CaseAgentAction, decision: "approved" | "rejected") => {
-    if (agentDecisionLoading) return;
+  // 返回未执行的原因（成功返回空），确认窗口“全部批准”逐项办时遇到失败就停下。
+  const decideAction = async (action: CaseAgentAction, decision: "approved" | "rejected"): Promise<string> => {
+    if (agentDecisionLoading) return "上一项还在处理，请稍候";
     const failure = await decideCaseAgentAction(action, decision);
     setDecisionFailures((current) => {
       const next = { ...current };
       if (failure) next[action.id] = failure; else delete next[action.id];
       return next;
     });
+    return failure || "";
   };
   // 正在执行的（可能是在智能体中心批准的）仍列在这里，按钮置灰。
   const waitingActions = (agentState?.pending_actions || []).filter((action) => action.status === "pending" || action.status === "executing");
@@ -259,7 +261,7 @@ export const CaseAgentDrawer = ({
         </button> : null}
         {confirmOpen && <CaseAgentConfirmFloat actions={[...waitingActions].reverse()} currentId={confirmId} target={agentCase?.serial_no}
           failures={decisionFailures} decisionLoading={agentDecisionLoading} disabled={actionDisabled}
-          onSelect={setConfirmId} onDecide={(action, decision) => void decideAction(action, decision)} onMinimize={minimizeConfirm} />}
+          onSelect={setConfirmId} onDecide={decideAction} onMinimize={minimizeConfirm} />}
         <div className="case-agent-messages" aria-live="polite">
           {!agentLoading && !agentState?.messages?.length && <div className="case-agent-empty">
             <AgentMascot pose="wave" height={110} blink className="case-agent-empty-mascot" />

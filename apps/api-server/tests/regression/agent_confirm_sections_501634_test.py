@@ -34,5 +34,25 @@ class ConfirmSectionsTest(unittest.TestCase):
         self.assertIn("confirm_sections(spec.name, changes)", service)
 
 
+    def test_people_shown_as_names(self):
+        import asyncio
+        from unittest import mock
+        from app.agent_mcp import display_labels
+
+        async def names(accounts, db):
+            return {"caozg": "曹志刚", "shenjf": "沈建锋", "haoyun": "郝蕴", "baoyulin": "鲍宇琳"}
+        with mock.patch.object(display_labels, "_person_names", names):
+            rows = asyncio.run(display_labels.humanize_change_rows([
+                {"field": "开庭律师", "before": "caozg", "before_read": True, "after": "caozg、shenjf"},
+                {"field": "诉讼标的（元）", "before": "30000.0", "before_read": True, "after": "20000"}], None))
+            self.assertEqual(rows[0]["after"], "曹志刚、沈建锋")
+            self.assertEqual(rows[0]["before"], "曹志刚")
+            self.assertEqual(rows[1]["after"], "20000")
+            maps = asyncio.run(display_labels.record_display_maps({"body": {"assistant": "haoyun,baoyulin"}}, None))
+            self.assertEqual(maps["value_labels"]["assistant"]["haoyun,baoyulin"], "郝蕴、鲍宇琳")
+        service = (ROOT / "app/agent_mcp/service.py").read_text(encoding="utf-8")
+        self.assertIn("humanize_change_rows(preview[\"changes\"], db)", service)
+
+
 if __name__ == "__main__":
     unittest.main()

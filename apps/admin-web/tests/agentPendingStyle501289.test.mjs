@@ -16,7 +16,7 @@ test("待确认卡片有边框、左侧色条、浅色底和“待确认”标�
 
 test("确认按钮淡色底块加文字和图标，主次靠底色深浅，不用红色 danger", () => {
   const drawer = read("../src/legal/CaseAgentConfirmFloat.tsx");
-  assert.match(drawer, /className="agent-btn-cancel" icon=\{<CloseOutlined \/>\}[^\n]*>驳回，不修改</);
+  assert.match(drawer, /className="agent-btn-cancel" icon=\{<CloseOutlined \/>\}[^\n]*"驳回，不修改"/);
   assert.match(drawer, /className="agent-btn-confirm" icon=\{<CheckOutlined \/>\}/);
   assert.doesNotMatch(drawer, /key="reject" danger/);
   const confirmation = read("../src/personal-agent/ActionConfirmation.tsx");

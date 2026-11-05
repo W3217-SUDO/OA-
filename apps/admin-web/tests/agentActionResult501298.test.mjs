@@ -29,7 +29,7 @@ test("案件智能体浮窗只把待确认的放进卡片，失败写原因，�
   assert.match(drawer, /在智能体中心处理/);
   // 501634：待确认的放进浮动确认窗口（CaseAgentConfirmFloat），对话里只留缩小后的入口。
   assert.match(drawer, /<CaseAgentConfirmFloat actions=\{\[\.\.\.waitingActions\]\.reverse\(\)\}/);
-  assert.match(source("legal/CaseAgentConfirmFloat.tsx"), /未执行：\{failures\[action\.id\]\}/);
+  assert.match(source("legal/CaseAgentConfirmFloat.tsx"), /未执行：\{failure\}/);
   assert.match(drawer, /className=\{`agent-action-result is-\$\{line\.tone\}`\}/);
   assert.match(source("legal/services/assistantActions.tsx"), /return reason;/);
 });

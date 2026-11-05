@@ -103,3 +103,11 @@
 :root[data-theme="dark"] .case-agent-confirm-table td.is-after { color: #adc6ff; }
 
 
+
+/* 501634（tgn 11-05 07:47）：一句话拆成几项时一个窗口全部列出，每项一个小标题和“驳回此项”。 */
+.case-agent-confirm-item + .case-agent-confirm-item { margin-top: 12px; padding-top: 12px; border-top: 1px dashed #ffd591; }
+.case-agent-confirm-item-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.case-agent-confirm-item-title { min-width: 0; color: #873800; font-size: 13px; overflow-wrap: anywhere; }
+.case-agent-confirm-item-head .ant-btn { flex: none; padding: 0; }
+:root[data-theme="dark"] .case-agent-confirm-item + .case-agent-confirm-item { border-top-color: #7c4a03; }
+:root[data-theme="dark"] .case-agent-confirm-item-title { color: #ffd591; }

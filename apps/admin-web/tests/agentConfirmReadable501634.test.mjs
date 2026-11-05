@@ -98,6 +98,17 @@ test("确认表格（tgn 11-06）：修改只列要改的“字段/现状/改为
     { field: "case_phase", label: "案件阶段", before: "（空）", after: "新案待分配" },
     { field: "cause_or_charge", label: "案由", before: "侵害商标权纠纷", after: "离婚纠纷" },
   ] });
+  // tgn 11-05 07:47：人员显示姓名；同一批人原来存姓名、这次写账号的算没变。
+  const people = { ...action, preview: { ...preview, changes: [
+    { field: "handling_lawyers", before: ["曹志刚"], before_read: true, after: ["caozg", "shenjf"] },
+    { field: "assistant", before: "郝蕴,鲍宇琳", before_read: true, after: "haoyun,baoyulin" },
+  ], field_labels: { handling_lawyers: "经办律师", assistant: "律师助理" },
+    value_labels: { handling_lawyers: { caozg: "曹志刚", shenjf: "沈建锋" }, assistant: { "haoyun,baoyulin": "郝蕴、鲍宇琳" } } } };
+  const peopleRows = agentConfirmTable(people).rows;
+  assert.equal(peopleRows.length, 1, "律师助理没变，不列");
+  assert.equal(peopleRows[0].label, "经办律师");
+  assert.match(peopleRows[0].after, /曹志刚.*沈建锋/);
+  assert.doesNotMatch(peopleRows[0].after, /caozg|shenjf/);
   // tgn 11-05 07:22：不写案号，只写动了哪一块。
   assert.equal(agentConfirmHeadline({ ...action, preview: { ...preview, sections: ["案件基本信息"] } }), "修改/编辑确认：修改案件基本信息");
   assert.equal(agentConfirmHeadline({ ...action, preview: { ...preview, sections: ["诉讼标的"] } }), "修改/编辑确认：修改诉讼标的");

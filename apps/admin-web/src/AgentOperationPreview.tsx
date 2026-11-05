@@ -206,6 +206,10 @@ const ParameterValues = ({ values, preview }: { values: Record<string, unknown>;
 const isEmptyValue = (value: unknown) => value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length);
 const sameValue = (a: unknown, b: unknown) => (isEmptyValue(a) && isEmptyValue(b)) || JSON.stringify(a) === JSON.stringify(b);
 const changeText = (value: unknown, preview: AgentActionPreview | undefined, field: string) => isEmptyValue(value) ? "（空）" : valueText(value, preview, field);
+// 501634（tgn 11-05 07:47）：同一批人原来存的是姓名、这次写的是账号（郝蕴,鲍宇琳 → haoyun,baoyulin），显示成姓名后一样就算没变。
+const shownKey = (text: string) => text.split(/[,，、;；\s]+/).filter(Boolean).join("、");
+const sameShown = (change: { field: string; before?: unknown; after: unknown }, preview?: AgentActionPreview) => sameValue(change.before, change.after)
+  || shownKey(changeText(change.before, preview, change.field)) === shownKey(changeText(change.after, preview, change.field));
 type ChangeRow = { field: string; before?: unknown; before_read?: boolean; after: unknown };
 const ChangeLines = ({ changes, preview }: { changes: ChangeRow[]; preview?: AgentActionPreview }) => {
   const visible = changes.filter((change) => !HIDDEN_PARAMETER_FIELDS.has(change.field) && !isInternalParameter(change.field, change.after, preview));
@@ -229,7 +233,7 @@ export const agentConfirmTable = (action: AgentApprovalAction): AgentConfirmTabl
   const keep = (field: string, value: unknown) => !HIDDEN_PARAMETER_FIELDS.has(field) && !isInternalParameter(field, value, preview);
   if (!preview?.create && preview?.changes?.length) {
     const rows = preview.changes
-      .filter((change) => keep(change.field, change.after) && (change.before_read !== true || !sameValue(change.before, change.after)))
+      .filter((change) => keep(change.field, change.after) && (change.before_read !== true || !sameShown(change, preview)))
       .map((change) => ({ field: change.field, label: label(change.field),
         before: change.before_read === true ? changeText(change.before, preview, change.field) : "（未读取）",
         after: changeText(change.after, preview, change.field) }));
