@@ -17,6 +17,25 @@ def _case_task_links(ids, numbers):
     return links
 
 
+_LINK_FIELDS = ("case_id", "case_record_id", "case_no", "case_nos", "case_ids")
+
+
+async def _linked_task_ids(db, ids, numbers) -> list[int]:
+    """501629：先只读未完成任务的几个关联字段，在内存里粗筛出可能关联这些案件的任务 id。
+
+    原来直接对全部任务逐条做几十个 JSON 文本 LIKE，案件列表这一步要 6 秒多；粗筛用的是同样的字段文本、
+    只要出现案件 id 或案号就留下（只多不少），最后仍用原来的条件精确判断，结果不变。
+    """
+    tokens = {str(value) for value in ids} | {str(value) for value in numbers if value}
+    if not tokens:
+        return []
+    rows = (await db.execute(select(
+        BusinessRecord.id, *(BusinessRecord.data[key].cast(String) for key in _LINK_FIELDS),
+        BusinessRecord.data["case_no"].as_string(),  # 原条件对 case_no 按解析后的文本比，这里也带上
+    ).where(BusinessRecord.module == "task", BusinessRecord.status.in_(OPEN_TASK_STATUSES)))).all()
+    return [row[0] for row in rows if any(text and any(token in text for token in tokens) for text in row[1:])]
+
+
 def _task_case_keys(task):
     data = task.data or {}
     ids = {str(data.get(key)) for key in ("case_id", "case_record_id") if data.get(key) not in (None, "")}
@@ -51,8 +70,11 @@ async def case_deadlines(cases, db):
         return result
     ids = {case["id"] for case in cases}
     by_no = {case["serial_no"]: case["id"] for case in cases}
+    candidates = await _linked_task_ids(db, ids, set(by_no))
+    if not candidates:
+        return result
     tasks = (await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "task", or_(*_case_task_links(ids, set(by_no))),
+        BusinessRecord.module == "task", BusinessRecord.id.in_(candidates), or_(*_case_task_links(ids, set(by_no))),
         BusinessRecord.status.in_(OPEN_TASK_STATUSES),
     ))).all()
     earliest = {}
@@ -75,13 +97,14 @@ async def attach_case_list_tasks(items, identity, db):
     ids = {item["id"] for item in items}
     numbers = {item["serial_no"] for item in items}
     links = _case_task_links(ids, numbers)
-    conditions = [BusinessRecord.module == "task", or_(*links),
+    candidates = await _linked_task_ids(db, ids, numbers)
+    conditions = [BusinessRecord.module == "task", BusinessRecord.id.in_(candidates), or_(*links),
                   BusinessRecord.status.in_(OPEN_TASK_STATUSES)]
     if identity.get("role") != "admin":
         conditions.append(or_(BusinessRecord.owner == identity["username"],
             BusinessRecord.data["initiator"].as_string() == identity["username"],
             BusinessRecord.data["collaborators"].cast(String).contains(f'"{identity["username"]}"')))
-    tasks = list((await db.scalars(select(BusinessRecord).where(*conditions))).all())
+    tasks = list((await db.scalars(select(BusinessRecord).where(*conditions))).all()) if candidates else []
     tasks = [task for task in tasks if (task.data or {}).get("is_active") is not False and (task.data or {}).get("IsActived") != "F"]
     displays = await _task_display_dicts(tasks, db) if tasks else []
     def order(task):

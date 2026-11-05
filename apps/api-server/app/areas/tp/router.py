@@ -1,7 +1,7 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
 from typing import Annotated
 
-from sqlalchemy import case
+from sqlalchemy import ARRAY, Integer, any_, bindparam, case
 from app.core.constants import (
     UPLOAD_ROOT, VIP_TASK_PRIORITIES, VIP_TASK_STATUSES,
 )
@@ -461,11 +461,25 @@ async def list_tasks(
         "initiator", "collaborators", "source", "deadline",
         "task_end_time", "TaskEndTime", "rejected_at", "completion_submitted_at",
     )
+    candidate_columns = (
+        "id", "serial_no", "title", "customer", "status", "owner",
+        "description", "created_at", "updated_at",
+    )
+    candidate_data_fields = (
+        "initiator", "collaborators", "source", "case_ids", "case_record_id",
+        "case_id", "case_nos", "case_no", "deadline", "task_end_time",
+        "TaskEndTime", "rejected_at", "completion_submitted_at",
+        "priority", "creation_mode", "task_type", "auto_task_type",
+        "merged_from_case_no", "plaintiff", "defendant",
+    )
+    assert set(summary_fields) <= set(candidate_data_fields)
+    candidate_rows = []
     async for task in stream_task_rows(
-        db, task_conditions, ("id", "status", "owner"), summary_fields,
-        ("initiator", "collaborators"),
+        db, task_conditions, candidate_columns, candidate_data_fields,
+        ("initiator", "collaborators", "source", "priority"),
     ):
         candidate_ids.append(task.id)
+        candidate_rows.append(task)
         if not task_scope_visible(task, scope, relation, username, department_usernames):
             continue
         _, days_remaining, effective_status, reminder_due, _ = _task_schedule_state(task)
@@ -479,6 +493,11 @@ async def list_tasks(
         }
         add_task_summary(summary, metrics)
         summary_status_counts[effective_status] = summary_status_counts.get(effective_status, 0) + 1
+
+    if dialect == "postgresql":
+        # 后面的计数、排序分页只在这些 id 里做，不再对全部任务重算一遍排除调查任务的 JSON 条件。
+        task_conditions = [BusinessRecord.module == "task", BusinessRecord.id == any_(bindparam(
+            "task_candidate_ids", candidate_ids, type_=ARRAY(Integer)))]
 
     # 仅精确 SQL 人员范围且无动态筛选的页面可直接由数据库分页。
     sql_scope = (
@@ -517,17 +536,6 @@ async def list_tasks(
         status_counts = summary_status_counts
         summary["total"] = total
     else:
-        candidate_columns = (
-            "id", "serial_no", "title", "customer", "status", "owner",
-            "description", "created_at", "updated_at",
-        )
-        candidate_data_fields = (
-            "initiator", "collaborators", "source", "case_ids", "case_record_id",
-            "case_id", "case_nos", "case_no", "deadline", "task_end_time",
-            "TaskEndTime", "rejected_at", "completion_submitted_at",
-            "priority", "creation_mode", "task_type", "auto_task_type",
-            "merged_from_case_no", "plaintiff", "defendant",
-        )
         selected_statuses = {value.strip() for value in statuses.split(",") if value.strip()}
         if selected_statuses.intersection({"处理中", "进行中"}):
             selected_statuses.update({"处理中", "进行中"})
@@ -583,13 +591,8 @@ async def list_tasks(
                     continue
                 matched.append(item)
 
-        candidate_ids.sort()
-        for offset in range(0, len(candidate_ids), 256):
-            task_batch = [task async for task in stream_task_rows(
-                db, [BusinessRecord.module == "task", BusinessRecord.id.in_(candidate_ids[offset:offset + 256])],
-                candidate_columns, candidate_data_fields,
-                ("initiator", "collaborators", "source", "priority"),
-            )]
+        for offset in range(0, len(candidate_rows), 256):
+            task_batch = candidate_rows[offset:offset + 256]
             batch = [
                 task_filter_row(task, relation)
                 for task in task_batch
