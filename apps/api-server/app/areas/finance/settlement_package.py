@@ -269,7 +269,8 @@ async def build_settlement_package(rows: list[dict], identity: dict, db, export_
     ))).all():
         evidence_by_case.setdefault(str((item.data or {}).get("case_no") or "").strip(), []).append(item)
     receipt_dates = await _previous_receipt_dates(db, case_nos)
-    auditor = str(identity.get("display_name") or identity.get("username") or "")
+    # 501599（shenhe 11-05）：个案结算表“审核:”一栏不填导出人，留空；“时间”和其他内容不变。
+    auditor = ""
 
     entries: list[tuple[str, object]] = []  # (压缩包内路径, bytes 或 FileAttachment)
     used_folders: set[str] = set()
