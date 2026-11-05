@@ -33,3 +33,8 @@ test('only 返回列表 sticks under the measured page head; status/withdraw/del
   assert.match(detail, /feedback-detail-back">\s*<Button[\s\S]*?>返回列表<\/Button>\s*<\/div>/);
   assert.match(detail, /closest\("\.page-workbench"\)\?\.scrollTo\(0, 0\); onBack\(\)/);
 });
+
+test('问题反馈 page drops the page title block so 我的反馈 tabs are the top row', () => {
+  const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  assert.match(app, /active !== "ai-chat" && active !== FEEDBACK_ROUTE && <div className="page-head">/);
+});

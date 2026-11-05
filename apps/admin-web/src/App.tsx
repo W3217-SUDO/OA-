@@ -2445,7 +2445,8 @@ export default function App() {
             if (isNarrowViewport && mobileSidebarOpen) setMobileSidebarOpen(false);
           }}
         >
-          {active !== "agent-center" && active !== "dashboard" && active !== "ai-chat" && <div className="page-head">
+          {/* 问题反馈页不要“问题反馈 / 首页 / 问题反馈”标题，最上面直接是固定的“我的反馈”页签行（tgn 11-05，BUG20261105023）。 */}
+          {active !== "agent-center" && active !== "dashboard" && active !== "ai-chat" && active !== FEEDBACK_ROUTE && <div className="page-head">
             <div>
               <h1>{currentPageLabel}</h1>
               <span>首页 / {currentPageLabel}</span>
