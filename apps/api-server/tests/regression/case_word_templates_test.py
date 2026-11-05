@@ -379,6 +379,50 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
         for leaked in ("立邦", "商标侵权", "2024.5.14", "1.2万"):
             self.assertNotIn(leaked, raw)
 
+    async def test_builtin_hearing_memo_and_element_complaint_1105(self):
+        """陶国南 11-05 12:19：庭审纪要表头从案件带出；要素式起诉状按当事人类型复制填写当事人几块，委托诉讼代理人=经办律师。"""
+        from app.data_models.parties import PartyRecord
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, self.case_id)
+            case.data = {**case.data, "first_court_hearing_date": "2026-11-18T09:00:00", "first_court_judge": "谢法官", "first_court_clerk": "席书记",
+                         "defendants": ["甲店", "刘某杰", "北京三快在线科技有限公司"]}
+            db.add_all([PartyRecord(party_no="DSR2600021", name="刘某杰", data={"credit_code": "41082320020104022X", "registered_address": "某村1号", "phone": "13900000000"}),
+                        PartyRecord(party_no="DSR2600022", name="北京三快在线科技有限公司", data={"credit_code": "91110108MA0000000X", "legal_representative": "王某", "registered_address": "北京某路"}),
+                        PartyRecord(party_no="DSR2600023", name="青岛尚美数智科技集团有限公司", data={"contact_phone": "0532-1"})])
+            await db.commit()
+        memo = (await self.client.post(self.url("hearing-memo", "preview"), json={"values": {}})).json()
+        self.assertEqual(memo["missing"], [])
+        rows = memo["paragraphs"]
+        self.assertIn("法院案号：（2022）沪0115民初5795号｜法院：上海市浦东新区人民法院    时间：2026年11月18日 09:00", rows)
+        self.assertIn("原告（上诉人）：青岛尚美数智科技集团有限公司｜联系方式：0532-1", rows)
+        self.assertIn("主审法官：谢法官｜联系方式：", rows)
+        self.assertIn("书记员：席书记｜联系方式：", rows)
+        self.assertTrue(any(row.startswith("被告（被上诉人）：甲店、刘某杰、北京三快在线科技有限公司｜联系方式：刘某杰：13900000000") for row in rows))
+
+        body = (await self.client.post(self.url("element-complaint-unfair-competition", "preview"), json={"values": {}})).json()
+        self.assertEqual(body["missing"], [])
+        text = "\n".join(body["paragraphs"])
+        self.assertIn("名称：青岛尚美数智科技集团有限公司", text)
+        self.assertIn("有☑\n姓名：沈建锋\n单位：上海沪知律师事务所", text)
+        self.assertIn("职务：律师", text)
+        person = [row for row in body["paragraphs"] if row.startswith("被告\n（自然人）")]
+        self.assertEqual(len(person), 1, "甲店按单位，刘某杰是个人")
+        self.assertIn("姓名：刘某杰\n性别：男□    女☑\n出生日期：2002年1月4日", person[0])
+        self.assertIn("住所地（户籍所在地）：某村1号", person[0])
+        self.assertIn("证件类型：居民身份证", person[0])
+        self.assertIn("证件号码：41082320020104022X", person[0])
+        orgs = [row for row in body["paragraphs"] if row.startswith("被告\n（法人、非法人组织）") and "名称：" in row]
+        self.assertEqual([row.split("名称：")[1].split("\n")[0] for row in orgs], ["甲店", "北京三快在线科技有限公司"], "两家单位各一块")
+        self.assertIn("法定代表人 / 负责人：王某 统一社会信用代码：91110108MA0000000X", text)
+        self.assertIn("具状人（签字、盖章）：青岛尚美数智科技集团有限公司", text)
+        download = await self.client.post(self.url("element-complaint-unfair-competition", "download"), json={"values": {}})
+        self.assertEqual(download.status_code, 200, download.text)
+        for item in module.BUILTIN_TEMPLATES:
+            if item["id"] in {"hearing-memo", "element-complaint-unfair-competition"}:
+                raw = "\n".join(module.paragraphs(await module._template_bytes(item, None)))
+                for leaked in ("陶勇刚", "Lillian", "tongyingchao"):
+                    self.assertNotIn(leaked, raw)
+
     def test_handling_result_draft(self):
         record = BusinessRecord(module="case", serial_no="X", title="X", status="一审和解结案")
         self.assertEqual(module._handling_result(record, {"settlement_amount": "8000", "judgment_amount": "8000"}), "和解结案，和解金额8000元")

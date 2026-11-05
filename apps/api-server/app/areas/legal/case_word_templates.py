@@ -79,6 +79,14 @@ BUILTIN_TEMPLATES = [{
     # 陶国南 11-05 12:16：送达地址确认书。当事人=本所委托人；送达地址默认沪知所地址（系统参数）加经办律师姓名和手机，短信送达号码用经办律师手机。
     "id": "delivery-address", "name": "送达地址确认书", "file": "DELIVERY_ADDRESS_DOCX",
     "options": {}, "optional": ["送达联系方式", "送达邮编", "短信送达号码"],
+}, {
+    # 陶国南 11-05 12:19：庭审纪要，表头从案件带出，其余格子庭审时填写；表头各项都可以留空。
+    "id": "hearing-memo", "name": "庭审纪要", "file": "HEARING_MEMO_DOCX",
+    "options": {}, "optional": ["法院案号", "开庭时间", "原告联系方式", "被告联系方式", "主审法官", "法官联系方式", "书记员", "书记员联系方式"],
+}, {
+    # 陶国南 11-05 12:19：法院统一格式的要素式起诉状。当事人几块按当事人类型（自然人/单位）复制填写，诉请和事实由律师填。
+    "id": "element-complaint-unfair-competition", "name": "民事起诉状（要素式·不正当竞争纠纷）", "file": "ELEMENT_COMPLAINT_UNFAIR_COMPETITION_DOCX",
+    "options": {}, "optional": [], "form": "element_complaint",
 }]
 # 系统自动取值的字段；模板里出现其他占位字段时，按“需要人工填写”处理。
 AUTO_FIELDS = ("法院", "法院案号", "原告", "被告", "第三人", "案由", "开庭律师", "经办律师", "律师助理", "客户名称", "案件编号", "生成日期",
@@ -86,7 +94,8 @@ AUTO_FIELDS = ("法院", "法院案号", "原告", "被告", "第三人", "案�
                "付款期限", "签署日期", "申请人信息", "被申请人信息", "落款日期", "保全金额",
                "收案日期", "起诉日期", "结案日期", "开庭日期", "处理结果", "归档日期", "保管期限",
                "调解原告信息", "调解被告信息", "付款被告", "收款联行号", "委托人名称", "委托人联系方式", "退费开户行", "退费户名", "退费账号",
-               "送达地址", "送达联系方式", "送达邮编", "短信送达号码", "侵权行为表述")
+               "送达地址", "送达联系方式", "送达邮编", "短信送达号码", "侵权行为表述",
+               "开庭时间", "原告联系方式", "被告联系方式", "主审法官", "法官联系方式", "书记员", "书记员联系方式")
 # 陶国南 11-04 14:28：日期都要生成。案件里没有约定付款日期时，付款期限默认生成日起 7 天（样本是起草后约 3 天），可以改。
 DEFAULT_PAYMENT_DAYS = 7
 PAYMENT_DATE_KEYS = ("agreed_payment_date", "payment_deadline", "settlement_payment_date", "promised_payment_date", "mediation_payment_date")
@@ -178,6 +187,8 @@ FIELD_HINTS = (
     (("委托人名称",), "委托人名称"), (("委托人联系方式",), "委托人联系方式"), (("退费开户行",), "退费开户行"), (("退费户名",), "退费户名"),
     (("退费账号",), "退费账号"), (("送达地址",), "送达地址"), (("送达联系方式",), "送达联系方式"), (("送达邮编",), "送达邮编"),
     (("短信送达号码",), "短信送达号码"), (("侵权行为表述",), "侵权行为表述"),
+    (("原告联系方式",), "原告联系方式"), (("被告联系方式",), "被告联系方式"), (("法官联系方式",), "法官联系方式"),
+    (("书记员联系方式",), "书记员联系方式"), (("书记员",), "书记员"), (("主审法官",), "主审法官"), (("开庭时间",), "开庭时间"),
     (("收案日期",), "收案日期"), (("起诉日期",), "起诉日期"), (("结案日期",), "结案日期"), (("开庭日期",), "开庭日期"),
     (("处理结果",), "处理结果"), (("归档日期",), "归档日期"), (("保管期限",), "保管期限"),
     (("被申请人信息",), "被申请人信息"), (("申请人信息",), "申请人信息"), (("落款日期",), "落款日期"), (("保全金额",), "保全金额"),
@@ -386,9 +397,25 @@ def amount_upper(value: str) -> str:
 
 
 def paragraphs(content: bytes) -> list[str]:
-    """预览用：按段落给出正文文字。"""
+    """预览用：按正文顺序给出段落文字；表格每行一条，各格用“｜”隔开（庭审纪要、要素式起诉状等表格式文书）。"""
     from docx import Document
-    return [paragraph.text for paragraph in Document(BytesIO(content)).paragraphs]
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+    document = Document(BytesIO(content))
+    lines: list[str] = []
+    for child in document.element.body.iterchildren():
+        if child.tag == W + "p":
+            lines.append(Paragraph(child, document).text)
+        elif child.tag == W + "tbl":
+            for row in Table(child, document).rows:
+                cells, seen = [], set()
+                for cell in row.cells:
+                    if id(cell._tc) in seen:
+                        continue
+                    seen.add(id(cell._tc))
+                    cells.append(cell.text.strip())
+                lines.append("｜".join(cells))
+    return lines
 
 
 def field_keys(slots: list[dict]) -> list[str]:
@@ -747,6 +774,59 @@ def _handling_result(record: BusinessRecord, data: dict) -> str:
     return "，".join(part for part in parts if part)
 
 
+def _stage_prefixes(status_text: str) -> tuple[str, ...]:
+    """按案件阶段取法官、书记员、开庭时间：执行 > 二审 > 一审；该阶段没填时退回一审。"""
+    if "执行" in status_text:
+        return ("execution", "first")
+    if "二审" in status_text:
+        return ("second", "first")
+    return ("first",)
+
+
+def _stage_person(data: dict, status_text: str, role: str) -> str:
+    # 新系统存姓名（first_court_judge），旧系统导入的存法官编号（first_instance_judge），编号再查法官表。
+    keys = [key for stage in _stage_prefixes(status_text)
+            for key in (f"{stage}_court_{role}", f"{stage}_instance_{role}", f"{stage}_intance_{role}")]
+    return _first(data, *keys, role)
+
+
+async def _court_officer(value: str, db: AsyncSession) -> tuple[str, str]:
+    """法官/书记员：旧系统编号换成姓名和电话（旧系统法官表 BAS_Court_Officer）；本来就是姓名的原样用。"""
+    if not value or not value.isdigit():
+        return value, ""
+    from sqlalchemy import text
+    from sqlalchemy.exc import SQLAlchemyError
+    try:
+        async with db.begin_nested():
+            row = (await db.execute(text('SELECT "OfficerName", "Phone" FROM "BAS_Court_Officer" WHERE "OfficerNo" = :no LIMIT 1'),
+                                    {"no": value})).first()
+    except SQLAlchemyError:
+        row = None
+    if not row:
+        return "", ""
+    return str(row[0] or "").strip(), str(row[1] or "").strip()
+
+
+def _hearing_time(data: dict, status_text: str) -> str:
+    """开庭时间写成“2025年7月28日 09:30”，没有具体钟点的只写日期。"""
+    stage = _stage_prefixes(status_text)[0]
+    keys = {"execution": "execution_court_hearing_date", "second": "second_court_hearing_date"}
+    raw = _first(data, keys.get(stage, "first_court_hearing_date"), "first_court_hearing_date")
+    day = _day(raw)
+    if not day:
+        return ""
+    clock = raw[11:16] if len(raw) >= 16 and raw[10] in "T " else ""
+    return f"{day.year}年{day.month}月{day.day}日" + (f" {clock}" if clock and clock != "00:00" else "")
+
+
+async def _party_phones(names: list[str], db: AsyncSession) -> str:
+    profiles = await _party_profiles(names, db)
+    phones = [(name, _first(profiles.get(name, {}), *PHONE_KEYS)) for name in names]
+    if len(phones) == 1:
+        return phones[0][1]
+    return "；".join(f"{name}：{phone}" for name, phone in phones if phone)
+
+
 def _amount_text(value) -> str:
     text = str(value or "").replace(",", "").strip()
     try:
@@ -802,6 +882,8 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
     plaintiffs = _names(data.get("plaintiffs") or data.get("plaintiff") or data.get("appellant_names"))
     defendants = _names(data.get("defendants") or data.get("defendant") or data.get("appellee_names"))
     compensation = _amount_text(data.get("settlement_amount") or data.get("judgment_amount"))
+    judge = await _court_officer(_stage_person(data, record.status or "", "judge"), db)
+    clerk = await _court_officer(_stage_person(data, record.status or "", "clerk"), db)
     payment_date = _first(data, *PAYMENT_DATE_KEYS)[:10]
     try:
         due = datetime.strptime(payment_date, "%Y-%m-%d") if payment_date else today + timedelta(days=DEFAULT_PAYMENT_DAYS)
@@ -853,8 +935,43 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
         "付款被告": "、".join(defendants),
         **(await _delivery_contacts(db, handling) if _wanted("送达地址", "送达联系方式", "短信送达号码") else {}),
         **(await _client_contact(record, db) if _wanted("委托人名称", "委托人联系方式", "退费开户行", "退费户名", "退费账号") else {}),
+        # 陶国南 11-05 12:19 庭审纪要：时间、法官、书记员按案件当前阶段取；联系方式取当事人档案，没有的留空。
+        "开庭时间": _hearing_time(data, record.status or ""),
+        "主审法官": judge[0],
+        "书记员": clerk[0],
+        "原告联系方式": await _party_phones(plaintiffs, db),
+        "被告联系方式": await _party_phones(defendants, db),
+        "法官联系方式": judge[1],
+        "书记员联系方式": clerk[1],
         **(await firm_account(db)),
     }
+
+
+async def element_parties(record: BusinessRecord, db: AsyncSession, today: datetime | None = None) -> dict:
+    """要素式起诉状的当事人几块（element_complaint）：原告、被告、第三人逐位的类型和信息，委托诉讼代理人=经办律师。"""
+    from app.areas.legal.element_complaint import party_entry
+    data = record.data or {}
+    today = today or datetime.now()
+    result: dict = {"firm": FIRM_NAME, "date": f"{today.year}年{today.month}月{today.day}日"}
+    for role, keys, identities_key in (("原告", ("plaintiffs", "plaintiff", "appellant_names"), "plaintiff_identities"),
+                                       ("被告", ("defendants", "defendant", "appellee_names"), "defendant_identities"),
+                                       ("第三人", ("third_parties", "third_party", "the_third_names"), "third_party_identities")):
+        names = _names(next((data.get(key) for key in keys if data.get(key)), None))
+        identities = {str(item.get("name") or "").strip(): item for item in data.get(identities_key) or [] if isinstance(item, dict)}
+        profiles = await _party_profiles(names, db)
+        result[role] = [party_entry(name, identities.get(name, {}), profiles.get(name, {}), is_person=_is_person, first=_first,
+                                    address_keys=ADDRESS_KEYS, phone_keys=PHONE_KEYS, looks_like_id_card=_looks_like_id_card)
+                        for name in names]
+    result["agents"] = (await case_field_values(record, db, today))["经办律师"]
+    return result
+
+
+def finish_document(item: dict, document: bytes) -> bytes:
+    """按模板替换完字段后，特殊格式的模板再做一步（要素式起诉状填当事人几块）。"""
+    if item.get("form") == "element_complaint" and item.get("_parties"):
+        from app.areas.legal.element_complaint import fill_element_complaint
+        return fill_element_complaint(document, item["_parties"])
+    return document
 
 
 async def _fields(record: BusinessRecord, item: dict, content: bytes, db: AsyncSession, overrides: dict[str, str]) -> tuple[list[dict], list[dict]]:
@@ -904,6 +1021,8 @@ async def _render(case_id: int, template_id: str, body: GenerateInput, identity:
     token = ENTERPRISE_LOOKUP.set(state)
     try:
         fields, slots = await _fields(record, item, content, db, body.values)
+        if item.get("form") == "element_complaint":
+            item = {**item, "_parties": await element_parties(record, db)}
     finally:
         ENTERPRISE_LOOKUP.reset(token)
     missing = [field["key"] for field in fields if field["missing"]]
@@ -1050,7 +1169,7 @@ async def preview_document(case_id: int, template_id: str, body: GenerateInput, 
     """列出字段（系统取的值、缺哪些）和替换后的正文，不保存。"""
     lookup: dict = {}
     record, item, fields, missing, content, slots = await _render(case_id, template_id, body, identity, db, write=False, lookup=lookup)
-    filled = fill(content, slots, {field["key"]: field["value"] or (BLANK if field["optional"] else "【" + field["key"] + "待填写】") for field in fields})
+    filled = finish_document(item, fill(content, slots, {field["key"]: field["value"] or (BLANK if field["optional"] else "【" + field["key"] + "待填写】") for field in fields}))
     return {"template": _public(item), "fields": fields, "missing": missing, "paragraphs": paragraphs(filled),
             "filename": f"{record.serial_no}-{item['name']}.docx", "enterprise_lookup": enterprise_notice(lookup)}
 
@@ -1062,7 +1181,7 @@ async def download_preview(case_id: int, template_id: str, body: GenerateInput, 
     record, item, fields, missing, content, slots = await _render(case_id, template_id, body, identity, db, write=False, charge=True)
     if missing:
         raise HTTPException(422, "还缺：" + "、".join(missing))
-    return _docx_response(fill(content, slots, {field["key"]: field["value"] or (BLANK if field["optional"] else "") for field in fields}), f"{record.serial_no}-{item['name']}.docx")
+    return _docx_response(finish_document(item, fill(content, slots, {field["key"]: field["value"] or (BLANK if field["optional"] else "") for field in fields})), f"{record.serial_no}-{item['name']}.docx")
 
 
 @router.post("/cases/{case_id}/documents/word-templates/{template_id}/generate", status_code=status.HTTP_201_CREATED)
@@ -1076,7 +1195,7 @@ async def generate_document(case_id: int, template_id: str, body: GenerateInput,
     record, item, fields, missing, content, slots = await _render(case_id, template_id, body, identity, db, write=True, charge=True, lookup=lookup)
     if missing:
         raise HTTPException(422, "还缺：" + "、".join(missing) + "，补齐后再生成")
-    document = fill(content, slots, {field["key"]: field["value"] or (BLANK if field["optional"] else "") for field in fields})
+    document = finish_document(item, fill(content, slots, {field["key"]: field["value"] or (BLANK if field["optional"] else "") for field in fields}))
     safe = "".join(char for char in item["name"] if char not in '\\/:*?"<>|')[:60]
     filename = _case_ai_draft_name(f"{record.serial_no}_{safe}_{datetime.now():%Y%m%d%H%M%S}.docx")
 
