@@ -424,6 +424,8 @@ async def update_system_user(user_id: int, body: SystemUserUpdate, identity: dic
             raise HTTPException(status_code=409, detail="不能停用当前登录账号")
         if not body.is_active and user.is_active:
             await _ensure_system_user_lifecycle_safe(user, db, action="停用")
+            from app.core.departure_tasks import ensure_no_owned_open_tasks
+            await ensure_no_owned_open_tasks(user.username, db, action="停用账号")
         user.is_active = body.is_active
     if body.display_name is not None:
         user.display_name = await _require_unique_hr_display_name(

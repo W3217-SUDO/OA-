@@ -1124,6 +1124,10 @@ async def transition_employee(employee_id: int, body: HrTransitionInput, identit
     if body.to_status in {"离职", "停用"} and len(reason) < 2: raise HTTPException(status_code=422, detail="离职或停用必须填写原因")
     if body.effective_date < date(2000, 1, 1): raise HTTPException(status_code=422, detail="办理日期无效")
     previous = item.status; data = dict(item.data or {})
+    if body.to_status in {"离职", "停用"}:
+        # 501631：还负责未结束任务的不能办离职/停用，先转交（只拦这个动作，不影响登录和权限）
+        from app.core.departure_tasks import ensure_no_owned_open_tasks
+        await ensure_no_owned_open_tasks(str(data.get("username") or item.owner or ""), db, action=f"办理{body.to_status}")
     if body.to_status == "在职":
         if previous == "试用":
             data.update({"regularized_at": str(body.effective_date), "regularized_by": identity["username"]}); action = "试用转正"
@@ -1173,6 +1177,44 @@ async def _seal_approval_settings_payload(db: AsyncSession) -> dict:
             "first": override[0] or item.manager, "second": override[1] or settings_value["firm_approver"],
         })
     return {**settings_value, "departments": rows, "display_names": {user.username: user.display_name or user.username for user in names.values()}}
+
+
+class DepartureHandoverInput(BaseModel):
+    from_username: str = Field(min_length=1, max_length=64)
+    task_ids: list[int] = Field(min_length=1, max_length=2000)
+    recipient: str = Field(min_length=1, max_length=64)
+    comment: str = Field(default="", max_length=500)
+
+
+def _require_departure_operator(identity: dict, *, admin_only: bool) -> None:
+    from app.core.permissions import _require_actual_system_admin
+    if admin_only:
+        try:
+            _require_actual_system_admin(identity)
+        except HTTPException:
+            raise HTTPException(status_code=403, detail="只有系统管理员可以查看和转交离职人员的任务") from None
+    elif identity.get("role") not in {"admin", "manager"}:
+        raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以办理离职任务转交")
+
+
+@router.get(f"{settings.api_prefix}/hr/departure-tasks")
+async def list_departure_tasks(username: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """501631：username 给了就列此人名下未结束任务（办离职前用）；不给就列全部离职人员的未结束任务（仅系统管理员）。"""
+    from app.core.departure_tasks import departed_open_tasks, person_open_tasks
+    if username.strip():
+        _require_departure_operator(identity, admin_only=False)
+        items = await person_open_tasks(username, db)
+        return {"username": username.strip(), "items": items, "owner_count": sum("负责人" in item["roles"] for item in items)}
+    _require_departure_operator(identity, admin_only=True)
+    return await departed_open_tasks(db)
+
+
+@router.post(f"{settings.api_prefix}/hr/departure-tasks/handover")
+async def handover_departure_tasks(body: DepartureHandoverInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """501631：把离职（或将要离职）人员名下勾选的任务批量转交给某人。"""
+    from app.core.departure_tasks import handover_tasks
+    _require_departure_operator(identity, admin_only=False)
+    return await handover_tasks(from_username=body.from_username, task_ids=body.task_ids, recipient=body.recipient, comment=body.comment, identity=identity, db=db)
 
 
 @router.get(f"{settings.api_prefix}/hr/seal-approval-settings")

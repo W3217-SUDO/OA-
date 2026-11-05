@@ -3,6 +3,7 @@ import { Form, message } from "antd";
 import { api } from "../api";
 import { notifyPermissionsUpdated } from "../workspacePermissions";
 import "../system-center.css";
+import { DepartureHandoverModal, isDepartureTasksBlocked } from "../hr/DepartureTasks";
 import {
   categoryByRoute,
   parameterRelationConfigs,
@@ -587,6 +588,8 @@ export default function SystemCenterPage({
     );
     setUserOpen(true);
   };
+  // 501631：停用账号时此人还负责未结束任务，弹出任务清单先转交
+  const [departureUser, setDepartureUser] = useState<{ username: string; name: string } | null>(null);
   const saveUser = async () => {
     const value = await userForm.validateFields();
     const roleIds = Array.from(
@@ -618,6 +621,10 @@ export default function SystemCenterPage({
       setUserOpen(false);
       void loadUsers(keyword);
     } catch (error: any) {
+      if (editingUser && isDepartureTasksBlocked(error)) {
+        setDepartureUser({ username: editingUser.username, name: editingUser.display_name || editingUser.username });
+        return;
+      }
       message.error(error?.response?.data?.detail || "账号保存失败");
     }
   };
@@ -881,5 +888,6 @@ export default function SystemCenterPage({
     );
   }
 
-  return <>{content}</>;
+  return <>{content}<DepartureHandoverModal username={departureUser?.username || null} name={departureUser?.name} action="停用账号"
+    onClose={() => setDepartureUser(null)} onCleared={() => { setDepartureUser(null); void saveUser(); }} /></>;
 }
