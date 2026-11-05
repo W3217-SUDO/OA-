@@ -89,5 +89,18 @@ class EnterpriseCompletionTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await cwt._complete_enterprise(QCC["name"], {}, None), {})
 
 
+class OnlyUsedFieldsTest(unittest.TestCase):
+    """模板里没用到的当事人信息不算，也不会为它查企查查（11-05 发现：生成撤诉申请书等也会为各方当事人查企查查）。"""
+
+    def test_wanted_follows_template_fields(self):
+        token = cwt.ENTERPRISE_LOOKUP.set({"charge": True, "username": "admin", "fields": {"法院", "案由"}})
+        try:
+            self.assertFalse(cwt._wanted("被告信息"))
+            self.assertTrue(cwt._wanted("案由"))
+        finally:
+            cwt.ENTERPRISE_LOOKUP.reset(token)
+        self.assertTrue(cwt._wanted("被告信息"), "不在生成模板时照常算")
+
+
 if __name__ == "__main__":
     unittest.main()

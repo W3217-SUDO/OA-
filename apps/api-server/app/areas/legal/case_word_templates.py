@@ -424,6 +424,13 @@ ENTERPRISE_LOOKUP: ContextVar[dict | None] = ContextVar("case_word_enterprise_lo
 ENTERPRISE_FIELDS = ("credit_code", "legal_representative", "registered_address")
 
 
+def _wanted(*keys: str) -> bool:
+    """这份模板用不用这些字段；没在生成模板时（state 为空）照常算。用不到的当事人信息不算，也就不会为它去查企查查。"""
+    state = ENTERPRISE_LOOKUP.get()
+    fields = state.get("fields") if state else None
+    return fields is None or any(key in fields for key in keys)
+
+
 def _is_organization_name(name: str, profile: dict) -> bool:
     if profile.get("organization_type"):
         return profile["organization_type"] != "个人"
@@ -717,8 +724,8 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
         "客户名称": record.customer or "",
         "案件编号": record.serial_no,
         "生成日期": f"{today.year}年{today.month}月{today.day}日",
-        "原告信息": await _party_lines(data, plaintiffs, "plaintiff_identities", db, defendant=False),
-        "被告信息": await _party_lines(data, defendants, "defendant_identities", db, defendant=True),
+        "原告信息": await _party_lines(data, plaintiffs, "plaintiff_identities", db, defendant=False) if _wanted("原告信息") else "",
+        "被告信息": await _party_lines(data, defendants, "defendant_identities", db, defendant=True) if _wanted("被告信息") else "",
         # 陶国南 11-04 14:19：委托诉讼代理人用案件的经办律师，律所用本所。
         "委托诉讼代理人": people(handling),
         "代理律所": FIRM_NAME,
@@ -727,8 +734,8 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
         "签署日期": f"{today.year}年{today.month}月{today.day}日",
         "赔偿金额大写": amount_upper(compensation) if compensation else "",
         # 陶国南 11-05 申请书：申请人=原告，被申请人=被告；保全金额默认取案件的诉讼标的额，可以改。
-        "申请人信息": await _applicant_lines(data, plaintiffs, "plaintiff_identities", db, applicant=True),
-        "被申请人信息": await _applicant_lines(data, defendants, "defendant_identities", db, applicant=False),
+        "申请人信息": await _applicant_lines(data, plaintiffs, "plaintiff_identities", db, applicant=True) if _wanted("申请人信息") else "",
+        "被申请人信息": await _applicant_lines(data, defendants, "defendant_identities", db, applicant=False) if _wanted("被申请人信息") else "",
         "落款日期": chinese_date(today),
         "保全金额": _amount_text(data.get("litigation_amount") or data.get("claim_amount")),
         # 陶国南 11-05 办案小结：收案=建案登记日，起诉=一审立案日，结案=结案时间，归档日期=归档时间（还没归档就写生成当天）。
@@ -744,8 +751,11 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
 
 
 async def _fields(record: BusinessRecord, item: dict, content: bytes, db: AsyncSession, overrides: dict[str, str]) -> tuple[list[dict], list[dict]]:
-    auto = await case_field_values(record, db)
     slots = resolve_slots(scan(content), item.get("mapping"))
+    state = ENTERPRISE_LOOKUP.get()
+    if state is not None:
+        state["fields"] = {slot["key"] for slot in slots}
+    auto = await case_field_values(record, db)
     sources = {slot["key"]: slot["source"] for slot in slots}
     optional = set(item.get("optional") or [])
     values = {}
