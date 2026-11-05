@@ -122,10 +122,10 @@ DEFAULT_SYSTEM_MENUS = [
     # BUG20261030004（高勤兰、思法汇成确认）：按老系统顺序 专利监控、专利转文、专利转票、专利年费、商标监控、商标转文、商标转票、案件重提、案件文件，
     # 原有菜单排在后面；1~7 号位留给分批上线的监控、转文、转票、年费。
     # 501613（范文玲 11-05）：“我的案件”放第一项，按我在案件里的角色分组。
-    ("ipr", "", "知产非诉", "file-text", 67), ("ipr-my-cases", "ipr", "我的案件", "", 0), ("ipr-patent-annual-fee", "ipr", "专利年费", "", 4), ("ipr-case-reboot", "ipr", "案件重提", "", 8), ("ipr-case-files", "ipr", "案件文件", "", 9),
+    ("ipr", "", "知产非诉", "file-text", 67), ("ipr-my-cases", "ipr", "我的案件", "", 0), ("ipr-patent-annual-fee", "ipr", "专利年费", "", 7), ("ipr-case-reboot", "ipr", "案件重提", "", 3), ("ipr-case-files", "ipr", "案件文件", "", 11),
     ("ipr-custom-file-import", "ipr-case-files", "案件自定义文件导入", "", 1),
-    ("ipr-patent", "ipr", "专利案件", "", 10), ("ipr-trademark", "ipr", "商标案件", "", 11), ("ipr-review", "ipr", "知识产权立案审核", "", 12), ("ipr-office-files", "ipr", "知识产权官文", "", 13),
-    ("ipr-source-person", "ipr", "我是案源人", "", 14), ("ipr-procurator", "ipr", "我是代理人", "", 15), ("ipr-copywriter", "ipr", "我是撰稿人", "", 16), ("ipr-officer", "ipr", "我是处理人", "", 17), ("ipr-business-owner", "ipr", "我是案件管理人", "", 18),
+    ("ipr-patent", "ipr", "专利案件", "", 20), ("ipr-trademark", "ipr", "商标案件", "", 21), ("ipr-review", "ipr", "知识产权立案审核", "", 22), ("ipr-office-files", "ipr", "知识产权官文", "", 12),
+    ("ipr-source-person", "ipr", "我是案源人", "", 23), ("ipr-procurator", "ipr", "我是代理人", "", 24), ("ipr-copywriter", "ipr", "我是撰稿人", "", 25), ("ipr-officer", "ipr", "我是处理人", "", 26), ("ipr-business-owner", "ipr", "我是案件管理人", "", 27),
     # 501099（陶国南 11-02 定方案二）：非诉财务中心与财务中心同一套页面，只看非诉（知识产权）；分批上线，先上回款管理。
     ("ipr-finance", "ipr", "非诉财务中心", "", 19), ("ipr-finance-receipts", "ipr-finance", "回款管理", "", 1),
     ("ipr-finance-receipts-new", "ipr-finance-receipts", "新增回款", "", 1), ("ipr-finance-receipts-mine", "ipr-finance-receipts", "我的回款", "", 2),
@@ -223,7 +223,13 @@ DEFAULT_SYSTEM_MENUS += [
 
 # 仅隐藏导航，路由和业务授权继续保留。
 # 付款打包-管理按旧系统 付款管理 › 付款包列表 显示（陶威 2026-10-31 要求新旧系统对齐）。
-DEFAULT_HIDDEN_MENU_KEYS = {"finance-internal-void"}
+# 501616（范文玲 11-05）：知识产权中心按老系统“案件中心”菜单；下面这些页面不在菜单里显示，也不在角色权限树里，
+# 后台照常认原来的授权（专利/商标案件页仍是“我的案件”新建案件、案件详情的承载页）。官文等专利转文、商标转文上线后再收。
+IPR_MENU_KEYS_REMOVED_501616 = frozenset({
+    "ipr-patent", "ipr-trademark", "ipr-review", "ipr-source-person", "ipr-procurator",
+    "ipr-copywriter", "ipr-officer", "ipr-business-owner",
+})
+DEFAULT_HIDDEN_MENU_KEYS = {"finance-internal-void", *IPR_MENU_KEYS_REMOVED_501616}
 
 SYSTEM_MENU_ROUTE_KEYS = {key for key, *_ in DEFAULT_SYSTEM_MENUS}
 
@@ -1147,6 +1153,8 @@ ROLE_TREE_HIDDEN_MENU_KEYS = frozenset({
     "documents-outgoing", "documents-register", "documents-files", "documents-template", "documents-agent", "documents-archive",
     # 三张执行进度表合并成一张（BUG 500788，思法汇成 11-01 选 3A），（二）（三）不再单独授权显示。
     "reports-execution-2", "reports-execution-3",
+    # 501616：知识产权中心按老系统菜单，专利/商标案件、立案审核、“我是××”收进“我的案件”。
+    *IPR_MENU_KEYS_REMOVED_501616,
 })
 # 同一个功能控制多个页面的按钮时，角色权限里在这些页面下都显示（同一开关，勾一处各处同步）。
 ROLE_TREE_ACTION_ALSO_MENUS = {

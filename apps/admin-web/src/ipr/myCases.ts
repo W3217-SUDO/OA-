@@ -1,6 +1,9 @@
 import dayjs, { type Dayjs } from "dayjs";
 
 // 501613：知识产权中心“我的案件”的分组、筛选参数和剩余天数（页面和单元测试共用）。
+
+/** 501616：“我的案件”页上方“新建案件”：跳到专利案件页并直接打开新建弹窗。 */
+export const IPR_CREATE_FROM_MY_CASES_KEY = "sunhold:ipr-create-from-my-cases";
 export type GroupKey = "business_owner" | "source_person" | "procurator" | "copywriter" | "mine" | "invalid";
 export type FilterValues = {
   applicant?: string; case_phase?: string; case_type?: string; source_person?: string; copywriter?: string;

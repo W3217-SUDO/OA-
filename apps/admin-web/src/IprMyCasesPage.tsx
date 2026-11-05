@@ -3,7 +3,7 @@ import { Button, Card, DatePicker, Empty, Form, Input, message } from "antd";
 import Table from "./components/ResizableTable";
 import { api } from "./api";
 import { iprCaseDetailRoute } from "./ipr/iprCaseTabs";
-import { FILTERS, IPR_MY_CASE_GROUPS, dateText, myCaseQueryParams, remainingDays, text, type FilterValues, type GroupKey } from "./ipr/myCases";
+import { FILTERS, IPR_CREATE_FROM_MY_CASES_KEY, IPR_MY_CASE_GROUPS, dateText, myCaseQueryParams, remainingDays, text, type FilterValues, type GroupKey } from "./ipr/myCases";
 
 // 501613（范文玲 11-05）：知识产权中心“我的案件”，照老系统 案件中心 › 我的案件：
 // 左侧按我在案件里的角色分组（带数量），右侧筛选和案件列表。前五组不含失效案件，失效的在“失效案件”里看。
@@ -104,7 +104,11 @@ export default function IprMyCasesPage({ onNavigate }: { onNavigate?: (route: st
           </div>
         ))}
       </Card>
-      <Card size="small" style={{ flex: "1 1 600px", minWidth: 0 }} title="案件列表">
+      <Card size="small" style={{ flex: "1 1 600px", minWidth: 0 }} title="案件列表"
+        extra={<Button type="primary" onClick={() => {
+          try { sessionStorage.setItem(IPR_CREATE_FROM_MY_CASES_KEY, "1"); } catch { /* 存不了就只跳转 */ }
+          onNavigate?.("ipr-patent");
+        }}>新建案件</Button>}>
         <Form form={form} layout="inline" style={{ rowGap: 8, marginBottom: 12 }}
           onFinish={(values) => { setFilters(values); setPage(1); }}>
           {FILTERS.map((item) => (

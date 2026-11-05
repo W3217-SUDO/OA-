@@ -409,19 +409,12 @@ const menuItems: NavItem[] = [
     key: "ipr",
     label: "知产非诉",
     children: [
+      // 501616：按老系统“案件中心”菜单；监控、转文、转票做好一个加一个。
       { key: "ipr-my-cases", label: "我的案件" },
-      { key: "ipr-patent-annual-fee", label: "专利年费" },
       { key: "ipr-case-reboot", label: "案件重提" },
+      { key: "ipr-patent-annual-fee", label: "专利年费" },
       { key: "ipr-case-files", label: "案件文件", children: [{ key: "ipr-custom-file-import", label: "案件自定义文件导入" }] },
-      { key: "ipr-patent", label: "专利案件" },
-      { key: "ipr-trademark", label: "商标案件" },
-      { key: "ipr-review", label: "知识产权立案审核" },
       { key: "ipr-office-files", label: "知识产权官文" },
-      { key: "ipr-source-person", label: "我是案源人" },
-      { key: "ipr-procurator", label: "我是代理人" },
-      { key: "ipr-copywriter", label: "我是撰稿人" },
-      { key: "ipr-officer", label: "我是处理人" },
-      { key: "ipr-business-owner", label: "我是案件管理人" },
       {
         key: "ipr-finance",
         label: "非诉财务中心",

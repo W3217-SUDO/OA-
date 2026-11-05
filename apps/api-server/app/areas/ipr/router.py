@@ -1663,7 +1663,18 @@ async def submit_ipr_case(case_id: int, identity: dict = Depends(current_identit
             "conflict_review": gate.get("review"),
         })
     data = record.data or {}
-    previous = record.status; record.status = "待立案审核"; record.data = {**data, "submitted_at": datetime.now().isoformat(timespec="seconds"), "submitted_by": identity["username"]}
+    now_text = datetime.now().isoformat(timespec="seconds")
+    previous = record.status
+    if data.get("case_category", "non_litigation") != "litigation":
+        # 501616（范文玲 11-05）：知识产权中心新建的非诉案件不需要审核，提交即立案成功、正常办理；诉讼类仍走立案审核。
+        await require_conflict_clear(record, db, action="知识产权立案")
+        record.status = "在办"
+        record.data = {**data, "submitted_at": now_text, "submitted_by": identity["username"],
+                       "reviewed_at": now_text, "reviewed_by": identity["username"], "review_comment": "非诉案件无需立案审核"}
+        db.add(WorkflowEvent(record_id=record.id, action="知识产权立案（非诉无需审核）", from_status=previous, to_status=record.status, operator=identity["username"], comment=""))
+        await db.commit(); await db.refresh(record)
+        return _record_dict(record, await _allowed_field_keys(identity, db))
+    record.status = "待立案审核"; record.data = {**data, "submitted_at": now_text, "submitted_by": identity["username"]}
     db.add(WorkflowEvent(record_id=record.id, action="提交知识产权立案审核", from_status=previous, to_status=record.status, operator=identity["username"], comment=""))
     await db.commit(); await db.refresh(record)
     return _record_dict(record, await _allowed_field_keys(identity, db))

@@ -1,4 +1,5 @@
 import { roleActionAllowed } from "../roleActions";
+import { IPR_CREATE_FROM_MY_CASES_KEY } from "./myCases";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import { POPUP_WIDTH } from "../components/common/popupSize";
 import {
@@ -775,6 +776,17 @@ export default function IprCenterPage({
     });
     setCreateOpen(true);
   };
+  // 501616：从“我的案件”页点“新建案件”进来，直接打开新建弹窗。
+  useEffect(() => {
+    if (initialView !== "ipr-patent") return;
+    let requested = false;
+    try {
+      requested = sessionStorage.getItem(IPR_CREATE_FROM_MY_CASES_KEY) === "1";
+      sessionStorage.removeItem(IPR_CREATE_FROM_MY_CASES_KEY);
+    } catch { /* 读不到就按普通进入 */ }
+    if (requested) openCreate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialView]);
   // BUG20261027008：从合同“新建案件 → 非诉案件”进来，带入客户和合同打开新建弹窗。
   useEffect(() => {
     if (initialView !== "ipr-patent") return;
