@@ -192,6 +192,11 @@ const TaskCenterPage = lazyWithVersionRecovery("task", () => import("./tp"));
 const BusinessPage = lazyWithVersionRecovery("business", () => import("./BusinessPage"));
 const DocumentCenterPage = lazyWithVersionRecovery("document", () => import("./aws"));
 const FinanceCenterPage = lazyWithVersionRecovery("finance", () => import("./FinanceCenterPage"));
+// 501585（shenhe 11-05）：回款管理里不需要的银行页面，左侧菜单不显示（与后端 ROLE_TREE_HIDDEN_MENU_KEYS 一致，旧链接仍能打开）。
+const NAV_HIDDEN_RECEIPT_MENU_KEYS = new Set([
+  "finance-receipts-citic", "finance-receipts-bank-flow",
+  "platform-finance-overview-citic", "platform-finance-overview-cmb", "platform-finance-overview-gdicbc", "platform-finance-overview-bank-flow",
+]);
 const BankFlowPage = lazyWithVersionRecovery("finance-receipts-bank-flow", () => import("./finance/BankFlowPage"));
 const SystemCenterPage = lazyWithVersionRecovery("system", () => import("./system"));
 const IprFileTypeSettingsPage = lazyWithVersionRecovery("ipr-file-types", () => import("./IprFileTypeSettingsPage"));
@@ -582,7 +587,6 @@ const menuItems: NavItem[] = [
         label: "回款管理",
         children: [
           { key: "finance-receipts-icbc", label: "回款(工行)" },
-          { key: "finance-receipts-citic", label: "回款(中信)" },
           { key: "finance-receipts-boc", label: "回款(中行)" },
           { key: "finance-receipts-cmb", label: "回款(招商)" },
           { key: "finance-receipts-new", label: "新增回款" },
@@ -752,6 +756,7 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
       item.key !== "finance-jar" &&
       item.key !== "finance-internal-void" &&
       item.key !== "system-users" &&
+      !NAV_HIDDEN_RECEIPT_MENU_KEYS.has(item.key) &&
       (item.parent_key !== "documents" || ["documents-official", "documents-my", "documents-company"].includes(item.key)),
   ).sort(
     (a, b) => a.sort_order - b.sort_order || a.id - b.id,

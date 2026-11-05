@@ -1189,6 +1189,12 @@ ROLE_TREE_HIDDEN_ACTION_CODES = frozenset({
     "finance.fee.update", "finance.fee.delete",
 })
 
+NAV_HIDDEN_RECEIPT_MENU_KEYS = (
+    "finance-receipts-citic", "finance-receipts-bank-flow",
+    "platform-finance-overview-citic", "platform-finance-overview-cmb", "platform-finance-overview-gdicbc",
+    "platform-finance-overview-bank-flow",
+)
+
 # 左侧菜单不显示的页面（与前端 App.tsx 左侧菜单的过滤一致）：角色权限里不显示（范文玲 2026-10-29 13:45），
 # 角色原有的这些页面授权保存时按原样保留。
 ROLE_TREE_HIDDEN_MENU_KEYS = frozenset({
@@ -1198,6 +1204,9 @@ ROLE_TREE_HIDDEN_MENU_KEYS = frozenset({
     "reports-execution-2", "reports-execution-3",
     # 501616：知识产权中心按老系统菜单，专利/商标案件、立案审核、“我是××”收进“我的案件”。
     *IPR_MENU_KEYS_REMOVED_501616,
+    # 501585（shenhe 11-05）：回款管理里不需要的银行页面（财务中心：中信、银行原始流水；平台财务中心：中信、招商、国定工行、
+    # 银行原始流水）。左侧菜单不显示；已有授权保留，银行流水接口仍认这些页面。
+    *NAV_HIDDEN_RECEIPT_MENU_KEYS,
 })
 # 同一个功能控制多个页面的按钮时，角色权限里在这些页面下都显示（同一开关，勾一处各处同步）。
 ROLE_TREE_ACTION_ALSO_MENUS = {
