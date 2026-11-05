@@ -174,7 +174,8 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
         response = await self.client.get(API + "/case-word-templates")
         self.assertEqual(response.status_code, 200, response.text)
         listed = response.json()["items"]
-        self.assertEqual([item["id"] for item in listed], ["mediation-agreement", template_id], "停用的模板普通用户看不到")
+        builtin = [item["id"] for item in module.BUILTIN_TEMPLATES if item["id"] != "withdrawal-application"]
+        self.assertEqual([item["id"] for item in listed], [*builtin, template_id], "停用的模板普通用户看不到")
         self.assertEqual(next(item for item in listed if item["id"] == template_id)["options"], {"诉讼请求": ["停止侵权"]})
         self.assertEqual((await self.client.post(self.url("withdrawal-application", "preview"), json={})).status_code, 409)
         preview = (await self.client.post(self.url(template_id, "preview"), json={"values": {"诉讼请求": "停止侵权"}})).json()
@@ -292,6 +293,75 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("委派调解员王调解进行调解", joined)
         download = await self.client.post(self.url("mediation-agreement", "download"), json={"values": {}})
         self.assertEqual(download.status_code, 200, download.text)
+
+    async def test_builtin_applications_1105(self):
+        """陶国南 11-05 三份申请书：申请人=原告、被申请人=被告逐个列出；落款日期中文大写；保全金额取诉讼标的额；
+        个人身份证号存在统一社会信用代码里也按个人写；样本里的真实信息不进模板。"""
+        from app.data_models.parties import PartyRecord
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, self.case_id)
+            case.data = {**case.data, "litigation_amount": "60000.00"}
+            db.add_all([PartyRecord(party_no="DSR2600011", name="甲店", data={"credit_code": "41082320020104022X", "registered_address": "某省某县某村1号"}),
+                        PartyRecord(party_no="DSR2600012", name="青岛尚美数智科技集团有限公司",
+                                    data={"registered_address": "青岛市某路2号", "credit_code": "91370200MA3C000000", "legal_representative": "张三"}),
+                        PartyRecord(party_no="DSR2600013", name="北京三快在线科技有限公司", data={"registered_address": "北京三快在线科技有限公司"})])
+            await db.commit()
+        today = module.chinese_date(datetime.now())
+        leaked_words = ("台享", "梅休", "甄旺", "手拉手", "王建正", "张香荣", "叫了个鸡", "共和新路", "华山路", "1302 2224", "zw0551", "浦东新区人民法院", "第五十四条")
+
+        preservation = (await self.client.post(self.url("property-preservation", "preview"), json={"values": {"事实和理由": "申请人系商标权人。"}})).json()
+        fields = {field["key"]: field for field in preservation["fields"]}
+        self.assertEqual(preservation["missing"], [], "财产线索可留空")
+        self.assertTrue(fields["财产线索"]["optional"] and fields["申请人信息"]["multiline"])
+        self.assertEqual(fields["保全金额"]["value"], "60000")
+        paragraphs = preservation["paragraphs"]
+        for line in ("申请人：青岛尚美数智科技集团有限公司", "统一社会信用代码：91370200MA3C000000", "法定代表人：张三  职务：\u3000\u3000\u3000\u3000",
+                     "住所：青岛市某路2号", "送达地址：\u3000\u3000\u3000\u3000",
+                     "被申请人一：甲店", "统一社会信用代码：41082320020104022X", "地址：某省某县某村1号",
+                     "被申请人二：北京三快在线科技有限公司", "地址：\u3000\u3000\u3000\u3000",
+                     "申请事项：请求对被申请人甲店、北京三快在线科技有限公司名下财产进行保全，保全金额60000元人民币或等值财产。",
+                     "申请人诉被申请人侵害商标权纠纷一案贵院已经受理。申请人系商标权人。", "上海市浦东新区人民法院"):
+            self.assertIn(line, paragraphs)
+        self.assertEqual(paragraphs[-1].strip(), today)
+
+        change = (await self.client.post(self.url("change-claims", "preview"), json={"values": {}})).json()
+        self.assertEqual(change["missing"], ["变更后诉讼请求"])
+        change = (await self.client.post(self.url("change-claims", "preview"), json={"values": {"变更后诉讼请求": "1.停止侵权；\n2.赔偿损失。"}})).json()
+        self.assertIn("贵院受理的（2022）沪0115民初5795号申请人与甲店、北京三快在线科技有限公司侵害商标权纠纷一案，现依法变更诉讼请求，变更后新的诉讼请求为：",
+                      change["paragraphs"])
+        self.assertIn("1.停止侵权；", change["paragraphs"])
+        self.assertIn("2.赔偿损失。", change["paragraphs"])
+
+        hearing = (await self.client.post(self.url("non-public-hearing", "preview"), json={"values": {}})).json()
+        self.assertEqual(hearing["missing"], [])
+        self.assertIn("申请事项：你院受理的青岛尚美数智科技集团有限公司诉甲店、北京三快在线科技有限公司侵害商标权纠纷一案，"
+                      "根据《中华人民共和国民事诉讼法》第一百三十七条的规定，特申请不公开审理。", hearing["paragraphs"])
+        self.assertIn("申请人：青岛尚美数智科技集团有限公司", hearing["paragraphs"])
+        for body in (preservation, change, hearing):
+            text = "\n".join(body["paragraphs"])
+            self.assertNotIn("（", text.replace("（2022）", ""), "说明括号都去掉了")
+            for leaked in leaked_words + ("某某",):
+                if leaked != "浦东新区人民法院":  # 测试案件本身就在浦东法院
+                    self.assertNotIn(leaked, text)
+        for item in module.BUILTIN_TEMPLATES[2:]:
+            raw = await module._template_bytes(item, None)
+            text = "\n".join(texts(raw))
+            for leaked in leaked_words:
+                self.assertNotIn(leaked, text, item["name"])
+
+    def test_id_card_in_credit_code_is_a_person(self):
+        number = "41082320020104022X"
+        self.assertTrue(module._is_person("刘希杰", {}, number, {"credit_code": number}))
+        self.assertEqual(module._applicant_block("刘希杰", "被申请人二", {}, {"credit_code": number, "registered_address": "某村1号"}, applicant=False),
+                         [f"被申请人二：刘希杰，女，身份证号码：{number}", "地址：某村1号"])
+        self.assertFalse(module._is_person("某科技有限公司", {}, "91370200MA3C000000", {"credit_code": "91370200MA3C000000"}))
+        self.assertFalse(module._is_person("张三丰", {}, "", {"credit_code": "91370200MA3C000000"}))
+
+    def test_chinese_date(self):
+        self.assertEqual(module.chinese_date(datetime(2017, 12, 19)), "二〇一七年十二月十九日")
+        self.assertEqual(module.chinese_date(datetime(2026, 11, 5)), "二〇二六年十一月五日")
+        self.assertEqual(module.chinese_date(datetime(2018, 10, 30)), "二〇一八年十月三十日")
+        self.assertEqual(module.chinese_date(datetime(2020, 2, 21)), "二〇二〇年二月二十一日")
 
     def test_amount_upper(self):
         cases = {"4500": "肆仟伍佰元整", "12000": "壹万贰仟元整", "105000": "壹拾万伍仟元整", "10010": "壹万零壹拾元整",

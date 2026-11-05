@@ -47,16 +47,26 @@ BUILTIN_TEMPLATES = [{
     # 陶国南 11-04：调解员、付款期限可以留空，打印后手写。
     "id": "mediation-agreement", "name": "调解协议书", "file": "MEDIATION_AGREEMENT_DOCX",
     "options": {}, "optional": ["调解员", "付款期限"],
+}, {
+    # 陶国南 11-05 给的三份申请书：申请人=原告（本所委托人），被申请人=被告；法定代表人、职务、送达地址系统里没有，留空手写。
+    "id": "property-preservation", "name": "财产保全申请书", "file": "PROPERTY_PRESERVATION_DOCX",
+    "options": {}, "optional": ["财产线索"],
+}, {
+    "id": "change-claims", "name": "变更诉讼请求申请书", "file": "CHANGE_CLAIMS_DOCX",
+    "options": {}, "optional": [],
+}, {
+    "id": "non-public-hearing", "name": "不公开审理申请书", "file": "NON_PUBLIC_HEARING_DOCX",
+    "options": {}, "optional": [],
 }]
 # 系统自动取值的字段；模板里出现其他占位字段时，按“需要人工填写”处理。
 AUTO_FIELDS = ("法院", "法院案号", "原告", "被告", "第三人", "案由", "开庭律师", "经办律师", "律师助理", "客户名称", "案件编号", "生成日期",
                "原告信息", "被告信息", "委托诉讼代理人", "代理律所", "赔偿金额", "赔偿金额大写", "收款户名", "收款开户行", "收款账号",
-               "付款期限", "签署日期")
+               "付款期限", "签署日期", "申请人信息", "被申请人信息", "落款日期", "保全金额")
 # 陶国南 11-04 14:28：日期都要生成。案件里没有约定付款日期时，付款期限默认生成日起 7 天（样本是起草后约 3 天），可以改。
 DEFAULT_PAYMENT_DAYS = 7
 PAYMENT_DATE_KEYS = ("agreed_payment_date", "payment_deadline", "settlement_payment_date", "promised_payment_date", "mediation_payment_date")
 # 多个当事人逐行列出（每人一段，段落前面的“原告：”“被告：”跟着重复）。
-MULTILINE_FIELDS = {"原告信息", "被告信息"}
+MULTILINE_FIELDS = {"原告信息", "被告信息", "申请人信息", "被申请人信息", "事实和理由", "财产线索", "变更后诉讼请求"}
 # 由别的字段算出来的，不单独填：赔偿金额大写跟着赔偿金额走。
 DERIVED_FIELDS = {"赔偿金额大写": "赔偿金额"}
 # 陶国南 11-04 14:19：律所用系统所在的上海沪知律师事务所，收款账户用沪知所的账户——
@@ -135,6 +145,7 @@ W = "{%s}" % WORD_NS["w"]
 NOTE = re.compile(r"[（(][^（）()]*[）)]\s*")
 # 按说明文字猜对应案件里的哪一项；猜不到的设成“生成时手填”，管理员可以在模板页改。
 FIELD_HINTS = (
+    (("被申请人信息",), "被申请人信息"), (("申请人信息",), "申请人信息"), (("落款日期",), "落款日期"), (("保全金额",), "保全金额"),
     (("原告信息",), "原告信息"), (("被告信息",), "被告信息"), (("原告名称",), "原告"), (("被告名称",), "被告"),
     (("委托诉讼代理人",), "委托诉讼代理人"), (("代理律所",), "代理律所"), (("赔偿金额大写",), "赔偿金额大写"), (("赔偿金额",), "赔偿金额"),
     (("收款户名",), "收款户名"), (("收款开户行",), "收款开户行"), (("收款账号",), "收款账号"),
@@ -410,10 +421,24 @@ async def _party_profiles(names: list[str], db: AsyncSession) -> dict[str, dict]
 ORGANIZATION_WORDS = ("公司", "店", "厂", "中心", "部", "所", "行", "馆", "社", "院", "局", "会", "站", "场", "室", "户）", "合作社")
 
 
+def _looks_like_id_card(value: str) -> bool:
+    """18 位身份证号（第 7～14 位是出生日期）；旧系统常把个人身份证号存在“统一社会信用代码”里。"""
+    value = str(value or "").strip().upper()
+    if not re.fullmatch(r"\d{17}[\dX]", value):
+        return False
+    try:
+        datetime.strptime(value[6:14], "%Y%m%d")
+    except ValueError:
+        return False
+    return True
+
+
 def _is_person(name: str, identity: dict, identity_no: str, profile: dict) -> bool:
     if identity.get("organization_type"):
         return identity["organization_type"] == "个人"
-    if profile.get("credit_code") or any(word in name for word in ORGANIZATION_WORDS):
+    if any(word in name for word in ORGANIZATION_WORDS):
+        return False
+    if profile.get("credit_code") and not _looks_like_id_card(profile["credit_code"]):
         return False
     return len(identity_no) == 18 and identity_no[:17].isdigit() or len(name) <= 4
 
@@ -438,6 +463,52 @@ async def _party_lines(data: dict, names: list[str], identities_key: str, db: As
     identities = {str(item.get("name") or "").strip(): item for item in data.get(identities_key) or [] if isinstance(item, dict)}
     profiles = await _party_profiles(names, db)
     return "\n".join(_party_line(name, identities.get(name, {}), profiles.get(name, {}), defendant=defendant) for name in names)
+
+
+CN_ORDINALS = "一二三四五六七八九十"
+
+
+def _applicant_block(name: str, label: str, identity: dict, profile: dict, *, applicant: bool) -> list[str]:
+    """申请书里一位申请人/被申请人的几行（陶国南 11-05 样本格式）：单位写统一社会信用代码、法定代表人和职务、住所；
+    个人写性别、身份证号码、住址。法定代表人取当事人档案（多数没填），职务系统里没有，没有的留空格打印后手写。"""
+    identity_no = str(identity.get("identity_no") or profile.get("identity_no") or profile.get("credit_code") or "").strip().upper()
+    address = _first(profile, *ADDRESS_KEYS)
+    if address == name:
+        address = ""  # 旧系统有把名称填进地址的，不当地址用
+    representative = _first(profile, "legal_representative")
+    place = "住所" if applicant else "地址"
+    if _is_person(name, identity, identity_no, profile):
+        gender = ("男" if int(identity_no[16]) % 2 else "女") if len(identity_no) == 18 and identity_no[16].isdigit() else ""
+        return [f"{label}：{name}，{gender or f'性别：{BLANK}'}，身份证号码：{identity_no or BLANK}", f"{place}：{address or BLANK}"]
+    return [f"{label}：{name}", f"统一社会信用代码：{identity_no or BLANK}", f"法定代表人：{representative or BLANK}  职务：{BLANK}",
+            f"{place}：{address or BLANK}"]
+
+
+async def _applicant_lines(data: dict, names: list[str], identities_key: str, db: AsyncSession, *, applicant: bool) -> str:
+    identities = {str(item.get("name") or "").strip(): item for item in data.get(identities_key) or [] if isinstance(item, dict)}
+    profiles = await _party_profiles(names, db)
+    word = "申请人" if applicant else "被申请人"
+    lines = []
+    for position, name in enumerate(names or [""]):
+        label = word if len(names) <= 1 else f"{word}{CN_ORDINALS[position] if position < 10 else position + 1}"
+        if not name:
+            lines.append(f"{label}：{BLANK}")
+            continue
+        lines += _applicant_block(name, label, identities.get(name, {}), profiles.get(name, {}), applicant=applicant)
+    if applicant:
+        lines.append(f"送达地址：{BLANK}")
+    return "\n".join(lines)
+
+
+CN_DIGITS = "〇一二三四五六七八九"
+
+
+def chinese_date(value: datetime) -> str:
+    """落款日期写成“二〇二六年十一月五日”。"""
+    def small(number: int) -> str:
+        tens, ones = divmod(number, 10)
+        return ("" if tens <= 1 else CN_DIGITS[tens]) + ("十" if tens else "") + (CN_DIGITS[ones] if ones else "")
+    return "".join(CN_DIGITS[int(digit)] for digit in str(value.year)) + f"年{small(value.month)}月{small(value.day)}日"
 
 
 def _amount_text(value) -> str:
@@ -514,6 +585,11 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
         "付款期限": f"{due.year}年{due.month}月{due.day}日",
         "签署日期": f"{today.year}年{today.month}月{today.day}日",
         "赔偿金额大写": amount_upper(compensation) if compensation else "",
+        # 陶国南 11-05 申请书：申请人=原告，被申请人=被告；保全金额默认取案件的诉讼标的额，可以改。
+        "申请人信息": await _applicant_lines(data, plaintiffs, "plaintiff_identities", db, applicant=True),
+        "被申请人信息": await _applicant_lines(data, defendants, "defendant_identities", db, applicant=False),
+        "落款日期": chinese_date(today),
+        "保全金额": _amount_text(data.get("litigation_amount") or data.get("claim_amount")),
         **(await firm_account(db)),
     }
 
