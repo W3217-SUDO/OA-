@@ -8,7 +8,7 @@ from app.agent_mcp.display_labels import display_maps, record_display_maps, valu
 
 PARAMS = {"path": {"case_id": 501332}, "query": {}, "body": {
     "customer_record_id": 280154, "title": "10.30测试客户", "case_phase": "新案待分配", "cause_or_charge": "离婚纠纷",
-    "handling_lawyers": ["System"], "assistant": "", "assistants": [], "business_owner": "范文玲玲", "investigator": "范文玲",
+    "handling_lawyers": ["System", "fanwl"], "assistant": "", "assistants": [], "business_owner": "范文玲玲", "investigator": "范文玲",
     "extra_investigators": [], "investigation_clue_ids": [280197], "right_type": "", "source_person": "范文玲玲",
     "comment": "案由由“侵害商标权纠纷”改为“离婚纠纷”"}}
 
@@ -19,7 +19,12 @@ class _FakeResult:
 
 
 class _FakeDb:
-    async def execute(self, _statement):
+    async def execute(self, statement):
+        sql = str(statement)
+        if "FROM users" in sql:
+            return _FakeResult([SimpleNamespace(username="fanwl", display_name="范文玲")])
+        if "business_records.owner" in sql and "business_records.serial_no" not in sql:
+            return _FakeResult([])
         return _FakeResult([
             SimpleNamespace(id=501332, module="case", serial_no="HZMS2650002", title="某案"),
             SimpleNamespace(id=280154, module="customer", serial_no="KH001", title="10.30测试客户"),
@@ -53,6 +58,11 @@ class AgentConfirmReadable501634Test(unittest.TestCase):
         self.assertNotIn("其他信息", summary)
         self.assertNotIn("501332", summary)
         self.assertNotIn("280154", summary)
+
+    def test_person_accounts_show_names_and_system(self):
+        preview = _preview()
+        self.assertEqual(preview["value_labels"]["handling_lawyers"], {"System": "系统", "fanwl": "范文玲"})
+        self.assertEqual(value_label("handling_lawyers", "System", preview["value_labels"]), "系统")
 
     def test_unresolved_ids_are_not_shown(self):
         summary = summary_from_preview(_preview(with_records=False))

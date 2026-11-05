@@ -59,6 +59,15 @@ def value_label(name: str, value, values: dict | None = None):
 _ID_SUFFIXES = ("_id", "_ids", "Ids")
 _ID_FIELD_SKIP = {"fee_type_id", "payment_type_id", "task_type_id", "user_id", "request_id", "message_index"}
 _CASE_MODULES = {"case", "ipr_case", "counsel_case", "criminal_case", "arbitration_case"}
+# 501634：人员字段（值是账号）显示姓名，系统账号显示“系统”。
+_PERSON_SUFFIXES = ("_username", "owner", "lawyer", "lawyers", "investigator", "investigators", "assistant", "assistants",
+                    "person", "handler", "recipient", "recipients", "collaborators", "participants", "approver", "approvers",
+                    "manager", "initiator", "officer")
+_SYSTEM_ACCOUNTS = {"system", "feedback-bot"}
+
+
+def _is_person_field(name: str) -> bool:
+    return name.endswith(_PERSON_SUFFIXES)
 
 
 def _record_label(name: str, module: str) -> str:
@@ -75,12 +84,33 @@ def _record_label(name: str, module: str) -> str:
     return label.replace("记录ID", "").replace("ID", "") or "关联记录"
 
 
+async def _person_names(accounts: set[str], db) -> dict[str, str]:
+    """账号 → 姓名（人事档案的姓名优先，其次系统用户的显示名），只读。查不到就不换。"""
+    from sqlalchemy import func, select
+    from app.models import BusinessRecord, User
+    lowered = sorted({account.lower() for account in accounts})[:200]
+    try:
+        users = (await db.execute(select(User.username, User.display_name).where(func.lower(User.username).in_(lowered)))).all()
+        staff = (await db.execute(select(BusinessRecord.owner, BusinessRecord.title, BusinessRecord.data["username"].as_string())
+                                  .where(BusinessRecord.module == "hr")
+                                  .where(func.lower(func.coalesce(BusinessRecord.data["username"].as_string(), BusinessRecord.owner)).in_(lowered)))).all()
+    except Exception:
+        return {}
+    names = {str(row.username).lower(): str(row.display_name or "").strip() for row in users if str(row.display_name or "").strip()}
+    for owner, title, username in staff:
+        key = str(username or owner or "").strip().lower()
+        if key and str(title or "").strip():
+            names[key] = str(title).strip()
+    return names
+
+
 async def record_display_maps(params: dict, db) -> dict:
     """501634（tgn 11-05）：确认窗口里不出现内部编号，参数里的记录编号换成案号（案件）、名称（客户等）。
     只读查询，只用于显示；执行仍用原参数。"""
     from sqlalchemy import select
     from app.models import BusinessRecord
     wanted: dict[str, set[int]] = {}
+    people: dict[str, set[str]] = {}
 
     def walk(value):
         if isinstance(value, dict):
@@ -89,6 +119,10 @@ async def record_display_maps(params: dict, db) -> dict:
                     for one in (item if isinstance(item, list) else [item]):
                         if isinstance(one, int) and not isinstance(one, bool) and one > 0:
                             wanted.setdefault(name, set()).add(one)
+                elif _is_person_field(name):
+                    for one in (item if isinstance(item, list) else [item]):
+                        if isinstance(one, str) and one.strip() and one.strip().isascii():
+                            people.setdefault(name, set()).add(one.strip())
                 walk(item)
         elif isinstance(value, list):
             for item in value:
@@ -96,16 +130,23 @@ async def record_display_maps(params: dict, db) -> dict:
 
     walk(params)
     ids = set().union(*wanted.values()) if wanted else set()
+    fields: dict[str, str] = {}
+    values: dict[str, dict] = {}
+    if people:
+        names = await _person_names(set().union(*people.values()), db)
+        for name, accounts in people.items():
+            for account in accounts:
+                shown = "系统" if account.lower() in _SYSTEM_ACCOUNTS else names.get(account.lower())
+                if shown:
+                    values.setdefault(name, {})[account] = shown
     if not ids:
-        return {"field_labels": {}, "value_labels": {}}
+        return {"field_labels": fields, "value_labels": values}
     try:
         rows = (await db.execute(select(BusinessRecord.id, BusinessRecord.module, BusinessRecord.serial_no, BusinessRecord.title)
                                  .where(BusinessRecord.id.in_(sorted(ids)[:200])))).all()
     except Exception:  # 只为显示：查不到名称就按原样显示，绝不影响生成确认请求
-        return {"field_labels": {}, "value_labels": {}}
+        return {"field_labels": fields, "value_labels": values}
     found = {row.id: row for row in rows}
-    fields: dict[str, str] = {}
-    values: dict[str, dict] = {}
     for name, numbers in wanted.items():
         for number in numbers:
             row = found.get(number)

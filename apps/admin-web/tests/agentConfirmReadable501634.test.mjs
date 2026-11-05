@@ -36,8 +36,8 @@ test("确认信息：编号显示成案号、名称；换不了的编号、内�
   const { AgentOperationPreview } = await loadPreview();
   const action = { id: "r1", type: "mcp.call", status: "pending", summary: "修改案件（案号：HZMS2650002）", payload: { request_id: "r1" }, preview: {
     operation_name: "修改案件", method: "PUT", path: "/cases/501332/normal-basic", requires_confirmation: true,
-    params: { path: { case_id: 501332 }, query: {}, body: { customer_record_id: 280154, case_phase: "新案待分配", cause_or_charge: "离婚纠纷", unknown_code: "abc123", investigation_clue_ids: [999] } },
-    field_labels: { case_id: "案号", customer_record_id: "客户", case_phase: "案件阶段", cause_or_charge: "案由", unknown_code: "其他信息", investigation_clue_ids: "关联线索" },
+    params: { path: { case_id: 501332 }, query: {}, body: { customer_record_id: 280154, case_phase: "新案待分配", cause_or_charge: "离婚纠纷", unknown_code: "abc123", investigation_clue_ids: [999], handling_lawyers: ["System"] } },
+    field_labels: { case_id: "案号", customer_record_id: "客户", case_phase: "案件阶段", cause_or_charge: "案由", unknown_code: "其他信息", investigation_clue_ids: "关联线索", handling_lawyers: "经办律师" },
     value_labels: { case_id: { "501332": "HZMS2650002" }, customer_record_id: { "280154": "10.30测试客户" } },
   } };
   let renderer;
@@ -46,6 +46,8 @@ test("确认信息：编号显示成案号、名称；换不了的编号、内�
   assert.match(text, /案号HZMS2650002/);
   assert.match(text, /客户10\.30测试客户/);
   assert.match(text, /案件阶段新案待分配/);
+  assert.match(text, /经办律师系统/);
+  assert.doesNotMatch(text, /System/);
   assert.doesNotMatch(text, /501332|280154|abc123|999|其他信息/);
   assert.match(text, /另有 2 项系统内部参数未显示/);
 });

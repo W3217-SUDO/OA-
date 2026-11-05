@@ -101,7 +101,11 @@ const codeValue = (field: string, value: unknown, preview?: AgentActionPreview):
   // 501634：编号按预览时查到的案号、名称显示。
   if (typeof value === "number") return preview?.value_labels?.[field]?.[String(value)] ?? value;
   if (typeof value !== "string") return value;
-  return preview?.value_labels?.[field]?.[value] ?? DEFAULT_VALUE_NAMES[field]?.[value] ?? value;
+  const known = preview?.value_labels?.[field]?.[value] ?? DEFAULT_VALUE_NAMES[field]?.[value];
+  if (known !== undefined) return known;
+  // 501634：老卡片没有人员姓名时，系统账号至少显示“系统”，不露英文。
+  if (/^(system|feedback-bot)$/i.test(value) && /(owner|lawyers?|investigators?|assistants?|person|handler|recipients?|collaborators|participants|approvers?|manager|initiator|officer|_username)$/.test(field)) return "系统";
+  return value;
 };
 /** 把对象逐行写成“中文名：值”，不显示代码格式和英文键名。 */
 export const readableValue = (value: unknown, preview?: AgentActionPreview, field = "", depth = 0): string => {
