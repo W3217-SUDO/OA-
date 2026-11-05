@@ -4,7 +4,7 @@ import { Button, Empty, Image, Input, List, message, Modal, Select, Space, Spin,
 import { AppstoreAddOutlined, CheckCircleOutlined, CloseOutlined, FolderOpenOutlined, FolderOutlined, PaperClipOutlined, ReloadOutlined, SendOutlined, StopOutlined } from "@ant-design/icons";
 import { api, AUTH_EXPIRED_EVENT } from "./api";
 import { AgentMessageContent } from "./AgentMessageContent";
-import { AgentOperationPreview, agentOperationError, hasAgentOperationPreview, responseErrorMessage, type AgentActionPreview } from "./AgentOperationPreview";
+import { AgentOperationPreview, agentChoiceBody, agentChoiceMissing, agentOperationError, hasAgentOperationPreview, responseErrorMessage, type AgentActionPreview } from "./AgentOperationPreview";
 import { AgentToolRequests } from "./AgentToolRequests";
 import { AgentToolResult } from "./AgentToolResult";
 import { availableAgentSkillId, DEFAULT_AGENT_SKILL, encodeAgentSkillMessage, NO_AGENT_SKILL_OPTION, type AgentSkill } from "./agentSkillRouting";
@@ -322,9 +322,11 @@ export default function AgentCenterPage({ onOpenPersonalAgent, onOpenCaseAgentFo
     if (!selected || decisionLoading) return;
     const caseId = selected.id;
     const generation = loadGenerationRef.current;
+    const missingChoice = decision === "approved" ? agentChoiceMissing(action) : "";
+    if (missingChoice) { message.warning(missingChoice); return; }
     setDecisionLoading(action.id);
     try {
-      const { data } = await api.post(`/case-spaces/${selected.id}/agent/actions/${action.id}/decision`, { decision, comment: "智能体中心人工审批" }, { headers: { "X-OA-Agent-Confirmation": "frontend" } });
+      const { data } = await api.post(`/case-spaces/${selected.id}/agent/actions/${action.id}/decision`, { decision, comment: "智能体中心人工审批", ...(decision === "approved" ? agentChoiceBody(action) : {}) }, { headers: { "X-OA-Agent-Confirmation": "frontend" } });
       if (selectedIdRef.current === caseId && generation === loadGenerationRef.current) setState(data);
       message.success(decision === "approved" ? "操作已批准并写入系统" : "操作已驳回，系统数据未修改");
     } catch (error: any) {

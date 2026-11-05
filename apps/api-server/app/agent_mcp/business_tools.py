@@ -42,6 +42,7 @@ class Run:
         self.tool, self.confirm, self._call = tool, confirm, call
         self.steps: list[dict] = []
         self.notes: list[str] = []
+        self.choice: dict | None = None  # 确认卡片上要用户选的一项（如费用归属合同）
 
     async def read(self, name: str, arguments: dict, purpose: str):
         step = {"step": len(self.steps) + 1, "purpose": purpose, "tool": name, "kind": "读", "arguments": arguments}
@@ -214,6 +215,8 @@ async def run_business_tool(name: str, arguments: object, *, call=None, context=
     pending = [step for step in run.steps if step.get("status") == "待网页确认"]
     problems = [step for step in run.steps if step.get("problem")]
     result = {"tool": name, "mode": "执行" if confirm else "计划", "steps": run.steps, **(data or {})}
+    if run.choice:
+        result["choice"] = run.choice
     if run.notes:
         result["notes"] = run.notes
     if tool.write and not confirm:
@@ -374,12 +377,15 @@ CUSTOMER_PROFILE = {
 
 
 @business_tool("biz_customer_create", "新建客户（含联系人）",
-               "先做利益检索和重名检查，再新建客户档案（基本/法人/开票/控制信息），并逐个新增联系人。开票信息请尽量填全，否则开票申请无法自动带出。",
+               "先做利益检索和重名检查，再新建客户档案（基本/法人/开票/控制信息），并逐个新增联系人。开票信息请尽量填全，否则开票申请无法自动带出。"
+               "新建公司客户没给统一社会信用代码时不用先单独查企业：本工具先查企业信息库（不扣次数），有存档就用存档的工商信息；"
+               "没有时在同一张确认卡片里“查企查查并新建客户”（卡片写明会扣一次企查查查询），用户点一次就查询并用查到的信息建客户。",
                {"title": _desc(S, "客户名称"), **CUSTOMER_PROFILE,
                 "customer_managers": _desc(NAMES, "客户管理人（账号或姓名）"), "description": _desc(S, "备注"),
                 "contacts": {"type": "array", "items": CONTACT, "maxItems": 20, "description": "联系人"}},
                ("title", "customer_managers"), write=True,
-               uses=("oa_customer_conflicts_get", "oa_list_customers_get", "oa_create_customer_post", "oa_add_customer_contact_post"))
+               uses=("oa_customer_conflicts_get", "oa_list_customers_get", "oa_create_customer_post", "oa_add_customer_contact_post",
+                     "oa_list_company_library_get", "oa_lookup_company_library_post"))
 async def _customer_create(run: Run, args: dict) -> dict:
     title = args["title"].strip()
     conflicts = await run.read("oa_customer_conflicts_get", {"query": {"name": title}}, "利益冲突检索")
@@ -389,10 +395,38 @@ async def _customer_create(run: Run, args: dict) -> dict:
         raise HTTPException(409, detail={"msg": f"已存在同名客户“{title}”，不再新建；如需补信息请用 biz_customer_maintain",
                                          "existing": [_brief(row) for row in same]})
     body = _drop_empty({key: args.get(key) for key in (*CUSTOMER_PROFILE, "customer_managers", "description")})
+    changes: list[str] = []
+    if args.get("organization_type") not in ("个人",) and not args.get("identity_no") and not args.get("credit_code"):
+        # 陶国南 11-05 09:14：企业信息库没有时只出一张“查企查查并新建客户”卡片，点一次就查询（扣一次）并用查到的信息建客户。
+        library = [row for row in _items(await run.read("oa_list_company_library_get", {"query": {"keyword": title, "page_size": 20}}, "查企业信息库（不扣次数）"))
+                   if str(row.get("name") or "").strip() == title]
+        if library:
+            detail = library[0]
+            changes.append("用企业信息库已存的工商信息新建客户（不扣企查查次数）")
+        else:
+            detail = await run.write("oa_lookup_company_library_post", {"body": {"keyword": title}}, "查企查查（扣一次企查查查询）")
+            changes.append("会扣一次企查查查询（企业信息库里没有这家企业），查到后用工商信息新建客户")
+        if not detail.get("planned"):
+            existing = ((detail.get("roles") or {}).get("customers") or [])
+            if existing:
+                raise HTTPException(409, detail={"msg": f"“{title}”已建成客户，不再新建", "existing": existing})
+            filled = {"credit_code": detail.get("credit_code"), "legal_representative": detail.get("legal_representative"),
+                      "registered_address": detail.get("registered_address"), "organization_type": detail.get("organization_type"),
+                      "invoice_title": detail.get("name"), "taxpayer_id": detail.get("credit_code")}
+            body = {**_drop_empty(filled), **body}
+            if detail.get("credit_code"):
+                changes.append(f"统一社会信用代码：{detail['credit_code']}")
+        else:
+            body = {"organization_type": "公司企业", **body}
+            changes.append("统一社会信用代码、法定代表人、注册地址、发票抬头和税号按查到的工商信息自动填写")
+    changes.append(f"客户名称：{title}")
+    if args.get("customer_managers"):
+        managers = args["customer_managers"]
+        changes.append("客户管理人：" + ("、".join(managers) if isinstance(managers, list) else str(managers)))
     created = await run.write("oa_create_customer_post", {"body": {"title": title, **body}}, "新建客户档案")
     for contact in args.get("contacts") or []:
         await run.write("oa_add_customer_contact_post", {"path": {"customer_id": created.get("id")}, "body": contact}, f"新增联系人 {contact['name']}")
-    return {"conflict_check": conflicts, "customer": _created_ref(created)}
+    return {"conflict_check": conflicts, "customer": _created_ref(created), "changes": changes}
 
 
 @business_tool("biz_customer_maintain", "客户编辑（补信息/事项记录/联系人/管理人）",
@@ -1011,9 +1045,18 @@ async def _case_update_info(run: Run, args: dict) -> dict:
     return {"case": _brief(case), "changed": changed, "changes": changes}
 
 
+def _contract_option(row: dict) -> str:
+    data = row.get("data") or {}
+    day = str(data.get("signed_at") or data.get("sign_date") or data.get("signed_date") or data.get("contract_date") or row.get("created_at") or "")[:10]
+    name = str(row.get("title") or data.get("contract_name") or "合同").strip()
+    return "，".join(part for part in (name, str(row.get("serial_no") or ""), day and ("日期 " + day), str(row.get("status") or "")) if part)
+
+
 @business_tool("biz_case_fee_create_and_request_payment", "新增案件费用并申请付款",
                "在案件里新增官费/代理费/第三方费用/其他费用/内部费用；request_payment=true 时先检查付款三要素，再申请付款。"
-               "费用范围：律所费用→财务中心；平台费用→平台财务中心；内部费用→内部结算。",
+               "费用范围：律所费用→财务中心；平台费用→平台财务中心；内部费用→内部结算。"
+               "费用归属合同（陶国南 11-05）：本对话里刚新建的合同就传它的 contract_record_id；其他情况不要自己挑、不传 contract_record_id，"
+               "工具会处理：案件只有一份可归属合同就默认它，两份及以上时确认卡片上列出各合同名称和日期由用户选。",
                {**CASE_REF, "expense_scope": {"type": "string", "enum": ["律所", "平台", "内部"], "description": "费用范围"},
                 "fee_type": _desc(S, "费用大类：官费/代理费/第三方费用/其他费用/内部费用"), "fee_type_id": _desc(INT, "费用类型 ID（如 一审诉讼费），见 oa_list_finance_payment_types_get"),
                 "expense_subtype": _desc(S, "费用子类，如 诉讼费、公证费"), "title": _desc(S, "费用名称"), "amount": MONEY,
@@ -1038,7 +1081,12 @@ async def _case_fee(run: Run, args: dict) -> dict:
             raise HTTPException(409, "案件没有可归属的合同；客户只有律所合同时不能新增平台费用，需先新建平台合同")
         contract_id = scoped[0].get("id") if len(scoped) == 1 else None
         if args["expense_scope"] != "内部" and contract_id is None:
-            raise HTTPException(409, detail={"msg": "案件有多份可归属合同，请用 contract_record_id 指定", "candidates": [_brief(row) for row in scoped[:10]]})
+            # 陶国南 11-05 09:14：两份及以上合同不自动挑，确认卡片上列出各合同名称和日期让用户选，选了再新建。
+            if run.confirm:
+                raise HTTPException(409, "案件有多份可归属合同，须在确认卡片上选择费用归属合同")
+            run.choice = {"field": "contract_record_id", "label": "费用归属合同", "options": [
+                {"value": row.get("id"), "label": _contract_option(row)} for row in scoped[:20] if row.get("id")]}
+            contract_id = PLANNED
     body = _drop_empty({"title": args["title"], "customer": case.get("customer"), "amount": args["amount"], "fee_type": args["fee_type"],
                         "fee_type_id": args.get("fee_type_id"), "expense_scope": args["expense_scope"], "expense_subtype": args.get("expense_subtype"),
                         "case_no": case.get("serial_no"), "case_record_id": case["id"], "contract_record_id": contract_id, "handler": args["handler"],

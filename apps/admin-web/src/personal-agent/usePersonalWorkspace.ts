@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type SetStateAction } from "react";
 import { message } from "antd";
+import { agentChoiceBody, agentChoiceMissing, type AgentApprovalAction } from "../AgentOperationPreview";
 import { api } from "../api";
 import { subscribeAgentSkillCatalog } from "../agentSkillCatalog";
 import { AGENT_TASK_ENTRIES, COURT_INTAKE_SKILL, hasDailyMarker, localDateText } from "../agentSkillRouting";
@@ -257,6 +258,8 @@ export function usePersonalWorkspace() {
     if (decisionLock.current) return false;
     if (loading || conversations.locked() || sendStarts.current.has(id)) throw new Error("正在加载或切换对话，请完成后再确认");
     if (!id) throw new Error("请先选择待确认操作所属的对话");
+    const missingChoice = decision === "approved" ? agentChoiceMissing(action as unknown as AgentApprovalAction) : "";
+    if (missingChoice) throw new Error(missingChoice);
     if (draftsRef.current[id]?.decisionFailures[action.id] && runtime.get(id).pending_actions.some((item) => item.id === action.id && item.status === "pending")) throw new Error("请先从历史记录读取最新详情，再决定该操作，禁止直接重复提交");
     decisionLock.current = true; setDecisionId(action.id);
     try {
@@ -266,7 +269,7 @@ export function usePersonalWorkspace() {
       if (!current.pending_actions.some((item) => item.id === action.id && item.status === "pending")) throw new Error("待确认操作不存在或已处理，请核对最新状态");
       let response;
       try {
-        response = await api.post<{ state: WorkspaceState; result?: unknown }>(`/personal-agent/actions/${action.id}/decision`, { conversation_id: id, decision, ...(mcpCredential !== undefined ? { mcp_credential: mcpCredential } : {}) }, { headers: { "X-OA-Agent-Confirmation": "frontend" }, timeout: action.type === "personal_mcp.connect" ? 40000 : undefined });
+        response = await api.post<{ state: WorkspaceState; result?: unknown }>(`/personal-agent/actions/${action.id}/decision`, { conversation_id: id, decision, ...(decision === "approved" ? agentChoiceBody(action as unknown as AgentApprovalAction) : {}), ...(mcpCredential !== undefined ? { mcp_credential: mcpCredential } : {}) }, { headers: { "X-OA-Agent-Confirmation": "frontend" }, timeout: action.type === "personal_mcp.connect" ? 40000 : undefined });
       } catch (error) {
         const failureMessage = errorText(error, "确认操作失败");
         updateDecisionFailure(id, action.id, { actionId: action.id, message: failureMessage, state: "syncing" });

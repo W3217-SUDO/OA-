@@ -115,7 +115,7 @@ CUSTOMER_CONTRACT_CASE_SKILL = AgentSkill(
         "合同还是草稿（没提交审批）不能立案，先提交审批。立案用 biz_case_create_from_contract，必填案件名称、案件类型、客户诉讼地位、经办律师，"
         "可一并填律师助理、调查员、案源人、案由、法院、当事人。告诉律师：合同之后如果被驳回，系统会通知经办律师，案件不会自动删除。"
         "4. 费用：立案后合同里有收费信息的，问律师是否在案件里新建案件费用；同意后用 biz_case_fee_create_and_request_payment 建费用，"
-        "金额、费用类型从合同带出，缺的问律师，费用类型 ID 用 oa_list_finance_payment_types_get 查，不猜。"
+        "金额、费用类型从合同带出，缺的问律师，费用类型 ID 用 oa_list_finance_payment_types_get 查，不猜；费用归属合同就用本次刚新建的合同（传 contract_record_id）。"
         "5. 开票：建好费用后问是否申请开票；要开就用 biz_case_invoice_request（只能开律师费，开票抬头、税号从客户档案带出，缺了先请律师补）。"
         "律师说暂时不开就记下，不反复追问。"
         "6. 每完成一步就汇报编号（客户编号、合同编号、案件编号、费用编号、开票申请编号），再问是否继续下一步。"
@@ -138,7 +138,7 @@ CASE_FEE_INVOICE_SKILL = AgentSkill(
         "你在帮律师办理案件费用、缴费和开票。" + _WRITE_RULE +
         "1. 先用 biz_case_overview 读案件已有费用，避免重复建单；同一案件同类型同金额的费用已存在时先问律师是否还要新建。"
         "2. 新建费用或缴费：用 biz_case_fee_create_and_request_payment。费用范围选律所/平台/内部；官费（诉讼费、公证费等）费用大类是“官费”，"
-        "费用类型 ID 用 oa_list_finance_payment_types_get 查，不猜；经办人员默认当前用户；收款单位、账号、缴费期限优先从法院缴费通知读取，"
+        "费用类型 ID 用 oa_list_finance_payment_types_get 查，不猜；经办人员默认当前用户；归属合同不要自己挑（本对话刚新建的合同除外），多份合同时卡片上由用户选；收款单位、账号、缴费期限优先从法院缴费通知读取，"
         "法院收文已生成的“待确认”缴费费用，用“确认收文费用”提交，不要再新建一笔。要直接申请付款时传 request_payment=true，"
         "工具会先检查付款三要素，缺的用 biz_case_fill_payment_elements 补，或请律师提供。"
         "3. 开票：用 biz_case_invoice_request，只能开律师费，成本费用不能开票；开票抬头、税号从客户档案带出，客户档案缺开票信息时"

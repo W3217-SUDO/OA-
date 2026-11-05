@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import { Alert, Button, List, message, Modal, Pagination, Select, Space, Spin, Tag } from "antd";
 import { ArrowLeftOutlined, CheckOutlined, CloseOutlined, ReloadOutlined } from "@ant-design/icons";
 import { api } from "./api";
-import { AgentOperationPreview, agentOperationError, agentOperationMessage, hasAgentOperationPreview, type AgentActionPreview } from "./AgentOperationPreview";
+import { AgentOperationPreview, agentChoiceBody, agentChoiceMissing, agentOperationError, agentOperationMessage, hasAgentOperationPreview, type AgentActionPreview } from "./AgentOperationPreview";
 import { AgentToolResult } from "./AgentToolResult";
 
 export type ToolRequest = {
@@ -63,11 +63,13 @@ export function AgentToolRequests({ buttonLabel = "MCP 待确认", titlePrefix =
   };
   const decide = async (decision: "approved" | "rejected") => {
     if (!active || active.status !== "pending" || decidingRef.current) return;
+    const missingChoice = decision === "approved" ? agentChoiceMissing(requestAction(active)) : "";
+    if (missingChoice) { message.warning(missingChoice); return; }
     decidingRef.current = true;
     setDeciding(true);
     setError("");
     try {
-      const { data } = await api.post<ToolRequest>(`/agent-tools/requests/${encodeURIComponent(active.request_id)}/decision`, { decision, comment: "智能体中心人工确认" }, { headers: { "X-OA-Agent-Confirmation": "frontend" } });
+      const { data } = await api.post<ToolRequest>(`/agent-tools/requests/${encodeURIComponent(active.request_id)}/decision`, { decision, comment: "智能体中心人工确认", ...(decision === "approved" ? agentChoiceBody(requestAction(active)) : {}) }, { headers: { "X-OA-Agent-Confirmation": "frontend" } });
       setActive(data);
       if (data.status === "succeeded") message.success("操作已执行");
       else if (data.status === "rejected") message.success("操作已取消");

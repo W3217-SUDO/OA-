@@ -72,6 +72,8 @@ class PersonalActionDecisionInput(BaseModel):
     decision: str = Field(pattern="^(approved|rejected)$")
     comment: str = Field(default="", max_length=1000)
     mcp_credential: SecretStr | None = Field(default=None, max_length=8192)
+    # 确认卡片上的选择（如费用归属合同），只能是卡片列出的选项之一（陶国南 11-05 09:14）。
+    choice: dict[str, int | str] | None = Field(default=None, max_length=3)
 
 
 class PersonalActionDismissInput(BaseModel):
@@ -420,9 +422,14 @@ async def personal_agent_message(body: PersonalMessageInput, request: Request, i
 @router.post(f"{settings.api_prefix}/personal-agent/actions/{{action_id}}/decision")
 async def personal_agent_action_decision(action_id: str, body: PersonalActionDecisionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     safe_identity = await personal_identity(identity, db)
-    result = await decide_action(safe_identity, db, action_id, body.decision, body.comment,
-                                 conversation_id=body.conversation_id,
-                                 mcp_credential=body.mcp_credential.get_secret_value() if body.mcp_credential else None)
+    from app.agent_mcp.service import DECISION_CHOICE
+    choice_token = DECISION_CHOICE.set(body.choice)
+    try:
+        result = await decide_action(safe_identity, db, action_id, body.decision, body.comment,
+                                     conversation_id=body.conversation_id,
+                                     mcp_credential=body.mcp_credential.get_secret_value() if body.mcp_credential else None)
+    finally:
+        DECISION_CHOICE.reset(choice_token)
     return {**result, "state": await project_personal_actions(result["state"], safe_identity, db)}
 
 

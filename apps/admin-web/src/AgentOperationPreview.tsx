@@ -1,4 +1,5 @@
-import { Alert, Descriptions, Tag } from "antd";
+import { Alert, Descriptions, Radio, Space, Tag } from "antd";
+import { useState } from "react";
 import { isAxiosError } from "axios";
 import Table from "./components/ResizableTable";
 import "./agent-center.css";
@@ -18,6 +19,8 @@ export type AgentActionPreview = {
   /** 501137：后端随预览给出的参数中文名和代码值中文。 */
   field_labels?: Record<string, string>;
   value_labels?: Record<string, Record<string, string>>;
+  /** 陶国南 11-05 09:14：卡片上要用户选的一项（如两份以上合同时选费用归属合同），选了才能确认。 */
+  choice?: { field: string; label?: string; options: { value: string | number; label: string }[] };
 };
 
 export type AgentApprovalAction = {
@@ -175,6 +178,33 @@ const ParameterValues = ({ values, preview }: { values: Record<string, unknown>;
   </div>)}
 </div>;
 
+// 卡片上的选择按确认请求编号记住；各处“批准”按钮提交时带上（agentChoiceBody），没选时提示（agentChoiceMissing）。
+const AGENT_CHOICES = new Map<string, string | number>();
+const choiceKey = (action: AgentApprovalAction) => String((action.payload as { request_id?: unknown } | undefined)?.request_id || action.id);
+export const agentChoiceMissing = (action: AgentApprovalAction): string => {
+  const choice = action.preview?.choice;
+  return choice?.field && !AGENT_CHOICES.has(choiceKey(action)) ? `请先在卡片上选择${choice.label || "一项"}` : "";
+};
+export const agentChoiceBody = (action: AgentApprovalAction): { choice?: Record<string, string | number> } => {
+  const choice = action.preview?.choice;
+  const value = AGENT_CHOICES.get(choiceKey(action));
+  return choice?.field && value !== undefined ? { choice: { [choice.field]: value } } : {};
+};
+
+function AgentChoice({ action }: { action: AgentApprovalAction }) {
+  const choice = action.preview?.choice;
+  const [value, setValue] = useState<string | number | undefined>(() => AGENT_CHOICES.get(choiceKey(action)));
+  if (!choice?.field || !choice.options?.length) return null;
+  return <section className="agent-action-choice">
+    <strong>请选择{choice.label || "一项"}（选了才能确认）</strong>
+    <Radio.Group value={value} onChange={(event) => { AGENT_CHOICES.set(choiceKey(action), event.target.value); setValue(event.target.value); }}>
+      <Space direction="vertical">
+        {choice.options.map((item) => <Radio key={String(item.value)} value={item.value} style={{ whiteSpace: "normal" }}>{userFacingAgentText(item.label)}</Radio>)}
+      </Space>
+    </Radio.Group>
+  </section>;
+}
+
 export function AgentOperationPreview({ action, target }: { action: AgentApprovalAction; target?: string }) {
   const preview = action.preview;
   return <div className="agent-action-approval" data-testid="agent-action-approval">
@@ -185,6 +215,7 @@ export function AgentOperationPreview({ action, target }: { action: AgentApprova
     </div>
     <div className="agent-action-warning">确认后才会执行写入，仍须通过当前账号原有权限、数据范围与业务审批校验。聊天回复不作为确认。</div>
     {!hasAgentOperationPreview(action) && <Alert type="error" showIcon title="操作参数未读取，不能确认执行" />}
+    <AgentChoice action={action} />
     {preview?.original_values && !/^\s*[\[{]/.test(preview.original_values) && <Descriptions size="small" bordered column={1} styles={{ content: { overflowWrap: "anywhere", whiteSpace: "pre-wrap" } }}>
       <Descriptions.Item label="当前信息">{userFacingAgentText(preview.original_values)}</Descriptions.Item>
     </Descriptions>}

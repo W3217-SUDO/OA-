@@ -744,7 +744,7 @@ async def decide_case_agent_action(
             # 原业务路由自行提交，不能进入旧动作共用事务的执行器。
             execution = await decide_tool_request(
                 request_id, body.decision, identity, db,
-                comment=body.comment, expected_case_id=case_id,
+                comment=body.comment, expected_case_id=case_id, choice=body.choice,
             )
             expected_status = "succeeded" if body.decision == "approved" else "rejected"
             if execution.get("status") != expected_status:

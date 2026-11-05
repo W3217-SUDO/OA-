@@ -30,6 +30,8 @@ ACTION_MODULE = "agent_mcp_action"
 # （不可撤回的五类仍单独生成待确认请求）。陶威 11-01 21:55 定：站内智能体和外部 MCP 的所有写操作都先确认。
 APPROVED_EXECUTION: ContextVar[bool] = ContextVar("agent_mcp_approved_execution", default=False)
 _UNSET = object()
+# 个人智能体确认时卡片上的选择（路由设置，decide_tool_request 读取）。
+DECISION_CHOICE: ContextVar[dict | None] = ContextVar("agent_mcp_decision_choice", default=None)
 STATUS_NAMES = {"待确认": "pending", "执行中": "executing", "已执行": "succeeded", "执行失败": "failed", "已拒绝": "rejected"}
 
 
@@ -373,8 +375,22 @@ async def _call_tool(name: str, arguments: dict, *, conversation_id: str | None 
                              + f"已生成待确认请求，需要用户在{where}点“确认并执行”后才会执行；聊天回复不算确认。"}
 
 
+def apply_card_choice(data: dict, choice: dict | None) -> None:
+    """卡片要用户选（如两份以上合同选哪份）：只接受卡片列出的选项，选定值写进本次执行参数（陶国南 11-05 09:14）。"""
+    offered = (data.get("preview") or {}).get("choice")
+    if not isinstance(offered, dict) or not offered.get("field"):
+        return
+    picked = (choice or {}).get(offered["field"])
+    options = {str(item.get("value")): item for item in offered.get("options") or [] if isinstance(item, dict)}
+    if picked is None or str(picked) not in options:
+        raise HTTPException(422, f"请先在确认卡片上选择{offered.get('label') or '选项'}")
+    value = options[str(picked)]["value"]
+    data["arguments"] = {**data["arguments"], offered["field"]: value}
+    data["chosen"] = {"field": offered["field"], "value": value, "label": options[str(picked)].get("label")}
+
+
 async def decide_tool_request(
-    request_id: str, decision: str, identity: dict, db, *, comment: str = "", expected_case_id=_UNSET,
+    request_id: str, decision: str, identity: dict, db, *, comment: str = "", expected_case_id=_UNSET, choice: dict | None = None,
 ) -> dict:
     require_human_decision(request_id)
     actual_identity = await authenticated_identity(db)
@@ -398,6 +414,7 @@ async def decide_tool_request(
         if tool is None or not tool.write or business_fingerprint(tool) != data["descriptor_fingerprint"]:
             raise HTTPException(409, "业务工具定义已变化，请重新准备并在前端确认")
         reject_credentials(data["arguments"])
+        apply_card_choice(data, choice if choice is not None else DECISION_CHOICE.get())
     elif decision == "approved":
         spec = get_catalog(get_auth_context().application).get(data["tool_name"])
         if not spec.is_write or descriptor_fingerprint(spec) != data["descriptor_fingerprint"]:
@@ -478,6 +495,7 @@ async def prepare_business_request(tool, values: dict, plan: dict, *, conversati
         "params": {"path": {}, "query": {}, "body": values, "steps": "\n".join(steps)},
         "original_values": ("；".join(plan["changes"]) if plan.get("changes") else "按下列步骤依次办理，任一步失败即停止"),
         "requires_confirmation": True,
+        **({"choice": plan["choice"]} if isinstance(plan.get("choice"), dict) else {}),
         **display_maps({"body": values}, tool.properties),
     }
     async with SessionLocal() as db:

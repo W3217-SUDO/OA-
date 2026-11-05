@@ -56,6 +56,8 @@ class UserAgentSkillUpdate(BaseModel):
 class CaseAgentDecisionInput(BaseModel):
     decision: str = Field(pattern="^(approved|rejected)$")
     comment: str = Field(default="", max_length=1000)
+    # 确认卡片上的选择（如费用归属合同），只能是卡片列出的选项之一（陶国南 11-05 09:14）。
+    choice: dict[str, int | str] | None = Field(default=None, max_length=3)
     agent_id: int | None = Field(default=None, gt=0)
     conversation_id: int | None = Field(default=None, gt=0)
 

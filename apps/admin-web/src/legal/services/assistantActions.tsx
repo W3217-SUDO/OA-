@@ -1,7 +1,7 @@
 import { message, Modal } from "antd";
 import { availableAgentSkillId, DEFAULT_AGENT_SKILL, encodeAgentSkillMessage } from "../../agentSkillRouting";
 import { api } from "../../api";
-import { AgentOperationPreview, agentOperationError, responseErrorMessage } from "../../AgentOperationPreview";
+import { AgentOperationPreview, agentChoiceBody, agentChoiceMissing, agentOperationError, responseErrorMessage } from "../../AgentOperationPreview";
 import { confirmCaseAgentDocument } from "./agentDocumentConfirmation";
 import { AGENT_DOCUMENT_LIMIT, aiWordDocumentName, isAiWordGenerationRequest, isExistingAnswerWordConversionRequest, isUsableAiDocumentContent } from "../constants";
 import type { CaseAgentAction, CaseAgentAttachment, CaseAgentConversation, CaseAgentDocument, CaseAgentState, CaseAgentStatus, CaseAgentSummary, CaseRow } from "../types";
@@ -280,10 +280,15 @@ export function createCaseAssistantActions(context: CaseAssistantDependencies) {
         const { agentCase, agentDecisionLoading, setAgentDecisionLoading, setAgentState, agentId, conversationId } = context;
         if (!agentCase || agentDecisionLoading)
             return "";
+        const missingChoice = decision === "approved" ? agentChoiceMissing(action) : "";
+        if (missingChoice) {
+            message.warning(missingChoice);
+            return missingChoice;
+        }
         setAgentDecisionLoading(action.id);
         try {
             const { data } = await api.post(`/case-spaces/${agentCase.id}/agent/actions/${action.id}/decision`, {
-                decision,
+                decision, ...(decision === "approved" ? agentChoiceBody(action) : {}),
                 comment: decision === "approved" ? "在案件智能体面板批准" : "在案件智能体面板驳回",
                 agent_id: agentId,
                 conversation_id: conversationId,

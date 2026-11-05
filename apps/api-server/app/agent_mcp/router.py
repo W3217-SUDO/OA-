@@ -28,6 +28,8 @@ class ToolDecisionInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     decision: str = Field(pattern="^(approved|rejected)$")
     comment: str = Field(default="", max_length=1000)
+    # 确认卡片上的选择（如费用归属合同），只能是卡片列出的选项之一（陶国南 11-05 09:14）。
+    choice: dict[str, int | str] | None = Field(default=None, max_length=3)
 
 
 @router.post("/upload", status_code=201)
@@ -114,7 +116,7 @@ async def tool_request(request_id: str, identity=Depends(current_identity), db=D
 async def tool_request_decision(
     request_id: str, body: ToolDecisionInput, identity=Depends(current_identity), db=Depends(get_db),
 ):
-    return await decide_tool_request(request_id, body.decision, identity, db, comment=body.comment)
+    return await decide_tool_request(request_id, body.decision, identity, db, comment=body.comment, choice=body.choice)
 
 
 async def _download(resource_id: str, kind: str):
