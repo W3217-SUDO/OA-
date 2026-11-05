@@ -348,6 +348,10 @@ export default function TaskList(props: TaskListProps) {
                 </Button>
               </>
             )}
+            {canManageAcceptedTask && ["pending", "processing"].includes(statusTab) && selectedRows.length > 1 && (
+              // 勾选多条直接批量完成（501579）：不符合的跳过并列出原因
+              roleActionAllowed("task.complete") && roleActionAllowed("task.batch.update") && <Button onClick={() => onOpenTaskBatchLifecycle("complete")}>{`批量完成（${selectedRows.length}）`}</Button>
+            )}
             {canManageAcceptedTask && statusTab === "processing" && (
               <>
                 {roleActionAllowed("task.complete") && <Button disabled={selected?.phase_completion_required} onClick={() => selected && onCompleteOne(selected)}>
@@ -369,7 +373,7 @@ export default function TaskList(props: TaskListProps) {
                       ...(canManageAcceptedTask
                         ? [
                             { key: "accept", label: "批量接收任务" },
-                            { key: "complete", label: "批量提交完成", disabled: selectedRows.some(row => row.phase_completion_required) },
+                            { key: "complete", label: "批量完成" },
                             { key: "handoff", label: "批量交接任务" },
                           ]
                         : []),

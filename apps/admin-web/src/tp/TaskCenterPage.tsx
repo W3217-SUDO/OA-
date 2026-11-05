@@ -1002,7 +1002,7 @@ export default function TaskCenterPage({
 
   const taskBatchLabels: Record<TaskBatchLifecycleAction, string> = {
     accept: "批量接收任务",
-    complete: "批量提交完成",
+    complete: "批量完成",
     confirm: "批量验收任务",
     handoff: "批量交接任务",
     withdraw: "批量撤回任务",
@@ -1028,7 +1028,17 @@ export default function TaskCenterPage({
         recipient: values.recipient || "",
         comment: values.comment || "",
       });
-      message.success(`${taskBatchLabels[taskBatchAction]}成功：${data.updated} 条`);
+      const skipped: Array<{ serial_no: string; title?: string; reason: string }> = data.skipped || [];
+      if (skipped.length) {
+        // 批量完成：不符合的几条跳过，列出原因（501579）
+        Modal.info({
+          title: `已完成 ${data.updated} 条，跳过 ${skipped.length} 条`,
+          width: 560,
+          content: <div>{skipped.map((item) => <div key={item.serial_no}>{item.serial_no}{item.title ? `（${item.title}）` : ""}：{item.reason}</div>)}</div>,
+        });
+      } else {
+        message.success(`${taskBatchLabels[taskBatchAction]}成功：${data.updated} 条`);
+      }
       setTaskBatchAction(null);
       setSelectedKeys([]);
       await load();

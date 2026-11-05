@@ -385,6 +385,18 @@ class TaskLifecycleRows12To16Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual((await self.persisted_task(processing_complete)).status, "已完成")
 
+    async def test_batch_complete_skips_invalid_tasks_and_completes_the_rest(self) -> None:
+        """501579：批量完成，不符合的跳过并说明原因，其余照常提交；全部不符合仍报错。"""
+        self.identity = dict(OWNER)
+        ok_task = await self.create_task("处理中", "5791")
+        stopped = await self.create_task("已停止", "5792")
+        response = await self.client.post(f"{API}/tasks/batch-lifecycle", json={"task_ids": [ok_task, stopped], "action": "complete", "comment": "批量完成"})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual((response.json()["updated"], [item["serial_no"] for item in response.json()["skipped"]]), (1, ["9035792"]))
+        self.assertEqual((await self.persisted_task(ok_task)).status, "已完成")
+        only_bad = await self.client.post(f"{API}/tasks/batch-lifecycle", json={"task_ids": [stopped], "action": "complete"})
+        self.assertEqual(only_bad.status_code, 409, only_bad.text)
+
     async def test_ended_tasks_reject_recipient_actions(self) -> None:
         self.identity = dict(OWNER)
         stopped = await self.create_task("已停止", "1602")
