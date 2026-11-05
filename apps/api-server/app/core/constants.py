@@ -234,6 +234,13 @@ IPR_MENU_KEYS_REMOVED_501616 = frozenset({
     "ipr-copywriter", "ipr-officer", "ipr-business-owner",
 })
 DEFAULT_HIDDEN_MENU_KEYS = {"finance-internal-void", *IPR_MENU_KEYS_REMOVED_501616}
+# 新菜单先只给管理员（陶国南 11-05：新权限一律先给管理员，再由管理员配给别人）：
+# 这些子菜单不随已授权的父菜单（如老角色存的“知识产权中心”ipr）自动继承，只有单独勾了才给。
+PARENT_GRANT_EXCLUDED_MENU_KEYS = frozenset({
+    "ipr-my-cases",
+    "ipr-receipt-custom-import", "ipr-invoice-import-case", "ipr-invoice-import-contract",
+    "ipr-patent-invoice-upload", "ipr-patent-receipt-upload", "ipr-other-invoice-upload",
+})
 
 SYSTEM_MENU_ROUTE_KEYS = {key for key, *_ in DEFAULT_SYSTEM_MENUS}
 

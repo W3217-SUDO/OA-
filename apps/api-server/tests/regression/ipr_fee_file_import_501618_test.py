@@ -107,3 +107,13 @@ class IprFeeFileImport501618Test(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ParentGrantExcluded501618Test(unittest.TestCase):
+    def test_new_ipr_menus_not_inherited_from_parent(self):
+        from app.core.permissions import _expand_menu_permission_keys
+        granted = set(_expand_menu_permission_keys(["ipr"]))
+        self.assertIn("ipr-patent-annual-fee", granted, "老子菜单照常随父菜单给")
+        for key in ("ipr-my-cases", "ipr-receipt-custom-import", "ipr-other-invoice-upload"):
+            self.assertNotIn(key, granted, "新菜单先只给管理员，不随父菜单继承")
+        self.assertIn("ipr-my-cases", set(_expand_menu_permission_keys(["ipr", "ipr-my-cases"])), "单独勾了就给")
