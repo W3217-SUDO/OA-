@@ -14,6 +14,8 @@ class IprCaseCreateInput(BaseModel):
     customer: str = Field(min_length=1, max_length=255)
     application_no: str = Field(default="", max_length=128)
     application_type: str = Field(default="", max_length=128)
+    # 501612（fwl 11-05）：新建时选案件阶段，默认“申请立案”（旧系统新建默认值）。
+    case_phase: str = Field(default="申请立案", max_length=128)
     applicant: str = Field(default="", max_length=255)
     case_manager: str = Field(default="", max_length=128)
     application_date: date | None = None

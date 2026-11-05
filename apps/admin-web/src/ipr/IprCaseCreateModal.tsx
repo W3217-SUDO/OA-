@@ -10,7 +10,7 @@ Select,
 Space,
 } from "antd";
 import type { Customer,IprRecord } from "./types";
-import { IprApplicationTypeSelect } from "./IprApplicationTypeSelect";
+import { IprApplicationTypeSelect, IprPhaseSelect } from "./IprApplicationTypeSelect";
 
 interface IprCaseCreateModalProps {
   open: boolean;
@@ -106,6 +106,14 @@ export function IprCaseCreateModal({ open, editing, form, customers, deadlineOff
             </Form.Item>
             <Form.Item name="application_type" label="申请类型">
               <IprApplicationTypeSelect />
+            </Form.Item>
+            {/* 501612：案件阶段照旧系统，跟着申请类型给选项，默认“申请立案”。 */}
+            <Form.Item noStyle shouldUpdate={(previous, current) => previous.application_type !== current.application_type}>
+              {({ getFieldValue }) => (
+                <Form.Item name="case_phase" label="案件阶段" rules={[{ required: true, message: "请选择案件阶段" }]}>
+                  <IprPhaseSelect applicationType={getFieldValue("application_type")} />
+                </Form.Item>
+              )}
             </Form.Item>
             <Form.Item name="applicant" label="申请人/权利人">
               <Input />

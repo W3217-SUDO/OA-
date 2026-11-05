@@ -563,6 +563,7 @@ async def create_ipr_case(body: IprCaseCreateInput, identity: dict = Depends(cur
     data = {
         "case_kind": case_kind, "case_category": body.case_category,
         "application_no": body.application_no.strip(), "application_type": body.application_type.strip(),
+        "case_phase": body.case_phase.strip() or "申请立案",
         "applicant": body.applicant.strip(), "case_manager": (body.case_manager or identity["username"]).strip(),
         "application_date": str(body.application_date) if body.application_date else "", "deadline": str(body.deadline) if body.deadline else "",
         "annual_fee_year": body.annual_fee_year, "annual_fee_monitoring": False, "rate": body.rate, "created_from": "ipr_case_center",

@@ -20,3 +20,23 @@ export function IprApplicationTypeSelect({ value, onChange }: { value?: string; 
   return <Select showSearch allowClear placeholder="请选择申请类型" optionFilterProp="label" value={value || undefined}
     onChange={(next) => onChange?.(next ?? undefined)} options={options} />;
 }
+
+// 501612（fwl 11-05）：案件阶段下拉，照旧系统按申请类型给出阶段；已有值不在选项里时照原样显示。
+const phaseCache = new Map<string, Promise<string[]>>();
+const loadPhases = (applicationType: string) => {
+  if (!phaseCache.has(applicationType)) {
+    phaseCache.set(applicationType, api.get<{ items: string[] }>("/ipr/phase-options", { params: { application_type: applicationType } })
+      .then(({ data }) => data.items || [])
+      .catch(() => { phaseCache.delete(applicationType); return []; }));
+  }
+  return phaseCache.get(applicationType)!;
+};
+
+export function IprPhaseSelect({ value, onChange, applicationType }: { value?: string; onChange?: (value: string | undefined) => void; applicationType?: string }) {
+  const [names, setNames] = useState<string[]>([]);
+  useEffect(() => { let alive = true; void loadPhases(applicationType || "").then((items) => { if (alive) setNames(items); }); return () => { alive = false; }; }, [applicationType]);
+  const options = names.map((name) => ({ value: name, label: name }));
+  if (value && names.length && !names.includes(value)) options.unshift({ value, label: `${value}（当前阶段，不在该类型的选项里）` });
+  return <Select showSearch placeholder="请选择案件阶段" optionFilterProp="label" value={value || undefined}
+    onChange={(next) => onChange?.(next ?? undefined)} options={options} />;
+}

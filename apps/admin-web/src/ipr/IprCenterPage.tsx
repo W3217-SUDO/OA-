@@ -772,6 +772,7 @@ export default function IprCenterPage({
     form.setFieldsValue({
       case_kind: kind || "专利",
       case_category: "non_litigation",
+      case_phase: "申请立案",
       rate: 0,
     });
     setCreateOpen(true);
@@ -812,6 +813,7 @@ export default function IprCenterPage({
       application_no: record.data.application_no,
       // 501611：没填申请类型的旧案件，编辑时默认选中旧系统的案件类型，点保存才写入。
       application_type: record.data.application_type || record.data.case_type_name,
+      case_phase: record.data.case_phase || "申请立案",
       applicant: record.data.applicant,
       case_manager: record.data.case_manager,
       application_date: record.data.application_date
@@ -843,6 +845,7 @@ export default function IprCenterPage({
       title: `${record.title}（复制）`,
       application_no: record.data.application_no,
       application_type: record.data.application_type || record.data.case_type_name,
+      case_phase: record.data.case_phase || "申请立案",
       applicant: record.data.applicant,
       case_manager: record.data.case_manager,
       application_date: record.data.application_date

@@ -151,6 +151,39 @@ async def update_ipr_case_info(case_id: int, body: IprCaseInfoInput, identity: d
     return _record_dict(record, await _allowed_field_keys(identity, db))
 
 
+async def legacy_phase_names(db: AsyncSession, application_type: str) -> list[str]:
+    """旧系统该案件类型可选的阶段（IPR_CaseType_PhaseList，按旧系统顺序）；没选类型或对不上时给旧系统全部阶段（不含“兼容”）。"""
+    from app.models import SystemParameter
+    type_id = 0
+    if application_type.strip():
+        for category in ("ipr_application_type", "ipr_case_type"):
+            row = await db.scalar(select(SystemParameter).where(SystemParameter.category == category, SystemParameter.name == application_type.strip()))
+            legacy = (row.extra or {}).get("legacy_id") if row else None
+            if str(legacy or "").isdigit():
+                type_id = int(legacy)
+                break
+    names: list[str] = []
+    try:
+        async with db.begin_nested():
+            if type_id:
+                names = list((await db.execute(text(
+                    'SELECT p."CasePhaseName" FROM "IPR_CaseType_PhaseList" l JOIN "IPR_CasePhase" p ON p."CasePhaseId" = l."CasePhaseId" '
+                    'WHERE l."CaseTypeId" = :type_id ORDER BY p."CasePhaseId"'), {"type_id": type_id})).scalars().all())
+    except SQLAlchemyError:
+        names = []
+    if not names:
+        rows = (await db.scalars(select(SystemParameter).where(SystemParameter.category == "ipr_case_phase", SystemParameter.is_active.is_(True))
+                                .order_by(SystemParameter.sort_order, SystemParameter.id))).all()
+        names = [row.name for row in rows]
+    return list(dict.fromkeys(str(name).strip() for name in names if str(name or "").strip() and str(name).strip() != "兼容"))
+
+
+@router.get(f"{settings.api_prefix}/ipr/phase-options")
+async def list_ipr_new_case_phase_options(application_type: str = "", identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """501612：新建、编辑草稿时的案件阶段下拉，照旧系统按申请类型（案件类型）给出。"""
+    return {"items": await legacy_phase_names(db, application_type)}
+
+
 @router.get(f"{settings.api_prefix}/ipr/cases/{{case_id}}/phase-options")
 async def list_ipr_case_phase_options(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """案件阶段下拉：原系统该案件类型可用的阶段（IPR_CaseType_PhaseList）；镜像表不在时只给当前阶段。"""
