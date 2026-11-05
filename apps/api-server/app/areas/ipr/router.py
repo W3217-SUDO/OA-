@@ -566,7 +566,9 @@ async def create_ipr_case(body: IprCaseCreateInput, identity: dict = Depends(cur
         "case_phase": body.case_phase.strip() or "申请立案",
         "applicant": body.applicant.strip(), "case_manager": (body.case_manager or identity["username"]).strip(),
         "application_date": str(body.application_date) if body.application_date else "", "deadline": str(body.deadline) if body.deadline else "",
-        "annual_fee_year": body.annual_fee_year, "annual_fee_monitoring": False, "rate": body.rate, "created_from": "ipr_case_center",
+        # 501612（fwl 11-05 14:45“新建时选择什么就是什么”）：新建时选“年费监控”阶段即打开年费监控开关，其他阶段不打开。
+        "annual_fee_year": body.annual_fee_year, "annual_fee_monitoring": (body.case_phase.strip() == "年费监控"), "rate": body.rate,
+        "created_from": "ipr_case_center",
     }
     if contract:
         data.update({"contract_record_id": contract.id, "contract_no": contract.serial_no, "created_from": "contract_center"})
