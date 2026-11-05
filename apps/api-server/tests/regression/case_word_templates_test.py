@@ -433,6 +433,59 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
                 raw = "\n".join(module.paragraphs(await module._template_bytes(item, None)))
                 for leaked in ("陶勇刚", "Lillian", "tongyingchao", "×", "387653", "实例"):
                     self.assertNotIn(leaked, raw)
+    async def test_builtin_execution_documents_1105(self):
+        """陶国南 11-05 12:21 执行结案申请书、执行和解协议：执行法院、执行案号取执行阶段，生效判决案号取二审（没有取一审）；
+        代理人=经办律师，联系电话=经办律师手机；收款账户取沪知所；结案理由、和解金额由律师填；样本真实信息不进模板。"""
+        from app.data_models.parties import PartyRecord
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, self.case_id)
+            case.status = "执行受理"
+            case.data = {**case.data, "defendants": ["甲店", "李四"], "execution_court_name": "沪0115", "execution_court_case_no": "（2026）沪0115执100号",
+                         "second_court_case_no": "（2023）沪73民终9号", "judgment_amount": "30000.00"}
+            lawyer = await db.scalar(select(User).where(User.username == LAWYER["username"]))
+            lawyer.profile = {**lawyer.profile, "mobile": "13800000000"}
+            db.add_all([PartyRecord(party_no="DSR2600021", name="青岛尚美数智科技集团有限公司",
+                                    data={"registered_address": "青岛市某路2号", "credit_code": "91370200MA3C000000", "legal_representative": "张三"}),
+                        PartyRecord(party_no="DSR2600022", name="甲店", data={"credit_code": "91310000MA1K000000", "registered_address": "某省某县1号",
+                                                                              "phone": "021-1234"}),
+                        PartyRecord(party_no="DSR2600023", name="李四", data={"identity_no": "110101199001011234", "phone": "13900000000"})])
+            await db.commit()
+        closing = (await self.client.post(self.url("execution-closing-application", "preview"), json={"values": {}})).json()
+        self.assertEqual(closing["missing"], ["结案理由"])
+        reasons = {field["key"]: field for field in closing["fields"]}["结案理由"]["options"]
+        closing = (await self.client.post(self.url("execution-closing-application", "preview"), json={"values": {"结案理由": reasons[0]}})).json()
+        paragraphs = closing["paragraphs"]
+        for line in ("申请人：青岛尚美数智科技集团有限公司", "统一社会信用代码：91370200MA3C000000", "住所地：青岛市某路2号", "联系方式：13800000000",
+                     "被申请人一：甲店", "联系方式：021-1234", "被申请人二：李四，男，民族：\u3000\u3000\u3000\u3000", "身份证号码：110101199001011234",
+                     "联系方式：13900000000", "上海市浦东新区人民法院", "申请人：青岛尚美数智科技集团有限公司", "代理人：沈建锋",
+                     "\u3000\u3000申请人与被申请人（2026）沪0115执100号执行一案贵院已受理，原生效判决（2023）沪73民终9号民事判决书。"
+                     "现申请人与被申请人达成和解协议，且已全部履行完毕，故申请对此执行案件终结，并解除对甲店、李四的所有执行措施，望予核准。"):
+            self.assertIn(line, paragraphs)
+        today = datetime.now()
+        self.assertEqual(paragraphs[-1].strip(), f"{today.year}年{today.month}月{today.day}日")
+
+        settlement = (await self.client.post(self.url("execution-settlement-agreement", "preview"), json={"values": {}})).json()
+        self.assertEqual(settlement["missing"], ["和解金额"], "付款天数、执行情况可以留空手写")
+        settlement = (await self.client.post(self.url("execution-settlement-agreement", "preview"),
+                                             json={"values": {"和解金额": "20000", "付款天数": "3"}})).json()
+        paragraphs = settlement["paragraphs"]
+        for line in ("甲方：青岛尚美数智科技集团有限公司", "住所：青岛市某路2号", "法定代表人：张三    职务：\u3000\u3000\u3000\u3000",
+                     "委托代理人：沈建锋，上海沪知律师事务所律师", "联系电话：13800000000",
+                     "乙方一：甲店", "统一社会信用代码：91310000MA1K000000", "乙方二：李四", "身份证号：110101199001011234", "联系电话：13900000000",
+                     "甲方与甲店、李四侵害商标权纠纷一案，一审案号（2022）沪0115民初5795号，二审案号（2023）沪73民终9号，执行案号：（2026）沪0115执100号。"
+                     "原判决认定甲店、李四应赔偿甲方30000元。\u3000\u3000\u3000\u3000现甲乙双方自愿协商，达成如下执行阶段和解协议，共同信守。",
+                     "乙方在本协议签订后3日内，向甲方支付20000元。甲方指定收款账户信息如下：账户名：上海沪知律师事务所，开户银行：招商银行某某支行，"
+                     "银行账号：1219000000；转账凭证提供甲方确认，本案执行费用乙方自行向法院承担。"):
+            self.assertIn(line, paragraphs)
+        for body in (closing, settlement):
+            text = "\n".join(body["paragraphs"])
+            self.assertNotIn("（执行", text, "说明括号都去掉了")
+            for leaked in ("箭牌", "陈柱芝", "谢岳荣", "13052239229", "红星", "京煌府", "赵燕", "阮忠奎", "陶勇刚", "申浩", "华夏", "71743", "张某", "李某"):
+                self.assertNotIn(leaked, text)
+        for template_id in ("execution-closing-application", "execution-settlement-agreement"):
+            raw = "\n".join(texts(await module._template_bytes(next(item for item in module.BUILTIN_TEMPLATES if item["id"] == template_id), None)))
+            for leaked in ("箭牌", "陈柱芝", "谢岳荣", "13052239229", "44512119890410265X", "红星", "京煌府", "赵燕", "阮忠奎", "陶勇刚", "申浩", "华夏", "71743"):
+                self.assertNotIn(leaked, raw, template_id)
 
     def test_handling_result_draft(self):
         record = BusinessRecord(module="case", serial_no="X", title="X", status="一审和解结案")

@@ -23,7 +23,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from lxml import etree
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.areas.legal.template_documents import WORD_NS, _replace_slots
@@ -91,6 +91,16 @@ BUILTIN_TEMPLATES = [{
     # 陶国南 11-05 12:20：商标侵权版是法院“实例”，改成空白表（示例值清空、勾选改回□），生成逻辑同不正当竞争版。
     "id": "element-complaint-trademark", "name": "民事起诉状（要素式·侵害商标权纠纷）", "file": "ELEMENT_COMPLAINT_TRADEMARK_DOCX",
     "options": {}, "optional": [], "form": "element_complaint",
+}, {
+    # 陶国南 11-05 12:21：执行结案申请书。申请人=原告（本所委托人），被申请人=被告；执行法院、执行案号取案件执行阶段，
+    # 生效判决案号取二审（没有二审取一审）；代理人=经办律师。
+    "id": "execution-closing-application", "name": "执行结案申请书", "file": "EXECUTION_CLOSING_APPLICATION_DOCX",
+    "options": {"结案理由": ["申请人与被申请人达成和解协议，且已全部履行完毕", "被申请人已全部履行生效法律文书确定的义务"]}, "optional": [],
+}, {
+    # 陶国南 11-05 12:21：执行和解协议。甲方=原告（本所委托人），乙方=被告；收款账户取系统参数里沪知所的账户；
+    # 和解金额、付款天数、执行情况由律师填，付款天数和执行情况可以留空手写。
+    "id": "execution-settlement-agreement", "name": "执行和解协议", "file": "EXECUTION_SETTLEMENT_AGREEMENT_DOCX",
+    "options": {"付款天数": ["2", "3", "5", "7", "10"]}, "optional": ["付款天数", "执行情况"],
 }]
 # 系统自动取值的字段；模板里出现其他占位字段时，按“需要人工填写”处理。
 AUTO_FIELDS = ("法院", "法院案号", "原告", "被告", "第三人", "案由", "开庭律师", "经办律师", "律师助理", "客户名称", "案件编号", "生成日期",
@@ -99,13 +109,15 @@ AUTO_FIELDS = ("法院", "法院案号", "原告", "被告", "第三人", "案�
                "收案日期", "起诉日期", "结案日期", "开庭日期", "处理结果", "归档日期", "保管期限",
                "调解原告信息", "调解被告信息", "付款被告", "收款联行号", "委托人名称", "委托人联系方式", "退费开户行", "退费户名", "退费账号",
                "送达地址", "送达联系方式", "送达邮编", "短信送达号码", "侵权行为表述",
-               "开庭时间", "原告联系方式", "被告联系方式", "主审法官", "法官联系方式", "书记员", "书记员联系方式")
+               "开庭时间", "原告联系方式", "被告联系方式", "主审法官", "法官联系方式", "书记员", "书记员联系方式",
+               "执行申请人信息", "执行被申请人信息", "执行法院", "执行案号", "生效判决案号", "和解甲方信息", "和解乙方信息", "案号情况", "判决金额")
 # 陶国南 11-04 14:28：日期都要生成。案件里没有约定付款日期时，付款期限默认生成日起 7 天（样本是起草后约 3 天），可以改。
 DEFAULT_PAYMENT_DAYS = 7
 PAYMENT_DATE_KEYS = ("agreed_payment_date", "payment_deadline", "settlement_payment_date", "promised_payment_date", "mediation_payment_date")
 # 多个当事人逐行列出（每人一段，段落前面的“原告：”“被告：”跟着重复）。
 MULTILINE_FIELDS = {"原告信息", "被告信息", "申请人信息", "被申请人信息", "事实和理由", "财产线索", "变更后诉讼请求", "调解原告信息", "调解被告信息",
-                    "简要案情工作概况", "办案体会", "处理结果"}
+                    "简要案情工作概况", "办案体会", "处理结果",
+                    "执行申请人信息", "执行被申请人信息", "和解甲方信息", "和解乙方信息", "执行情况"}
 # 由别的字段算出来的，不单独填：赔偿金额大写跟着赔偿金额走。
 DERIVED_FIELDS = {"赔偿金额大写": "赔偿金额"}
 # 陶国南 11-04 14:19：律所用系统所在的上海沪知律师事务所，收款账户用沪知所的账户——
@@ -187,6 +199,10 @@ W = "{%s}" % WORD_NS["w"]
 NOTE = re.compile(r"[（(][^（）()]*[）)]\s*")
 # 按说明文字猜对应案件里的哪一项；猜不到的设成“生成时手填”，管理员可以在模板页改。
 FIELD_HINTS = (
+    # 执行文书的字段放前面，免得被“申请人信息”“法院”“案号”先匹配走。
+    (("执行被申请人信息",), "执行被申请人信息"), (("执行申请人信息",), "执行申请人信息"), (("执行法院",), "执行法院"),
+    (("执行案号",), "执行案号"), (("生效判决案号",), "生效判决案号"), (("和解甲方信息",), "和解甲方信息"),
+    (("和解乙方信息",), "和解乙方信息"), (("案号情况",), "案号情况"), (("判决金额",), "判决金额"),
     (("调解原告信息",), "调解原告信息"), (("调解被告信息",), "调解被告信息"), (("付款被告",), "付款被告"), (("收款联行号",), "收款联行号"),
     (("委托人名称",), "委托人名称"), (("委托人联系方式",), "委托人联系方式"), (("退费开户行",), "退费开户行"), (("退费户名",), "退费户名"),
     (("退费账号",), "退费账号"), (("送达地址",), "送达地址"), (("送达联系方式",), "送达联系方式"), (("送达邮编",), "送达邮编"),
@@ -695,6 +711,76 @@ async def _applicant_lines(data: dict, names: list[str], identities_key: str, db
     return "\n".join(lines)
 
 
+def _gender(identity_no: str) -> str:
+    return ("男" if int(identity_no[16]) % 2 else "女") if len(identity_no) == 18 and identity_no[16].isdigit() else ""
+
+
+def _party_basics(name: str, identity: dict, profile: dict) -> tuple[bool, str, str, str, str]:
+    identity_no = str(identity.get("identity_no") or profile.get("identity_no") or profile.get("credit_code") or "").strip().upper()
+    address = _first(profile, *ADDRESS_KEYS)
+    if address == name:
+        address = ""
+    return _is_person(name, identity, identity_no, profile), identity_no, address, _first(profile, "legal_representative"), _first(profile, *PHONE_KEYS)
+
+
+def _execution_block(name: str, label: str, identity: dict, profile: dict, contact: str = "") -> list[str]:
+    """执行结案申请书里一位申请人/被申请人（陶国南 11-05 12:21 样本）：单位写统一社会信用代码、法定代表人和职务、住所地、联系方式；
+    个人写性别、民族、身份证号码、住址、联系方式。系统里没有的（职务、民族）留空格手写。"""
+    person, identity_no, address, representative, phone = _party_basics(name, identity, profile)
+    phone = contact or phone
+    if person:
+        return [f"{label}：{name}，{_gender(identity_no) or f'性别：{BLANK}'}，民族：{BLANK}", f"身份证号码：{identity_no or BLANK}",
+                f"住址：{address or BLANK}", f"联系方式：{phone or BLANK}"]
+    return [f"{label}：{name}", f"统一社会信用代码：{identity_no or BLANK}",
+            f"法定代表人：{representative or BLANK}  职务：{_first(profile, 'legal_agent_title', 'legal_representative_title') or BLANK}",
+            f"住所地：{address or BLANK}", f"联系方式：{phone or BLANK}"]
+
+
+def _settlement_block(name: str, label: str, identity: dict, profile: dict, *, first_party: bool) -> list[str]:
+    """执行和解协议里一位甲方/乙方（陶国南 11-05 12:21 样本）：甲方写住所、法定代表人和职务；乙方个人写身份证号、联系电话，
+    乙方单位写统一社会信用代码、住所、法定代表人和职务、联系电话。"""
+    person, identity_no, address, representative, phone = _party_basics(name, identity, profile)
+    title = _first(profile, "legal_agent_title", "legal_representative_title") or BLANK
+    if person:
+        lines = [f"{label}：{name}", f"身份证号：{identity_no or BLANK}"]
+        return lines + ([f"住址：{address or BLANK}"] if first_party else [f"联系电话：{phone or BLANK}"])
+    lines = [f"{label}：{name}"] + ([] if first_party else [f"统一社会信用代码：{identity_no or BLANK}"])
+    lines += [f"住所：{address or BLANK}", f"法定代表人：{representative or BLANK}    职务：{title}"]
+    return lines + ([] if first_party else [f"联系电话：{phone or BLANK}"])
+
+
+async def _labelled_blocks(data: dict, names: list[str], identities_key: str, db: AsyncSession, word: str, build) -> list[str]:
+    identities = {str(item.get("name") or "").strip(): item for item in data.get(identities_key) or [] if isinstance(item, dict)}
+    profiles = await _party_profiles(names, db)
+    lines = []
+    for position, name in enumerate(names or [""]):
+        label = word if len(names) <= 1 else f"{word}{CN_ORDINALS[position] if position < 10 else position + 1}"
+        if not name:
+            lines.append(f"{label}：{BLANK}")
+            continue
+        lines += build(name, label, identities.get(name, {}), profiles.get(name, {}))
+    return lines
+
+
+async def _lawyer_phone(handling: list[str], db: AsyncSession) -> str:
+    """执行文书样本里的联系电话是经办律师的手机（两份样本不同委托人用的是同一个号码）。"""
+    for token in handling:
+        user = await db.scalar(select(User).where(func.lower(User.username) == token.casefold()))
+        phone = str(((user.profile or {}) if user else {}).get("mobile") or ((user.profile or {}) if user else {}).get("office_phone") or "").strip()
+        if phone:
+            return phone
+    return ""
+
+
+def _case_numbers_text(data: dict) -> str:
+    """执行和解协议里的“一审案号…，二审案号…，执行案号：…”，没有的那一审不写。"""
+    first = _first(data, "first_court_case_no", "first_instance_case_no", "first_intance_case_no", "court_case_no")
+    second = _first(data, "second_court_case_no", "second_instance_case_no", "second_intance_case_no")
+    execution = _first(data, "execution_court_case_no", "execution_instance_case_no", "execution_intance_case_no")
+    parts = [f"一审案号{first}" if first else "", f"二审案号{second}" if second else "", f"执行案号：{execution}" if execution else ""]
+    return "，".join(part for part in parts if part)
+
+
 CN_DIGITS = "〇一二三四五六七八九"
 
 
@@ -874,7 +960,11 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
     data = record.data or {}
     court_keys, case_no_keys = _court_keys(record.status or "")
     court = _first(data, *court_keys)
-    court = (await court_names_by_code(db)).get(court.casefold()) or court
+    court_names = await court_names_by_code(db)
+    court = court_names.get(court.casefold()) or court
+    execution_court = _first(data, "execution_court_name", "execution_court", "execution_instance_court", "execution_intance_court",
+                             "first_court_name", "first_instance_court", "first_intance_court", "court")
+    execution_court = court_names.get(execution_court.casefold()) or execution_court
     handling = _case_commission_person_tokens(data, ("handling_lawyer_usernames", "handling_lawyer_username", "handling_lawyers"))
     # 开庭律师按案件详情页同一规则：没单独填时取第一位经办律师（与 501222 一致）。
     hearing = _case_commission_person_tokens(data, (
@@ -888,6 +978,7 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
         return "、".join(dict.fromkeys(users.get(item.casefold(), item) for item in items))
 
     today = today or datetime.now()
+    lawyer_phone = await _lawyer_phone(handling, db)
     plaintiffs = _names(data.get("plaintiffs") or data.get("plaintiff") or data.get("appellant_names"))
     defendants = _names(data.get("defendants") or data.get("defendant") or data.get("appellee_names"))
     compensation = _amount_text(data.get("settlement_amount") or data.get("judgment_amount"))
@@ -953,6 +1044,23 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
         "法官联系方式": judge[1],
         "书记员联系方式": clerk[1],
         **(await firm_account(db)),
+        # 陶国南 11-05 12:21 执行结案申请书、执行和解协议：执行法院、执行案号取执行阶段（没填执行法院时退回一审法院）。
+        # 申请人的联系方式写经办律师的手机（样本如此），没有再用当事人档案里的电话。
+        "执行申请人信息": "\n".join(await _labelled_blocks(data, plaintiffs, "plaintiff_identities", db, "申请人",
+                                                        lambda *args: _execution_block(*args, contact=lawyer_phone))),
+        "执行被申请人信息": "\n".join(await _labelled_blocks(data, defendants, "defendant_identities", db, "被申请人", _execution_block)),
+        "执行法院": execution_court,
+        "执行案号": _first(data, "execution_court_case_no", "execution_instance_case_no", "execution_intance_case_no"),
+        "生效判决案号": _first(data, "second_court_case_no", "second_instance_case_no", "second_intance_case_no",
+                           "first_court_case_no", "first_instance_case_no", "first_intance_case_no", "court_case_no"),
+        "和解甲方信息": "\n".join([
+            *await _labelled_blocks(data, plaintiffs, "plaintiff_identities", db, "甲方",
+                                    lambda *args: _settlement_block(*args, first_party=True)),
+            f"委托代理人：{people(handling) or BLANK}，{FIRM_NAME}律师", f"联系电话：{lawyer_phone or BLANK}"]),
+        "和解乙方信息": "\n".join(await _labelled_blocks(data, defendants, "defendant_identities", db, "乙方",
+                                                       lambda *args: _settlement_block(*args, first_party=False))),
+        "案号情况": _case_numbers_text(data),
+        "判决金额": _amount_text(data.get("judgment_amount")),
     }
 
 
