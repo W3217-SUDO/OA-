@@ -37,20 +37,21 @@ export const createdTabs: StatusTab[] = [
   { key: "accepted", label: "已验收", statuses: ["已验收"] },
 ];
 
+// 501629（tgn 11-05 选 A）：接受、协作的任务按老系统页签名称；发起的任务保持老系统 6 个状态。
 export const receivedTabs: StatusTab[] = [
   { key: "pending", label: "待处理", statuses: ["待接收", "待处理"] },
   {
     key: "processing",
-    label: "进行中",
+    label: "处理中",
     statuses: ["处理中", "进行中", "已逾期"],
   },
-  { key: "finished", label: "完成", statuses: ["已完成", "待确认", "已验收"] },
-  { key: "stopped", label: "停止", statuses: ["已停止", "已撤回", "已拒绝"] },
+  { key: "finished", label: "已完成", statuses: ["已完成", "待确认", "已验收"] },
+  { key: "stopped", label: "已停止", statuses: ["已停止", "已撤回", "已拒绝"] },
 ];
 
 export const collaboratingTabs: StatusTab[] = [
-  { key: "active", label: "进行中", statuses: ["待接收", "待处理", "处理中", "进行中", "已逾期"] },
-  { key: "finished", label: "完成", statuses: ["已完成", "待确认", "已验收"] },
+  { key: "active", label: "处理中", statuses: ["待接收", "待处理", "处理中", "进行中", "已逾期"] },
+  { key: "finished", label: "已完成", statuses: ["已完成", "待确认", "已验收"] },
 ];
 
 // ─── Utility functions ───────────────────────────────────────────────────
