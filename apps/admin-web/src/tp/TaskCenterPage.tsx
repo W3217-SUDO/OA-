@@ -295,7 +295,8 @@ export default function TaskCenterPage({
           initiator: nextQuery.initiator || "",
           case_no: nextQuery.case_no || "",
           source: nextQuery.source || "",
-          owner: nextQuery.owner || "",
+          // 501629：查询条件“负责人”是选人框，按选中的人精确查
+          owner_username: nextQuery.owner || "",
           plaintiff: nextQuery.plaintiff || "",
           defendant: nextQuery.defendant || "",
           created_from: nextQuery.created_range?.[0]?.format("YYYY-MM-DD"),
@@ -434,7 +435,7 @@ export default function TaskCenterPage({
       if (!contains(row.initiator, query.initiator)) return false;
       if (!contains(row.case_no, query.case_no)) return false;
       if (!contains(taskCreationMode(row), query.source)) return false;
-      if (!contains(row.owner, query.owner)) return false;
+      if (query.owner && row.owner !== query.owner) return false;
       if (!contains(row.plaintiff, query.plaintiff)) return false;
       if (!contains(row.defendant, query.defendant)) return false;
       const created = dayjs(row.created_at);
@@ -1475,6 +1476,7 @@ export default function TaskCenterPage({
   return (
     <>
       <TaskList
+        peopleOptions={peopleOptions}
         isUnread={isUnread}
         isCreated={isCreated}
         isCollaborating={isCollaborating}
@@ -1585,6 +1587,7 @@ export default function TaskCenterPage({
       <DialogModal
         dialog={dialog}
         dialogForm={dialogForm}
+        peopleOptions={peopleOptions}
         actionSubmitting={actionSubmitting}
         onOk={submitDialog}
         onCancel={() => setDialog(null)}
@@ -1593,6 +1596,7 @@ export default function TaskCenterPage({
       <TaskBatchModal
         taskBatchAction={taskBatchAction}
         taskBatchForm={taskBatchForm}
+        peopleOptions={peopleOptions}
         selectedCount={selectedRows.length}
         actionSubmitting={actionSubmitting}
         labels={taskBatchLabels}

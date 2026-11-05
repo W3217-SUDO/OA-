@@ -370,6 +370,7 @@ async def list_tasks(
     priority: Annotated[str, Query(description="任务优先级标签筛选，如普通、重要、紧急；紧急任务数量用 priority=紧急 后的 total")] = "",
     serial_no: str = "", title: str = "", description: str = "",
     initiator: str = "", case_no: str = "", source: str = "", owner: str = "",
+    owner_username: Annotated[str, Query(description="负责人账号精确筛选（任务列表选人框，501629）")] = "",
     plaintiff: str = "", defendant: str = "",
     created_from: date | None = None, created_to: date | None = None,
     deadline_from: date | None = None, deadline_to: date | None = None,
@@ -435,6 +436,9 @@ async def list_tasks(
             task_conditions.append(BusinessRecord.owner.in_(department_usernames))
         elif relation == "initiated":
             task_conditions.append(BusinessRecord.data["initiator"].as_string().in_(department_usernames))
+    if owner_username.strip():
+        # 501629：查询条件“负责人”从在职人员里选，按账号精确匹配，不再按文字片段。
+        task_conditions.append(BusinessRecord.owner == owner_username.strip())
     from app.core.task_query import (
         add_task_summary, enrich_task_filter_rows, stream_task_rows,
         task_canonical_deadline, task_employee_names, task_filter_row,

@@ -132,13 +132,14 @@ export function HandoffModal(props: HandoffModalProps) {
 export interface DialogModalProps {
   dialog: { row: TaskRow; action: DialogAction } | null;
   dialogForm: FormInstance;
+  peopleOptions: PeopleOption[];
   actionSubmitting: boolean;
   onOk: () => void;
   onCancel: () => void;
 }
 
 export function DialogModal(props: DialogModalProps) {
-  const { dialog, dialogForm, actionSubmitting, onOk, onCancel } = props;
+  const { dialog, dialogForm, peopleOptions, actionSubmitting, onOk, onCancel } = props;
   return (
     <Modal
       open={Boolean(dialog)}
@@ -154,9 +155,10 @@ export function DialogModal(props: DialogModalProps) {
           <Form.Item
             label="新负责人"
             name="recipient"
-            rules={[{ required: true }]}
+            rules={[{ required: true, message: "请选择新负责人" }]}
           >
-            <Input />
+            {/* 501629：只能从在职人员里选，不能自由输入 */}
+            <KeywordPersonSelect allowClear placeholder="输入姓名、拼音首字母或账号查找" options={peopleOptions.map((person) => ({ value: person.username, label: person.label }))} />
           </Form.Item>
         )}
         <Form.Item
@@ -176,6 +178,7 @@ export function DialogModal(props: DialogModalProps) {
 export interface TaskBatchModalProps {
   taskBatchAction: TaskBatchLifecycleAction | null;
   taskBatchForm: FormInstance;
+  peopleOptions: PeopleOption[];
   selectedCount: number;
   actionSubmitting: boolean;
   labels: Record<TaskBatchLifecycleAction, string>;
@@ -187,6 +190,7 @@ export function TaskBatchModal(props: TaskBatchModalProps) {
   const {
     taskBatchAction,
     taskBatchForm,
+    peopleOptions,
     selectedCount,
     actionSubmitting,
     labels,
@@ -227,9 +231,10 @@ export function TaskBatchModal(props: TaskBatchModalProps) {
           <Form.Item
             label="接收人"
             name="recipient"
-            rules={[{ required: true, message: "请输入接收人" }]}
+            rules={[{ required: true, message: "请选择接收人" }]}
           >
-            <Input />
+            {/* 501629：只能从在职人员里选，不能自由输入 */}
+            <KeywordPersonSelect allowClear placeholder="输入姓名、拼音首字母或账号查找" options={peopleOptions.map((person) => ({ value: person.username, label: person.label }))} />
           </Form.Item>
         )}
         <Form.Item

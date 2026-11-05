@@ -17,6 +17,7 @@ import type { FitStackGroup } from "../components/ResizableTable";
 import type { FormInstance, TablePaginationConfig } from "antd";
 import type { SorterResult } from "antd/es/table/interface";
 import type {
+  PeopleOption,
   TaskRow,
   TaskQuery,
   TaskSort,
@@ -33,6 +34,7 @@ import {
   visiblePersonName,
 } from "./constants";
 import { useFilterToggle } from "../components/common/MobileFilterToggle";
+import { KeywordPersonSelect } from "../components/KeywordPersonSelect";
 
 
 // 一屏放不下时，原告/被告、发起人/负责人各叠放在一个单元格里（数据不减少）。
@@ -41,6 +43,7 @@ const TASK_FIT_STACK: FitStackGroup[] = [
   { title: <span>发起人<br />负责人</span>, keys: ["initiator", "owner"] },
 ];
 export interface TaskListProps {
+  peopleOptions: PeopleOption[];
   isUnread: boolean;
   isCreated: boolean;
   isCollaborating: boolean;
@@ -99,7 +102,7 @@ export interface TaskListProps {
 }
 
 export default function TaskList(props: TaskListProps) {
-  const { canRequestTaskException, onRequestException, onReviewException } = props;
+  const { canRequestTaskException, onRequestException, onReviewException, peopleOptions } = props;
   const { isUnread, tabs, statusTab, counts, queryForm, loading, columns, filteredTasks, taskMeta, selectedKeys, hideTaskFooter, actionSubmitting, profile, canManageInitiatedTask, canManageAcceptedTask, canManageCompanyCreatedTask, canWithdrawTask, canReviewTaskException, selectedRows, selected, caseBatchLabels, onTabChange, onQuerySubmit, onQueryReset, onCreateTask, onSelectedKeysChange, onTableChange, onOpenCommunication, onMarkSelectedUnreadRead, onConfirmTask, onWithdrawTask, onResendTask, onRestartTask, onAcceptSelected, onCompleteSelected, onCompleteOne, onOpenHandoff, onOpenTaskBatchLifecycle, onMoreAction } = props;
   // 查询区折叠：桌面默认展开、按页面记住；手机默认收起（原来的手机开关由共享开关替代）。
   const filterToggle = useFilterToggle("查询条件");
@@ -171,7 +174,8 @@ export default function TaskList(props: TaskListProps) {
           <DatePicker.RangePicker />
         </Form.Item>
         <Form.Item label="负责人" name="owner">
-          <Input />
+          {/* 501629：从在职人员里选，按选中的人精确查 */}
+          <KeywordPersonSelect allowClear placeholder="输入姓名、拼音首字母或账号查找" options={peopleOptions.map((person) => ({ value: person.username, label: person.label }))} />
         </Form.Item>
         <Form.Item label="原告" name="plaintiff">
           <Input />

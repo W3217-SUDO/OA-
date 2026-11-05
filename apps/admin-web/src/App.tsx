@@ -184,7 +184,7 @@ const IprCustomFileImportPage = lazyWithVersionRecovery("ipr-custom-file-import"
 const IprCaseRebootPage = lazyWithVersionRecovery("ipr-case-reboot", () => import("./IprCaseRebootPage"));
 const IprAnnualFeePage = lazyWithVersionRecovery("ipr-patent-annual-fee", () => import("./IprAnnualFeePage"));
 const TaskCenterPage = lazyWithVersionRecovery("task", () => import("./tp"));
-const VipTaskCenterPage = lazyWithVersionRecovery("vip-task", () => import("./VipTaskCenterPage"));
+// 501629（tgn 11-05）：VIP 任务在案件详情“客户任务”里单独发，任务中心不再有“VIP任务”页面；VIP 任务数据和接口保留。
 const BusinessPage = lazyWithVersionRecovery("business", () => import("./BusinessPage"));
 const DocumentCenterPage = lazyWithVersionRecovery("document", () => import("./aws"));
 const FinanceCenterPage = lazyWithVersionRecovery("finance", () => import("./FinanceCenterPage"));
@@ -2059,8 +2059,6 @@ export default function App() {
       <LegacyLsHistoryPanel />
     ) : route.startsWith("case-") ? (
       <CaseCenterPage initialView={active} onNavigate={navigate} />
-    ) : route === "vip-tasks" ? (
-      <VipTaskCenterPage />
     ) : route === "affairs-records" ? (
       <BusinessPage module="task" title="事项记录" onNavigate={navigate} />
     ) : route.startsWith("task-") ? (

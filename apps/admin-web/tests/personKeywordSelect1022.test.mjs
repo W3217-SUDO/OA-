@@ -32,7 +32,7 @@ async function load(path, api = {}) {
 
 async function assertHiddenUntilKeyword(control, expectedOptions, keyword) {
   assert.deepEqual(control().options, [], '未输入关键词时不应列出人员');
-  assert.equal(control().notFoundContent, '请输入姓名、账号或部门关键词');
+  assert.equal(control().notFoundContent, '请输入姓名、拼音首字母、账号或部门关键词');
   await act(async () => control().onSearch('   '));
   assert.deepEqual(control().options, [], '空格关键词也不应列出人员');
   await act(async () => control().onSearch(keyword));

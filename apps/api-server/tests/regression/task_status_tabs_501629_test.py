@@ -28,5 +28,17 @@ class TaskStatusTabs501629Test(unittest.TestCase):
         self.assertEqual(_labels("collaboratingTabs"), ["处理中", "已完成"])
 
 
+
+class TaskOwnerUsernameFilter501629Test(unittest.TestCase):
+    def test_list_tasks_filters_owner_username_exactly_in_sql(self):
+        import inspect
+
+        from app.areas.tp import router
+
+        self.assertIn("owner_username", inspect.signature(router.list_tasks).parameters)
+        source = inspect.getsource(router.list_tasks)
+        self.assertIn("task_conditions.append(BusinessRecord.owner == owner_username.strip())", source)
+
+
 if __name__ == "__main__":
     unittest.main()
