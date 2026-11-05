@@ -981,13 +981,18 @@ async def _case_update_info(run: Run, args: dict) -> dict:
     comment = args.get("comment") or "智能体修改案件信息"
     changed: list[str] = []
     changes: list[str] = []  # 卡片上写清“改什么、从多少改成多少”（陶国南 11-05）
+    change_rows: list[dict] = []  # 501634：确认窗口表格“字段 / 现状 / 改为”和标题里的区块
+    sections: list[str] = []
 
-    def note(label: str, before, after) -> None:
+    def note(label: str, before, after, section: str) -> None:
         def show(value) -> str:
             if isinstance(value, (list, tuple)):
                 value = "、".join(str(item) for item in value if item)
             return str(value).strip() if value not in (None, "") and str(value).strip() else "未填写"
         changes.append(f"{label}：{show(before)} → {show(after)}")
+        change_rows.append({"field": label, "before": show(before), "before_read": True, "after": show(after)})
+        if section not in sections:
+            sections.append(section)
     if args.get("judgment_amount") is not None or args.get("litigation_amount") is not None:
         def amount(key: str, current) -> float:
             value = args.get(key)
@@ -1000,9 +1005,9 @@ async def _case_update_info(run: Run, args: dict) -> dict:
         body = {"litigation_amount": amount("litigation_amount", data.get("litigation_amount")),
                 "settlement_amount": amount("judgment_amount", data.get("settlement_amount")), "comment": comment}
         if args.get("judgment_amount") is not None:
-            note("判决/调解金额（元）", data.get("settlement_amount"), args["judgment_amount"])
+            note("判决/调解金额（元）", data.get("settlement_amount"), args["judgment_amount"], "判决/调解金额")
         if args.get("litigation_amount") is not None:
-            note("诉讼标的（元）", data.get("litigation_amount"), args["litigation_amount"])
+            note("诉讼标的（元）", data.get("litigation_amount"), args["litigation_amount"], "诉讼标的")
         await run.write("oa_update_case_settlement_amount_put", {"path": {"case_id": case["id"]}, "body": body}, "修改诉讼标的/判决金额")
         changed.append("诉讼/判决金额")
     if args.get("court"):
@@ -1021,28 +1026,28 @@ async def _case_update_info(run: Run, args: dict) -> dict:
                   "_hearing_date": "开庭时间", "_judgment_date": "判决日期"}
         for suffix, label in labels.items():
             if prefix + suffix in body:
-                note(f"{level_name}{label}", data.get(prefix + suffix), body[prefix + suffix])
+                note(f"{level_name}{label}", data.get(prefix + suffix), body[prefix + suffix], "法院信息")
         if "judgment_document_no" in body:
-            note("判决文书号", data.get("judgment_document_no"), body["judgment_document_no"])
+            note("判决文书号", data.get("judgment_document_no"), body["judgment_document_no"], "法院信息")
         if body:
             await run.write("oa_update_case_court_info_put", {"path": {"case_id": case["id"]}, "body": {**body, "comment": comment}}, "修改法院信息")
             changed.append("法院信息")
     if args.get("hearing_lawyers"):
-        note("开庭律师", data.get("hearing_lawyer") or data.get("hearing_lawyers"), args["hearing_lawyers"])
+        note("开庭律师", data.get("hearing_lawyer") or data.get("hearing_lawyers"), args["hearing_lawyers"], "开庭律师")
         await run.write("oa_update_case_hearing_lawyer_put", {"path": {"case_id": case["id"]},
                                                               "body": {"hearing_lawyers": args["hearing_lawyers"], "comment": comment}}, "修改开庭律师")
         changed.append("开庭律师")
     if args.get("case_phase_name"):
-        note("案件阶段", data.get("case_phase") or case.get("status"), args["case_phase_name"])
+        note("案件阶段", data.get("case_phase") or case.get("status"), args["case_phase_name"], "案件阶段")
         await run.write("oa_update_case_phase_post", {"body": {"case_nos": [case.get("serial_no")], "case_phase_name": args["case_phase_name"],
                                                                "comment": comment}}, "变更案件阶段")
         changed.append("案件阶段")
     if args.get("execution_status"):
-        note("执行状态", data.get("execution_status"), args["execution_status"])
+        note("执行状态", data.get("execution_status"), args["execution_status"], "执行状态")
         await run.write("oa_update_case_execution_status_post", {"body": {"case_nos": [case.get("serial_no")], "execution_status": args["execution_status"],
                                                                           "comment": comment}}, "修改执行状态")
         changed.append("执行状态")
-    return {"case": _brief(case), "changed": changed, "changes": changes}
+    return {"case": _brief(case), "changed": changed, "changes": changes, "change_rows": change_rows, "sections": sections}
 
 
 def _contract_option(row: dict) -> str:

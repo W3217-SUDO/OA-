@@ -1,14 +1,15 @@
 import { Alert, Button, Tag, Tooltip } from "antd";
 import { CheckOutlined, CloseOutlined, LeftOutlined, MinusOutlined, RightOutlined } from "@ant-design/icons";
-import { AgentChoice, agentConfirmHeadline, agentConfirmTable, agentOperationName, hasAgentOperationPreview } from "../AgentOperationPreview";
+import { AgentChoice, agentConfirmHeadline, agentConfirmTable, hasAgentOperationPreview } from "../AgentOperationPreview";
 import type { CaseAgentAction } from "./types";
 
 // 501634（tgn 11-05）：案件智能体的写入确认卡片改成单独浮动弹出的确认窗口，直接在窗口上“驳回，不修改”或“批准并执行”。
 // “缩小”只是收起，不算批准也不算驳回，卡片仍是待确认；智能体顶部和收起后的侧边按钮都显示“待确认 N”，随时再打开。
+// tgn 11-05 07:22：标题去掉案号和操作名小字（保留“待确认”标签），只写“修改/编辑确认：修改××”（动了哪块写哪块），表格只列动了的字段。
 // tgn 11-06 00:01：窗口只留一行操作对象 + 一张表（修改：字段 / 现状 / 改为，只列要改的；新增：字段 / 内容）+ 两个按钮，不再有摘要和重复说明。
 // 窗口放在智能体窗口（CaseAgentDock）里面渲染、用 position:fixed 浮在页面上：智能体随页签缓存（is-cached）一起藏起来时它也一起藏，
 // 层级在智能体窗口（1500）之上，压过案件详情抽屉。样式不用 :has、dvh、color-mix、@container（钉钉 Chrome 100）。
-export function CaseAgentConfirmFloat({ actions, currentId, target, failures, decisionLoading, disabled, onSelect, onDecide, onMinimize }: {
+export function CaseAgentConfirmFloat({ actions, currentId, failures, decisionLoading, disabled, onSelect, onDecide, onMinimize }: {
   actions: CaseAgentAction[];
   currentId: string | null;
   target?: string;
@@ -29,7 +30,7 @@ export function CaseAgentConfirmFloat({ actions, currentId, target, failures, de
   const go = (step: number) => onSelect(actions[(index + step + actions.length) % actions.length].id);
   return <div className="case-agent-confirm-float agent-pending-card" role="dialog" aria-modal={false} aria-label="案件智能体操作确认" data-testid="case-agent-confirm-float">
     <header className="case-agent-confirm-float-header">
-      <span className="agent-pending-title"><Tag className="agent-pending-tag">待确认</Tag><span className="case-agent-confirm-float-headline">{agentConfirmHeadline(action, target)}</span><span className="case-agent-confirm-float-kind">{agentOperationName(action)}</span></span>
+      <span className="agent-pending-title"><Tag className="agent-pending-tag">待确认</Tag><span className="case-agent-confirm-float-headline">{agentConfirmHeadline(action)}</span></span>
       <span className="case-agent-confirm-float-tools">
         {actions.length > 1 && <>
           <Button type="text" size="small" icon={<LeftOutlined />} aria-label="上一项" onClick={() => go(-1)} />

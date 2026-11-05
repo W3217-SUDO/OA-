@@ -20,6 +20,8 @@ export type AgentActionPreview = {
   value_labels?: Record<string, Record<string, string>>;
   /** 陶国南 11-05 09:14：卡片上要用户选的一项（如两份以上合同时选费用归属合同），选了才能确认。 */
   choice?: { field: string; label?: string; options: { value: string | number; label: string }[] };
+  /** 501634（tgn 11-05 07:22）：这次动了案件详情哪几块（诉讼标的、案件基本信息、法院信息、当事人、经办律师信息等）。 */
+  sections?: string[];
 };
 
 export type AgentApprovalAction = {
@@ -240,10 +242,16 @@ export const agentConfirmTable = (action: AgentApprovalAction): AgentConfirmTabl
   if (typeof preview?.params?.steps === "string" && preview.params.steps.trim()) rows.push({ field: "steps", label: "办理步骤", after: preview.params.steps.trim() });
   return { mode: "create", rows };
 };
-/** 确认窗口第一行是案号（tgn 11-06 00:08），例如“案号：HZMS2650002”；没有案号时写操作名称。 */
-export const agentConfirmHeadline = (action: AgentApprovalAction, target?: string) => {
-  const object = String(target || "").trim() || String(action.preview?.target || "").trim().split(/\s+/)[0] || "";
-  return object ? `案号：${object}` : agentOperationName(action) || "智能体操作";
+/** 501634（tgn 11-05 07:22）：确认窗口标题不写案号（智能体就在本案里），只写这次动了哪一块，
+ *  例如“修改/编辑确认：修改诉讼标的”“修改/编辑确认：修改案件基本信息、经办律师信息”；新增写“新增确认：新增××”。 */
+export const agentConfirmHeadline = (action: AgentApprovalAction) => {
+  const name = agentOperationName(action) || "智能体操作";
+  if (agentConfirmTable(action).mode === "change") {
+    const sections = (action.preview?.sections || []).map((item) => String(item || "").trim()).filter(Boolean);
+    const what = sections.length ? sections.join("、") : name.replace(/^(修改|编辑|更新|变更)/, "") || "案件信息";
+    return `修改/编辑确认：修改${what}`;
+  }
+  return /^(新增|新建|创建|添加)/.test(name) ? `新增确认：${name}` : `操作确认：${name}`;
 };
 
 // 卡片上的选择按确认请求编号记住；各处“批准”按钮提交时带上（agentChoiceBody），没选时提示（agentChoiceMissing）。

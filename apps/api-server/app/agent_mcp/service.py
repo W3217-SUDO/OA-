@@ -358,6 +358,7 @@ async def _call_tool(name: str, arguments: dict, *, conversation_id: str | None 
             return await execute_original(spec, params, case_origin=case_origin, conversation_id=conversation_id)
         # 其余写入一律先生成待确认请求（陶威 11-01 21:55）：站内智能体弹确认卡片，外部 MCP 由本人在 OA 网页智能体中心确认。
         target, changes, original = await _original_changes(spec, params, db)
+        from app.agent_mcp.confirm_sections import confirm_sections
         from app.agent_mcp.display_labels import display_maps, record_display_maps
         labels = display_maps(params)
         # 501634：编号、账号、部门代码显示成案号、名称、姓名、部门名；改前的值也一起查，确认窗口写“原值 → 新值”。
@@ -369,6 +370,7 @@ async def _call_tool(name: str, arguments: dict, *, conversation_id: str | None 
             "path": render_path(spec, params), "path_template": spec.path, "params": params,
             "original_values": original, "requires_confirmation": True,
             **({"target": target} if target else {}), **({"changes": changes} if changes else {}),
+            **({"sections": sections} if (sections := confirm_sections(spec.name, changes)) else {}),
             **labels,
         }
         pending = await _create_pending_request(
@@ -501,6 +503,9 @@ async def prepare_business_request(tool, values: dict, plan: dict, *, conversati
         "original_values": ("；".join(plan["changes"]) if plan.get("changes") else "按下列步骤依次办理，任一步失败即停止"),
         "requires_confirmation": True,
         **({"choice": plan["choice"]} if isinstance(plan.get("choice"), dict) else {}),
+        # 501634（tgn 11-05 07:22）：业务工具算出了“原值 → 新值”时，确认窗口按修改显示，只列动了的字段，标题写动了哪一块。
+        **({"changes": plan["change_rows"]} if plan.get("change_rows") else {}),
+        **({"sections": plan["sections"]} if plan.get("sections") else {}),
         **display_maps({"body": values}, tool.properties),
     }
     async with SessionLocal() as db:
