@@ -964,6 +964,7 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
                 "handed_off_at": str(date.today()),
                 "handoff_auto_complete_at": "",
                 "handoff_restarted": False,
+                "received_by_handoff": True,
             }
         else:
             task.status = "已撤回"
@@ -1031,8 +1032,9 @@ async def reject_task(task_id: int, body: TaskActionInput, identity: dict = Depe
     task = await _task_or_404(task_id, db)
     if identity.get("role") != "admin" and task.owner != identity["username"]:
         raise HTTPException(status_code=403, detail="只有任务负责人可以拒绝任务")
-    if task.status not in {"待接收", "待处理"}:
-        raise HTTPException(status_code=409, detail="当前状态不能拒绝任务")
+    from app.core.tasks import task_reject_block_reason
+    if reason := task_reject_block_reason(task):
+        raise HTTPException(status_code=409, detail=reason)
     if not body.comment.strip(): raise HTTPException(status_code=422, detail="拒绝任务必须填写理由")
     previous = task.status; task.status = "已拒绝"
     task.data = {**(task.data or {}), "rejected_reason": body.comment.strip(), "rejected_at": datetime.now().isoformat(timespec="seconds"), "handoff_auto_complete_at": ""}
@@ -1096,7 +1098,7 @@ async def resend_task(task_id: int, body: TaskHandoffInput, identity: dict = Dep
     from app.core.case_task_members import require_case_task_members
     await require_case_task_members([recipient], db, task_data=data)
     task.owner = recipient; task.status = "待接收"
-    task.data = {**data, "rejected_reason": "", "resent_at": datetime.now().isoformat(timespec="seconds"), "handoff_from": previous_owner, "handoff_recipient": recipient, "handed_off_at": str(date.today()), "handoff_auto_complete_at": "", "handoff_restarted": False}
+    task.data = {**data, "rejected_reason": "", "resent_at": datetime.now().isoformat(timespec="seconds"), "handoff_from": previous_owner, "handoff_recipient": recipient, "handed_off_at": str(date.today()), "handoff_auto_complete_at": "", "handoff_restarted": False, "received_by_handoff": False}
     await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="重新派发任务", from_status="已拒绝", to_status="待接收", operator=identity["username"], comment=f"{previous_owner} → {recipient}。{body.comment}"), db, content="任务已重新派发.")
     await db.commit(); await db.refresh(task); return _task_dict(task)
 
@@ -1474,7 +1476,7 @@ async def handoff_task(task_id: int, body: TaskHandoffInput, identity: dict = De
             "handoff_requested_end_at": body.end_at.isoformat(timespec="seconds") if body.end_at else "",
             "handoff_limit_days": handoff_limit_days,
         }
-    task.data = {**data, **deadline_updates, "handoff_from": previous_owner, "handoff_recipient": recipient, "handed_off_at": str(date.today()), "handoff_auto_complete_at": "", "handoff_restarted": False}
+    task.data = {**data, **deadline_updates, "handoff_from": previous_owner, "handoff_recipient": recipient, "handed_off_at": str(date.today()), "handoff_auto_complete_at": "", "handoff_restarted": False, "received_by_handoff": True}
     await _record_task_manual_intervention(task, identity, db, action="任务交接")
     deadline_comment = f"；交接结束时间：{handoff_end_at.isoformat(timespec='seconds')}" if deadline_updates else ""
     await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="任务交接", from_status=previous_status, to_status="待接收", operator=identity["username"], comment=f"{previous_owner} 交接给 {recipient}{deadline_comment}。{'（' + identity['username'] + ' 代办）' if previous_owner != identity['username'] else ''}{body.comment}"), db, content="任务已交接.")

@@ -33,6 +33,8 @@ export type TaskRow = {
   updated_at: string;
   verified_at: string;
   rejected_reason: string;
+  /** 501629：负责人能否拒绝（待处理、第一手接收、不是自己发给自己的） */
+  can_reject?: boolean;
   handoff_recipient: string;
   handoff_auto_complete_at: string;
   completion_auto_confirm_at: string;

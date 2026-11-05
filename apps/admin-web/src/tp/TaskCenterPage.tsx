@@ -1516,6 +1516,7 @@ export default function TaskCenterPage({
         onConfirmTask={(row) => void simpleAction(row, "confirm")}
         onWithdrawTask={requestTaskWithdrawal}
         onResendTask={(row) => openDialog(row, "resend")}
+        onRejectTask={(row) => openDialog(row, "reject")}
         onRestartTask={(row) => void simpleAction(row, "restart")}
         onAcceptSelected={acceptSelectedTask}
         onCompleteSelected={() => requireOne((row) => void simpleAction(row, "complete"))}

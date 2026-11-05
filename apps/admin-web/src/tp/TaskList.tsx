@@ -89,6 +89,7 @@ export interface TaskListProps {
   onConfirmTask: (row: TaskRow) => void;
   onWithdrawTask: (row: TaskRow) => void;
   onResendTask: (row: TaskRow) => void;
+  onRejectTask: (row: TaskRow) => void;
   onRestartTask: (row: TaskRow) => void;
   onAcceptSelected: () => void;
   onCompleteSelected: () => void;
@@ -102,7 +103,7 @@ export interface TaskListProps {
 }
 
 export default function TaskList(props: TaskListProps) {
-  const { canRequestTaskException, onRequestException, onReviewException, peopleOptions } = props;
+  const { canRequestTaskException, onRequestException, onReviewException, peopleOptions, onRejectTask } = props;
   const { isUnread, tabs, statusTab, counts, queryForm, loading, columns, filteredTasks, taskMeta, selectedKeys, hideTaskFooter, actionSubmitting, profile, canManageInitiatedTask, canManageAcceptedTask, canManageCompanyCreatedTask, canWithdrawTask, canReviewTaskException, selectedRows, selected, caseBatchLabels, onTabChange, onQuerySubmit, onQueryReset, onCreateTask, onSelectedKeysChange, onTableChange, onOpenCommunication, onMarkSelectedUnreadRead, onConfirmTask, onWithdrawTask, onResendTask, onRestartTask, onAcceptSelected, onCompleteSelected, onCompleteOne, onOpenHandoff, onOpenTaskBatchLifecycle, onMoreAction } = props;
   // 查询区折叠：桌面默认展开、按页面记住；手机默认收起（原来的手机开关由共享开关替代）。
   const filterToggle = useFilterToggle("查询条件");
@@ -343,6 +344,10 @@ export default function TaskList(props: TaskListProps) {
               )}
             {canManageAcceptedTask && statusTab === "pending" && (
               roleActionAllowed("task.accept") && <Button onClick={onAcceptSelected}>接受任务</Button>
+            )}
+            {/* 501629（tgn 11-05）：照老系统，第一手接收、不是自己发给自己的任务可拒绝，必须写理由，退回发起人 */}
+            {canManageAcceptedTask && statusTab === "pending" && selectedRows.length === 1 && selected?.can_reject && (
+              roleActionAllowed("task.accept") && <Button danger onClick={() => onRejectTask(selected)}>拒绝任务</Button>
             )}
             {canManageAcceptedTask && statusTab === "pending" && (
               <>

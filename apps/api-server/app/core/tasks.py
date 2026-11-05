@@ -99,6 +99,25 @@ def _task_schedule_state(record: BusinessRecord) -> tuple[date | None, int | Non
     return deadline, days_remaining, effective_status, reminder_due, reminder_text
 
 
+def task_received_by_handoff(data: dict) -> bool:
+    """是否是转交来的任务（501629）：转交时记 received_by_handoff；旧数据按有 handoff_from 且不是重新派发判断。"""
+    if "received_by_handoff" in data:
+        return bool(data.get("received_by_handoff"))
+    return bool(data.get("handoff_from")) and not data.get("resent_at")
+
+
+def task_reject_block_reason(record: BusinessRecord) -> str:
+    """负责人能否拒绝任务（501629，照老系统）：只有待接收/待处理、第一手接收、不是自己发给自己的任务可以拒绝。"""
+    data = record.data or {}
+    if record.status not in {"待接收", "待处理"}:
+        return "当前状态不能拒绝任务"
+    if str(data.get("initiator") or "").strip() == str(record.owner or "").strip():
+        return "自己发给自己的任务不能拒绝"
+    if task_received_by_handoff(data):
+        return "转交来的任务不能拒绝，请转交或完成"
+    return ""
+
+
 def _task_dict(record: BusinessRecord) -> dict:
     from app.core.case_automation import requires_phase_completion
     from app.core.system import (
@@ -137,6 +156,7 @@ def _task_dict(record: BusinessRecord) -> dict:
         "start_at": data.get("start_at") or data.get("task_begin_time") or data.get("TaskBeginTime") or "",
         "end_at": data.get("end_at") or data.get("task_end_time") or data.get("TaskEndTime") or "",
         "rejected_reason": data.get("rejected_reason", ""),
+        "can_reject": not task_reject_block_reason(record),
         "plaintiff": data.get("plaintiff", ""), "defendant": data.get("defendant", ""),
         "case_stage": data.get("case_stage", ""),
         "accepted_at": data.get("accepted_at", ""),
