@@ -2078,8 +2078,6 @@ export default function App() {
       <AgentDocumentPage onNavigate={navigate} />
     ) : route.startsWith("documents-") ? (
       <DocumentCenterPage initialView={route} onNavigate={navigate} />
-    ) : active === "platform-finance-overview-gdicbc" ? (
-      <BankFlowPage fixedBank="gdicbc" />
     ) : active === "platform-finance-overview-bank-flow" ? (
       <BankFlowPage financeScope="platform" />
     ) : route.startsWith("platform-finance-") ? (
@@ -2096,8 +2094,6 @@ export default function App() {
       <UserCenterPage />
     ) : active === "finance-receipts-bank-flow" ? (
       <BankFlowPage financeScope="firm" />
-    ) : active === "finance-receipts-gdicbc" ? (
-      <BankFlowPage fixedBank="gdicbc" />
     ) : route.startsWith("finance-") ? (
       <FinanceCenterPage initialView={active} onNavigate={navigate} />
     ) : ["hr-department-new", "hr-departments", "hr-roles"].includes(route) ? (

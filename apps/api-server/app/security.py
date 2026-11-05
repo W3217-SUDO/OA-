@@ -58,7 +58,7 @@ def create_token(username: str, role: str, expires_minutes: int | None = None) -
 
 _BANK_FLOW_LINE_MENUS = (
     "finance-receipts-bank-flow", "platform-finance-overview-bank-flow",
-    *(f"{area}-{bank}" for area in ("finance-receipts", "platform-finance-overview") for bank in ("icbc", "citic", "boc", "cmb")),
+    *(f"{area}-{bank}" for area in ("finance-receipts", "platform-finance-overview") for bank in ("icbc", "citic", "boc", "cmb", "gdicbc")),
 )
 _PAGE_MENU_PREFIXES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("/system/menus/navigation", ()),

@@ -51,7 +51,7 @@ type FlowLine = {
 };
 type LineFilters = { bank?: string; payer_name?: string; payer_account?: string; dates?: [Dayjs | null, Dayjs | null] | null; status?: string };
 const lineBanks = [
-  { value: "icbc", label: "工行" }, { value: "citic", label: "中信" }, { value: "boc", label: "中行" }, { value: "cmb", label: "招商" },
+  { value: "icbc", label: "工行" }, { value: "citic", label: "中信" }, { value: "boc", label: "中行" }, { value: "cmb", label: "招商" }, { value: "gdicbc", label: "国定工行" },
 ];
 export type BankPageFlowStatus = "未导入" | "已导入" | "已删除";
 const money = (value: number) => value.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

@@ -112,6 +112,7 @@ async def list_incoming_payments(
             "citic": ("中信",),
             "boc": ("中行", "中国银行"),
             "cmb": ("招商", "招行"),
+            "gdicbc": ("国定工行",),  # 501588
         }
         bank_code = bank_source.strip().lower()
         if bank_code not in aliases:
@@ -121,7 +122,7 @@ async def list_incoming_payments(
         and (page is not None or page_size is not None)
         and not keyword and not has_effective_incoming_filters(view, filter_values)
         and not bank_source and not payment_status
-        and view not in {f"finance-receipts-{bank}" for bank in ("icbc", "citic", "boc", "cmb")}
+        and view not in {f"finance-receipts-{bank}" for bank in ("icbc", "citic", "boc", "cmb", "gdicbc")}
     )
     # 501099 非诉财务中心“我的回款/部门回款”：本人或本部门登记、认领的回款。
     owner_conditions = await _incoming_owner_conditions(owner_scope, identity, db)
@@ -134,7 +135,10 @@ async def list_incoming_payments(
             func.lower(func.trim(IncomingPayment.bank_source)) == bank_code,
             *(IncomingPayment.bank_source.contains(name) for name in aliases[bank_code]),
         ))
-    if view in {f"finance-receipts-{bank}" for bank in ("icbc", "citic", "boc", "cmb")}:
+        if bank_code == "icbc":
+            # 501588：“国定工行”也含“工行”，工行页不带国定工行的流水。
+            statement = statement.where(~func.coalesce(IncomingPayment.bank_source, "").contains("国定"))
+    if view in {f"finance-receipts-{bank}" for bank in ("icbc", "citic", "boc", "cmb", "gdicbc")}:
         # 银行导入页只管本页上传的流水；迁移来的历史回款在“回款管理”里查，不在这里堆着（数据不删）。
         statement = statement.where(IncomingPayment.source_kind == "bank_import")
     if payment_status:
@@ -301,9 +305,11 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
     import json
     from app.core.permissions import _permission_payload_for_identity
     bank_source = bank_source.strip().lower()
-    bank_names = {"icbc": "工行", "citic": "中信", "boc": "中行", "cmb": "招商"}
+    bank_names = {"icbc": "工行", "citic": "中信", "boc": "中行", "cmb": "招商", "gdicbc": "国定工行"}
     if bank_source and bank_source not in bank_names:
-        raise HTTPException(422, "请选择工行、中信、中行或招商回款入口上传")
+        raise HTTPException(422, "请选择工行、中信、中行、国定工行或招商回款入口上传")
+    # 501588（审核管理 11-05）：国定工行是工行账户，导出表和工行一样，按工行模板解析。
+    parse_bank = "icbc" if bank_source == "gdicbc" else bank_source
     permission = await _permission_payload_for_identity(identity, db)
     menus = set(permission.get("menu_keys", []))
     bank_menu = (f"platform-finance-overview-{bank_source}" if identity["_finance_scope"] == "platform"
@@ -330,12 +336,12 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
             if len(raw) > 100 * 1024 * 1024:
                 raise HTTPException(status_code=413, detail="银行流水文件不能超过100MB，请拆分后上传")
             if requires_recognition(file.filename or ''):
-                statement_rows = await recognize_document(raw, file.filename or '', bank_source)
+                statement_rows = await recognize_document(raw, file.filename or '', parse_bank)
                 statement_rows = [[sheet, number, {key: cell_text(value) for key, value in row.items()}] for sheet, number, row in statement_rows]
                 preview = recognized = True
             else:
                 from starlette.concurrency import run_in_threadpool
-                statement_rows = await run_in_threadpool(read_statement, raw, file.filename or "", bank_source)
+                statement_rows = await run_in_threadpool(read_statement, raw, file.filename or "", parse_bank)
                 sheet_digest_rows = [[sheet, number, {key: cell_text(value) for key, value in row.items()}] for sheet, number, row in statement_rows]
                 if confirmation_token:
                     if not verify_preview(confirmation_token, sheet_digest_rows, identity['username'], f"{bank_source}:{identity['_finance_scope']}"):
@@ -352,8 +358,8 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
     from app.models import BankStatementLine
     existing = set((await db.scalars(select(IncomingPayment.bank_reference))).all())
     existing |= set((await db.scalars(select(BankStatementLine.bank_reference).where(BankStatementLine.bank_reference.is_not(None)))).all())
-    existing_receipts = set((await db.scalars(select(IncomingPayment.receipt_no))).all()) if bank_source == 'icbc' else set()
-    if bank_source == 'icbc':
+    existing_receipts = set((await db.scalars(select(IncomingPayment.receipt_no))).all()) if parse_bank == 'icbc' else set()
+    if parse_bank == 'icbc':
         existing_receipts |= set((await db.scalars(select(BankStatementLine.import_identity).where(BankStatementLine.import_identity.is_not(None)))).all())
     created = 0
     skipped = 0
@@ -368,7 +374,7 @@ async def import_incoming_payments(file: UploadFile | None = File(None), bank_so
                 raise ValueError('无法确认收付方向，请核对原文件后使用明确的收入流水明细')
             payer = cell_text(row.get("payer_name"))
             bank_reference = cell_text(row.get("bank_reference"))
-            import_identity = cell_text(row.get('_import_identity')) if bank_source == 'icbc' else ''
+            import_identity = cell_text(row.get('_import_identity')) if parse_bank == 'icbc' else ''
             if import_identity:
                 import re
                 if not re.fullmatch(r'HKICBC[0-9a-f]{48}', import_identity):

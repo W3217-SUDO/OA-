@@ -153,7 +153,7 @@ async def list_bank_flows(
 
 
 # —— 新上传流水（两步：上传→流水→勾选生成到账单）——
-LINE_BANK_NAMES = {"icbc": "工行", "citic": "中信", "boc": "中行", "cmb": "招商"}
+LINE_BANK_NAMES = {"icbc": "工行", "citic": "中信", "boc": "中行", "cmb": "招商", "gdicbc": "国定工行"}
 LINE_SCOPE_NAMES = {"firm": "律所", "platform": "平台"}
 FLOW_MENU = {"firm": "finance-receipts-bank-flow", "platform": "platform-finance-overview-bank-flow"}
 
@@ -192,7 +192,7 @@ def _line_dict(line: BankStatementLine) -> dict:
 
 @router.get(f"{settings.api_prefix}/finance/bank-flows/lines")
 async def list_bank_flow_lines(
-    bank: str = Query("", pattern="^(|icbc|citic|boc|cmb)$"),
+    bank: str = Query("", pattern="^(|icbc|citic|boc|cmb|gdicbc)$"),
     payer_name: str = Query(""),
     payer_account: str = Query(""),
     date_from: date | None = Query(None),

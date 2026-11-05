@@ -16,7 +16,7 @@ from app.core.incoming_legacy_amounts import ASSIGNED_FIELDS, LEGACY_ASSIGNED_AM
 from app.core.hz_allocation_read_model import hz_allocation_read_models
 
 
-BANK_VIEWS = {f"finance-receipts-{bank}" for bank in ("icbc", "citic", "boc", "cmb")}
+BANK_VIEWS = {f"finance-receipts-{bank}" for bank in ("icbc", "citic", "boc", "cmb", "gdicbc")}
 RECEIPT_VIEWS = {f"finance-receipts-{kind}" for kind in ("manage", "claim", "pending", "allocated")}
 QUERY_VIEW = "finance-receipts-query"
 VIEW_STATUSES = {
@@ -246,9 +246,10 @@ async def read_incoming_query(statement, keyword: str, view: str, filters: dict,
     if view in BANK_VIEWS:
         bank = view.removeprefix("finance-receipts-")
         names = {"icbc": ("工行", "工商银行"), "citic": ("中信",),
-                 "boc": ("中行", "中国银行"), "cmb": ("招商", "招行")}
-        items = [item for item in items if (item.bank_source or "").strip(JS_WHITESPACE).lower() == bank
-                 or any(name in (item.bank_source or "").strip(JS_WHITESPACE).lower() for name in names[bank])]
+                 "boc": ("中行", "中国银行"), "cmb": ("招商", "招行"), "gdicbc": ("国定工行",)}
+        items = [item for item in items if ((item.bank_source or "").strip(JS_WHITESPACE).lower() == bank
+                 or any(name in (item.bank_source or "").strip(JS_WHITESPACE).lower() for name in names[bank]))
+                 and not (bank == "icbc" and "国定" in (item.bank_source or ""))]
     if view in VIEW_STATUSES:
         items = [item for item in items if item.status in VIEW_STATUSES[view]]
     customers = await incoming_customers(items, db) if view == QUERY_VIEW and filters.get("routeField4") not in (None, "", "请选择", "全部") else {}

@@ -87,6 +87,27 @@ export function createRouteConfigs(context: {
                 "状态",
             ],
         },
+        // 501588：国定工行和工行同一套上传导入。
+        "finance-receipts-gdicbc": {
+            fields: context.bankFields,
+            source: "incoming",
+            selectable: true,
+            upload: true,
+            headers: [
+                "管家卡卡号/收款账号",
+                "管家卡卡名称/收款名称",
+                "对方账号/回款账号",
+                "对方户名/回款单位",
+                "金额/回款金额",
+                "收付款标志/回款方式",
+                "收付款日期/回款日期",
+                "渠道",
+                "流水号",
+                "备注",
+                "摘要",
+                "状态",
+            ],
+        },
         "finance-receipts-citic": {
             fields: context.bankFields,
             source: "incoming",
