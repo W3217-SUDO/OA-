@@ -824,7 +824,12 @@ def _hearing_time(data: dict, status_text: str) -> str:
 
 
 async def _party_phones(names: list[str], db: AsyncSession) -> str:
-    profiles = await _party_profiles(names, db)
+    # 电话只看当事人档案，不为它查企查查（企查查不给电话，查了白扣次数）。
+    token = ENTERPRISE_LOOKUP.set(None)
+    try:
+        profiles = await _party_profiles(names, db)
+    finally:
+        ENTERPRISE_LOOKUP.reset(token)
     phones = [(name, _first(profiles.get(name, {}), *PHONE_KEYS)) for name in names]
     if len(phones) == 1:
         return phones[0][1]
@@ -943,8 +948,8 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
         "开庭时间": _hearing_time(data, record.status or ""),
         "主审法官": judge[0],
         "书记员": clerk[0],
-        "原告联系方式": await _party_phones(plaintiffs, db),
-        "被告联系方式": await _party_phones(defendants, db),
+        "原告联系方式": await _party_phones(plaintiffs, db) if _wanted("原告联系方式") else "",
+        "被告联系方式": await _party_phones(defendants, db) if _wanted("被告联系方式") else "",
         "法官联系方式": judge[1],
         "书记员联系方式": clerk[1],
         **(await firm_account(db)),
