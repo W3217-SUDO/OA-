@@ -267,10 +267,11 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
 
         request = Request({"type": "http", "method": "GET", "path": "/api/v1/dashboard", "headers": []})
         db = object()
-        async def cached(session, identity, section, compute, *, compute_in=None):
+        async def cached(session, identity, section, compute, *, compute_in=None, parameters=None):
             self.assertIs(session, db)
             self.assertIs(identity, IDENTITY)
-            self.assertIn(section, {"metrics_finance", "metrics_cases", "todos", "cases"})
+            self.assertIn(section, {"metrics_finance", "metrics_cases", "todos", "cases", "rejections"})
+            self.assertEqual(parameters, {})
             # 请求入口必须给出可在独立会话里重算的函数（先返回旧结果、后台重算）。
             self.assertTrue(callable(compute_in))
             return await compute()
@@ -280,13 +281,13 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
              patch("app.core.dashboard_request.run_dashboard_read", side_effect=run), \
              patch("app.areas.system.router.dashboard", new=AsyncMock(return_value={"result": "original"})) as compute, \
              patch("app.core.dashboard_metrics_cache.read_dashboard_metrics", new=AsyncMock(return_value={"metrics": []})) as full:
-            for section in ("metrics_finance", "metrics_cases", "todos", "cases"):
+            for section in ("metrics_finance", "metrics_cases", "todos", "cases", "rejections"):
                 self.assertEqual(await dashboard_http(request, IDENTITY, db, section), {"result": "original"})
                 self.assertEqual(cache.call_args.args[2], section)
                 compute.assert_awaited_with(IDENTITY, db, section)
             await dashboard_http(request, IDENTITY, db, "metrics")
             full.assert_awaited_once_with(IDENTITY, db)
-            self.assertEqual(cache.call_count, 4)
+            self.assertEqual(cache.call_count, 5)
 
     async def test_deleted_fee_supplement_keeps_official_explicit_unknown_and_null_status(self):
         from sqlalchemy import JSON, literal, select

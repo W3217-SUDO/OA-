@@ -42,6 +42,14 @@ class Settings(BaseSettings):
     query_prewarm_interval_seconds: float = Field(default=15, gt=0, le=600)
     query_prewarm_max_entries: int = Field(default=120, ge=1, le=2000)
     query_prewarm_idle_days: int = Field(default=4, ge=1, le=30)
+    # 11-05：工作台登记单独计数，不和财务查询抢名额（之前 120 个名额里财务占了 108 个，工作台只剩两个人）。
+    query_prewarm_dashboard_max_entries: int = Field(default=1500, ge=1, le=5000)
+    # 数据一变就重算的只是最近这段时间在用系统的人；其余的人每天早上统一算一遍。
+    query_prewarm_dashboard_recent_minutes: int = Field(default=120, ge=1, le=1440)
+    query_prewarm_dashboard_recent_limit: int = Field(default=60, ge=0, le=2000)
+    # 每天上班前把最近几天用过系统的人的工作台都算好（陶国南 11-05 同意：7:30 前算完）。
+    query_prewarm_morning_start: str = Field(default="06:00", pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
+    query_prewarm_morning_end: str = Field(default="07:30", pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
     query_cache_max_payload_bytes: int = Field(default=4 * 1024 * 1024, ge=1024, le=64 * 1024 * 1024)
     # 费用筛选事实按列压缩存放（全所约 5 万笔费用压缩后数 MB），单独设上限。
     fee_facts_cache_max_payload_bytes: int = Field(default=24 * 1024 * 1024, ge=1024, le=128 * 1024 * 1024)

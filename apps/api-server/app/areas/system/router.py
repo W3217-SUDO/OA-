@@ -1432,13 +1432,29 @@ async def dashboard_http(
 
     if section == "metrics":
         calculation = read_dashboard_metrics(identity, db)
-    elif section in {"metrics_finance", "metrics_cases", "todos", "cases"}:
+    elif section in {"metrics_finance", "metrics_cases", "todos", "cases", "portals", "rejections"}:
+        # 11-05：分端待办、审批驳回提醒也走缓存（陶国南同意的工作台提速方案）。
         await query_prewarm.remember(db, "dashboard", section, identity, {})
+        parameters = await _dashboard_cache_parameters(section, db)
         calculation = cached_dashboard_query(db, identity, section, lambda: dashboard(identity, db, section),
-                                             compute_in=lambda session: dashboard(identity, session, section))
+                                             compute_in=lambda session: dashboard(identity, session, section),
+                                             parameters=parameters)
     else:
         calculation = dashboard(identity, db, section)
     return await run_dashboard_read(request, calculation)
+
+
+async def _dashboard_cache_parameters(section, db):
+    """分端待办的端和格子配置存在 system_configs（不在业务修订集合里）：配置摘要参与缓存键，改了配置马上按新配置算。"""
+    if section != "portals":
+        return {}
+    import hashlib
+    import json as _json
+    from app.core.dashboard_portals import load_config
+
+    config = await load_config(db)
+    digest = hashlib.sha256(_json.dumps(config, ensure_ascii=True, sort_keys=True, default=str).encode()).hexdigest()
+    return {"portal_config": digest}
 
 
 async def _replay_dashboard_section(section, identity, parameters, db):
@@ -1446,7 +1462,8 @@ async def _replay_dashboard_section(section, identity, parameters, db):
 
     if parameters:
         raise ValueError("控制台预热登记不应带参数")
-    await cached_dashboard_query(db, identity, section, lambda: dashboard(identity, db, section))
+    await cached_dashboard_query(db, identity, section, lambda: dashboard(identity, db, section),
+                                 parameters=await _dashboard_cache_parameters(section, db), remember_last=True)
 
 
 query_prewarm.register("dashboard", _replay_dashboard_section)

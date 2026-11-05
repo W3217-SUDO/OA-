@@ -67,7 +67,8 @@ const sections: DashboardSection[] = ["metrics", "todos", "cases", "rejections",
 const refreshIntervalMs = 5 * 60_000;
 // 服务端在数据刚变化时先返回上次结果（stale），后台重算；几秒后再取一次拿最新值。
 const staleRetryMs = 3_000;
-const staleRetryLimit = 3;
+// 11-05：每天第一次进入先显示前一天的结果，高峰时后台重算可能要十几二十秒，多取几次（最多约 24 秒）。
+const staleRetryLimit = 8;
 
 // 控制台首屏：先显示本浏览器里该账号上次的结果，后台照常取最新数据后替换。
 // 只存在本机 localStorage，按账号区分，退出登录时清除；超过一天不再使用。
