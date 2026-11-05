@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Card, Segmented } from "antd";
 import { api } from "../api";
 import FeedbackManager, { FEEDBACK_GROUP_STATUSES, type FeedbackView } from "./FeedbackManager";
@@ -23,6 +23,14 @@ export default function FeedbackPage({ onNavigate, openPages, menuPages, resolve
   const [navKey, setNavKey] = useState(0);
   const [counts, setCounts] = useState<Record<string, number> | null>(null);
   const [countKey, setCountKey] = useState(0);
+  const headRef = useRef<HTMLDivElement>(null);
+  // 点页签（包括再点当前页签）回到对应列表，并把页面滚回顶部，不用再往上拖（tgn 11-05，BUG20261105023）。
+  const switchView = (value: FeedbackView) => {
+    setView(value);
+    setNavKey((key) => key + 1);
+    const scroller = headRef.current?.closest(".page-workbench");
+    if (scroller) scroller.scrollTop = 0;
+  };
   const returnToSource = () => onNavigate(sourceRoute || "dashboard");
   // 来源页可能是详情等非菜单页面，补进快捷选项并带上可读名称。
   const pages = useMemo(() => {
@@ -41,12 +49,16 @@ export default function FeedbackPage({ onNavigate, openPages, menuPages, resolve
   const groupCount = (group: "open" | "closed") => counts
     ? ` ${FEEDBACK_GROUP_STATUSES[group].reduce((sum, value) => sum + (counts[value] ?? 0), 0)}` : "";
 
-  return <Card className="panel feedback-page-card" title={<div className="feedback-page-head">
+  return <Card className="panel feedback-page-card" title={<div className="feedback-page-head" ref={headRef}
+      onClickCapture={(event) => {
+        const item = (event.target as HTMLElement).closest(".ant-segmented-item-selected");
+        if (item && headRef.current?.contains(item)) switchView(view);
+      }}>
       <span>我的反馈</span>
       <Segmented value={view} aria-label="切换提交反馈、处理中和已解决"
         options={[{ value: "create", label: "提交反馈" }, { value: "open", label: `处理中${groupCount("open")}` },
           { value: "closed", label: `已解决${groupCount("closed")}` }]}
-        onChange={(value) => { setView(value as FeedbackView); setNavKey((key) => key + 1); }} />
+        onChange={(value) => switchView(value as FeedbackView)} />
     </div>}
     extra={<Button onClick={returnToSource}>{sourceRoute ? "返回原页面" : "返回工作台"}</Button>}>
     <FeedbackManager sourceRoute={sourceRoute} pageControls={pageControls} openPages={pages} menuPages={menuPages}

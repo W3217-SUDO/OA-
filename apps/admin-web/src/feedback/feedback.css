@@ -163,3 +163,18 @@
 .feedback-status-tabs::-webkit-scrollbar {
   display: none;
 }
+
+/* “我的反馈”页头（我的反馈、提交反馈 / 处理中 / 已解决、返回原页面）吸顶：只滚动下面的列表和详情（tgn 11-05，BUG20261105023）。
+   滚动容器是 .page-workbench；用 sticky，不用 :has、dvh、color-mix（钉钉 Chrome 100）。 */
+.feedback-page-card > .ant-card-head {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--oa-surface, #fff);
+  box-shadow: 0 6px 8px -8px rgba(15, 23, 42, 0.18);
+}
+.feedback-page-head { flex-wrap: wrap; row-gap: 8px; }
+.feedback-page-head .ant-segmented { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.feedback-page-head .ant-segmented::-webkit-scrollbar { display: none; }
+.feedback-page-head .ant-segmented-group { flex-wrap: nowrap; }
+.feedback-page-head .ant-segmented-item-label { white-space: nowrap; }
