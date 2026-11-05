@@ -2,7 +2,7 @@
 // 下面页面勾着时大类显示为空，看起来像“没勾任何权限”；勾了大类再取消下面页面，大类照样保存，后端按大类放开全部页面。
 // 这里按下面的页面算大类的显示（全勾 / 半勾 / 空），保存时去掉没全勾的大类。只看页面（menu:），功能（action:）不影响大类。
 
-export type PermissionTreeNode = { key: string | number; children?: PermissionTreeNode[] };
+export type PermissionTreeNode = { key: string | number; children?: PermissionTreeNode[]; parent_grant_excluded?: boolean };
 
 const isMenu = (key: string) => key.startsWith("menu:");
 
@@ -10,7 +10,8 @@ const isMenu = (key: string) => key.startsWith("menu:");
 function leafMenus(node: PermissionTreeNode): string[] {
   const result: string[] = [];
   const visit = (items: PermissionTreeNode[] = []) => items.forEach((child) => {
-    if (isMenu(String(child.key)) && !hasMenuBelow(child)) result.push(String(child.key));
+    // 不随大类继承的新菜单（parent_grant_excluded）不算大类的“下面页面”，没勾它也不影响大类全勾。
+    if (isMenu(String(child.key)) && !hasMenuBelow(child) && !child.parent_grant_excluded) result.push(String(child.key));
     visit(child.children);
   });
   visit(node.children);

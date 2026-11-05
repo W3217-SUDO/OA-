@@ -117,3 +117,17 @@ class ParentGrantExcluded501618Test(unittest.TestCase):
         for key in ("ipr-my-cases", "ipr-receipt-custom-import", "ipr-other-invoice-upload"):
             self.assertNotIn(key, granted, "新菜单先只给管理员，不随父菜单继承")
         self.assertIn("ipr-my-cases", set(_expand_menu_permission_keys(["ipr", "ipr-my-cases"])), "单独勾了就给")
+
+
+class ParentKeptOnSave501618Test(unittest.TestCase):
+    def test_parent_not_dropped_because_new_child_unticked(self):
+        from app.core.constants import MENU_CHILDREN_BY_KEY, PARENT_GRANT_EXCLUDED_MENU_KEYS
+        from app.core.permissions import _drop_partial_parent_menu_keys
+        ticked = ["ipr"]
+        pending = ["ipr"]
+        while pending:
+            for child in MENU_CHILDREN_BY_KEY.get(pending.pop(), ()):
+                if child not in PARENT_GRANT_EXCLUDED_MENU_KEYS:
+                    ticked.append(child)
+                    pending.append(child)
+        self.assertIn("ipr", _drop_partial_parent_menu_keys(ticked), "新菜单没勾不影响知识产权中心大类")

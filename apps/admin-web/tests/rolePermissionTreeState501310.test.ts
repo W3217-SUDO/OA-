@@ -32,3 +32,10 @@ test("501310：功能没勾不影响大类；下面页面全勾时大类照样�
   assert.deepEqual(dropPartialParentMenus(tree, selected), selected);
   assert.ok(menuTreeCheckState(tree, selected).checked.includes("menu:customer"));
 });
+
+test("新菜单不随大类继承：没勾它，大类仍算全勾，保存时不去掉大类", () => {
+  const ipr = [{ key: "menu:ipr", children: [{ key: "menu:ipr-patent-annual-fee" }, { key: "menu:ipr-my-cases", parent_grant_excluded: true }] }];
+  const selected = ["menu:ipr", "menu:ipr-patent-annual-fee"];
+  assert.ok(menuTreeCheckState(ipr, selected).checked.includes("menu:ipr"));
+  assert.deepEqual(dropPartialParentMenus(ipr, selected), selected);
+});

@@ -165,7 +165,9 @@ def _drop_partial_parent_menu_keys(permissions: list[str]) -> list[str]:
     def required(key: str) -> set[str]:
         result: set[str] = set()
         for child in MENU_CHILDREN_BY_KEY.get(key, []):
-            if child in SYSTEM_MENU_ROUTE_KEYS and child not in ROLE_TREE_HIDDEN_MENU_KEYS and child not in PUBLIC_MENU_KEYS:
+            # 不随父菜单继承的新菜单也不算：否则新菜单默认不勾，角色一保存大类就被判“没全勾”去掉，原有大类权限的人会少菜单。
+            if (child in SYSTEM_MENU_ROUTE_KEYS and child not in ROLE_TREE_HIDDEN_MENU_KEYS and child not in PUBLIC_MENU_KEYS
+                    and child not in PARENT_GRANT_EXCLUDED_MENU_KEYS):
                 result.add(child)
             result |= required(child)
         return result
@@ -2344,6 +2346,8 @@ def _organization_permission_tree(menus: list[SystemMenu], actions: list[str], s
                 "key": f"menu:{menu.key}", "node_type": "M", "node_original_id": menu.id,
                 "node_id": menu.id, "node_code": menu.key, "text": label, "title": label,
                 "state": {"checked": menu.key in selected}, "children": children,
+                # 前端判断大类全勾/半勾时跳过这类新菜单（与 _drop_partial_parent_menu_keys 一致）。
+                **({"parent_grant_excluded": True} if menu.key in PARENT_GRANT_EXCLUDED_MENU_KEYS else {}),
             })
         return nodes
 
