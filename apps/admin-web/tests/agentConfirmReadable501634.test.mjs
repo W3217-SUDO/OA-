@@ -98,8 +98,9 @@ test("确认表格（tgn 11-06）：修改只列要改的“字段/现状/改为
     { field: "case_phase", label: "案件阶段", before: "（空）", after: "新案待分配" },
     { field: "cause_or_charge", label: "案由", before: "侵害商标权纠纷", after: "离婚纠纷" },
   ] });
-  assert.equal(agentConfirmHeadline(action, "HZMS2650002"), "修改案件 HZMS2650002");
-  assert.equal(agentConfirmHeadline(action), "修改案件 HZMS2650002", "没传案号时取预览里的对象");
+  assert.equal(agentConfirmHeadline(action, "HZMS2650002"), "案号：HZMS2650002");
+  assert.equal(agentConfirmHeadline(action), "案号：HZMS2650002", "没传案号时取预览里的对象");
+  assert.equal(agentConfirmHeadline({ ...action, preview: { ...preview, target: "" } }), "修改案件");
   const create = { ...action, preview: { ...preview, changes: undefined, create: { title: "举证期限", deadline: "2026-11-20", note_code: "x1" },
     field_labels: { title: "名称", deadline: "截止日期", note_code: "其他信息" } } };
   assert.deepEqual(agentConfirmTable(create), { mode: "create", rows: [

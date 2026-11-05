@@ -20,7 +20,7 @@ async function loadFloat() {
       builder.onLoad({ filter: /.*/, namespace: "stub" }, ({ path }) => ({ resolveDir: fileURLToPath(new URL(".", import.meta.url)), contents:
         path === "antd" ? 'import React from "react"; export const Button=p=>React.createElement("button",p,p.children); export const Tag=p=>React.createElement("tag",p,p.children); export const Tooltip=p=>p.children; export const Alert=p=>React.createElement("alert",p);'
         : path === "@ant-design/icons" ? 'const I=()=>null; export const CheckOutlined=I,CloseOutlined=I,LeftOutlined=I,MinusOutlined=I,RightOutlined=I;'
-        : 'import React from "react"; export const AgentChoice=()=>null; export const agentConfirmHeadline=(a,t)=>"修改案件 "+t; export const agentConfirmTable=a=>a.table; export const hasAgentOperationPreview=a=>!a.noPreview;' }));
+        : 'import React from "react"; export const AgentChoice=()=>null; export const agentConfirmHeadline=(a,t)=>"案号："+t; export const agentOperationName=a=>"修改案件"; export const agentConfirmTable=a=>a.table; export const hasAgentOperationPreview=a=>!a.noPreview;' }));
     } }],
   });
   const target = new Module(fileURLToPath(import.meta.url));
@@ -46,7 +46,7 @@ test("浮动窗口直接批准/驳回；缩小只收起不处理；多项可翻�
   await act(async () => { renderer = create(React.createElement(CaseAgentConfirmFloat, props())); });
   const button = (label) => renderer.root.findAllByType("button").find((b) => b.props.children === label || b.props["aria-label"] === label);
   const shown = textOf(renderer.toJSON());
-  assert.match(shown, /修改案件 HZMS2650002/);
+  assert.match(shown, /案号：HZMS2650002修改案件/);
   assert.match(shown, /第 1\/2 项/);
   assert.match(shown, /字段现状改为案由侵害商标权纠纷离婚纠纷/, "修改：字段 / 现状 / 改为");
   assert.doesNotMatch(shown, /写入须人工确认|另有/, "不再有重复说明");

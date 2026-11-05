@@ -1,6 +1,6 @@
 import { Alert, Button, Tag, Tooltip } from "antd";
 import { CheckOutlined, CloseOutlined, LeftOutlined, MinusOutlined, RightOutlined } from "@ant-design/icons";
-import { AgentChoice, agentConfirmHeadline, agentConfirmTable, hasAgentOperationPreview } from "../AgentOperationPreview";
+import { AgentChoice, agentConfirmHeadline, agentConfirmTable, agentOperationName, hasAgentOperationPreview } from "../AgentOperationPreview";
 import type { CaseAgentAction } from "./types";
 
 // 501634（tgn 11-05）：案件智能体的写入确认卡片改成单独浮动弹出的确认窗口，直接在窗口上“驳回，不修改”或“批准并执行”。
@@ -29,7 +29,7 @@ export function CaseAgentConfirmFloat({ actions, currentId, target, failures, de
   const go = (step: number) => onSelect(actions[(index + step + actions.length) % actions.length].id);
   return <div className="case-agent-confirm-float agent-pending-card" role="dialog" aria-modal={false} aria-label="案件智能体操作确认" data-testid="case-agent-confirm-float">
     <header className="case-agent-confirm-float-header">
-      <span className="agent-pending-title"><Tag className="agent-pending-tag">待确认</Tag><span className="case-agent-confirm-float-headline">{agentConfirmHeadline(action, target)}</span></span>
+      <span className="agent-pending-title"><Tag className="agent-pending-tag">待确认</Tag><span className="case-agent-confirm-float-headline">{agentConfirmHeadline(action, target)}</span><span className="case-agent-confirm-float-kind">{agentOperationName(action)}</span></span>
       <span className="case-agent-confirm-float-tools">
         {actions.length > 1 && <>
           <Button type="text" size="small" icon={<LeftOutlined />} aria-label="上一项" onClick={() => go(-1)} />

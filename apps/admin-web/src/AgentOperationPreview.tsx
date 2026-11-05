@@ -240,11 +240,10 @@ export const agentConfirmTable = (action: AgentApprovalAction): AgentConfirmTabl
   if (typeof preview?.params?.steps === "string" && preview.params.steps.trim()) rows.push({ field: "steps", label: "办理步骤", after: preview.params.steps.trim() });
   return { mode: "create", rows };
 };
-/** 确认窗口顶部一行：要做什么、对哪一个，例如“修改案件 HZMS2650002”。 */
+/** 确认窗口第一行是案号（tgn 11-06 00:08），例如“案号：HZMS2650002”；没有案号时写操作名称。 */
 export const agentConfirmHeadline = (action: AgentApprovalAction, target?: string) => {
-  const name = agentOperationName(action) || "智能体操作";
   const object = String(target || "").trim() || String(action.preview?.target || "").trim().split(/\s+/)[0] || "";
-  return object && !name.includes(object) ? `${name} ${object}` : name;
+  return object ? `案号：${object}` : agentOperationName(action) || "智能体操作";
 };
 
 // 卡片上的选择按确认请求编号记住；各处“批准”按钮提交时带上（agentChoiceBody），没选时提示（agentChoiceMissing）。
