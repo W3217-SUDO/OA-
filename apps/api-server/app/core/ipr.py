@@ -139,6 +139,18 @@ def _ipr_reminder_type_dict(row: IprCaseReminderType, case_count: int = 0) -> di
     }
 
 
+IPR_EXTRA_FILTER_FIELDS: dict[str, tuple[str, ...]] = {
+    "applicant": ("applicant", "applicant_name"),
+    "source_person": ("case_origin_people_name", "case_source", "origin_people_name"),
+    "copywriter": ("writer", "case_copywriter_name", "copywriter_name"),
+    "procurator": ("agent", "case_procurator_name", "procurator_name"),
+    "customer": ("@customer",),
+    "case_no": ("@serial_no", "application_no", "legacy_case_no"),
+    "trademark_class": ("trademark_ids",),
+    "title": ("@title", "case_name"),
+}
+
+
 async def _ipr_case_list_conditions(
     identity: dict,
     db: AsyncSession,
@@ -156,6 +168,7 @@ async def _ipr_case_list_conditions(
     search_by_month_day: bool = False,
     month_day: str = "",
     role_view: str = "",
+    extra: dict | None = None,
 ) -> list:
     """Build the shared visible-scope conditions for the IPR list and exports."""
     from app.core.permissions import (
@@ -197,6 +210,20 @@ async def _ipr_case_list_conditions(
     if keyword:
         like = f"%{keyword.strip()}%"
         conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like), BusinessRecord.customer.ilike(like), BusinessRecord.data["application_no"].as_string().ilike(like)))
+    # 501613“我的案件”页的筛选：申请人、案源人、撰稿人、代理人、客户名称、案号/申请号、商标类别、案件名称（包含即可）。
+    for field, value in (extra or {}).items():
+        text_value = str(value or "").strip()
+        if not text_value or field not in IPR_EXTRA_FILTER_FIELDS:
+            continue
+        like = f"%{text_value}%"
+        columns = [BusinessRecord.data[key].as_string() for key in IPR_EXTRA_FILTER_FIELDS[field] if not key.startswith("@")]
+        if "@serial_no" in IPR_EXTRA_FILTER_FIELDS[field]:
+            columns.append(BusinessRecord.serial_no)
+        if "@title" in IPR_EXTRA_FILTER_FIELDS[field]:
+            columns.append(BusinessRecord.title)
+        if "@customer" in IPR_EXTRA_FILTER_FIELDS[field]:
+            columns.append(BusinessRecord.customer)
+        conditions.append(or_(*[column.ilike(like) for column in columns]))
     if date_from and date_to and date_from > date_to:
         raise HTTPException(status_code=422, detail="开始日期不能晚于结束日期")
     if date_from:

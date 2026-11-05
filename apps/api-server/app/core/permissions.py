@@ -2377,6 +2377,11 @@ def _ipr_case_role_view_conditions(role_view: str, identity: dict) -> list:
     """
     if not role_view:
         return []
+    # 501613（范文玲 11-05）“我的案件”页：my:<视图> 在原视图上去掉失效案件，失效的统一在“失效案件”里看。
+    if role_view.startswith("my:"):
+        return [*_ipr_case_role_view_conditions(role_view[3:], identity), BusinessRecord.status != "失效"]
+    if role_view == "invalid":
+        return [BusinessRecord.status == "失效"]
     username = str(identity.get("username") or "").strip()
     display_name = str(identity.get("display_name") or "").strip()
     if not username:
@@ -2407,18 +2412,20 @@ def _ipr_case_role_view_conditions(role_view: str, identity: dict) -> list:
             "案件管理人",
         ),
     }
+    # 案件上的人员有的存姓名、有的存账号（案件管理人 business_owner 迁移时存的是账号），两种都认（501613）。
+    people = tuple(value for value in (username, display_name) if value)
+    officer_keys = ("case_officer", "case_officer_name", "case_manager", "CaseOfficer", "CaseOfficerName")
+    if role_view == "mine":
+        # 我的案件：我是任一角色、处理人，或者是我新建/负责的案件。
+        return [or_(BusinessRecord.owner == username,
+                    *[matches(keys, people) for keys, _ in named_views.values()], matches(officer_keys, people))]
     if role_view in named_views:
-        if not display_name:
-            raise HTTPException(status_code=422, detail="当前账号未维护中文姓名，不能使用该案件视图")
         keys, label = named_views[role_view]
-        return [matches(keys, (display_name,))]
+        return [matches(keys, people)]
     if role_view == "officer":
         # Legacy PageId 1001001004 matched both CaseOfficer and its display
         # name projection.  Current records also retain case_manager.
-        return [matches(
-            ("case_officer", "case_officer_name", "case_manager", "CaseOfficer", "CaseOfficerName"),
-            tuple(value for value in (username, display_name) if value),
-        )]
+        return [matches(officer_keys, people)]
     raise HTTPException(status_code=422, detail="知识产权案件身份视图无效")
 
 

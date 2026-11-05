@@ -183,6 +183,7 @@ const IprOfficialFilePage = lazyWithVersionRecovery("ipr-office-files", () => im
 const IprCustomFileImportPage = lazyWithVersionRecovery("ipr-custom-file-import", () => import("./IprCustomFileImportPage"));
 const IprCaseRebootPage = lazyWithVersionRecovery("ipr-case-reboot", () => import("./IprCaseRebootPage"));
 const IprAnnualFeePage = lazyWithVersionRecovery("ipr-patent-annual-fee", () => import("./IprAnnualFeePage"));
+const IprMyCasesPage = lazyWithVersionRecovery("ipr-my-cases", () => import("./IprMyCasesPage"));
 const TaskCenterPage = lazyWithVersionRecovery("task", () => import("./tp"));
 // 501629（tgn 11-05）：VIP 任务在案件详情“客户任务”里单独发，任务中心不再有“VIP任务”页面；VIP 任务数据和接口保留。
 const BusinessPage = lazyWithVersionRecovery("business", () => import("./BusinessPage"));
@@ -408,6 +409,7 @@ const menuItems: NavItem[] = [
     key: "ipr",
     label: "知产非诉",
     children: [
+      { key: "ipr-my-cases", label: "我的案件" },
       { key: "ipr-patent-annual-fee", label: "专利年费" },
       { key: "ipr-case-reboot", label: "案件重提" },
       { key: "ipr-case-files", label: "案件文件", children: [{ key: "ipr-custom-file-import", label: "案件自定义文件导入" }] },
@@ -2052,6 +2054,8 @@ export default function App() {
       <IprCaseRebootPage onNavigate={navigate} />
     ) : route === "ipr-patent-annual-fee" ? (
       <IprAnnualFeePage onNavigate={navigate} />
+    ) : route === "ipr-my-cases" ? (
+      <IprMyCasesPage onNavigate={navigate} />
     ) : route.startsWith(IPR_CASE_TAB_PREFIX) ? (
       <IprCenterPage key={active} initialView={parseIprCaseDetailRoute(active)?.kind === "商标" ? "ipr-trademark" : "ipr-patent"}
         detailCaseId={parseIprCaseDetailRoute(active)?.id} onNavigate={(target) => navigate(target, { reuse: true })} />

@@ -181,6 +181,34 @@ async def list_ipr_cases_by_reminder_type(
     }
 
 
+class IprCaseExtraFilters:
+    """501613“我的案件”页的筛选（列表和导出共用）。"""
+
+    def __init__(self, applicant: str = "", source_person: str = "", copywriter: str = "", procurator: str = "",
+                 customer: str = "", case_no: str = "", trademark_class: str = "", title: str = ""):
+        self.values = {"applicant": applicant, "source_person": source_person, "copywriter": copywriter,
+                       "procurator": procurator, "customer": customer, "case_no": case_no,
+                       "trademark_class": trademark_class, "title": title}
+
+    def as_dict(self) -> dict:
+        return {key: value for key, value in self.values.items() if str(value or "").strip()}
+
+
+@router.get(f"{settings.api_prefix}/ipr/cases/my-counts")
+async def ipr_my_case_counts(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """501613“我的案件”左侧各分组的数量（同列表的可见范围）。"""
+    from app.core.ipr import _ipr_case_list_conditions
+    from app.core.permissions import _require_record_module_menu
+    await _require_record_module_menu("ipr_case", identity, db, action="查看")
+    counts = {}
+    for view in ("business_owner", "source_person", "procurator", "copywriter", "mine"):
+        conditions = await _ipr_case_list_conditions(identity, db, role_view=f"my:{view}")
+        counts[view] = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions)) or 0)
+    conditions = await _ipr_case_list_conditions(identity, db, role_view="invalid")
+    counts["invalid"] = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions)) or 0)
+    return counts
+
+
 @router.get(f"{settings.api_prefix}/ipr/cases")
 async def list_ipr_cases(
     case_kind: str = "", record_status: str = "", keyword: str = "", annual_fee_monitoring: bool | None = None,
@@ -188,6 +216,7 @@ async def list_ipr_cases(
     reminder_type_id: int | None = Query(None, ge=1),
     date_from: date | None = None, date_to: date | None = None,
     search_by_month_day: bool = False, month_day: str = "", role_view: str = "",
+    extra: "IprCaseExtraFilters" = Depends(),
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
@@ -206,6 +235,7 @@ async def list_ipr_cases(
         annual_fee_monitoring=annual_fee_monitoring, case_type=case_type, case_phase=case_phase,
         reminder_type=reminder_type, case_category=case_category, date_from=date_from, date_to=date_to,
         search_by_month_day=search_by_month_day, month_day=month_day, role_view=role_view,
+        extra=extra.as_dict() if isinstance(extra, IprCaseExtraFilters) else None,
     )
     if reminder_type_id is not None:
         _, matched_rows = await _ipr_cases_for_reminder_type(reminder_type_id, identity, db, conditions)
@@ -228,6 +258,7 @@ async def export_ipr_cases_excel(
     reminder_type_id: int | None = Query(None, ge=1),
     date_from: date | None = None, date_to: date | None = None,
     search_by_month_day: bool = False, month_day: str = "", role_view: str = "",
+    extra: "IprCaseExtraFilters" = Depends(),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     """Export the caller's visible IPR cases as a real SpreadsheetML workbook.
@@ -248,6 +279,7 @@ async def export_ipr_cases_excel(
         annual_fee_monitoring=annual_fee_monitoring, case_type=case_type, case_phase=case_phase,
         reminder_type=reminder_type, case_category=case_category, date_from=date_from, date_to=date_to,
         search_by_month_day=search_by_month_day, month_day=month_day, role_view=role_view,
+        extra=extra.as_dict() if isinstance(extra, IprCaseExtraFilters) else None,
     )
     if reminder_type_id is not None:
         _, rows = await _ipr_cases_for_reminder_type(reminder_type_id, identity, db, conditions)
@@ -278,6 +310,7 @@ async def export_ipr_cases_word(
     reminder_type_id: int | None = Query(None, ge=1),
     date_from: date | None = None, date_to: date | None = None,
     search_by_month_day: bool = False, month_day: str = "", role_view: str = "",
+    extra: "IprCaseExtraFilters" = Depends(),
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
 ):
     """Export the caller's visible IPR cases as a real .docx with the legacy CaseListToWord columns."""
@@ -293,6 +326,7 @@ async def export_ipr_cases_word(
         annual_fee_monitoring=annual_fee_monitoring, case_type=case_type, case_phase=case_phase,
         reminder_type=reminder_type, case_category=case_category, date_from=date_from, date_to=date_to,
         search_by_month_day=search_by_month_day, month_day=month_day, role_view=role_view,
+        extra=extra.as_dict() if isinstance(extra, IprCaseExtraFilters) else None,
     )
     if reminder_type_id is not None:
         _, rows = await _ipr_cases_for_reminder_type(reminder_type_id, identity, db, conditions)
