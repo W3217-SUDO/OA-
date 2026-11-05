@@ -857,12 +857,14 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
         recipient = await _active_task_username(body.recipient, db, field_name="接收人")
     if body.action == "withdraw" and not comment:
         raise HTTPException(status_code=422, detail="批量撤回任务必须填写撤回原因")
+    from app.core.task_lifecycle_policy import proxy_note, task_actor_identity
+    actor = await task_actor_identity(identity, db)  # 501580：代办按真实权限
     if body.action == "complete":
         # 批量完成（501579 lingyi 11-05）：规则同单条完成，不符合的几条跳过并说明原因，其余照常提交；全部不符合仍报错
         valid, skipped = [], []
         for task in ordered_tasks:
             try:
-                validate_task_lifecycle(task, identity, "complete", comment)
+                validate_task_lifecycle(task, actor, "complete", comment)
             except HTTPException as exc:
                 if len(ordered_tasks) == 1:
                     raise
@@ -886,14 +888,14 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
             if task.status not in {"待接收", "待处理"}:
                 raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 当前状态不能接收")
         elif body.action == "complete":
-            validate_task_lifecycle(task, identity, "complete", comment)
+            validate_task_lifecycle(task, actor, "complete", comment)
         elif body.action == "confirm":
             if identity.get("role") != "admin" and data.get("initiator") != identity["username"]:
                 raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅任务发起人可以批量确认完成")
             if task.status not in {"待确认", "已完成", "已拒绝"}:
                 raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 当前状态不能批量确认")
         elif body.action == "handoff":
-            if identity.get("role") != "admin" and task.owner != identity["username"]:
+            if actor.get("role") != "admin" and task.owner != identity["username"]:
                 raise HTTPException(status_code=403, detail=f"任务 {task.serial_no} 仅当前负责人可交接")
             if task.status in {"已完成", "已验收", "已撤回", "已停止", "已取消", "待确认", "已拒绝"}:
                 raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 已结束，不能交接")
@@ -969,9 +971,9 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
         await _record_task_manual_intervention(task, identity, db, action=action_labels[body.action])
         event_comment = comment
         if body.action == "handoff":
-            event_comment = f"{previous_owner} 交接给 {recipient}。{comment}"
+            event_comment = f"{previous_owner} 交接给 {recipient}。{'（' + identity['username'] + ' 代办）' if previous_owner != identity['username'] else ''}{comment}"
         elif body.action == "complete":
-            event_comment = f"发起人应在 {auto_at} 前验收或退回重启。{comment}"
+            event_comment = f"发起人应在 {auto_at} 前验收或退回重启。{proxy_note(task, identity)}{comment}"
         await _add_task_message_notifications(
             task,
             WorkflowEvent(
@@ -1398,7 +1400,8 @@ async def handoff_task(task_id: int, body: TaskHandoffInput, identity: dict = De
         _active_task_username, _add_task_message_notifications, _record_task_manual_intervention, _task_dict, _task_or_404,
     )
     task = await _task_or_404(task_id, db)
-    if identity.get("role") != "admin" and task.owner != identity["username"]:
+    from app.core.task_lifecycle_policy import task_actor_identity
+    if (await task_actor_identity(identity, db)).get("role") != "admin" and task.owner != identity["username"]:  # 501580：代办按真实权限
         raise HTTPException(status_code=403, detail="只有当前负责人可以转交任务")
     if task.status in {"已完成", "已验收", "已撤回", "已停止", "已取消", "待确认", "已拒绝"}:
         raise HTTPException(status_code=409, detail="已结束任务不能交接")
@@ -1466,7 +1469,7 @@ async def handoff_task(task_id: int, body: TaskHandoffInput, identity: dict = De
     task.data = {**data, **deadline_updates, "handoff_from": previous_owner, "handoff_recipient": recipient, "handed_off_at": str(date.today()), "handoff_auto_complete_at": "", "handoff_restarted": False}
     await _record_task_manual_intervention(task, identity, db, action="任务交接")
     deadline_comment = f"；交接结束时间：{handoff_end_at.isoformat(timespec='seconds')}" if deadline_updates else ""
-    await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="任务交接", from_status=previous_status, to_status="待接收", operator=identity["username"], comment=f"{previous_owner} 交接给 {recipient}{deadline_comment}。{body.comment}"), db, content="任务已交接.")
+    await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="任务交接", from_status=previous_status, to_status="待接收", operator=identity["username"], comment=f"{previous_owner} 交接给 {recipient}{deadline_comment}。{'（' + identity['username'] + ' 代办）' if previous_owner != identity['username'] else ''}{body.comment}"), db, content="任务已交接.")
     await db.commit()
     await db.refresh(task)
     return _task_dict(task)
@@ -1570,13 +1573,16 @@ async def complete_task(task_id: int, body: TaskActionInput, identity: dict = De
         _add_task_message_notifications, _record_task_manual_intervention, _task_dict, _task_or_404,
     )
     task = await _task_or_404(task_id, db)
-    validate_task_lifecycle(task, identity, "complete", body.comment)
+    from app.core.task_lifecycle_policy import proxy_note, task_actor_identity
+    actor = await task_actor_identity(identity, db)  # 501580：代办按真实权限
+    validate_task_lifecycle(task, actor, "complete", body.comment)
+    note = proxy_note(task, identity)
     previous = task.status
     task.status = "已完成"
     auto_at = date.today() + timedelta(days=5)
     task.data = {**(task.data or {}), "completion_submitted_at": datetime.now().isoformat(timespec="seconds"), "completion_auto_confirm_at": str(auto_at), "completion_comment": body.comment}
     await _record_task_manual_intervention(task, identity, db, action="提交任务完成")
-    await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="提交任务完成", from_status=previous, to_status="已完成", operator=identity["username"], comment=f"发起人应在 {auto_at} 前验收或退回重启。{body.comment}"), db, content="任务已完成，等待确认.")
+    await _add_task_message_notifications(task, WorkflowEvent(record_id=task.id, action="提交任务完成", from_status=previous, to_status="已完成", operator=identity["username"], comment=f"发起人应在 {auto_at} 前验收或退回重启。{note}{body.comment}"), db, content="任务已完成，等待确认.")
     await db.commit()
     await db.refresh(task)
     return _task_dict(task)

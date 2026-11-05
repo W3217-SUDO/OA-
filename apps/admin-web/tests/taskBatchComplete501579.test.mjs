@@ -17,3 +17,7 @@ test("完成说明选填，跳过的任务弹窗列出原因", () => {
   assert.match(modals, /完成说明（选填）/);
   assert.match(page, /已完成 \$\{data\.updated\} 条，跳过 \$\{skipped\.length\} 条/);
 });
+
+test("501580：公司接受的任务只有能代办的人显示操作按钮", () => {
+  assert.match(page, /\(initialView === "task-company-accepted" && roleActionAllowed\("task\.batch\.update"\)\)/);
+});

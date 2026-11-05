@@ -1,3 +1,4 @@
+import { roleActionAllowed } from "../roleActions";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Key } from "react";
 import { Button, Form, message, Modal, Input, Space } from "antd";
@@ -167,9 +168,10 @@ export default function TaskCenterPage({
   const isUnread = initialView === "task-my-unread";
   const isReminder = initialView === "task-reminders";
   const canManageInitiatedTask = isPersonalView && isCreated;
+  // 501580（tgn 11-05 选 A）：公司接受的任务只有管理员或角色勾了“批量修改任务”的人可以代办，其他人只看、不显示按钮
   const canManageAcceptedTask =
     (isPersonalView && isAccepted) ||
-    initialView === "task-company-accepted";
+    (initialView === "task-company-accepted" && roleActionAllowed("task.batch.update"));
   const canManageCompanyCreatedTask =
     initialView === "task-company-created";
   const isInitiatedTaskContext = canManageInitiatedTask || canManageCompanyCreatedTask;
