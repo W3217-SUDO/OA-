@@ -2396,15 +2396,15 @@ def _ipr_case_role_view_conditions(role_view: str, identity: dict) -> list:
 
     named_views = {
         "source_person": (
-            ("case_origin_people_name", "case_source", "origin_people_name", "CaseOriginPeopleName"),
+            ("case_origin_people_name", "case_source", "case_source_username", "case_origin_people", "origin_people_name", "CaseOriginPeopleName"),
             "案源人",
         ),
         "procurator": (
-            ("case_procurator_name", "procurator_name", "agent", "CaseProcuratorName", "ProcuratorName"),
+            ("case_procurator_name", "procurator_name", "procurator", "agent", "agent_username", "CaseProcuratorName", "ProcuratorName"),
             "代理人",
         ),
         "copywriter": (
-            ("case_copywriter_name", "copywriter_name", "writer", "CaseCopywriterName", "CopywriterName"),
+            ("case_copywriter_name", "copywriter_name", "copywriter", "writer", "writer_username", "CaseCopywriterName", "CopywriterName"),
             "撰稿人",
         ),
         "business_owner": (

@@ -141,9 +141,9 @@ def _ipr_reminder_type_dict(row: IprCaseReminderType, case_count: int = 0) -> di
 
 IPR_EXTRA_FILTER_FIELDS: dict[str, tuple[str, ...]] = {
     "applicant": ("applicant", "applicant_name"),
-    "source_person": ("case_origin_people_name", "case_source", "origin_people_name"),
-    "copywriter": ("writer", "case_copywriter_name", "copywriter_name"),
-    "procurator": ("agent", "case_procurator_name", "procurator_name"),
+    "source_person": ("case_origin_people_name", "case_source", "case_origin_people", "origin_people_name"),
+    "copywriter": ("writer", "copywriter", "case_copywriter_name", "copywriter_name"),
+    "procurator": ("agent", "procurator", "case_procurator_name", "procurator_name"),
     "customer": ("@customer",),
     "case_no": ("@serial_no", "application_no", "legacy_case_no"),
     "trademark_class": ("trademark_ids",),
