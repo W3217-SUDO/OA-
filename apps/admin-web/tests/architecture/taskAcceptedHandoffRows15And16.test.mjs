@@ -25,16 +25,20 @@ test("received task actions are state-scoped and do not expose exception request
   assert.doesNotMatch(acceptedActionBlock, /requestTaskException|申请挂起|申请取消|撤回任务/);
 });
 
-test("received task detail exposes legal lifecycle actions and permission-gated cancellation", () => {
-  const detailFooter = source.slice(source.indexOf("footer={", source.indexOf('title="案件任务"')), source.indexOf("onCancel={onClose}"));
+test("received task detail exposes legal lifecycle actions; handoff and cancellation merged into maintenance (501635)", () => {
+  const detailFooter = source.slice(source.indexOf("footer={", source.indexOf("任务处理<StatusTag")), source.indexOf("onCancel={onClose}"));
   assert.match(detailFooter, /接受任务/);
   assert.match(detailFooter, /完成任务/);
-  assert.match(detailFooter, /转交任务/);
+  assert.match(detailFooter, /维护任务/);
+  // tgn 11-06：“转交任务”“申请取消任务”并入“维护任务”，详情底部不再单独显示
+  assert.doesNotMatch(detailFooter, />转交任务</);
+  assert.doesNotMatch(detailFooter, /申请取消任务/);
   assert.doesNotMatch(detailFooter, /申请挂起/);
-  assert.match(detailFooter, /props\.canRequestTaskException\(communication\)[\s\S]*?props\.onRequestException\(communication, "取消"\)/);
   assert.match(detailFooter, /props\.canReviewTaskException\(communication\)[\s\S]*?props\.onReviewException\(communication, true\)[\s\S]*?props\.onReviewException\(communication, false\)/);
   assert.match(source, /row\.exception_request\?\.requested_by !== profile\.username/);
   assert.match(source, /api\.post\(`\/tasks\/\$\{row\.id\}\/exception-review`, \{ approved, comment: comment\.trim\(\) \}\)/);
+  // 负责人本人在维护里改负责人走转交接口
+  assert.match(source, /isHandoff[\s\S]*?api\.post\(`\/tasks\/\$\{maintenance\.id\}\/handoff`/);
 });
 
 test("list and mobile detail share manual maintenance and explicit phase-task restart", () => {

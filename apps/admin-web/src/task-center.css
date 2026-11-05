@@ -808,3 +808,79 @@
 .task-days-soon { color: #d46b08; font-weight: 600; }
 /* 501629：已完成任务的剩余天数固定在完成那天，只作记录，灰色不标红 */
 .task-days-finished { color: #8c8c8c; }
+
+/* 501635（tgn 11-06）：任务处理弹窗——主要信息置顶、附件有才显示、按钮按状态 */
+.task-detail-main {
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--oa-border);
+  border-radius: 6px;
+}
+.task-detail-title {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  overflow-wrap: anywhere;
+}
+.task-detail-content {
+  margin: 6px 0 10px;
+  color: var(--oa-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.task-detail-people {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 16px;
+}
+.task-detail-people > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.task-detail-people em {
+  margin-left: 4px;
+  color: var(--oa-text-2);
+  font-style: normal;
+}
+.task-detail-people em.overdue {
+  color: #cf1322;
+}
+.task-detail-minor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  margin-top: 8px;
+  color: var(--oa-text-2);
+  font-size: 12px;
+}
+.task-detail-attachments {
+  margin-bottom: 12px;
+}
+.task-detail-attachments ul {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.task-detail-attachments li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 8px;
+}
+.task-attachment-name {
+  padding: 0;
+  color: #1677ff;
+}
+.task-attachment-meta {
+  color: var(--oa-text-2);
+  font-size: 12px;
+}
+.task-detail-handle {
+  margin-bottom: 12px;
+}
+@media (max-width: 640px) {
+  .task-detail-people {
+    grid-template-columns: 1fr;
+  }
+}

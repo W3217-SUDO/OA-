@@ -50,6 +50,9 @@ export function TaskMaintenanceModal({ row, form, peopleOptions, actionSubmittin
       confirmLoading={actionSubmitting} onOk={onOk} onCancel={onCancel}
       okButtonProps={{ style: { minHeight: 44, minWidth: 44 } }} cancelButtonProps={{ style: { minHeight: 44, minWidth: 44 } }}>
       <Form form={form} layout="vertical">
+        <div style={{ marginBottom: 12, color: "var(--oa-text-2)", fontSize: 12 }}>
+          改负责人：负责人本人改 = 转交（对方接收后办理，想退回就转给发件人）；发起人或管理员改 = 直接改派。只改截止日期就是普通维护。
+        </div>
         <Form.Item label="负责人" name="owner">
           <KeywordPersonSelect allowClear showSearch style={{ height: 44 }} optionFilterProp="label" options={peopleOptions.map((person) => ({ value: person.username, label: person.label }))} />
         </Form.Item>

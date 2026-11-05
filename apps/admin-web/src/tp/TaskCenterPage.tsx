@@ -221,7 +221,7 @@ export default function TaskCenterPage({
 
   const canMaintainTask = (row?: TaskRow | null) => Boolean(
     row && (profile.role === "admin" || row.owner === profile.username || row.initiator === profile.username) &&
-    ["待接收", "待处理", "处理中"].includes(row.workflow_status || row.status),
+    ["待接收", "待处理", "处理中", "进行中", "已逾期"].includes(row.workflow_status || row.status),
   );
 
   // ─── Data loading ──────────────────────────────────────────────────────
@@ -478,7 +478,29 @@ export default function TaskCenterPage({
       message.warning("请选择需要修改的负责人或截止日期");
       return;
     }
+    // 501635：负责人本人在维护里改负责人 = 转交（走转交规则，对方待接收）；发起人、管理员改负责人 = 直接改派
+    const ownerChanged = Boolean(values.owner && values.owner !== maintenance.owner);
+    // 有页面权限的人 role 会被提升成 admin，这里按真实角色判断是不是管理员
+    const actualAdmin = Array.isArray(profile.actual_role_ids) ? profile.actual_role_ids.includes("admin") : profile.role === "admin";
+    const isHandoff = ownerChanged && maintenance.owner === profile.username && maintenance.initiator !== profile.username && !actualAdmin;
     if (!beginTaskAction()) return;
+    if (isHandoff) {
+      try {
+        await api.post(`/tasks/${maintenance.id}/handoff`, {
+          recipient: values.owner, comment: values.comment || "",
+          end_at: values.deadline ? values.deadline.format("YYYY-MM-DD") + "T23:59:59" : undefined,
+        });
+        message.success("任务已转交，等待接收人接收并处理");
+        setMaintenance(null);
+        if (communication?.id === maintenance.id) setCommunication(null);
+        await load();
+      } catch (error: any) {
+        message.error(error?.response?.data?.detail || "转交失败");
+      } finally {
+        endTaskAction();
+      }
+      return;
+    }
     try {
       const { data } = await api.post("/tasks/batch-update", {
         task_ids: [maintenance.id], owner: values.owner || undefined,
@@ -881,6 +903,18 @@ export default function TaskCenterPage({
       URL.revokeObjectURL(url);
     } catch (error: any) {
       message.error(error?.response?.data?.detail || "附件下载失败");
+    }
+  };
+
+  // 501635：点附件名直接打开（浏览器能预览的就预览，不能的会下载）
+  const openTaskAttachment = async (item: TaskFeedbackAttachment) => {
+    try {
+      const response = await api.get(`/attachments/${item.id}/download`, { responseType: "blob" });
+      const url = URL.createObjectURL(response.data);
+      window.open(url, "_blank", "noopener");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error: any) {
+      message.error(error?.response?.data?.detail || "附件打开失败");
     }
   };
 
@@ -1642,6 +1676,8 @@ export default function TaskCenterPage({
         onWithdraw={requestTaskWithdrawal}
         onOpenCaseDetail={openCaseDetail}
         onDownloadAttachment={downloadTaskAttachment}
+        onOpenAttachment={openTaskAttachment}
+        onRejectTask={(row) => openDialog(row, "reject")}
         onDeleteAttachment={deleteTaskAttachment}
         onUploadMaterials={uploadTaskMaterials}
         onMaterialFilesChange={materialFileHandlers}
