@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.areas.legal.template_documents import WORD_NS, _replace_slots
 from app.config import settings
+from app.core.case_cause import case_cause
 from app.core.constants import UPLOAD_ROOT
 from app.database import get_db
 from app.models import BusinessRecord, FileAttachment, SystemConfig, User, WorkflowEvent
@@ -799,7 +800,8 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
         "被告": "、".join(_names(data.get("defendants") or data.get("defendant") or data.get("appellee_names"))),
         "第三人": "、".join(_names(data.get("third_parties") or data.get("third_party") or data.get("the_third_names"))),
         # 案由树里的编号（如“十五、不正当竞争纠纷”）不进文书。
-        "案由": CAUSE_NUMBER.sub("", _first(data, "cause_or_charge", "cause", "cause_of_action", "cause_name")),
+        # 陶国南 11-05 13:10：统一的取案由逻辑（app/core/case_cause.py）：案件 → 当前审级法院信息 → 旧系统 → 按权利类型推定。
+        "案由": case_cause(data, record.status or ""),
         "开庭律师": people(hearing),
         "经办律师": people(handling),
         "律师助理": people(assistant),
