@@ -48,6 +48,15 @@ class TermExpiryRowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((values[6], values[7], values[10]), ("0", "0", "专利权到期"))
         self.assertEqual((monitor._late_fee(row, date(2027, 3, 1)), monitor._handling_fee(row)), (0, 0))
 
+    async def test_exports_put_expired_rows_last_list_unchanged(self):
+        rows = await self._rows(date(2025, 10, 1), date(2026, 12, 31))
+        self.assertEqual([row["due_date"] for row in rows], sorted(row["due_date"] for row in rows), "页面列表仍按应缴日")
+        rows = [*rows, {**rows[0], "term_expired": False, "due_date": date(2027, 1, 1)}]
+        ordered = monitor._export_order(rows)
+        flags = [row["term_expired"] for row in ordered]
+        self.assertEqual(flags, sorted(flags), "导出时专利权到期的行排最后")
+        self.assertEqual([row for row in ordered if not row["term_expired"]], [row for row in rows if not row["term_expired"]], "其余顺序不变")
+
     async def test_normal_years_unchanged(self):
         rows = await self._rows(date(2025, 12, 1), date(2025, 12, 31))
         self.assertEqual([(row["serial_no"], row["year_no"], row["term_expired"]) for row in rows if row["serial_no"] == "HDPU1600401"], [("HDPU1600401", 10, False)])

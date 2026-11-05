@@ -364,6 +364,11 @@ async def _list_rows(query: _ListQuery, identity: dict, db: AsyncSession) -> tup
     return selected, rows
 
 
+def _export_order(rows: list[dict]) -> list[dict]:
+    """280146（高勤兰 11-05 13:50）：生成的年费清单里“专利权到期”的行排最后，其余顺序不变；页面列表不动。"""
+    return sorted(rows, key=lambda row: bool(row.get("term_expired")))
+
+
 _EXPORT_HEADERS = ["申请人", "专利名称", "案件类型", "案件编号", "申请号", "申请日", "年度", "年费", "费减", "案源人", "本案通/回/付"]
 
 
@@ -387,6 +392,7 @@ async def export_ipr_annual_fee_monitor_excel(query: _ListQuery = Depends(), ide
     """生成年费清单(Excel)：勾选了导出勾选的，没勾导出当前列表全部。"""
     from app.core.system import _excel_response
     selected, rows = await _list_rows(query, identity, db)
+    rows = _export_order(rows)
     return _excel_response(f"年费清单-{selected['label']}-{date.today()}.xls", _EXPORT_HEADERS, [_export_values(row) for row in rows])
 
 
@@ -447,6 +453,7 @@ async def export_ipr_annual_fee_monitor_word(query: _ListQuery = Depends(), iden
     if not query.keys:
         raise HTTPException(status_code=422, detail="请先勾选要生成年费清单的案件")
     _, rows = await _list_rows(query, identity, db)
+    rows = _export_order(rows)
     if not rows:
         raise HTTPException(status_code=422, detail="勾选的案件不在当前列表中，请刷新后重新勾选")
     if any(not row["granted"] for row in rows):
