@@ -98,6 +98,8 @@ const hasChinese = (text: string) => /[\u4e00-\u9fff]/.test(text);
 const fieldName = (field: string, preview?: AgentActionPreview) => preview?.field_labels?.[field] || ACTION_FIELD_NAMES[field]
   || RESULT_FIELD_NAMES[field] || (hasChinese(field) ? field : "其他信息");
 const codeValue = (field: string, value: unknown, preview?: AgentActionPreview): unknown => {
+  // 501634：编号按预览时查到的案号、名称显示。
+  if (typeof value === "number") return preview?.value_labels?.[field]?.[String(value)] ?? value;
   if (typeof value !== "string") return value;
   return preview?.value_labels?.[field]?.[value] ?? DEFAULT_VALUE_NAMES[field]?.[value] ?? value;
 };
@@ -126,7 +128,24 @@ export const readableValue = (value: unknown, preview?: AgentActionPreview, fiel
 };
 const valueText = (value: unknown, preview?: AgentActionPreview, field: string | undefined = ""): string => readableValue(value, preview, field ?? "");
 const parameterLabel = (field: string, preview?: AgentActionPreview) => fieldName(field, preview);
-const visibleParameterEntries = (values: Record<string, unknown>) => Object.entries(values).filter(([field]) => !HIDDEN_PARAMETER_FIELDS.has(field));
+// 501634（tgn 11-05）：确认窗口里的信息跟页面一致：没有中文名、值也不是中文的内部参数，和换不成案号、名称的编号不显示（执行照原样）。
+const isIdField = (field: string) => field === "id" || /(_id|_ids|Ids)$/.test(field);
+const isInternalParameter = (field: string, value: unknown, preview?: AgentActionPreview) => {
+  if (isIdField(field)) {
+    const items = Array.isArray(value) ? value : [value];
+    return !items.length || items.some((item) => codeValue(field, item, preview) === item);
+  }
+  return fieldName(field, preview) === "其他信息" && !hasChinese(readableValue(value, preview, field));
+};
+const visibleParameterEntries = (values: Record<string, unknown>, preview?: AgentActionPreview) => Object.entries(values)
+  .filter(([field, value]) => !HIDDEN_PARAMETER_FIELDS.has(field) && !isInternalParameter(field, value, preview));
+const hiddenParameterCount = (values: Record<string, unknown>, preview?: AgentActionPreview) => Object.entries(values)
+  .filter(([field, value]) => !HIDDEN_PARAMETER_FIELDS.has(field) && isInternalParameter(field, value, preview)).length;
+/** 501634：老卡片的摘要里“案件ID：数字”换成案号，去掉“其他信息：编号/代码”。 */
+export const readableAgentSummary = (summary: string, target?: string): string => userFacingAgentText(String(summary || ""))
+  .replace(/案件ID[：:]\s*\d+/g, target ? `案号：${target}` : "")
+  .replace(/[；;，,]?\s*其他信息[：:]\s*[A-Za-z0-9_\-.:/]+(?=[；;，,）)]|$)/g, "")
+  .replace(/（[；;，,]\s*/g, "（").replace(/（\s*）/g, "");
 
 /** 将模型遗留的技术字段转换为用户可读的中文，避免在聊天和确认标题中暴露接口字段。 */
 export const userFacingAgentText = (value: string): string => Object.entries(USER_FACING_FIELD_NAMES).reduce(
@@ -172,7 +191,7 @@ export const hasAgentOperationPreview = (action: AgentApprovalAction) => action.
 );
 
 const ParameterValues = ({ values, preview }: { values: Record<string, unknown>; preview?: AgentActionPreview }) => <div className="agent-action-create">
-  {visibleParameterEntries(values).map(([field, value]) => <div key={field}>
+  {visibleParameterEntries(values, preview).map(([field, value]) => <div key={field}>
     <strong style={{ overflowWrap: "anywhere" }}>{parameterLabel(field, preview)}</strong>
     <span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{valueText(value, preview, field)}</span>
   </div>)}
@@ -210,7 +229,7 @@ export function AgentOperationPreview({ action, target }: { action: AgentApprova
   return <div className="agent-action-approval" data-testid="agent-action-approval">
     <div className="agent-action-summary" style={{ overflowWrap: "anywhere" }}>
       <Tag color="processing" style={{ whiteSpace: "normal", maxWidth: "100%" }}>{agentOperationName(action)}</Tag>
-      <strong>{userFacingAgentText(action.summary)}</strong>
+      <strong>{readableAgentSummary(action.summary, target)}</strong>
       {(preview?.target || target) && <small>目标：{userFacingAgentText(String(preview?.target || target))}</small>}
     </div>
     <div className="agent-action-warning">确认后才会执行写入，仍须通过当前账号原有权限、数据范围与业务审批校验。聊天回复不作为确认。</div>
@@ -221,11 +240,12 @@ export function AgentOperationPreview({ action, target }: { action: AgentApprova
     </Descriptions>}
     {preview?.params && Object.entries(preview.params).map(([group, value]) => {
       const objectValue = value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
-      if (objectValue && !visibleParameterEntries(objectValue).length) return null;
+      if (objectValue && !visibleParameterEntries(objectValue, preview).length) return null;
       return <section key={group}>
         <strong>{PARAMETER_GROUP_NAMES[group] || "确认信息"}</strong>
         {objectValue
-          ? <ParameterValues values={objectValue} preview={preview} />
+          ? <><ParameterValues values={objectValue} preview={preview} />
+            {hiddenParameterCount(objectValue, preview) > 0 && <small className="agent-action-hidden-note">另有 {hiddenParameterCount(objectValue, preview)} 项系统内部参数未显示，执行时照原样使用。</small>}</>
           : <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{valueText(value, preview)}</div>}
       </section>;
     })}

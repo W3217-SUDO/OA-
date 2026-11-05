@@ -358,13 +358,17 @@ async def _call_tool(name: str, arguments: dict, *, conversation_id: str | None 
             return await execute_original(spec, params, case_origin=case_origin, conversation_id=conversation_id)
         # 其余写入一律先生成待确认请求（陶威 11-01 21:55）：站内智能体弹确认卡片，外部 MCP 由本人在 OA 网页智能体中心确认。
         target, changes, original = await _original_changes(spec, params, db)
-        from app.agent_mcp.display_labels import display_maps
+        from app.agent_mcp.display_labels import display_maps, record_display_maps
+        labels = display_maps(params)
+        records = await record_display_maps(params, db)  # 501634：编号显示成案号、名称
+        labels = {"field_labels": {**labels["field_labels"], **records["field_labels"]},
+                  "value_labels": {**labels["value_labels"], **records["value_labels"]}}
         preview = {
             "operation_name": spec.title, "tool_name": spec.name, "method": spec.method,
             "path": render_path(spec, params), "path_template": spec.path, "params": params,
             "original_values": original, "requires_confirmation": True,
             **({"target": target} if target else {}), **({"changes": changes} if changes else {}),
-            **display_maps(params),
+            **labels,
         }
         pending = await _create_pending_request(
             identity, db, tool_name=spec.name, fingerprint=descriptor_fingerprint(spec), arguments=arguments, params=params,

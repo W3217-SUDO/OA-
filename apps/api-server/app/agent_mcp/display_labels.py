@@ -50,7 +50,73 @@ def value_label(name: str, value, values: dict | None = None):
     mapping = (values or {}).get(name) or VALUE_LABELS.get(name) or {}
     if isinstance(value, str) and value in mapping:
         return mapping[value]
+    # 501634：编号（整数）按预览时查到的案号、名称显示。
+    if isinstance(value, int) and not isinstance(value, bool) and str(value) in mapping:
+        return mapping[str(value)]
     return value
+
+
+_ID_SUFFIXES = ("_id", "_ids", "Ids")
+_ID_FIELD_SKIP = {"fee_type_id", "payment_type_id", "task_type_id", "user_id", "request_id", "message_index"}
+_CASE_MODULES = {"case", "ipr_case", "counsel_case", "criminal_case", "arbitration_case"}
+
+
+def _record_label(name: str, module: str) -> str:
+    if module in _CASE_MODULES or name.startswith("case"):
+        return "案号"
+    if module == "customer" or name.startswith("customer"):
+        return "客户"
+    if module == "contract" or name.startswith("contract"):
+        return "合同号"
+    if "clue" in name:
+        return "关联线索"
+    from app.agent_mcp.action_summary import _FIELD_LABELS
+    label = _FIELD_LABELS.get(name, "")
+    return label.replace("记录ID", "").replace("ID", "") or "关联记录"
+
+
+async def record_display_maps(params: dict, db) -> dict:
+    """501634（tgn 11-05）：确认窗口里不出现内部编号，参数里的记录编号换成案号（案件）、名称（客户等）。
+    只读查询，只用于显示；执行仍用原参数。"""
+    from sqlalchemy import select
+    from app.models import BusinessRecord
+    wanted: dict[str, set[int]] = {}
+
+    def walk(value):
+        if isinstance(value, dict):
+            for name, item in value.items():
+                if name not in _ID_FIELD_SKIP and (name == "id" or name.endswith(_ID_SUFFIXES)):
+                    for one in (item if isinstance(item, list) else [item]):
+                        if isinstance(one, int) and not isinstance(one, bool) and one > 0:
+                            wanted.setdefault(name, set()).add(one)
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(params)
+    ids = set().union(*wanted.values()) if wanted else set()
+    if not ids:
+        return {"field_labels": {}, "value_labels": {}}
+    try:
+        rows = (await db.execute(select(BusinessRecord.id, BusinessRecord.module, BusinessRecord.serial_no, BusinessRecord.title)
+                                 .where(BusinessRecord.id.in_(sorted(ids)[:200])))).all()
+    except Exception:  # 只为显示：查不到名称就按原样显示，绝不影响生成确认请求
+        return {"field_labels": {}, "value_labels": {}}
+    found = {row.id: row for row in rows}
+    fields: dict[str, str] = {}
+    values: dict[str, dict] = {}
+    for name, numbers in wanted.items():
+        for number in numbers:
+            row = found.get(number)
+            if not row:
+                continue
+            text = (row.serial_no or row.title) if row.module in _CASE_MODULES else (row.title or row.serial_no)
+            if not text:
+                continue
+            values.setdefault(name, {})[str(number)] = str(text)
+            fields[name] = _record_label(name, row.module)
+    return {"field_labels": fields, "value_labels": values}
 
 
 def labels_from_schema(properties: dict, prefix: str = "") -> tuple[dict, dict]:

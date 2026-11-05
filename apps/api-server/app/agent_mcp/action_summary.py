@@ -55,6 +55,9 @@ _FIELD_LABELS = {
     "invoice_type": "发票类型", "invoice_title": "发票抬头", "taxpayer_id": "纳税人识别号", "tax_rate": "税率",
     "application_date": "申请日期", "reminder_date": "提醒日期", "date": "日期", "type": "类型", "keyword": "关键字",
     "confirm": "确认执行", "scope": "范围", "decision": "决定",
+    # 501634（tgn 11-05）：案件基本信息常用字段的中文名，确认窗口不出现“其他信息”。
+    "customer_record_id": "客户", "case_phase": "案件阶段", "assistants": "律师助理", "business_owner": "业务负责人",
+    "extra_investigators": "其他调查员", "investigation_clue_ids": "关联线索", "right_type": "权利类型",
 }
 
 _TASK_ACTIONS = {
@@ -104,6 +107,8 @@ def _field_text(key: str, value) -> str:
     labels, values = _DISPLAY.get()
     label = (prefix + "." if separator else "") + field_label(name, labels)
     value = value_label(name, value, values)
+    if isinstance(value, list):
+        value = [value_label(name, item, values) for item in value]
     if name == "approved" and isinstance(value, bool):
         text = "通过" if value else "拒绝"
     elif isinstance(value, str) and (name in {"recipient", "owner", "handler", "amount"} or name.endswith("_amount")):
@@ -154,12 +159,30 @@ def _task_summary(path: str, method: str, params: dict, body: dict) -> str | Non
     return summary
 
 
+def _is_id_field(name: str) -> bool:
+    return name == "id" or name.endswith(("_id", "_ids", "Ids"))
+
+
+def _shown_to_user(key: str, value) -> bool:
+    """501634（tgn 11-05）：摘要里不出现内部编号和“其他信息”：编号能换成案号、名称的才显示，换不了的不显示；
+    没有中文名的参数不显示。执行仍用原参数，完整参数在确认窗口里看。"""
+    from app.agent_mcp.display_labels import OTHER_FIELD, field_label, value_label
+    name = key.rpartition(".")[2] or key
+    labels, values = _DISPLAY.get()
+    if field_label(name, labels) == OTHER_FIELD:
+        return False
+    if _is_id_field(name):
+        items = value if isinstance(value, list) else [value]
+        return bool(items) and all(value_label(name, item, values) is not item for item in items)
+    return True
+
+
 def _key_details(fields: dict, limit: int = 4) -> str:
     def priority(key):
         name = key.rsplit(".", 1)[-1]
         return _KEY_FIELDS.index(name) if name in _KEY_FIELDS else len(_KEY_FIELDS)
 
-    ordered = sorted(fields, key=priority)
+    ordered = sorted((key for key in fields if _shown_to_user(key, fields[key])), key=priority)
     shown = [_field_text(key, fields[key]) for key in ordered[:limit]]
     if len(ordered) > limit:
         shown.append(f"另{len(ordered) - limit}项参数见详情")
@@ -202,12 +225,13 @@ def _summary_from_preview(preview: dict) -> str:
             if subject.startswith(prefix):
                 operation = batch_prefix + ("批准" if body_fields["approved"] else "拒绝") + subject.removeprefix(prefix)
                 break
-    targets = [_field_text(key, value) for key, value in params["path"].items()]
+    targets = [_field_text(key, value) for key, value in params["path"].items() if _shown_to_user(key, value)]
     details = {}
     for source in (body_fields, params["query"]):
         for key, value in source.items():
             if key.endswith(("_id", "_ids", "_no", "_nos", "Ids")) and key not in {"fee_type_id", "payment_type_id"}:
-                targets.append(_field_text(key, value))
+                if _shown_to_user(key, value):
+                    targets.append(_field_text(key, value))
             elif key in {"data", "changes"} and isinstance(value, dict):
                 details.update({_FIELD_LABELS.get(key, "业务字段") + "." + name: item for name, item in value.items()})
             else:
