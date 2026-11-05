@@ -11,7 +11,7 @@ from app.areas.finance import bank_flows, incoming_payments
 from app.core import soft_delete
 from app.core.dependencies import get_db
 from app.database import Base
-from app.models import BankStatementLine, IncomingPayment, User
+from app.models import IncomingPayment, User
 from app.security import current_identity
 
 ADMIN = {"username": "fadmin", "role": "admin", "role_ids": ["admin"], "_actual_role_ids": ["admin"],
