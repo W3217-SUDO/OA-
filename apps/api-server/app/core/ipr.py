@@ -493,7 +493,7 @@ def _ipr_case_file_type_dict(item: SystemParameter) -> dict:
 # 其他案件类型用自己的；再分“官文 / 非官文 / 转文”三组。新系统自带的两个通用类型老系统没有，按案件上传时不给。
 PATENT_FILE_TYPE_CASE_TYPES = {"1", "2", "3", "14", "15", "16", "17"}
 KIND_FILE_TYPE_CASE_TYPES = {"专利": "1", "商标": "4"}
-GENERIC_IPR_FILE_TYPE_CODES = {"IPR-OTHER", "IPR-TRANSFER"}
+GENERIC_IPR_FILE_TYPE_CODES = {"IPR-OTHER", "IPR-TRANSFER", "IPR-RECEIPT", "IPR-INVOICE"}
 
 
 def ipr_file_type_group(item: SystemParameter) -> str:

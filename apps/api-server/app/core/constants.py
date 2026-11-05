@@ -124,6 +124,10 @@ DEFAULT_SYSTEM_MENUS = [
     # 501613（范文玲 11-05）：“我的案件”放第一项，按我在案件里的角色分组。
     ("ipr", "", "知产非诉", "file-text", 67), ("ipr-my-cases", "ipr", "我的案件", "", 0), ("ipr-patent-annual-fee", "ipr", "专利年费", "", 7), ("ipr-case-reboot", "ipr", "案件重提", "", 3), ("ipr-case-files", "ipr", "案件文件", "", 11),
     ("ipr-custom-file-import", "ipr-case-files", "案件自定义文件导入", "", 1),
+    # 501618（高勤兰 11-05）：案件文件下按旧系统补齐收据、发票的导入和上传（“专利收据导入”待技术部确认后再加）。
+    ("ipr-receipt-custom-import", "ipr-case-files", "收据自定义文件导入", "", 2), ("ipr-invoice-import-case", "ipr-case-files", "发票文件导入(案件)", "", 3),
+    ("ipr-invoice-import-contract", "ipr-case-files", "发票文件导入(合同)", "", 4), ("ipr-patent-invoice-upload", "ipr-case-files", "专利发票上传", "", 5),
+    ("ipr-patent-receipt-upload", "ipr-case-files", "专利收据上传", "", 6), ("ipr-other-invoice-upload", "ipr-case-files", "其他案件发票上传", "", 7),
     ("ipr-patent", "ipr", "专利案件", "", 20), ("ipr-trademark", "ipr", "商标案件", "", 21), ("ipr-review", "ipr", "知识产权立案审核", "", 22), ("ipr-office-files", "ipr", "知识产权官文", "", 12),
     ("ipr-source-person", "ipr", "我是案源人", "", 23), ("ipr-procurator", "ipr", "我是代理人", "", 24), ("ipr-copywriter", "ipr", "我是撰稿人", "", 25), ("ipr-officer", "ipr", "我是处理人", "", 26), ("ipr-business-owner", "ipr", "我是案件管理人", "", 27),
     # 501099（陶国南 11-02 定方案二）：非诉财务中心与财务中心同一套页面，只看非诉（知识产权）；分批上线，先上回款管理。
@@ -330,6 +334,9 @@ DEFAULT_SYSTEM_PARAMETERS = [
     ("case_type", "130", "行政案件及国家赔偿", {"letter_code": "XZ"}),
     ("ipr_case_file_type", "IPR-OTHER", "普通知识产权案件文档", {"case_kinds": ["专利", "商标"], "is_official": False, "requires_transmission": False, "allow_repeat": True, "hedging_file_type_codes": [], "hedging_fee_type_codes": []}),
     ("ipr_case_file_type", "IPR-TRANSFER", "知识产权待转文", {"case_kinds": ["专利", "商标"], "is_official": False, "requires_transmission": True, "allow_repeat": True, "hedging_file_type_codes": [], "hedging_fee_type_codes": []}),
+    # 501618：老案件费用迁移前，导入的收据、发票先挂成案件文档（案件页“发票文件”页签按名称里的“收据”“发票”列出）。
+    ("ipr_case_file_type", "IPR-RECEIPT", "官费收据", {"case_kinds": ["专利", "商标"], "is_official": False, "requires_transmission": False, "allow_repeat": True, "hedging_file_type_codes": [], "hedging_fee_type_codes": []}),
+    ("ipr_case_file_type", "IPR-INVOICE", "发票", {"case_kinds": ["专利", "商标"], "is_official": False, "requires_transmission": False, "allow_repeat": True, "hedging_file_type_codes": [], "hedging_fee_type_codes": []}),
     ("ipr_case_type", "IPR-PATENT", "专利案件", {"case_kind": "专利"}),
     ("ipr_case_type", "IPR-TRADEMARK", "商标案件", {"case_kind": "商标"}),
     ("ipr_fee_type", "IPR-OFFICIAL", "官方费用", {"group": "知识产权费用"}),

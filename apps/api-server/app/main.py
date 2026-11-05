@@ -533,6 +533,9 @@ app.include_router(
     prefix=settings.api_prefix,
 )
 app.include_router(ipr_fee_file_router, prefix=settings.api_prefix)
+# 501618：知识产权中心 › 案件文件 的收据、发票导入。
+from app.areas.ipr.fee_file_import import router as ipr_fee_file_import_router  # noqa: E402
+app.include_router(ipr_fee_file_import_router, prefix=settings.api_prefix)
 app.include_router(
     create_legacy_ls_history_router(visible_legacy_case_ids=_visible_legacy_ls_case_ids),
     prefix=settings.api_prefix,

@@ -1,4 +1,5 @@
 import Dashboard, { type DashboardView } from "./Dashboard";
+import { IPR_FEE_FILE_PAGES } from "./ipr/feeFilePages";
 import { ConflictReviewHost } from "./conflict-review/ConflictReviewHost";
 import { IPR_CASE_TAB_PREFIX, iprCaseTabLabel, parseIprCaseDetailRoute } from "./ipr/iprCaseTabs";
 import { dashboardWorkspace } from "./dashboardWorkspace";
@@ -184,6 +185,7 @@ const IprCustomFileImportPage = lazyWithVersionRecovery("ipr-custom-file-import"
 const IprCaseRebootPage = lazyWithVersionRecovery("ipr-case-reboot", () => import("./IprCaseRebootPage"));
 const IprAnnualFeePage = lazyWithVersionRecovery("ipr-patent-annual-fee", () => import("./IprAnnualFeePage"));
 const IprMyCasesPage = lazyWithVersionRecovery("ipr-my-cases", () => import("./IprMyCasesPage"));
+const IprFeeFileImportPage = lazyWithVersionRecovery("ipr-fee-file-import", () => import("./IprFeeFileImportPage"));
 const TaskCenterPage = lazyWithVersionRecovery("task", () => import("./tp"));
 // 501629（tgn 11-05）：VIP 任务在案件详情“客户任务”里单独发，任务中心不再有“VIP任务”页面；VIP 任务数据和接口保留。
 const BusinessPage = lazyWithVersionRecovery("business", () => import("./BusinessPage"));
@@ -413,7 +415,10 @@ const menuItems: NavItem[] = [
       { key: "ipr-my-cases", label: "我的案件" },
       { key: "ipr-case-reboot", label: "案件重提" },
       { key: "ipr-patent-annual-fee", label: "专利年费" },
-      { key: "ipr-case-files", label: "案件文件", children: [{ key: "ipr-custom-file-import", label: "案件自定义文件导入" }] },
+      { key: "ipr-case-files", label: "案件文件", children: [
+        { key: "ipr-custom-file-import", label: "案件自定义文件导入" },
+        ...Object.entries(IPR_FEE_FILE_PAGES).map(([key, page]) => ({ key, label: page.label })),
+      ] },
       { key: "ipr-office-files", label: "知识产权官文" },
       {
         key: "ipr-finance",
@@ -2049,6 +2054,8 @@ export default function App() {
       <IprAnnualFeePage onNavigate={navigate} />
     ) : route === "ipr-my-cases" ? (
       <IprMyCasesPage onNavigate={navigate} />
+    ) : IPR_FEE_FILE_PAGES[route] ? (
+      <IprFeeFileImportPage route={route} />
     ) : route.startsWith(IPR_CASE_TAB_PREFIX) ? (
       <IprCenterPage key={active} initialView={parseIprCaseDetailRoute(active)?.kind === "商标" ? "ipr-trademark" : "ipr-patent"}
         detailCaseId={parseIprCaseDetailRoute(active)?.id} onNavigate={(target) => navigate(target, { reuse: true })} />
