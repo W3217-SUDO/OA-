@@ -21,13 +21,15 @@ test('clicking a tab, including the current one, returns to its list at the top'
   assert.match(page, /scrollTop = 0/);
 });
 
-test('detail toolbar (返回列表) sticks right under the measured page head', () => {
+test('only 返回列表 sticks under the measured page head; status/withdraw/delete scroll with the feedback', () => {
   const detail = readFileSync(new URL('../src/feedback/FeedbackDetail.tsx', import.meta.url), 'utf8');
-  const rule = css.match(/\.feedback-page-card \.feedback-detail-head \{([^}]*)\}/);
+  const rule = css.match(/\.feedback-page-card \.feedback-detail-back \{([^}]*)\}/);
   assert.ok(rule, 'sticky toolbar rule exists');
   assert.match(rule[1], /position: sticky/);
   assert.match(rule[1], /top: var\(--feedback-head-h/);
   assert.match(page, /ResizeObserver/);
   assert.match(page, /--feedback-head-h/);
+  assert.doesNotMatch(css, /\.feedback-detail-head \{[^}]*position: sticky/);
+  assert.match(detail, /feedback-detail-back">\s*<Button[\s\S]*?>返回列表<\/Button>\s*<\/div>/);
   assert.match(detail, /closest\("\.page-workbench"\)\?\.scrollTo\(0, 0\); onBack\(\)/);
 });
