@@ -7,6 +7,8 @@
 """
 from __future__ import annotations
 
+from contextvars import ContextVar
+
 import re
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -60,13 +62,14 @@ BUILTIN_TEMPLATES = [{
 }, {
     # 陶国南 11-05：办案小结（诉讼）。案情概况、办案体会、保管期限由律师填，可以留空手写；事务所审查意见、承办律师签名留给手写。
     "id": "case-summary", "name": "办案小结（诉讼）", "file": "CASE_SUMMARY_DOCX",
-    "options": {}, "optional": ["简要案情工作概况", "办案体会", "保管期限", "处理结果", "开庭日期", "起诉日期", "结案日期"],
+    # 陶国南 11-05 11:25：保管期限按案件类型自动带（民事、行政 20 年，刑事长期），其他类型留空可选。
+    "options": {"保管期限": ["20年", "长期"]}, "optional": ["简要案情工作概况", "办案体会", "保管期限", "处理结果", "开庭日期", "起诉日期", "结案日期"],
 }]
 # 系统自动取值的字段；模板里出现其他占位字段时，按“需要人工填写”处理。
 AUTO_FIELDS = ("法院", "法院案号", "原告", "被告", "第三人", "案由", "开庭律师", "经办律师", "律师助理", "客户名称", "案件编号", "生成日期",
                "原告信息", "被告信息", "委托诉讼代理人", "代理律所", "赔偿金额", "赔偿金额大写", "收款户名", "收款开户行", "收款账号",
                "付款期限", "签署日期", "申请人信息", "被申请人信息", "落款日期", "保全金额",
-               "收案日期", "起诉日期", "结案日期", "开庭日期", "处理结果", "归档日期")
+               "收案日期", "起诉日期", "结案日期", "开庭日期", "处理结果", "归档日期", "保管期限")
 # 陶国南 11-04 14:28：日期都要生成。案件里没有约定付款日期时，付款期限默认生成日起 7 天（样本是起草后约 3 天），可以改。
 DEFAULT_PAYMENT_DAYS = 7
 PAYMENT_DATE_KEYS = ("agreed_payment_date", "payment_deadline", "settlement_payment_date", "promised_payment_date", "mediation_payment_date")
@@ -155,7 +158,7 @@ NOTE = re.compile(r"[（(][^（）()]*[）)]\s*")
 # 按说明文字猜对应案件里的哪一项；猜不到的设成“生成时手填”，管理员可以在模板页改。
 FIELD_HINTS = (
     (("收案日期",), "收案日期"), (("起诉日期",), "起诉日期"), (("结案日期",), "结案日期"), (("开庭日期",), "开庭日期"),
-    (("处理结果",), "处理结果"), (("归档日期",), "归档日期"),
+    (("处理结果",), "处理结果"), (("归档日期",), "归档日期"), (("保管期限",), "保管期限"),
     (("被申请人信息",), "被申请人信息"), (("申请人信息",), "申请人信息"), (("落款日期",), "落款日期"), (("保全金额",), "保全金额"),
     (("原告信息",), "原告信息"), (("被告信息",), "被告信息"), (("原告名称",), "原告"), (("被告名称",), "被告"),
     (("委托诉讼代理人",), "委托诉讼代理人"), (("代理律所",), "代理律所"), (("赔偿金额大写",), "赔偿金额大写"), (("赔偿金额",), "赔偿金额"),
@@ -415,6 +418,69 @@ ADDRESS_KEYS = ("contact_address", "registered_address", "registration_address",
 PHONE_KEYS = ("contact_phone", "phone", "mobile", "invoice_phone")
 
 
+# 陶国南 11-05 10:34：生成文书时单位当事人缺法定代表人、信用代码、地址的，先用企业信息库存档（不扣次数），没有再查企查查（每家扣一次），
+# 查到的存进企业信息库，以后复用；个人当事人不查。预览只看存档、列出需要查企查查的单位；下载或生成 Word 时才真正去查。
+ENTERPRISE_LOOKUP: ContextVar[dict | None] = ContextVar("case_word_enterprise_lookup", default=None)
+ENTERPRISE_FIELDS = ("credit_code", "legal_representative", "registered_address")
+
+
+def _is_organization_name(name: str, profile: dict) -> bool:
+    if profile.get("organization_type"):
+        return profile["organization_type"] != "个人"
+    return any(word in name for word in ORGANIZATION_WORDS) and len(name) > 4
+
+
+def _needs_enterprise_info(profile: dict) -> bool:
+    credit = str(profile.get("credit_code") or "").strip()
+    return not credit or _looks_like_id_card(credit) or not _first(profile, "legal_representative") or not _first(profile, *ADDRESS_KEYS)
+
+
+def _merge_enterprise(profile: dict, detail: dict) -> dict:
+    merged = dict(profile)
+    credit = str(merged.get("credit_code") or "").strip()
+    if detail.get("credit_code") and (not credit or _looks_like_id_card(credit)):
+        merged["credit_code"] = detail["credit_code"]
+    if detail.get("legal_representative") and not _first(merged, "legal_representative"):
+        merged["legal_representative"] = detail["legal_representative"]
+    if detail.get("registered_address") and not _first(merged, *ADDRESS_KEYS):
+        merged["registered_address"] = detail["registered_address"]
+    return merged
+
+
+async def _complete_enterprise(name: str, profile: dict, db: AsyncSession) -> dict:
+    lookup = ENTERPRISE_LOOKUP.get()
+    if lookup is None or not name or not _is_organization_name(name, profile) or not _needs_enterprise_info(profile):
+        return profile
+    from app.areas.crm.company_lookup import company_profile, lookup_company
+    seen = lookup.setdefault("details", {})
+    if name not in seen:
+        seen[name] = await company_profile(db, name) or None
+        if seen[name] is None and lookup.get("charge"):
+            try:
+                detail = await lookup_company(name, lookup["username"], db, aliases=(name,))
+                seen[name] = detail
+                if not detail.get("cached"):
+                    lookup.setdefault("charged", []).append(name)
+            except HTTPException as exc:
+                lookup.setdefault("failed", []).append(f"{name}：{exc.detail}")
+        elif seen[name] is None and name not in lookup.setdefault("pending", []):
+            lookup["pending"].append(name)
+    return _merge_enterprise(profile, seen[name]) if seen[name] else profile
+
+
+def enterprise_notice(lookup: dict | None) -> dict:
+    lookup = lookup or {}
+    notice = {key: list(lookup.get(key) or []) for key in ("pending", "charged", "failed")}
+    if notice["pending"]:
+        notice["message"] = ("企业信息库里没有这几家单位的存档，下载或生成 Word 时会查企查查补全法定代表人、统一社会信用代码和地址（每家扣一次企查查次数）："
+                             + "、".join(notice["pending"]))
+    elif notice["charged"]:
+        notice["message"] = "已查企查查补全：" + "、".join(notice["charged"]) + "（每家扣一次，已存进企业信息库，以后不再扣）"
+    if notice["failed"]:
+        notice["message"] = (notice.get("message", "") + "；" if notice.get("message") else "") + "没查到，请手写：" + "；".join(notice["failed"])
+    return notice
+
+
 async def _party_profiles(names: list[str], db: AsyncSession) -> dict[str, dict]:
     """当事人档案（当事人表优先，没有再看客户表）里的地址、电话、证件号。"""
     from app.data_models.parties import PartyRecord
@@ -426,6 +492,11 @@ async def _party_profiles(names: list[str], db: AsyncSession) -> dict[str, dict]
         profiles[title.strip()] = dict(data or {})
     for name, data in (await db.execute(select(PartyRecord.name, PartyRecord.data).where(PartyRecord.name.in_(names)))).all():
         profiles[name.strip()] = {**profiles.get(name.strip(), {}), **(data or {})}
+    for name in names:
+        key = str(name or "").strip()
+        completed = await _complete_enterprise(key, profiles.get(key, {}), db)
+        if completed:
+            profiles[key] = completed
     return profiles
 
 
@@ -491,7 +562,7 @@ def _applicant_block(name: str, label: str, identity: dict, profile: dict, *, ap
     if _is_person(name, identity, identity_no, profile):
         gender = ("男" if int(identity_no[16]) % 2 else "女") if len(identity_no) == 18 and identity_no[16].isdigit() else ""
         return [f"{label}：{name}，{gender or f'性别：{BLANK}'}，身份证号码：{identity_no or BLANK}", f"{place}：{address or BLANK}"]
-    return [f"{label}：{name}", f"统一社会信用代码：{identity_no or BLANK}", f"法定代表人：{representative or BLANK}  职务：{BLANK}",
+    return [f"{label}：{name}", f"统一社会信用代码：{identity_no or BLANK}", f"法定代表人：{representative or BLANK}  职务：{_first(profile, 'legal_agent_title', 'legal_representative_title') or BLANK}",
             f"{place}：{address or BLANK}"]
 
 
@@ -543,6 +614,17 @@ def _hearing_days(data: dict) -> str:
     """开庭日期按样本写成“2024.5.14；2025.11.18”，一审、二审、再审、执行各次开庭都列出。"""
     days = sorted({day for day in (_day(data.get(key)) for key in HEARING_DATE_KEYS) if day})
     return "；".join(f"{day.year}.{day.month}.{day.day}" for day in days)
+
+
+def retention_period(record: BusinessRecord, data: dict) -> str:
+    """陶国南 11-05 11:25：民事案件、行政案件 20 年，刑事案件长期；其他（仲裁、法律顾问等）留空可选。没填案件类型的按案号（MS/XZ/XS）判断。"""
+    case_type = str(data.get("case_type") or "")
+    serial = str(record.serial_no or "").upper()
+    if "刑事" in case_type or (not case_type and "XS" in serial):
+        return "长期"
+    if "民事" in case_type or "行政" in case_type or (not case_type and ("MS" in serial or "XZ" in serial)):
+        return "20年"
+    return ""
 
 
 def _handling_result(record: BusinessRecord, data: dict) -> str:
@@ -656,6 +738,7 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
         "开庭日期": _hearing_days(data),
         "处理结果": _handling_result(record, data),
         "归档日期": chinese_date(_day(data.get("archived_at")) or today),
+        "保管期限": retention_period(record, data),
         **(await firm_account(db)),
     }
 
@@ -691,13 +774,21 @@ async def _case(case_id: int, identity: dict, db: AsyncSession, *, write: bool) 
     return record
 
 
-async def _render(case_id: int, template_id: str, body: GenerateInput, identity: dict, db: AsyncSession, *, write: bool):
+async def _render(case_id: int, template_id: str, body: GenerateInput, identity: dict, db: AsyncSession, *, write: bool,
+                  charge: bool = False, lookup: dict | None = None):
+    """charge=True（下载、生成 Word）时，单位当事人存档里没有的才查企查查；预览只看存档。"""
     record = await _case(case_id, identity, db, write=write)
     item = await _template(db, template_id)
     if not item.get("is_active", True):
         raise HTTPException(409, "这个文书模板已停用")
     content = await _template_bytes(item, db)
-    fields, slots = await _fields(record, item, content, db, body.values)
+    state = lookup if lookup is not None else {}
+    state.update(charge=charge, username=identity["username"])
+    token = ENTERPRISE_LOOKUP.set(state)
+    try:
+        fields, slots = await _fields(record, item, content, db, body.values)
+    finally:
+        ENTERPRISE_LOOKUP.reset(token)
     missing = [field["key"] for field in fields if field["missing"]]
     return record, item, fields, missing, content, slots
 
@@ -840,17 +931,18 @@ def _docx_response(content: bytes, filename: str) -> Response:
 async def preview_document(case_id: int, template_id: str, body: GenerateInput, identity: dict = Depends(current_identity),
                            db: AsyncSession = Depends(get_db)):
     """列出字段（系统取的值、缺哪些）和替换后的正文，不保存。"""
-    record, item, fields, missing, content, slots = await _render(case_id, template_id, body, identity, db, write=False)
+    lookup: dict = {}
+    record, item, fields, missing, content, slots = await _render(case_id, template_id, body, identity, db, write=False, lookup=lookup)
     filled = fill(content, slots, {field["key"]: field["value"] or (BLANK if field["optional"] else "【" + field["key"] + "待填写】") for field in fields})
     return {"template": _public(item), "fields": fields, "missing": missing, "paragraphs": paragraphs(filled),
-            "filename": f"{record.serial_no}-{item['name']}.docx"}
+            "filename": f"{record.serial_no}-{item['name']}.docx", "enterprise_lookup": enterprise_notice(lookup)}
 
 
 @router.post("/cases/{case_id}/documents/word-templates/{template_id}/download")
 async def download_preview(case_id: int, template_id: str, body: GenerateInput, identity: dict = Depends(current_identity),
                            db: AsyncSession = Depends(get_db)):
     """下载预览用的 Word，不保存到案件。"""
-    record, item, fields, missing, content, slots = await _render(case_id, template_id, body, identity, db, write=False)
+    record, item, fields, missing, content, slots = await _render(case_id, template_id, body, identity, db, write=False, charge=True)
     if missing:
         raise HTTPException(422, "还缺：" + "、".join(missing))
     return _docx_response(fill(content, slots, {field["key"]: field["value"] or (BLANK if field["optional"] else "") for field in fields}), f"{record.serial_no}-{item['name']}.docx")
@@ -863,7 +955,8 @@ async def generate_document(case_id: int, template_id: str, body: GenerateInput,
     from app.core.cases import _case_ai_draft_name
     from app.core.generated_file_storage import save_generated_file
     from app.core.storage import _attachment_dict
-    record, item, fields, missing, content, slots = await _render(case_id, template_id, body, identity, db, write=True)
+    lookup: dict = {}
+    record, item, fields, missing, content, slots = await _render(case_id, template_id, body, identity, db, write=True, charge=True, lookup=lookup)
     if missing:
         raise HTTPException(422, "还缺：" + "、".join(missing) + "，补齐后再生成")
     document = fill(content, slots, {field["key"]: field["value"] or (BLANK if field["optional"] else "") for field in fields})
@@ -877,4 +970,4 @@ async def generate_document(case_id: int, template_id: str, body: GenerateInput,
 
     result = await save_generated_file(db, identity, name=filename, content=document, content_type=DOCX_TYPE,
                                        source_kind="case_word_template", case_record=record, on_available=on_available)
-    return {"attachment": _attachment_dict(result["attachment"], record), "fields": fields}
+    return {"attachment": _attachment_dict(result["attachment"], record), "fields": fields, "enterprise_lookup": enterprise_notice(lookup)}

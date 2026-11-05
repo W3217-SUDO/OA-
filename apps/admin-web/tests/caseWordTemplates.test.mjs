@@ -35,7 +35,7 @@ test("案件智能体输入区有“按模板生成文书”按钮，发送前�
 test("生成弹窗：字段可改，缺字段不能保存，预览后确认才存进案件空间", () => {
   const modal = read("../src/legal/CaseWordTemplateModal.tsx");
   assert.match(modal, /documents\/word-templates\/\$\{selected\}/);
-  assert.match(modal, /api\.post\(`\$\{base\}\/generate`, \{ values: edited \}\)/);
+  assert.match(modal, /api\.post(<[^>]+>)?\(`\$\{base\}\/generate`, \{ values: edited \}\)/);
   assert.match(modal, /disabled=\{!preview \|\| !!missing\.length \|\| !!busy\}/);
   assert.match(modal, /正文不会被改写，只替换这些字段/);
 });

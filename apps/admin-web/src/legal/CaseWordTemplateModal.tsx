@@ -10,7 +10,9 @@ import { matchWordTemplate, type WordTemplate } from "./caseWordTemplateMatch";
 export { matchWordTemplate, type WordTemplate };
 // optional：可以留空（如调解协议书的调解员、付款期限，打印后手写）；derived：由别的字段算出（赔偿金额大写），不单独填；multiline：多个当事人逐行列出。
 type Field = { key: string; value: string; source: "case" | "manual"; missing: boolean; options: string[]; optional?: boolean; derived?: boolean; multiline?: boolean };
-type Preview = { fields: Field[]; missing: string[]; paragraphs: string[]; filename: string };
+// 陶国南 11-05 10:34：单位当事人缺法定代表人等信息时，企业信息库没有的会在下载或生成时查企查查（每家扣一次），预览里先提示。
+type EnterpriseLookup = { message?: string; pending?: string[]; charged?: string[]; failed?: string[] };
+type Preview = { fields: Field[]; missing: string[]; paragraphs: string[]; filename: string; enterprise_lookup?: EnterpriseLookup };
 
 const errorText = (failure: unknown, fallback: string) => {
   const detail = (failure as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
@@ -58,14 +60,17 @@ export function CaseWordTemplateModal({ caseId, open, templateId, canSave, onClo
       const response = await api.post(`${base}/download`, { values: edited }, { responseType: "blob" });
       const url = URL.createObjectURL(response.data), link = document.createElement("a");
       link.href = url; link.download = preview?.filename || "文书.docx"; link.click(); URL.revokeObjectURL(url);
+      // 下载时查过企查查的单位已存进企业信息库，刷新预览让页面也显示查到的信息。
+      if (preview?.enterprise_lookup?.pending?.length) void refresh(edited);
     } catch { message.error("下载失败，请先补齐字段"); }
     finally { setBusy(""); }
   };
   const save = async () => {
     setBusy("save");
     try {
-      await api.post(`${base}/generate`, { values: edited });
+      const { data } = await api.post<{ enterprise_lookup?: EnterpriseLookup }>(`${base}/generate`, { values: edited });
       message.success("已保存到案件空间文档");
+      if (data?.enterprise_lookup?.message) message.info(data.enterprise_lookup.message);
       onSaved?.();
       onClose();
     } catch (failure) { setError(errorText(failure, "保存失败")); }
@@ -102,6 +107,7 @@ export function CaseWordTemplateModal({ caseId, open, templateId, canSave, onClo
           </label>)}
         </div>
         {!!missing.length && <Alert type="warning" showIcon title={`还缺：${missing.join("、")}`} />}
+        {preview.enterprise_lookup?.message && <Alert type="info" showIcon title={preview.enterprise_lookup.message} />}
         <div className="case-word-template-preview-head"><strong>预览</strong>
           <Button size="small" icon={<ReloadOutlined />} loading={busy === "preview"} onClick={() => void refresh(edited)}>按上面的字段刷新预览</Button></div>
         <div className="case-word-template-preview" aria-label="文书预览">
