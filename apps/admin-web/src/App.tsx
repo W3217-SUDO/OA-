@@ -95,6 +95,7 @@ import "./personal-agent/mobile-chat-layout.css";
 import { rememberCustomerDetailTarget } from "./customerDetailNavigation";
 import { AgentIcon } from "./personal-agent/AgentAvatar";
 import { ROUTE_RESET_EVENT } from "./routeReset";
+import { withPageLoadTimeout } from "./pageLoadTimeout";
 
 function reloadAppShell() {
   const url = new URL(window.location.href);
@@ -110,7 +111,7 @@ function lazyWithVersionRecovery<T extends ComponentType<any>>(
     const marker = `sunhold:chunk-reload:${key}`;
     const shellReloaded = new URL(window.location.href).searchParams.has("_v");
     try {
-      const module = await importer();
+      const module = await withPageLoadTimeout(importer());
       sessionStorage.removeItem(marker);
       return module;
     } catch (error) {
