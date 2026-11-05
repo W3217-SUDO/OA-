@@ -981,6 +981,8 @@ function canonicalRoute(route: string): string {
   )
     return "task-my-accepted";
   if (route === "investigation-task-overdue") return "task-reminders";
+  // 501629：任务中心的 VIP任务 页面已取消（VIP 任务在案件“客户任务”里发），旧链接转到“我接受的任务”。
+  if (route === "vip-tasks") return "task-my-accepted";
   if (route === "investigation-task-unassigned") return "task-company";
   if (route.startsWith("reports-")) return "reports";
   const prefixes = [

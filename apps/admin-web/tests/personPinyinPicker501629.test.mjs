@@ -49,7 +49,8 @@ test("批量转交接收人、重新派发新负责人、查询条件负责人�
 test("任务中心不再有 VIP任务 页面，案件详情客户任务仍可标记 VIP", () => {
   const app = read("../src/App.tsx");
   const caseCenter = read("../src/legal/CaseCenterPage.tsx");
-  assert.doesNotMatch(app, /route === "vip-tasks"/);
+  assert.match(app, /if \(route === "vip-tasks"\) return "task-my-accepted";/);
+  assert.doesNotMatch(app, /<VipTaskCenterPage/);
   assert.doesNotMatch(app, /import\("\.\/VipTaskCenterPage"\)/);
   assert.match(app, /item\.key !== "vip-tasks"/);
   assert.match(caseCenter, /<Checkbox>标记为VIP任务<\/Checkbox>/);
