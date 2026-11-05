@@ -2882,20 +2882,58 @@ async def assign_case(case_id: int, body: CaseAssignmentInput, identity: dict = 
     from app.core.case_automation import apply_case_rules_on_change
     case_record = await _ensure_record_module(case_id, "case", identity, db)
     previous = case_record.status
-    handling_lawyers, handling_usernames = await _resolve_active_case_people(body.handling_lawyers, db, field_name="经办律师")
+    from app.core.archived_case_people import is_archive_locked, require_archived_people_admin
+    archived = is_archive_locked(case_record)
+    if archived:
+        require_archived_people_admin(identity)  # 501631：归档类案件只有真实系统管理员能增减本案人员
+    from app.core.cases import resolve_case_people_keep_legacy
+    stored = case_record.data or {}
+
+    def _stored(*keys: str) -> list[str]:
+        values: list[str] = []
+        for key in keys:
+            raw = stored.get(key)
+            values += [str(item).strip() for item in (raw if isinstance(raw, list) else [raw]) if str(item or "").strip()]
+        return values
+
+    async def _keep_legacy(values: list[str], previous: list[str], field_name: str) -> tuple[list[str], list[str]]:
+        names, accounts = await resolve_case_people_keep_legacy(values, previous, db, field_name=field_name)
+        # 保留下来的离职人员如果传的是账号，显示成他的姓名
+        kept = [name for name in names if name not in accounts]
+        display = dict((await db.execute(select(User.username, User.display_name).where(User.username.in_(kept)))).all()) if kept else {}
+        return [display.get(name) or name for name in names], accounts
+
+    async def _people(values: list[str], previous: list[str], field_name: str) -> tuple[list[str], list[str]]:
+        # 归档案件里已离职、迁移来的人员原样保留（管理员只增减要改的人）；其他案件仍要求系统在职人员
+        if archived:
+            return await _keep_legacy(values, previous, field_name)
+        return await _resolve_active_case_people(values, db, field_name=field_name)
+
+    handling_lawyers, handling_usernames = await _people(body.handling_lawyers, _stored("handling_lawyers", "handling_lawyer_usernames"), "经办律师")
     if not handling_lawyers and not body.hearing_lawyer.strip():
         raise HTTPException(status_code=422, detail="请至少分配一名有效经办律师")
-    assistant_values, assistant_usernames = await _resolve_active_case_people([body.assistant] if body.assistant.strip() else [], db, field_name="律师助理")
-    hearing_values, _ = await _resolve_active_case_people([body.hearing_lawyer], db, field_name="开庭律师")
-    manager_values, _ = await _resolve_active_case_people([body.customer_manager] if body.customer_manager.strip() else [], db, field_name="客户管理人")
-    assistant = assistant_values[0] if assistant_values else ""
-    assistant_username = assistant_usernames[0] if assistant_usernames else ""
+    # 501631：分配弹窗的律师助理改成多选（assistants）；旧的单个 assistant 仍兼容。原来已存的助理（含离职、迁移）原样保留。
+    requested_assistants = body.assistants if body.assistants is not None else ([body.assistant] if body.assistant.strip() else [])
+    assistant, assistant_username = await _keep_legacy(
+        requested_assistants, _stored("assistants", "assistant", "assistant_usernames", "assistant_username"), "律师助理")
+    hearing_values, _ = await _people([body.hearing_lawyer], _stored("hearing_lawyer", "hearing_lawyer_username"), "开庭律师")
+    if not hearing_values:
+        raise HTTPException(status_code=422, detail="请填写开庭律师")
+    manager_values, _ = await _people([body.customer_manager] if body.customer_manager.strip() else [], _stored("customer_manager"), "客户管理人")
     previous_case_data = dict(case_record.data or {})
     case_data = _case_team_payload({
         **(case_record.data or {}), "customer_manager": manager_values[0] if manager_values else "",
         "hearing_lawyer": hearing_values[0],
     }, handling_lawyers, handling_usernames, assistant, assistant_username)
     case_record.data = case_data
+    if archived:
+        # 只改人员：不改阶段、不重算提成、不跑案件自动规则；记案件日志（改前 → 改后）
+        from app.core.archived_case_people import team_summary
+        db.add(WorkflowEvent(record_id=case_record.id, action="归档案件调整本案人员", from_status=previous, to_status=previous, operator=identity["username"],
+                             comment=f"管理员调整本案人员。改前：{team_summary(previous_case_data)}；改后：{team_summary(case_data)}。{body.comment}".strip()))
+        await db.commit()
+        await db.refresh(case_record)
+        return _record_dict(case_record)
     await assess_conflict_review(case_record, identity, db, trigger="case_save")
     gate = await get_conflict_review_gate(case_record, db, action="案件分配")
     if gate["blocking"]:
@@ -2911,7 +2949,7 @@ async def assign_case(case_id: int, body: CaseAssignmentInput, identity: dict = 
     if case_record.status == "新案待分配":
         case_record.status = "文书准备"
         case_record.data = {**(case_record.data or {}), "phase_changed_at": datetime.now().isoformat(timespec="seconds")}
-    db.add(WorkflowEvent(record_id=case_record.id, action="案件人员分配", from_status=previous, to_status=case_record.status, operator=identity["username"], comment=f"开庭律师：{case_data['hearing_lawyer']}；经办律师：{','.join(handling_lawyers)}；助理：{assistant}。{body.comment}"))
+    db.add(WorkflowEvent(record_id=case_record.id, action="案件人员分配", from_status=previous, to_status=case_record.status, operator=identity["username"], comment=f"开庭律师：{case_data['hearing_lawyer']}；经办律师：{','.join(handling_lawyers)}；助理：{'、'.join(assistant)}。{body.comment}"))
     await apply_case_rules_on_change(case_record, db)
     await db.commit()
     await db.refresh(case_record)

@@ -12,6 +12,7 @@ class CaseAssignmentInput(BaseModel):
     hearing_lawyer: str
     handling_lawyers: list[str] = Field(default_factory=list)
     assistant: str = ""
+    assistants: list[str] | None = Field(default=None, max_length=20)  # 501631：律师助理多选
     comment: str = ""
 
 

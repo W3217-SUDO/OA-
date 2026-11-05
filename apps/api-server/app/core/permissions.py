@@ -1885,7 +1885,9 @@ async def _case_detail_action_capabilities(case_record: BusinessRecord, identity
     immutable = case_record.status in {"待归档审核", "亏损内审", "亏损审核", "已归档", "亏损归档", "已合并"}
     active = not immutable
     can_create_same_type = active and (case_type in CASE_CREATABLE_TYPES or case_type in CIVIL_CASE_TYPES) and await _case_action_granted(identity, db, "case.duplicate")
-    can_assign_team = active and await _case_action_granted(identity, db, "case.team.assign")
+    # 501631：归档类案件只有真实系统管理员能用“分配”增减本案人员
+    from app.core.archived_case_people import is_actual_system_admin, is_archive_locked
+    can_assign_team = (active or (is_archive_locked(case_record) and is_actual_system_admin(identity))) and await _case_action_granted(identity, db, "case.team.assign")
     can_edit_hearing_lawyer = active and await _case_action_granted(identity, db, "case.hearing.manage")
     can_edit_basic = active and await _case_action_granted(identity, db, "case.detail.update")
     can_edit_court_info = active and await _case_action_granted(identity, db, "case.court.update")

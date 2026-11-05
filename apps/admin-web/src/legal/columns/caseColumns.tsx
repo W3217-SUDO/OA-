@@ -91,7 +91,7 @@ export function createCaseColumns(context: {
             render: (_: unknown, r: CaseRow) => {
                 const capability = context.getCaseCapability(r);
                 return (<Space size={0}>
-            {capability.can_assign_team && <Button type="link" icon={<TeamOutlined />} disabled={ARCHIVE_LOCKED_STATUSES.includes(r.status)} onClick={() => context.openAssign(r)}>
+            {capability.can_assign_team && <Button type="link" icon={<TeamOutlined />} onClick={() => context.openAssign(r)}>
               分配
             </Button>}
             {capability.can_update_progress && <Button type="link" icon={<EditOutlined />} disabled={[

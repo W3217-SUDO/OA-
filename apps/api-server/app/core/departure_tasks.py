@@ -149,7 +149,8 @@ async def departed_open_tasks(db: AsyncSession) -> dict:
 
 async def handover_tasks(*, from_username: str, task_ids: list[int], recipient: str, comment: str, identity: dict, db: AsyncSession) -> dict:
     """把 from_username 在这些任务里的负责人/发起人/协作人身份交给 recipient；负责人变了的任务走转交（待接收）。"""
-    from app.core.case_task_members import require_case_task_members
+    from app.core.archived_case_people import add_case_assistant, is_actual_system_admin
+    from app.core.case_task_members import _case_records_of_task, require_case_task_members
     from app.core.tasks import _active_task_username, _add_task_message_notifications, _record_task_manual_intervention
 
     from_username = from_username.strip()
@@ -167,6 +168,7 @@ async def handover_tasks(*, from_username: str, task_ids: list[int], recipient: 
     recipient_user = await db.scalar(select(User).where(User.username == recipient))
     today = str(date.today())
     owner_changed = 0
+    admin = is_actual_system_admin(identity)
     outsiders: list[str] = []
     for task in tasks:
         data = dict(task.data or {})
@@ -180,8 +182,12 @@ async def handover_tasks(*, from_username: str, task_ids: list[int], recipient: 
             try:
                 await require_case_task_members([recipient], db, task_data=data)
             except HTTPException:
-                outsiders.append(task.serial_no)
-                continue
+                # 501631（tgn 11-05）：管理员转交时，接收人不是本案人员就自动加进案件“律师助理”栏（含归档案件），记案件日志
+                cases = [record for record in await _case_records_of_task(data, db) if record.module == "case"] if admin else []
+                if not cases:
+                    outsiders.append(task.serial_no)
+                    continue
+                await add_case_assistant(cases[0], recipient, reason=f"离职任务转交（{task.serial_no}，{from_username} → {recipient}）", identity=identity, db=db)
         roles = []
         if is_initiator:
             data["initiator"] = recipient; roles.append("发起人")
@@ -210,6 +216,6 @@ async def handover_tasks(*, from_username: str, task_ids: list[int], recipient: 
     if outsiders:
         await db.rollback()
         shown = "、".join(outsiders[:10]) + (f" 等 {len(outsiders)} 条" if len(outsiders) > 10 else "")
-        raise HTTPException(status_code=422, detail=f"接收人不是这些案件任务的本案人员：{shown}。请先在案件里把接收人加为本案人员，或换一位接收人")
+        raise HTTPException(status_code=422, detail=f"接收人不是这些案件任务的本案人员：{shown}。请系统管理员转交（会自动把接收人加为律师助理），或换一位接收人")
     await db.commit()
     return {"updated": len(tasks), "owner_changed": owner_changed, "recipient": recipient}

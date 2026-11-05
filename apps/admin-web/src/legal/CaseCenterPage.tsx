@@ -3483,9 +3483,10 @@ export default function CaseCenterPage({
               placeholder="请选择系统已创建的在职律师"
             />
           </Form.Item>
-          <Form.Item label="律师助理" name="assistant">
-            <KeywordPersonSelect allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" />
+          <Form.Item label="律师助理" name="assistants">
+            <KeywordPersonSelect mode="multiple" allowClear showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="请选择系统已创建的在职人员" />
           </Form.Item>
+          {assigning && ARCHIVE_LOCKED_STATUSES.includes(assigning.status) && <div className="employee-account-tip">案件已归档，管理员调整本案人员只改人员，不改阶段、不重算提成，会记案件日志。</div>}
           <Form.Item label="分配说明" name="comment">
             <Input.TextArea rows={3} />
           </Form.Item>
