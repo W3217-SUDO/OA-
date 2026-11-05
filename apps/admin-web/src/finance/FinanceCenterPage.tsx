@@ -96,7 +96,7 @@ import { RefundLogDrawer } from "./RefundLogDrawer";
 import { InvoiceDetailTables } from "./InvoiceDetailTables";
 import { ContractPaymentEditPage } from "./ContractPaymentEditPage";
 import { invoiceObjectFees } from "./invoiceDetails.mjs";
-import { canEditContractPayment, isContractPayment, isPendingWriteoffPackage, paymentApplicationDate, paymentLifecycleStatus } from "./paymentLifecycle.mjs";
+import { canEditContractPayment, isContractPayment, isPendingWriteoffPackage, isPendingWriteoffPayment, paymentApplicationDate, paymentLifecycleStatus } from "./paymentLifecycle.mjs";
 import { useFinanceRuntimeContext } from "./hooks/useFinanceRuntimeContext";
 import { usePaymentReversalState } from "./hooks/usePaymentReversalState";
 import { usePaymentWriteoffState } from "./hooks/usePaymentWriteoffState";
@@ -2110,6 +2110,12 @@ function FinanceCenterContent({
             }}
           >
             核销
+          </Button>
+        )}
+      {initialView === "finance-payment-writeoff" && isPendingWriteoffPayment(row) &&
+        ["admin", "manager", "auditor"].includes(role) && (
+          <Button type="link" onClick={() => openPaymentRollback(row)}>
+            回滚
           </Button>
         )}
       {(["草稿", "已退回"].includes(row.status) || canEditContractPayment(row)) && (

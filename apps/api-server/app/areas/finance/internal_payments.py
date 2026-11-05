@@ -606,19 +606,34 @@ async def rollback_pending_writeoff_package(
     require_payment_business(package, identity)
     if package.status != "待核销":
         raise HTTPException(status_code=409, detail="只有待核销的请款单可以回滚")
+    # 501589（shenhe 11-05）：付款管理 › 待核销列表的普通付款包（案件费用、合同付款）也能回滚，
+    # 每笔退回“提交付款单”之前的状态；要有待核销列表的办理权限。
+    ordinary = (package.data or {}).get("fee_type") == "普通付款包"
+    if ordinary:
+        from app.areas.finance.payment_workflow import payment_action_allowed
+        if not await payment_action_allowed(identity, db, "writeoff"):
+            raise HTTPException(status_code=403, detail="当前角色没有付款回滚权限")
     raw_fee_ids = list((package.data or {}).get("fee_ids", []))
     if not raw_fee_ids or any(not str(item_id).strip().isdigit() for item_id in raw_fee_ids):
         raise HTTPException(status_code=409, detail="付款包费用关联无效，不能回滚")
     fee_ids = {int(item_id) for item_id in raw_fee_ids}
     fees = (await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.id.in_(fee_ids), BusinessRecord.module == "finance",
+        BusinessRecord.id.in_(fee_ids),
+        BusinessRecord.module.in_(("finance", "contract_payment") if ordinary else ("finance",)),
     ).with_for_update())).all()
+    previous_status = {}
+    if ordinary:
+        for record_id, from_status in (await db.execute(select(WorkflowEvent.record_id, WorkflowEvent.from_status).where(
+            WorkflowEvent.record_id.in_(fee_ids), WorkflowEvent.action == "合并提交付款单",
+            WorkflowEvent.comment == package.serial_no,
+        ).order_by(WorkflowEvent.id))).all():
+            previous_status[record_id] = from_status
     if {item.id for item in fees} != fee_ids:
         raise HTTPException(status_code=409, detail="付款包关联费用不完整，不能回滚")
     payment_keys = {
         "payment_status", "payment_date", "payment_package_id", "payment_package_no", "payment_requested_amount",
         "paid_amount", "payment_applied_at", "payment_applied_by", "paid_at", "paid_by", "writeoff_status",
-        "writeoff_voucher_no", "payment_method", "written_off_at", "written_off_by",
+        "writeoff_voucher_no", "payment_method", "written_off_at", "written_off_by", "payment_package_amount",
     }
     comment = body.comment.strip() or f"回滚待核销付款包 {package.serial_no}"
     for fee in fees:
@@ -629,9 +644,16 @@ async def rollback_pending_writeoff_package(
         if float(data.get("paid_amount") or 0) > 0 and data.get("writeoff_status") == "已核销":
             raise HTTPException(status_code=409, detail=f"费用 {fee.serial_no} 已核销，不能回滚")
         previous = fee.status
-        fee.status = "已审批"
+        restored = "已审批"
+        if ordinary:
+            restored = previous_status.get(fee.id) or ("待付款" if fee.module == "contract_payment" else "已审批")
+            if restored not in {"已审批", "待付款", "部分付款"}:
+                restored = "待付款" if fee.module == "contract_payment" else "已审批"
+        fee.status = restored
         fee.data = {key: value for key, value in data.items() if key not in payment_keys}
-        db.add(WorkflowEvent(record_id=fee.id, action="待核销回滚", from_status=previous, to_status="已审批",
+        if restored == "部分付款":
+            fee.data = {**fee.data, "payment_status": "部分付款"}
+        db.add(WorkflowEvent(record_id=fee.id, action="待核销回滚", from_status=previous, to_status=restored,
                              operator=identity["username"], comment=comment))
     rolled_back_at = datetime.now().isoformat(timespec="seconds")
     db.add(WorkflowEvent(record_id=package.id, action="待核销回滚", from_status=package.status, to_status="已回滚",
@@ -640,4 +662,5 @@ async def rollback_pending_writeoff_package(
     package.data = {**(package.data or {}), "rolled_back_by": identity["username"],
                     "rolled_back_at": rolled_back_at, "rollback_comment": comment}
     await db.commit()
-    return {"package_id": package.id, "package_no": package.serial_no, "fee_ids": sorted(fee_ids), "status": "已审批"}
+    return {"package_id": package.id, "package_no": package.serial_no, "fee_ids": sorted(fee_ids),
+            "status": "已审批" if not ordinary else "已退回待付款"}

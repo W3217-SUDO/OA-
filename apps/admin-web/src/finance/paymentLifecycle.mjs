@@ -12,6 +12,10 @@ export const paymentApplicationDate = (row) =>
 export const isPendingWriteoffPackage = (row) => !isContractPayment(row) && row?.status === "待核销" &&
   Boolean(row?.data?.payment_package_id) && row?.data?.writeoff_status !== "已核销";
 
+// 501589（shenhe 11-05）：付款管理 › 待核销列表的付款单（案件费用、合同付款都算）可以回滚，整包退回待付款。
+export const isPendingWriteoffPayment = (row) => row?.status === "待核销" &&
+  Boolean(row?.data?.payment_package_id) && row?.data?.writeoff_status !== "已核销";
+
 export const canEditContractPayment = (row) => isContractPayment(row) &&
   ["草稿", "已驳回", "已退回"].includes(row.status) &&
   row.data?.writeoff_status !== "已核销" && Number(row.data?.paid_amount || 0) === 0;

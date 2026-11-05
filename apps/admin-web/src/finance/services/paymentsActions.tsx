@@ -3,7 +3,7 @@ import type { FormInstance } from "antd/es/form/hooks/useForm";
 import dayjs from "dayjs";
 import { api } from "../../api";
 import { financeCenterApi } from "./financeCenterApi";
-import { isContractPayment, isPendingWriteoffPackage, paymentActionPath, unifiedPaymentQueryParams } from "../paymentLifecycle.mjs";
+import { isContractPayment, isPendingWriteoffPackage, isPendingWriteoffPayment, paymentActionPath, unifiedPaymentQueryParams } from "../paymentLifecycle.mjs";
 import type { FinanceActionGate } from "../../financeActionGate.mjs";
 import { formatRequiredDate } from "../../formSafety";
 import { createPaymentPrintPreview, normalizePaymentPackageResponse, paymentPackageEmptySelectionMessage, paymentPackageRequestParams, paymentPackageWordExportPath, paymentPackageWriteoffPayload, paymentQueryRequestParams } from "../constants";
@@ -384,7 +384,7 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
             const internalApplication = initialView === "finance-internal-mine";
             await api.post(internalApplication
                 ? `/finance/internal-applications/${paymentRollbackTarget.id}/rollback`
-                : isPendingWriteoffPackage(paymentRollbackTarget)
+                : isPendingWriteoffPackage(paymentRollbackTarget) || isPendingWriteoffPayment(paymentRollbackTarget)
                     ? `/finance/payment-packages/${paymentRollbackTarget.data.payment_package_id}/rollback`
                     : paymentActionPath(paymentRollbackTarget, "rollback"), {
                 ...(internalApplication

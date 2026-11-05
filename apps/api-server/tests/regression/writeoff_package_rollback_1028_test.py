@@ -89,6 +89,47 @@ class WriteoffPackageRollbackTest(unittest.IsolatedAsyncioTestCase):
         response = await self.client.post(f"{API}/finance/payment-packages/{self.package.id}/rollback", json={})
         self.assertEqual(response.status_code, 403, response.text)
 
+    async def test_ordinary_package_restores_previous_status_including_contract_payment(self):
+        """501589（shenhe 11-05）：付款管理 › 待核销列表的普通付款包，案件费用、合同付款都退回提交付款单之前的状态。"""
+        async with self.sessions() as db:
+            package = BusinessRecord(module="finance_package", serial_no="P261105-501589", title="付款申请单", status="待核销",
+                                     owner=IDENTITY["username"], data={})
+            db.add(package)
+            await db.flush()
+            fee = BusinessRecord(module="finance", serial_no="FY-589", title="公证费", status="待核销", owner=IDENTITY["username"],
+                                 data={"fee_type": "公证费", "amount": 100, "payment_package_id": package.id,
+                                       "payment_package_no": package.serial_no, "payment_package_amount": 60,
+                                       "writeoff_status": "待核销", "payment_status": "待核销"})
+            contract = BusinessRecord(module="contract_payment", serial_no="CP-589", title="合同付款", status="待核销",
+                                      owner=IDENTITY["username"], data={"amount": 50, "payment_package_id": package.id,
+                                                                        "payment_package_no": package.serial_no,
+                                                                        "writeoff_status": "待核销", "payment_status": "待核销"})
+            db.add_all([fee, contract])
+            await db.flush()
+            package.data = {"fee_type": "普通付款包", "fee_ids": [fee.id, contract.id]}
+            db.add_all([WorkflowEvent(record_id=fee.id, action="合并提交付款单", from_status="部分付款", to_status="待核销",
+                                      operator=IDENTITY["username"], comment=package.serial_no),
+                        WorkflowEvent(record_id=contract.id, action="合并提交付款单", from_status="待付款", to_status="待核销",
+                                      operator=IDENTITY["username"], comment=package.serial_no)])
+            await db.commit()
+            ids = package.id, fee.id, contract.id
+        app.dependency_overrides[current_identity] = lambda: {**IDENTITY, "role": "admin"}
+        response = await self.client.post(f"{API}/finance/payment-packages/{ids[0]}/rollback", json={"comment": "收款账号错了"})
+        self.assertEqual(response.status_code, 200, response.text)
+        async with self.sessions() as db:
+            self.assertEqual((await db.get(BusinessRecord, ids[0])).status, "已回滚")
+            fee, contract = await db.get(BusinessRecord, ids[1]), await db.get(BusinessRecord, ids[2])
+            self.assertEqual((fee.status, contract.status), ("部分付款", "待付款"))
+            self.assertEqual(fee.data.get("payment_status"), "部分付款")
+            for item in (fee, contract):
+                self.assertNotIn("payment_package_id", item.data)
+                self.assertNotIn("payment_package_amount", item.data)
+                self.assertNotIn("writeoff_status", item.data)
+            events = (await db.execute(select(WorkflowEvent.record_id, WorkflowEvent.to_status, WorkflowEvent.comment).where(
+                WorkflowEvent.action == "待核销回滚", WorkflowEvent.record_id.in_(ids)))).all()
+            self.assertEqual(sorted(events), sorted([(ids[0], "已回滚", "收款账号错了"), (ids[1], "部分付款", "收款账号错了"),
+                                                     (ids[2], "待付款", "收款账号错了")]))
+
 
 if __name__ == "__main__":
     unittest.main()
