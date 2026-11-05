@@ -23,7 +23,10 @@ test("结果行按处理时间插进对话", () => {
 
 test("案件智能体浮窗只把待确认的放进卡片，失败写原因，处理完的在对话里一行", () => {
   const drawer = source("legal/CaseAgentDrawer.tsx");
-  assert.match(drawer, /const waitingActions = \(agentState\?\.pending_actions \|\| \[\]\)\.filter\(\(action\) => action\.status === "pending"\)/);
+  assert.match(drawer, /const waitingActions = \(agentState\?\.pending_actions \|\| \[\]\)\.filter\(\(action\) => action\.status === "pending" \|\| action\.status === "executing"\)/);
+  // 调度 11-05：在智能体中心处理掉的卡片同步显示结果；执行失败显示成结果行。
+  assert.match(drawer, /执行失败：/);
+  assert.match(drawer, /在智能体中心处理/);
   assert.match(drawer, /\{waitingActions\.length \? <section className="case-agent-actions agent-pending-card">/);
   assert.match(drawer, /未执行：\{decisionFailures\[action\.id\]\}/);
   assert.match(drawer, /className=\{`agent-action-result is-\$\{line\.tone\}`\}/);

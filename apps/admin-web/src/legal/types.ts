@@ -141,7 +141,8 @@ export type CaseAgentAction = {
   payload?: Record<string, unknown>;
   preview?: import("../AgentOperationPreview").AgentActionPreview;
   execution_result?: unknown;
-  status: "pending" | "approved" | "rejected" | "restored";
+  status: "pending" | "approved" | "rejected" | "restored" | "executing" | "failed";
+  decided_via?: string;
   requested_by?: string;
   requested_at?: string;
   decided_by?: string;

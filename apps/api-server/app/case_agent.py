@@ -794,6 +794,39 @@ class CaseAgentRuntime:
                 state.update(case_snapshot=case_snapshot, updated_at=_now())
                 await self.store.write(thread, state)
 
+    async def sync_tool_requests(
+        self, case_id: int, operator: str, requests: dict[str, dict[str, Any]],
+        agent_id: int | None = None, conversation_id: int | None = None,
+    ) -> dict[str, Any] | None:
+        """确认请求已在智能体中心（或别处）处理时，把案件窗口里同一张卡片改成同样的结果（调度 11-05）。
+        requests：request_id → 确认请求的公开视图（status 为 pending/executing/succeeded/failed/rejected）。返回同步后的状态，没有变化时返回 None。"""
+        if self.store is None or not requests:
+            return None
+        mapping = {"succeeded": "approved", "rejected": "rejected", "failed": "failed", "executing": "executing"}
+        thread = self.thread_id(case_id, operator, agent_id, conversation_id)
+        async with self.store.operation(thread):
+            values = await self._ensure_private_state(case_id, operator, agent_id, conversation_id)
+            actions = [dict(item) for item in values.get("pending_actions") or []]
+            changed = False
+            for action in actions:
+                if action.get("type") != "mcp.call" or action.get("status") not in ("pending", "executing"):
+                    continue
+                view = requests.get(str((action.get("payload") or {}).get("request_id") or ""))
+                status = mapping.get(str((view or {}).get("status") or ""))
+                if not status or status == action.get("status"):
+                    continue
+                action.update({"status": status, "decided_by": action.get("decided_by") or operator,
+                               "decided_at": str(view.get("finished_at") or view.get("decided_at") or _now()),
+                               "decision_comment": str(view.get("comment") or "已在智能体中心处理"), "decided_via": "agent_center",
+                               "execution_result": {"status": view.get("status"), "result": view.get("result"), "error": view.get("error")}
+                               if status != "executing" else action.get("execution_result")})
+                changed = True
+            if not changed:
+                return None
+            values.update(pending_actions=actions, updated_at=_now())
+            await self.store.write(thread, values)
+            return self._public_state(case_id, operator, values, agent_id, conversation_id)
+
     async def decide_action(
         self,
         *,

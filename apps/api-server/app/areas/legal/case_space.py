@@ -495,6 +495,29 @@ async def case_agent_status(case_id: int, identity: dict = Depends(current_ident
     }
 
 
+async def _sync_case_tool_requests(case_id: int, identity: dict, db: AsyncSession, state: dict, agent_id, conversation_id) -> dict:
+    """卡片对应的确认请求已在智能体中心处理时，案件窗口同步显示结果（调度 11-05）。只读确认请求，不执行任何操作。"""
+    from app.agent_mcp.service import ACTION_MODULE, request_view
+    waiting = [str((item.get("payload") or {}).get("request_id") or "") for item in state.get("pending_actions") or []
+               if item.get("type") == "mcp.call" and item.get("status") in ("pending", "executing")]
+    waiting = [item for item in waiting if item]
+    if not waiting:
+        return state
+    records = (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == ACTION_MODULE, BusinessRecord.owner == identity["username"],
+        BusinessRecord.serial_no.in_(["MCP-" + item for item in waiting]), BusinessRecord.status != "待确认",
+    ))).all()
+    views = {}
+    for record in records:
+        try:
+            view = request_view(record)
+        except (KeyError, TypeError):
+            continue
+        views[view["request_id"]] = view
+    synced = await case_agent_runtime.sync_tool_requests(case_id, identity["username"], views, agent_id, conversation_id) if views else None
+    return synced or state
+
+
 @router.get(f"{settings.api_prefix}/case-spaces/{{case_id}}/agent/state")
 async def case_agent_state(case_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db), agent_id: int | None = None, conversation_id: int | None = None):
     agent, conversation = await _case_agent_selection(case_id, agent_id, conversation_id, identity, db)
@@ -507,6 +530,7 @@ async def case_agent_state(case_id: int, identity: dict = Depends(current_identi
             case_id, identity["username"], context, runtime_agent_id, runtime_conversation_id,
         )
         state = await case_agent_runtime.get_state(case_id, identity["username"], runtime_agent_id, runtime_conversation_id)
+        state = await _sync_case_tool_requests(case_id, identity, db, state, runtime_agent_id, runtime_conversation_id)
         import hashlib
         actions = state.get("pending_actions") or []
         audit_serials = {
@@ -696,6 +720,13 @@ async def decide_case_agent_action(
     try:
         state = await case_agent_runtime.get_state(case_id, identity["username"], runtime_agent_id, runtime_conversation_id)
         action = next((item for item in state.get("pending_actions") or [] if item.get("id") == action_id), None)
+        if action and action.get("type") == "mcp.call" and action.get("status") == "pending":
+            # 已在智能体中心处理过：不再重放，直接把结果同步到这张卡片并告诉用户。
+            synced = await _sync_case_tool_requests(case_id, identity, db, state, runtime_agent_id, runtime_conversation_id)
+            done = next((item for item in synced.get("pending_actions") or [] if item.get("id") == action_id), None)
+            if synced is not state and done and done.get("status") != "pending":
+                label = {"approved": "已执行", "rejected": "已驳回", "failed": "执行失败", "executing": "正在执行"}.get(str(done.get("status")), "已处理")
+                return {**synced, "notice": f"这项操作已在智能体中心处理（{label}），这里已同步显示结果。"}
         if not action:
             raise KeyError(action_id)
         if action.get("status") != "pending":

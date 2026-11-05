@@ -176,13 +176,21 @@ export const CaseAgentDrawer = ({
     });
     setActiveAction(null);
   };
-  const waitingActions = (agentState?.pending_actions || []).filter((action) => action.status === "pending");
-  const decidedActions = (agentState?.pending_actions || []).filter((action) => actionResultLine(action.status, action.summary));
+  // 正在执行的（可能是在智能体中心批准的）仍列在这里，按钮置灰。
+  const waitingActions = (agentState?.pending_actions || []).filter((action) => action.status === "pending" || action.status === "executing");
+  // 调度 11-05：在智能体中心处理掉的卡片，这里同步显示结果（执行失败也显示成结果行，不再留着可点的按钮）。
+  const caseResultLine = (action: CaseAgentAction) => {
+    const via = (action as { decided_via?: string }).decided_via === "agent_center" ? "（在智能体中心处理）" : "";
+    if (action.status === "failed") return { text: `执行失败：${action.summary || "智能体操作"}${via}`, tone: "rejected" as const };
+    const line = actionResultLine(action.status, action.summary);
+    return line && { ...line, text: line.text + via };
+  };
+  const decidedActions = (agentState?.pending_actions || []).filter((action) => caseResultLine(action));
   const shownMessages = (agentHistoryExpanded ? agentState?.messages : agentState?.messages?.slice(-8)) || [];
   const firstShownAt = !agentHistoryExpanded && (agentState?.messages?.length || 0) > 8 ? shownMessages[0]?.created_at : undefined;
   const timeline = mergeByTime(shownMessages, decidedActions.filter((action) => !firstShownAt || !action.decided_at || Date.parse(action.decided_at) >= Date.parse(firstShownAt)),
     (item) => item.created_at, (action) => action.decided_at || action.requested_at);
-  const actionDisabled = (action: CaseAgentAction) => Boolean(agentDecisionLoading) || Boolean((action as { preparing?: boolean }).preparing) || (action.type !== "mcp.call" && !counselDetailCapabilities.can_write);
+  const actionDisabled = (action: CaseAgentAction) => Boolean(agentDecisionLoading) || Boolean((action as { preparing?: boolean }).preparing) || action.status === "executing" || (action.type !== "mcp.call" && !counselDetailCapabilities.can_write);
   const selectedSkill = (agentStatus?.skills || []).find((item) => item.id === agentSkillId);
   const quickPrompts = selectedSkill?.quick_prompts?.length
     ? selectedSkill.quick_prompts
@@ -245,7 +253,7 @@ export const CaseAgentDrawer = ({
               {decisionFailures[action.id] && <div className="agent-action-failure" role="alert">未执行：{decisionFailures[action.id]}</div>}
             </div>
             <Space>
-              <Button size="small" className="agent-btn-confirm" icon={<CheckOutlined />} disabled={actionDisabled(action)} loading={agentDecisionLoading === action.id} onClick={() => setActiveAction(action)}>{(action as { preparing?: boolean }).preparing ? "回复写完即可确认" : "查看并确认"}</Button>
+              <Button size="small" className="agent-btn-confirm" icon={<CheckOutlined />} disabled={actionDisabled(action)} loading={agentDecisionLoading === action.id} onClick={() => setActiveAction(action)}>{action.status === "executing" ? "正在执行" : (action as { preparing?: boolean }).preparing ? "回复写完即可确认" : "查看并确认"}</Button>
             </Space>
           </div>)}
         </section> : null}
@@ -264,7 +272,7 @@ export const CaseAgentDrawer = ({
           {!agentHistoryExpanded && (agentState?.messages?.length || 0) > 8 && <Button className="case-agent-history-toggle" type="link" size="small" onClick={() => setAgentHistoryExpanded(true)}>查看更早记录</Button>}
           {timeline.map((row) => {
             if (row.kind === "action") {
-              const action = row.item, line = actionResultLine(action.status, action.summary)!;
+              const action = row.item, line = caseResultLine(action)!;
               return <div key={`action-${action.id}`} className={`agent-action-result is-${line.tone}`} role="status">
                 {line.tone === "done" ? <CheckOutlined /> : <CloseOutlined />}<span title={line.text}>{line.text}</span>
                 {action.status === "approved" && action.type.endsWith(".delete") && <Button type="link" size="small" loading={agentDecisionLoading === action.id} onClick={() => void restoreCaseAgentAction(action)}>恢复</Button>}
