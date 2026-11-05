@@ -79,6 +79,10 @@ export default function IprAnnualFeePage({ onNavigate }: { onNavigate?: (route: 
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploadForm] = Form.useForm<{ category: string; document_date: Dayjs; remark?: string }>();
+  // 501617：老系统“修改首年年度及减缓比例”（批量处理）。
+  const [yearOpen, setYearOpen] = useState(false);
+  const [yearSaving, setYearSaving] = useState(false);
+  const [yearForm] = Form.useForm<{ first_annual_year: number; cost_slow_rate: string }>();
 
   const loadSummary = useCallback(async () => {
     try {
@@ -189,6 +193,32 @@ export default function IprAnnualFeePage({ onNavigate }: { onNavigate?: (route: 
     }
   };
 
+  const openYearEdit = () => {
+    if (!selectedKeys.length) {
+      message.warning("请先勾选要修改的案件");
+      return;
+    }
+    yearForm.resetFields();
+    setYearOpen(true);
+  };
+
+  const submitYearEdit = async () => {
+    const values = await yearForm.validateFields();
+    const caseIds = Array.from(new Set(selectedKeys.map((key) => Number(key.split("-")[0]))));
+    setYearSaving(true);
+    try {
+      const { data } = await api.post<{ updated: number }>("/ipr/annual-fee-monitor/annual-year", { case_ids: caseIds, ...values });
+      message.success(`已修改 ${data.updated} 个案件`);
+      setYearOpen(false);
+      await loadSummary();
+      await loadRows(view, form.getFieldsValue());
+    } catch (error) {
+      message.error(errorDetail(error, "修改首年年度及减缓比例失败"));
+    } finally {
+      setYearSaving(false);
+    }
+  };
+
   const reset = () => {
     form.resetFields();
     void loadRows(view, {});
@@ -263,8 +293,20 @@ export default function IprAnnualFeePage({ onNavigate }: { onNavigate?: (route: 
         <Space wrap style={{ marginTop: 8 }}>
           <Button onClick={() => void exportList("excel")}>生成年费清单(Excel)</Button>
           <Button onClick={() => void exportList("word")}>生成年费清单(Word)</Button>
+          <Button onClick={openYearEdit}>修改首年年度及减缓比例</Button>
           <Button onClick={() => void openUpload()}>上传文件</Button>
         </Space>
+        <Modal open={yearOpen} title={`批量处理（已勾选 ${selectedKeys.length} 项）`} onCancel={() => setYearOpen(false)}
+          onOk={() => void submitYearEdit()} confirmLoading={yearSaving} okText="确定">
+          <Form form={yearForm} layout="vertical">
+            <Form.Item name="first_annual_year" label="首年缴费年度" rules={[{ required: true, message: "请选择首年缴费年度" }]}>
+              <Select options={Array.from({ length: 20 }, (_, index) => ({ value: index + 1, label: `第${index + 1}年度` }))} />
+            </Form.Item>
+            <Form.Item name="cost_slow_rate" label="减缓比例" rules={[{ required: true, message: "请选择减缓比例" }]}>
+              <Select options={[{ value: "1.00", label: "无减缓" }, { value: "0.85", label: "减缓85%" }, { value: "0.70", label: "减缓70%" }]} />
+            </Form.Item>
+          </Form>
+        </Modal>
         <Modal
           open={uploadOpen}
           title={`上传文件（已勾选 ${selectedKeys.length} 项）`}

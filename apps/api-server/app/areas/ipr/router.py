@@ -2453,3 +2453,8 @@ async def update_ipr_official_processing(
         changed += 1
     await db.commit()
     return {"processed": len(records), "changed": changed, "ids": ids, "field": key, "value": body.status}
+
+
+# 501617：专利年费“修改首年年度及减缓比例”（放在最后，main.py 按顺序切片）。
+from app.areas.ipr.annual_fee_year import router as annual_fee_year_router  # noqa: E402
+router.include_router(annual_fee_year_router)
