@@ -806,3 +806,5 @@
 /* 剩余天数：逾期红、3 天内到期橙（501305） */
 .task-days-overdue { color: #cf1322; font-weight: 600; }
 .task-days-soon { color: #d46b08; font-weight: 600; }
+/* 501629：已完成任务的剩余天数固定在完成那天，只作记录，灰色不标红 */
+.task-days-finished { color: #8c8c8c; }

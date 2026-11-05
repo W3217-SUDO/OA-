@@ -35,6 +35,7 @@ import {
   createdTabs,
   receivedTabs,
   collaboratingTabs,
+  taskDaysDisplay,
   appendSelectedUploadFiles,
   normalizeCaseContextTaskPageState,
   contains,
@@ -103,7 +104,6 @@ export default function TaskCenterPage({
   const defaultTaskSort: TaskSort = initialView.endsWith("-accepted") ? { field: "days_remaining", order: "ascend" } : null;
   const [taskSort, setTaskSort] = useState<TaskSort>(defaultTaskSort);
   // 剩余天数：逾期标红，3 天内到期标橙（501305）
-  const taskDaysClass = (value: number) => (value < 0 ? "task-days-overdue" : value <= 3 ? "task-days-soon" : "");
   const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [handoff, setHandoff] = useState<TaskRow | null>(null);
@@ -1168,7 +1168,10 @@ export default function TaskCenterPage({
       sortOrder: taskSort?.field === "days_remaining" ? taskSort.order : null,
       // 点表头只在升序、降序间切换，不回到无序（501305）
       sortDirections: ["ascend", "descend", "ascend"],
-      render: (value: number | null) => (value == null ? "" : <span className={taskDaysClass(value)}>{`${value}/天`}</span>),
+      render: (value: number | null, row: TaskRow) => {
+        const display = taskDaysDisplay(row.workflow_status || row.status, value);
+        return display.text ? <span className={display.className}>{display.text}</span> : "";
+      },
     },
     {
       title: isCreated && statusTab === "accepted" ? "验收日期" : "最后更新时间",

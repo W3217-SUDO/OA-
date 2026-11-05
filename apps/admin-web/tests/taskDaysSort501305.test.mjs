@@ -6,6 +6,7 @@ import test from "node:test";
 const read = (path) => fs.readFileSync(new URL(path, import.meta.url), "utf8");
 const page = read("../src/tp/TaskCenterPage.tsx");
 const css = read("../src/task-center.css");
+const constants = read("../src/tp/constants.ts");
 
 test("我接受的任务默认按剩余天数升序，重置后也恢复", () => {
   assert.match(page, /initialView\.endsWith\("-accepted"\) \? \{ field: "days_remaining", order: "ascend" \}/);
@@ -15,7 +16,7 @@ test("我接受的任务默认按剩余天数升序，重置后也恢复", () =>
 
 test("剩余天数表头只在升降序间切换，逾期红、3 天内橙", () => {
   assert.match(page, /sortDirections: \["ascend", "descend", "ascend"\]/);
-  assert.match(page, /value < 0 \? "task-days-overdue" : value <= 3 \? "task-days-soon"/);
+  assert.match(constants, /value < 0 \? "task-days-overdue" : value <= 3 \? "task-days-soon"/);
   assert.match(css, /\.task-days-overdue \{ color: #cf1322/);
   assert.match(css, /\.task-days-soon \{ color: #d46b08/);
 });

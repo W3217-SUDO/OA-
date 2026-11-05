@@ -56,6 +56,19 @@ export const collaboratingTabs: StatusTab[] = [
 
 // ─── Utility functions ───────────────────────────────────────────────────
 
+// 501629（tgn 11-05）：已完成的任务，剩余天数按完成那天固定（后端 _task_schedule_state）。
+// 逾期完成显示“逾期完成 X 天”（灰色），按期完成显示“按期完成”；未完成的仍显示“X/天”，逾期标红、3 天内标橙。
+const FINISHED_TASK_STATUSES = new Set(["已完成", "已验收", "待确认"]);
+export const taskDaysDisplay = (status: string | null | undefined, value: number | null | undefined) => {
+  if (value == null) return { text: "", className: "" };
+  if (FINISHED_TASK_STATUSES.has(String(status || ""))) {
+    return value < 0
+      ? { text: `逾期完成 ${Math.abs(value)} 天`, className: "task-days-finished" }
+      : { text: "按期完成", className: "task-days-finished" };
+  }
+  return { text: `${value}/天`, className: value < 0 ? "task-days-overdue" : value <= 3 ? "task-days-soon" : "" };
+};
+
 export const visiblePersonName = (displayName?: string | null) =>
   String(displayName || "").trim() || PERSON_NAME_PLACEHOLDER;
 
