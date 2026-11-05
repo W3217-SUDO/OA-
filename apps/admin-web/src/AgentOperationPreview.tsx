@@ -218,6 +218,35 @@ const ChangeLines = ({ changes, preview }: { changes: ChangeRow[]; preview?: Age
   </section>;
 };
 
+/** 501634（tgn 11-06 00:01）：确认窗口的表格行。修改：只列要改的字段“字段 / 现状 / 改为”；新增：“字段 / 内容”。
+ *  值用中文（案号、姓名、部门名），内部参数、编号、英文不出现。 */
+export type AgentConfirmTable = { mode: "change" | "create"; rows: { field: string; label: string; before?: string; after: string }[] };
+export const agentConfirmTable = (action: AgentApprovalAction): AgentConfirmTable => {
+  const preview = action.preview;
+  const label = (field: string) => parameterLabel(field, preview);
+  const keep = (field: string, value: unknown) => !HIDDEN_PARAMETER_FIELDS.has(field) && !isInternalParameter(field, value, preview);
+  if (!preview?.create && preview?.changes?.length) {
+    const rows = preview.changes
+      .filter((change) => keep(change.field, change.after) && (change.before_read !== true || !sameValue(change.before, change.after)))
+      .map((change) => ({ field: change.field, label: label(change.field),
+        before: change.before_read === true ? changeText(change.before, preview, change.field) : "（未读取）",
+        after: changeText(change.after, preview, change.field) }));
+    return { mode: "change", rows };
+  }
+  const values = preview?.create || (preview?.params?.body && typeof preview.params.body === "object" && !Array.isArray(preview.params.body)
+    ? preview.params.body as Record<string, unknown> : {});
+  const rows = Object.entries(values).filter(([field, value]) => keep(field, value) && !isEmptyValue(value))
+    .map(([field, value]) => ({ field, label: label(field), after: changeText(value, preview, field) }));
+  if (typeof preview?.params?.steps === "string" && preview.params.steps.trim()) rows.push({ field: "steps", label: "办理步骤", after: preview.params.steps.trim() });
+  return { mode: "create", rows };
+};
+/** 确认窗口顶部一行：要做什么、对哪一个，例如“修改案件 HZMS2650002”。 */
+export const agentConfirmHeadline = (action: AgentApprovalAction, target?: string) => {
+  const name = agentOperationName(action) || "智能体操作";
+  const object = String(target || "").trim() || String(action.preview?.target || "").trim().split(/\s+/)[0] || "";
+  return object && !name.includes(object) ? `${name} ${object}` : name;
+};
+
 // 卡片上的选择按确认请求编号记住；各处“批准”按钮提交时带上（agentChoiceBody），没选时提示（agentChoiceMissing）。
 const AGENT_CHOICES = new Map<string, string | number>();
 const choiceKey = (action: AgentApprovalAction) => String((action.payload as { request_id?: unknown } | undefined)?.request_id || action.id);
@@ -231,7 +260,7 @@ export const agentChoiceBody = (action: AgentApprovalAction): { choice?: Record<
   return choice?.field && value !== undefined ? { choice: { [choice.field]: value } } : {};
 };
 
-function AgentChoice({ action }: { action: AgentApprovalAction }) {
+export function AgentChoice({ action }: { action: AgentApprovalAction }) {
   const choice = action.preview?.choice;
   const [value, setValue] = useState<string | number | undefined>(() => AGENT_CHOICES.get(choiceKey(action)));
   if (!choice?.field || !choice.options?.length) return null;

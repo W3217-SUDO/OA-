@@ -18,9 +18,9 @@ async function loadFloat() {
     plugins: [{ name: "stub-501634", setup(builder) {
       builder.onResolve({ filter: /^antd$|^@ant-design\/icons$|AgentOperationPreview$/ }, ({ path }) => ({ path, namespace: "stub" }));
       builder.onLoad({ filter: /.*/, namespace: "stub" }, ({ path }) => ({ resolveDir: fileURLToPath(new URL(".", import.meta.url)), contents:
-        path === "antd" ? 'import React from "react"; export const Button=p=>React.createElement("button",p,p.children); export const Tag=p=>React.createElement("tag",p,p.children); export const Tooltip=p=>p.children;'
+        path === "antd" ? 'import React from "react"; export const Button=p=>React.createElement("button",p,p.children); export const Tag=p=>React.createElement("tag",p,p.children); export const Tooltip=p=>p.children; export const Alert=p=>React.createElement("alert",p);'
         : path === "@ant-design/icons" ? 'const I=()=>null; export const CheckOutlined=I,CloseOutlined=I,LeftOutlined=I,MinusOutlined=I,RightOutlined=I;'
-        : 'import React from "react"; export const AgentOperationPreview=p=>React.createElement("preview",p); export const agentOperationName=a=>"修改案件"; export const hasAgentOperationPreview=a=>!a.noPreview;' }));
+        : 'import React from "react"; export const AgentChoice=()=>null; export const agentConfirmHeadline=(a,t)=>"修改案件 "+t; export const agentConfirmTable=a=>a.table; export const hasAgentOperationPreview=a=>!a.noPreview;' }));
     } }],
   });
   const target = new Module(fileURLToPath(import.meta.url));
@@ -31,7 +31,10 @@ async function loadFloat() {
 }
 
 const textOf = (node) => node == null ? "" : typeof node === "string" ? node : Array.isArray(node) ? node.map(textOf).join("") : textOf(node.children);
-const actions = [{ id: "a1", summary: "案由改为离婚纠纷", status: "pending", type: "case.update" }, { id: "a2", summary: "新增期限", status: "executing", type: "mcp.call" }];
+const actions = [
+  { id: "a1", summary: "案由改为离婚纠纷", status: "pending", type: "case.update", table: { mode: "change", rows: [{ field: "cause_or_charge", label: "案由", before: "侵害商标权纠纷", after: "离婚纠纷" }] } },
+  { id: "a2", summary: "新增期限", status: "executing", type: "mcp.call", table: { mode: "create", rows: [{ field: "title", label: "期限名称", after: "举证期限" }] } },
+];
 
 test("浮动窗口直接批准/驳回；缩小只收起不处理；多项可翻页", async () => {
   const CaseAgentConfirmFloat = await loadFloat();
@@ -42,8 +45,11 @@ test("浮动窗口直接批准/驳回；缩小只收起不处理；多项可翻�
   let renderer;
   await act(async () => { renderer = create(React.createElement(CaseAgentConfirmFloat, props())); });
   const button = (label) => renderer.root.findAllByType("button").find((b) => b.props.children === label || b.props["aria-label"] === label);
-  assert.equal(renderer.root.findByType("preview").props.target, "HZMS2650002");
-  assert.match(textOf(renderer.toJSON()), /第 1\/2 项/);
+  const shown = textOf(renderer.toJSON());
+  assert.match(shown, /修改案件 HZMS2650002/);
+  assert.match(shown, /第 1\/2 项/);
+  assert.match(shown, /字段现状改为案由侵害商标权纠纷离婚纠纷/, "修改：字段 / 现状 / 改为");
+  assert.doesNotMatch(shown, /写入须人工确认|另有/, "不再有重复说明");
   await act(async () => button("缩小确认窗口").props.onClick());
   assert.deepEqual(calls, [["minimize"]], "缩小不能批准或驳回");
   await act(async () => button("批准并执行").props.onClick());
@@ -54,6 +60,7 @@ test("浮动窗口直接批准/驳回；缩小只收起不处理；多项可翻�
   assert.equal(button("批准并执行").props.disabled, true, "正在执行的不能重复批准");
   assert.equal(button("驳回，不修改").props.disabled, true);
   assert.match(textOf(renderer.toJSON()), /正在执行/);
+  assert.match(textOf(renderer.toJSON()), /字段内容期限名称举证期限/, "新增：字段 / 内容，没有现状列");
 });
 
 test("没有待确认时不渲染", async () => {

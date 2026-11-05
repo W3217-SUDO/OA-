@@ -75,3 +75,34 @@ test("逐字段“原值 → 新值”：只列改了的，原来没有写（空
   assert.doesNotMatch(text, /名称：10\.30测试客户 →/);
   assert.equal((text.match(/离婚纠纷/g) || []).length, 1, "提交字段不再重复列一遍");
 });
+
+test("确认表格（tgn 11-06）：修改只列要改的“字段/现状/改为”，新增是“字段/内容”，顶部一行操作对象", async () => {
+  const { agentConfirmTable, agentConfirmHeadline } = await loadPreview();
+  const preview = {
+    operation_name: "修改案件", method: "PUT", path: "/cases/501332/normal-basic", requires_confirmation: true, target: "HZMS2650002 10.30测试客户",
+    params: { path: { case_id: 501332 }, query: {}, body: {} },
+    changes: [
+      { field: "customer_record_id", before: 280154, before_read: true, after: 280154 },
+      { field: "title", before: "10.30测试客户", before_read: true, after: "10.30测试客户" },
+      { field: "case_phase", before: null, before_read: true, after: "新案待分配" },
+      { field: "cause_or_charge", before: "侵害商标权纠纷", before_read: true, after: "离婚纠纷" },
+      { field: "handling_lawyers", before: ["System"], before_read: true, after: ["System"] },
+      { field: "investigation_clue_ids", before: [280197], before_read: true, after: [280197] },
+      { field: "unknown_code", before: "a", before_read: true, after: "b" },
+    ],
+    field_labels: { customer_record_id: "客户", title: "名称", case_phase: "案件阶段", cause_or_charge: "案由", handling_lawyers: "经办律师", investigation_clue_ids: "关联线索", unknown_code: "其他信息" },
+    value_labels: { customer_record_id: { "280154": "10.30测试客户" }, handling_lawyers: { System: "系统" }, investigation_clue_ids: { "280197": "M26103970-R" } },
+  };
+  const action = { id: "m1", type: "mcp.call", status: "pending", summary: "长摘要", payload: { request_id: "m1" }, preview };
+  assert.deepEqual(agentConfirmTable(action), { mode: "change", rows: [
+    { field: "case_phase", label: "案件阶段", before: "（空）", after: "新案待分配" },
+    { field: "cause_or_charge", label: "案由", before: "侵害商标权纠纷", after: "离婚纠纷" },
+  ] });
+  assert.equal(agentConfirmHeadline(action, "HZMS2650002"), "修改案件 HZMS2650002");
+  assert.equal(agentConfirmHeadline(action), "修改案件 HZMS2650002", "没传案号时取预览里的对象");
+  const create = { ...action, preview: { ...preview, changes: undefined, create: { title: "举证期限", deadline: "2026-11-20", note_code: "x1" },
+    field_labels: { title: "名称", deadline: "截止日期", note_code: "其他信息" } } };
+  assert.deepEqual(agentConfirmTable(create), { mode: "create", rows: [
+    { field: "title", label: "名称", after: "举证期限" }, { field: "deadline", label: "截止日期", after: "2026-11-20" },
+  ] });
+});

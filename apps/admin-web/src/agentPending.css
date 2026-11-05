@@ -85,3 +85,19 @@
 :root[data-theme="dark"] .case-agent-confirm-float-note, :root[data-theme="dark"] .case-agent-confirm-float-count, :root[data-theme="dark"] .case-agent-confirm-float-status { color: #ffd591; }
 :root[data-theme="dark"] .case-agent-pending-pill { border-color: #7c4a03; border-left-color: #d89614; background: #2b2111; color: #ffd591; }
 :root[data-theme="dark"] .case-agent-pending-pill .agent-pending-tag { border-color: #7c4a03; background: #443111; color: #ffd591; }
+/* 501634（tgn 11-06 00:01）：确认窗口主体是一张表：字段 / 现状 / 改为（新增：字段 / 内容），整齐一目了然。 */
+.case-agent-confirm-float-headline { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.case-agent-confirm-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; background: #fff; }
+.case-agent-confirm-table th, .case-agent-confirm-table td { padding: 7px 10px; border: 1px solid #f0f0f0; text-align: left; vertical-align: top; white-space: pre-wrap; word-break: break-all; }
+.case-agent-confirm-table thead th { background: #fafafa; color: #595959; font-weight: 600; }
+.case-agent-confirm-table thead th:first-child, .case-agent-confirm-table tbody th { width: 26%; }
+.case-agent-confirm-table tbody th { color: #262626; font-weight: 600; }
+.case-agent-confirm-table td.is-before { color: #8c8c8c; }
+.case-agent-confirm-table td.is-after { color: #10239e; font-weight: 600; }
+.case-agent-confirm-empty { color: #8c8c8c; }
+.case-agent-confirm-float-body .agent-action-choice { margin-bottom: 10px; }
+:root[data-theme="dark"] .case-agent-confirm-table { background: #1f1f1f; }
+:root[data-theme="dark"] .case-agent-confirm-table th, :root[data-theme="dark"] .case-agent-confirm-table td { border-color: #303030; }
+:root[data-theme="dark"] .case-agent-confirm-table thead th { background: #262626; color: #bfbfbf; }
+:root[data-theme="dark"] .case-agent-confirm-table tbody th { color: #e8e8e8; }
+:root[data-theme="dark"] .case-agent-confirm-table td.is-after { color: #adc6ff; }
