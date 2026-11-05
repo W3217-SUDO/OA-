@@ -1,4 +1,5 @@
 """知识产权案件费用接口。"""
+from app.core.permissions import ipr_case_ignores_status
 from decimal import Decimal
 
 from fastapi import APIRouter
@@ -352,8 +353,8 @@ async def create_ipr_case_fee_invoice(case_id: int, fee_id: int, body: IprCaseFe
     )
     record = await _ensure_ipr_case_fee_write(case_id, identity, db)
     fee = await _ipr_case_fee(record, fee_id, identity, db)
-    if record.status != "在办":
-        # 501190：费用的新增、修改对非诉个案不看状态，开票、付款申请仍要在办（第 2 条待陶国南定）。
+    if record.status != "在办" and not ipr_case_ignores_status(record):
+        # 501190 第 2 条（陶国南 11-05“这个确认立案不用审核”）：非诉个案开票、付款申请也不看状态；诉讼类仍要在办。
         raise HTTPException(status_code=409, detail="只有在办知识产权案件可以提交开票申请")
     if fee.status == "已作废":
         raise HTTPException(status_code=409, detail="已作废费用不能登记开票")
@@ -417,8 +418,8 @@ async def create_ipr_case_fee_payment_application(case_id: int, fee_id: int, bod
     )
     record = await _ensure_ipr_case_fee_write(case_id, identity, db)
     fee = await _ipr_case_fee(record, fee_id, identity, db)
-    if record.status != "在办":
-        # 501190：费用的新增、修改对非诉个案不看状态，开票、付款申请仍要在办（第 2 条待陶国南定）。
+    if record.status != "在办" and not ipr_case_ignores_status(record):
+        # 501190 第 2 条（陶国南 11-05“这个确认立案不用审核”）：非诉个案开票、付款申请也不看状态；诉讼类仍要在办。
         raise HTTPException(status_code=409, detail="只有在办知识产权案件可以提交付款申请")
     if fee.status == "已作废":
         raise HTTPException(status_code=409, detail="已作废费用不能提交付款申请")

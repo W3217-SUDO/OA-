@@ -118,9 +118,9 @@ export function IprCaseFeesPanel({ detail, onOpenContract }: { detail: IprRecord
   ];
 
   const active = detail.status === "在办";
-  // 501190：新增、修改不看状态（非诉）；开票、付款申请仍要在办（canManage）。
+  // 501190：非诉个案新增、修改费用和开票、付款申请都不看状态（第 2 条陶国南 11-05 定：非诉立案不用审核）；诉讼类仍要在办。
   const canCreate = (active || iprCaseIgnoresStatus(detail)) && roleActionAllowed("ipr.case.fee.create");
-  const canManage = active && roleActionAllowed("ipr.case.fee.manage");
+  const canManage = (active || iprCaseIgnoresStatus(detail)) && roleActionAllowed("ipr.case.fee.manage");
   const isDraft = (fee: CaseFeeRow) => fee.status === "草稿" && !fee.data?.locked && !fee.data?.is_locked && !fee.data?.payment_application_id;
   const openEdit = (fee: CaseFeeRow | "new") => {
     feeForm.resetFields();

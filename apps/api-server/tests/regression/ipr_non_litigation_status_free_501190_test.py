@@ -1,7 +1,8 @@
 """501190（思法汇成 11-05 确认第 1 条）：非诉专利、商标个案不看案件状态。
 
 老系统迁来的“年费监控”、草稿、待审批、已结案等个案，文档、费用新增修改、发布任务、客户联系人、提醒日志都能维护；
-诉讼类知识产权案件仍按原状态限制；开票、付款申请和 CPC 申报暂按原规则（第 2、3 条待定）。
+诉讼类知识产权案件仍按原状态限制；CPC 申报暂按原规则（第 3 条待定）。
+第 2 条（陶国南 11-05“这个确认立案不用审核”）：非诉个案开票、付款申请也不看状态。
 """
 import unittest
 
@@ -63,6 +64,26 @@ class IprNonLitigationStatusFree501190Test(unittest.IsolatedAsyncioTestCase):
                     await _ensure_ipr_cpc_write(self.ids[key], ADMIN, db)
                 self.assertEqual(raised.exception.status_code, 409, "CPC 申报仍按原规则（第 3 条待定）")
             await _ensure_ipr_cpc_write(self.ids["legacy"], ADMIN, db)
+
+    async def test_invoice_and_payment_not_blocked_by_status_for_non_litigation(self):
+        from app.areas.ipr import fees
+        from app.api_schemas.ipr import IprCaseFeeInvoiceInput, IprCaseFeePaymentApplicationInput
+        async with self.sessions() as db:
+            for key in ("legacy", "pending"):
+                fee = BusinessRecord(module="finance", serial_no=f"FEE190-{key}", title="官费", customer="客户190", status="草稿",
+                                     owner=ADMIN["username"], department="IPR", data={"case_id": self.ids[key], "amount": 100})
+                db.add(fee)
+                await db.commit()
+                calls = (
+                    fees.create_ipr_case_fee_invoice(self.ids[key], fee.id, IprCaseFeeInvoiceInput(customer="客户190", amount=100, invoice_title="客户190", taxpayer_id="91310000X"), ADMIN, db),
+                    fees.create_ipr_case_fee_payment_application(self.ids[key], fee.id, IprCaseFeePaymentApplicationInput(payment_type_id=1, application_date="2026-11-05"), ADMIN, db),
+                )
+                for call in calls:
+                    try:
+                        await call
+                    except HTTPException as error:
+                        self.assertNotIn("只有在办", str(error.detail), key)
+                    await db.rollback()
 
 
 if __name__ == "__main__":
