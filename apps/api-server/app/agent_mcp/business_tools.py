@@ -2,8 +2,9 @@
 
 一个业务动作一个工具（例如“新建合同并提交审批”），内部每一步都经 call_tool 调用目录里的原接口：
 原接口的角色权限、数据范围、校验、审批流，个人令牌的只读/业务范围限制和操作日志全部照旧，不另开通道。
-写工具两段式：不带 confirm=true 时只跑查询并返回执行计划，不写任何数据；带 confirm=true 时生成确认卡片（待确认请求），
-用户在卡片或 OA 网页智能体中心点确认后才执行（陶威 11-01：所有写操作先确认）。
+写工具：带 confirm=true 时先在服务器跑一遍执行计划（不写数据），没问题就生成确认卡片（待确认请求），有问题就返回问题不出卡片；
+用户在卡片或 OA 网页智能体中心点确认后才执行（陶威 11-01：所有写操作先确认）。不带 confirm 只返回执行计划。
+陶国南 11-05 08:48：安全前提下效率优先，站内智能体第一次就带 confirm=true，卡片本身就是确认，不先文字确认。
 审批、盖章、付款核销、开票作废、退费到账等不可撤回步骤仍由原通道生成待确认请求，须本人在 OA 网页确认。
 设计与对照见 docs/业务工具/。
 """
@@ -22,8 +23,10 @@ from app.agent_mcp.catalog import get_catalog
 
 
 PLANNED = "（执行时生成）"
+_CONFIRM_FINGERPRINT = {"type": "boolean", "default": False,
+                        "description": "false/不传=只返回执行计划，不写数据；用户看过计划并明确同意后再传 true 执行"}
 _CONFIRM = {"type": "boolean", "default": False,
-            "description": "false/不传=只返回执行计划，不写数据；用户看过计划并明确同意后再传 true 执行"}
+            "description": "true=生成确认卡片（用户在卡片上点批准才执行；信息有问题时只返回问题、不出卡片），参数齐全时第一次就传 true；false/不传=只返回执行计划，不写数据"}
 
 
 class StepFailed(Exception):
@@ -144,7 +147,11 @@ def business_tool(name, title, description, properties, required=(), *, write, u
 def business_fingerprint(tool: "BusinessTool") -> str:
     """业务工具定义指纹：参数结构或内部接口变了，旧的待确认请求不能再执行。"""
     import hashlib
-    descriptor = {"name": tool.name, "schema": tool.input_schema, "uses": list(tool.uses), "write": tool.write}
+    schema = tool.input_schema
+    if tool.write and isinstance(schema.get("properties"), dict) and "confirm" in schema["properties"]:
+        # confirm 只是“出卡片还是只给计划”的开关，说明文字改了不影响已生成卡片的执行（11-05 改说明时保持旧指纹）。
+        schema = {**schema, "properties": {**schema["properties"], "confirm": _CONFIRM_FINGERPRINT}}
+    descriptor = {"name": tool.name, "schema": schema, "uses": list(tool.uses), "write": tool.write}
     return hashlib.sha256(json.dumps(descriptor, ensure_ascii=False, sort_keys=True, default=str).encode()).hexdigest()
 
 
@@ -211,7 +218,7 @@ async def run_business_tool(name: str, arguments: object, *, call=None, context=
         result["notes"] = run.notes
     if tool.write and not confirm:
         result["next_step"] = ("计划里有问题，先补齐或修正再生成计划：" + "；".join(f"第{s['step']}步 {s['problem']}" for s in problems)
-                               if problems else "以上是执行计划，尚未写入任何数据。请把计划给用户看，用户明确同意后用相同参数加 confirm=true 再调用一次。")
+                               if problems else "以上是执行计划，尚未写入任何数据。参数没问题就直接用相同参数加 confirm=true 再调用一次生成确认卡片，不用先等用户回复确认。")
     elif pending:
         result["next_step"] = "其中有不可撤回的步骤已生成待确认请求，须用户在 OA 网页“智能体中心”确认后才会执行。"
     return result

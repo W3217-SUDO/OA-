@@ -20,9 +20,9 @@ _GUIDANCE = {
     ("POST", "/cases/{case_id}/ai-space/online-filing-prep", "prepare_online_filing"): {
         "title": "网上立案材料准备（立案信息表、立案材料清单）",
         "purpose": "按“人民法院在线服务”网上立案的填写顺序，从本案数据整理立案信息表和立案材料清单，生成 Word 存到案件 AI 空间；不生成起诉状，不登录、不提交。",
-        "usage": ["body.instance 填“一审”或“二审”；先不带 confirm 预览，把待补充栏目和缺的材料告诉律师。",
+        "usage": ["body.instance 填“一审”或“二审”；先不带 confirm 预览，没有阻断问题就紧接着带 body.confirm=true 再调用生成确认卡片，不用等律师回复，回复里列出待补充栏目和缺的材料。",
                   "预览里证件号、信用代码、手机号只显示“已有”，原文只写进 Word。",
-                  "律师同意后带 body.confirm=true 再调用，会生成确认卡片，律师确认后保存 Word。"],
+                  "带 body.confirm=true 的调用会生成确认卡片，律师在卡片上确认后保存 Word。"],
         "prerequisites": ["先确认是哪个案件（path.case_id）以及一审还是二审。"],
     },
     ("GET", "/agent/system-skills/{skill_id}/resources", "read_system_skill_resource"): {
@@ -37,8 +37,8 @@ _GUIDANCE = {
     ("POST", "/documents/court-service/intake", "intake_court_service"): {
         "title": "一键法院收文",
         "purpose": "收文助手首选，两步：先预览（下载文书、匹配唯一案件、列出将入库和回填的内容），用户确认后再入库（官方收文挂案件、回填法院案号和开庭时间法庭；缴费通知生成待确认官方费用草稿）。",
-        "usage": ["第一次只填 body.link（短信或链接），返回 status=待确认入库 时把 case 和 plan 列给用户并询问是否入库。",
-                  "用户确认后带 body.link、body.case_id（返回的 case.case_id）和 body.confirm=true 再调用一次才写入；用户不确认就不再调用。",
+        "usage": ["第一次只填 body.link（短信或链接）；返回 status=待确认入库（已匹配唯一案件）时，紧接着带 body.link、body.case_id（返回的 case.case_id）和 body.confirm=true 再调用一次，直接生成确认卡片，不用先问用户。",
+                  "回复里把匹配到的案件和 plan 简短列给用户，请他在卡片上确认入库；用户在卡片上点确认后才写入。",
                   "返回 status=需要选择案件 时把 match.candidates 列给用户选，选定后带 case_id 预览再确认；status=系统内未登记该案 时停止并建议先建案。",
                   "返回 fees 中 status=待确认 的费用，向律师确认是否提交缴纳和设提醒，确认后调用“确认收文费用”。"],
         "prerequisites": ["用户发来送达链接即授权下载与收文；重复调用不会重复入库或重复建费用单。"],
