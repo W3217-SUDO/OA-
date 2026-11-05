@@ -375,7 +375,7 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
             self.assertIn(value, cells)
         self.assertNotIn("（", "".join(cells), "说明括号都去掉了")
         self.assertIn("归 档 日 期：二〇二六年九月二十九日", [p.text for p in document.paragraphs])
-        raw = "\n".join(cell.text for row in Document(BytesIO(await module._template_bytes(module.BUILTIN_TEMPLATES[-1], None))).tables[0].rows for cell in row.cells)
+        raw = "\n".join(cell.text for row in Document(BytesIO(await module._template_bytes(next(item for item in module.BUILTIN_TEMPLATES if item["id"] == "case-summary"), None))).tables[0].rows for cell in row.cells)
         for leaked in ("立邦", "商标侵权", "2024.5.14", "1.2万"):
             self.assertNotIn(leaked, raw)
 

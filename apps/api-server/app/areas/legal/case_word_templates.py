@@ -64,17 +64,27 @@ BUILTIN_TEMPLATES = [{
     "id": "case-summary", "name": "办案小结（诉讼）", "file": "CASE_SUMMARY_DOCX",
     # 陶国南 11-05 11:25：保管期限按案件类型自动带（民事、行政 20 年，刑事长期），其他类型留空可选。
     "options": {"保管期限": ["20年", "长期"]}, "optional": ["简要案情工作概况", "办案体会", "保管期限", "处理结果", "开庭日期", "起诉日期", "结案日期"],
+}, {
+    # 陶国南 11-05 12:15：当事人“胜诉退费”银行账号确认书。当事人=本所委托人；银行账号取客户档案的开户行、账号（多数没填，留空手写）。
+    "id": "court-refund-account", "name": "胜诉退费银行账号确认书", "file": "COURT_REFUND_ACCOUNT_DOCX",
+    "options": {}, "optional": ["委托人联系方式", "退费开户行", "退费户名", "退费账号"],
+}, {
+    # 陶国南 11-05 12:15：调解协议（诉讼中，请法院确认）——和“调解协议书”（诉前调解，调解员主持、线上签署、不司法确认）是两种格式。
+    "id": "mediation-agreement-litigation", "name": "调解协议（诉讼中，请法院确认）", "file": "MEDIATION_LITIGATION_DOCX",
+    "options": {"诉讼费承担方": ["原告", "被告", "原、被告各半"]},
+    "optional": ["涉案产品", "回收负责人", "回收联系电话", "收款联行号", "付款期限"],
 }]
 # 系统自动取值的字段；模板里出现其他占位字段时，按“需要人工填写”处理。
 AUTO_FIELDS = ("法院", "法院案号", "原告", "被告", "第三人", "案由", "开庭律师", "经办律师", "律师助理", "客户名称", "案件编号", "生成日期",
                "原告信息", "被告信息", "委托诉讼代理人", "代理律所", "赔偿金额", "赔偿金额大写", "收款户名", "收款开户行", "收款账号",
                "付款期限", "签署日期", "申请人信息", "被申请人信息", "落款日期", "保全金额",
-               "收案日期", "起诉日期", "结案日期", "开庭日期", "处理结果", "归档日期", "保管期限")
+               "收案日期", "起诉日期", "结案日期", "开庭日期", "处理结果", "归档日期", "保管期限",
+               "调解原告信息", "调解被告信息", "付款被告", "收款联行号", "委托人名称", "委托人联系方式", "退费开户行", "退费户名", "退费账号")
 # 陶国南 11-04 14:28：日期都要生成。案件里没有约定付款日期时，付款期限默认生成日起 7 天（样本是起草后约 3 天），可以改。
 DEFAULT_PAYMENT_DAYS = 7
 PAYMENT_DATE_KEYS = ("agreed_payment_date", "payment_deadline", "settlement_payment_date", "promised_payment_date", "mediation_payment_date")
 # 多个当事人逐行列出（每人一段，段落前面的“原告：”“被告：”跟着重复）。
-MULTILINE_FIELDS = {"原告信息", "被告信息", "申请人信息", "被申请人信息", "事实和理由", "财产线索", "变更后诉讼请求",
+MULTILINE_FIELDS = {"原告信息", "被告信息", "申请人信息", "被申请人信息", "事实和理由", "财产线索", "变更后诉讼请求", "调解原告信息", "调解被告信息",
                     "简要案情工作概况", "办案体会", "处理结果"}
 # 由别的字段算出来的，不单独填：赔偿金额大写跟着赔偿金额走。
 DERIVED_FIELDS = {"赔偿金额大写": "赔偿金额"}
@@ -157,6 +167,9 @@ W = "{%s}" % WORD_NS["w"]
 NOTE = re.compile(r"[（(][^（）()]*[）)]\s*")
 # 按说明文字猜对应案件里的哪一项；猜不到的设成“生成时手填”，管理员可以在模板页改。
 FIELD_HINTS = (
+    (("调解原告信息",), "调解原告信息"), (("调解被告信息",), "调解被告信息"), (("付款被告",), "付款被告"), (("收款联行号",), "收款联行号"),
+    (("委托人名称",), "委托人名称"), (("委托人联系方式",), "委托人联系方式"), (("退费开户行",), "退费开户行"), (("退费户名",), "退费户名"),
+    (("退费账号",), "退费账号"),
     (("收案日期",), "收案日期"), (("起诉日期",), "起诉日期"), (("结案日期",), "结案日期"), (("开庭日期",), "开庭日期"),
     (("处理结果",), "处理结果"), (("归档日期",), "归档日期"), (("保管期限",), "保管期限"),
     (("被申请人信息",), "被申请人信息"), (("申请人信息",), "申请人信息"), (("落款日期",), "落款日期"), (("保全金额",), "保全金额"),
@@ -573,6 +586,44 @@ def _applicant_block(name: str, label: str, identity: dict, profile: dict, *, ap
             f"{place}：{address or BLANK}"]
 
 
+def _mediation_block(name: str, label: str, identity: dict, profile: dict, agent: str) -> list[str]:
+    """调解协议（诉讼中）一位当事人的几行（陶国南 11-05 12:15 样本格式）：单位写住所地、统一社会信用代码、法定代表人和职务；
+    个人写性别、身份证号码、住址；最后一行代理人（本所委托人一方写经办律师和本所，对方留空手写）。"""
+    identity_no = str(identity.get("identity_no") or profile.get("identity_no") or profile.get("credit_code") or "").strip().upper()
+    address = _first(profile, *ADDRESS_KEYS)
+    if address == name:
+        address = ""
+    if _is_person(name, identity, identity_no, profile):
+        gender = ("男" if int(identity_no[16]) % 2 else "女") if len(identity_no) == 18 and identity_no[16].isdigit() else ""
+        lines = [f"{label}：{name}，{gender or f'性别：{BLANK}'}，身份证号码：{identity_no or BLANK}", f"住址：{address or BLANK}"]
+    else:
+        title = _first(profile, "legal_agent_title", "legal_representative_title")
+        lines = [f"{label}：{name}", f"住所地：{address or BLANK}", f"统一社会信用代码：{identity_no or BLANK}",
+                 f"法定代表人：{_first(profile, 'legal_representative') or BLANK}          职务：{title or BLANK}"]
+    return [*lines, f"代理人：{agent or BLANK}"]
+
+
+async def _mediation_lines(data: dict, names: list[str], identities_key: str, db: AsyncSession, *, label: str, agent: str) -> str:
+    identities = {str(item.get("name") or "").strip(): item for item in data.get(identities_key) or [] if isinstance(item, dict)}
+    profiles = await _party_profiles(names, db)
+    lines: list[str] = []
+    for name in names or [""]:
+        if not name:
+            lines.append(f"{label}：{BLANK}")
+            continue
+        lines += _mediation_block(name, label, identities.get(name, {}), profiles.get(name, {}), agent)
+    return "\n".join(lines)
+
+
+async def _client_contact(record: BusinessRecord, db: AsyncSession) -> dict[str, str]:
+    """胜诉退费确认书：当事人=本所委托人；联系方式、开户行、户名、账号取客户档案，没填的留空手写。"""
+    name = str(record.customer or "").strip()
+    profile = (await _party_profiles([name], db)).get(name, {}) if name else {}
+    account = _first(profile, "bank_account")
+    return {"委托人名称": name, "委托人联系方式": _first(profile, *PHONE_KEYS), "退费开户行": _first(profile, "bank_name"),
+            "退费户名": (_first(profile, "bank_account_name", "account_name") or name) if account else "", "退费账号": account}
+
+
 async def _applicant_lines(data: dict, names: list[str], identities_key: str, db: AsyncSession, *, applicant: bool) -> str:
     identities = {str(item.get("name") or "").strip(): item for item in data.get(identities_key) or [] if isinstance(item, dict)}
     profiles = await _party_profiles(names, db)
@@ -621,6 +672,14 @@ def _hearing_days(data: dict) -> str:
     """开庭日期按样本写成“2024.5.14；2025.11.18”，一审、二审、再审、执行各次开庭都列出。"""
     days = sorted({day for day in (_day(data.get(key)) for key in HEARING_DATE_KEYS) if day})
     return "；".join(f"{day.year}.{day.month}.{day.day}" for day in days)
+
+
+def _our_agent(record: BusinessRecord, names: list[str], lawyers: str) -> str:
+    """委托人在这一方时，代理人写经办律师和本所；不在这一方（对方当事人）留空。"""
+    client = str(record.customer or "").strip()
+    if client and client in [str(name).strip() for name in names] and lawyers:
+        return f"{lawyers}，{FIRM_NAME}"
+    return ""
 
 
 def retention_period(record: BusinessRecord, data: dict) -> str:
@@ -677,8 +736,9 @@ async def firm_account(db: AsyncSession) -> dict[str, str]:
         extra = row.extra or {}
         bank, account = str(extra.get("account_bank") or "").strip(), str(extra.get("account") or "").strip()
         if bank and account:
-            return {"收款户名": str(extra.get("payee") or FIRM_NAME).strip(), "收款开户行": bank, "收款账号": account}
-    return {"收款户名": FIRM_NAME, "收款开户行": "", "收款账号": ""}
+            return {"收款户名": str(extra.get("payee") or FIRM_NAME).strip(), "收款开户行": bank, "收款账号": account,
+                    "收款联行号": str(extra.get("bank_code") or extra.get("union_bank_no") or "").strip()}
+    return {"收款户名": FIRM_NAME, "收款开户行": "", "收款账号": "", "收款联行号": ""}
 
 
 async def case_field_values(record: BusinessRecord, db: AsyncSession, today: datetime | None = None) -> dict[str, str]:
@@ -746,6 +806,13 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
         "处理结果": _handling_result(record, data),
         "归档日期": chinese_date(_day(data.get("archived_at")) or today),
         "保管期限": retention_period(record, data),
+        # 陶国南 11-05 12:15 调解协议（诉讼中）：本所委托人一方的代理人写“经办律师，上海沪知律师事务所”，对方代理人留空手写。
+        "调解原告信息": await _mediation_lines(data, plaintiffs, "plaintiff_identities", db, label="原告",
+                                         agent=_our_agent(record, plaintiffs, people(handling))) if _wanted("调解原告信息") else "",
+        "调解被告信息": await _mediation_lines(data, defendants, "defendant_identities", db, label="被告",
+                                         agent=_our_agent(record, defendants, people(handling))) if _wanted("调解被告信息") else "",
+        "付款被告": "、".join(defendants),
+        **(await _client_contact(record, db) if _wanted("委托人名称", "委托人联系方式", "退费开户行", "退费户名", "退费账号") else {}),
         **(await firm_account(db)),
     }
 

@@ -90,7 +90,7 @@ class EnterpriseCompletionTest(unittest.IsolatedAsyncioTestCase):
 
 
 class OnlyUsedFieldsTest(unittest.TestCase):
-    """模板里没用到的当事人信息不算，也不会为它查企查查（11-05 发现：生成撤诉申请书等也会为各方当事人查企查查）。"""
+    """模板里没用到的当事人信息不算，也不会为它查企查查（11-05 做退费确认书时发现）。"""
 
     def test_wanted_follows_template_fields(self):
         token = cwt.ENTERPRISE_LOOKUP.set({"charge": True, "username": "admin", "fields": {"法院", "案由"}})
@@ -100,6 +100,26 @@ class OnlyUsedFieldsTest(unittest.TestCase):
         finally:
             cwt.ENTERPRISE_LOOKUP.reset(token)
         self.assertTrue(cwt._wanted("被告信息"), "不在生成模板时照常算")
+
+
+class NewTemplates1106Test(unittest.TestCase):
+    def test_two_new_templates_registered(self):
+        ids = {item["id"]: item for item in cwt.BUILTIN_TEMPLATES}
+        self.assertEqual(ids["court-refund-account"]["name"], "胜诉退费银行账号确认书")
+        self.assertIn("诉讼中", ids["mediation-agreement-litigation"]["name"])
+        self.assertEqual(ids["mediation-agreement"]["name"], "调解协议书", "原诉前调解模板不动")
+
+    def test_our_agent_only_on_client_side(self):
+        record = SimpleNamespace(customer="甲公司")
+        self.assertEqual(cwt._our_agent(record, ["甲公司"], "张三"), "张三，上海沪知律师事务所")
+        self.assertEqual(cwt._our_agent(record, ["乙公司"], "张三"), "")
+
+    def test_mediation_block_company(self):
+        lines = cwt._mediation_block("乙科技有限公司", "被告", {}, {"credit_code": "91310000X", "legal_representative": "王五",
+                                                               "registered_address": "某地1号"}, "")
+        self.assertEqual(lines[0], "被告：乙科技有限公司")
+        self.assertIn("住所地：某地1号", lines)
+        self.assertTrue(lines[-1].startswith("代理人："))
 
 
 if __name__ == "__main__":
