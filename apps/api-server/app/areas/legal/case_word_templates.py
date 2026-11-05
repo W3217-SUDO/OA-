@@ -48,7 +48,8 @@ BUILTIN_TEMPLATES = [{
     "options": {"撤诉理由": ["原被告之间已达成和解并履行", "原被告之间已达成和解", "被告已停止侵权并赔偿损失", "原告决定不再追究"]},
 }, {
     # 陶国南 11-04：调解员、付款期限可以留空，打印后手写。
-    "id": "mediation-agreement", "name": "调解协议书", "file": "MEDIATION_AGREEMENT_DOCX",
+    # 陶国南 11-05 13:28：改名“调解协议书（诉前调解）”，和“调解协议（诉讼中，请法院确认）”区分。
+    "id": "mediation-agreement", "name": "调解协议书（诉前调解）", "file": "MEDIATION_AGREEMENT_DOCX",
     "options": {}, "optional": ["调解员", "付款期限"],
 }, {
     # 陶国南 11-05 给的三份申请书：申请人=原告（本所委托人），被申请人=被告；法定代表人、职务、送达地址系统里没有，留空手写。
@@ -85,7 +86,7 @@ AUTO_FIELDS = ("法院", "法院案号", "原告", "被告", "第三人", "案�
                "付款期限", "签署日期", "申请人信息", "被申请人信息", "落款日期", "保全金额",
                "收案日期", "起诉日期", "结案日期", "开庭日期", "处理结果", "归档日期", "保管期限",
                "调解原告信息", "调解被告信息", "付款被告", "收款联行号", "委托人名称", "委托人联系方式", "退费开户行", "退费户名", "退费账号",
-               "送达地址", "送达联系方式", "送达邮编", "短信送达号码")
+               "送达地址", "送达联系方式", "送达邮编", "短信送达号码", "侵权行为表述")
 # 陶国南 11-04 14:28：日期都要生成。案件里没有约定付款日期时，付款期限默认生成日起 7 天（样本是起草后约 3 天），可以改。
 DEFAULT_PAYMENT_DAYS = 7
 PAYMENT_DATE_KEYS = ("agreed_payment_date", "payment_deadline", "settlement_payment_date", "promised_payment_date", "mediation_payment_date")
@@ -176,7 +177,7 @@ FIELD_HINTS = (
     (("调解原告信息",), "调解原告信息"), (("调解被告信息",), "调解被告信息"), (("付款被告",), "付款被告"), (("收款联行号",), "收款联行号"),
     (("委托人名称",), "委托人名称"), (("委托人联系方式",), "委托人联系方式"), (("退费开户行",), "退费开户行"), (("退费户名",), "退费户名"),
     (("退费账号",), "退费账号"), (("送达地址",), "送达地址"), (("送达联系方式",), "送达联系方式"), (("送达邮编",), "送达邮编"),
-    (("短信送达号码",), "短信送达号码"),
+    (("短信送达号码",), "短信送达号码"), (("侵权行为表述",), "侵权行为表述"),
     (("收案日期",), "收案日期"), (("起诉日期",), "起诉日期"), (("结案日期",), "结案日期"), (("开庭日期",), "开庭日期"),
     (("处理结果",), "处理结果"), (("归档日期",), "归档日期"), (("保管期限",), "保管期限"),
     (("被申请人信息",), "被申请人信息"), (("申请人信息",), "申请人信息"), (("落款日期",), "落款日期"), (("保全金额",), "保全金额"),
@@ -705,6 +706,19 @@ def _our_agent(record: BusinessRecord, names: list[str], lawyers: str) -> str:
     return ""
 
 
+def infringement_wording(cause: str) -> str:
+    """调解协议（诉讼中）第一条“立即停止实施……的行为”按案由换说法（陶国南 11-05 13:28）。"""
+    if "商标" in cause:
+        return "侵害原告注册商标专用权"
+    if "著作权" in cause or "版权" in cause:
+        return "侵害原告著作权"
+    if "专利" in cause:
+        return "侵害原告专利权"
+    if "不正当竞争" in cause:
+        return "不正当竞争"
+    return "侵害原告合法权益"
+
+
 def retention_period(record: BusinessRecord, data: dict) -> str:
     """陶国南 11-05 11:25：民事案件、行政案件 20 年，刑事案件长期；其他（仲裁、法律顾问等）留空可选。没填案件类型的按案号（MS/XZ/XS）判断。"""
     case_type = str(data.get("case_type") or "")
@@ -802,6 +816,7 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
         # 案由树里的编号（如“十五、不正当竞争纠纷”）不进文书。
         # 陶国南 11-05 13:10：统一的取案由逻辑（app/core/case_cause.py）：案件 → 当前审级法院信息 → 旧系统 → 按权利类型推定。
         "案由": case_cause(data, record.status or ""),
+        "侵权行为表述": infringement_wording(case_cause(data, record.status or "")),
         "开庭律师": people(hearing),
         "经办律师": people(handling),
         "律师助理": people(assistant),

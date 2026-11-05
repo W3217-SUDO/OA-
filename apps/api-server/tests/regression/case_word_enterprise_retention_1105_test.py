@@ -107,7 +107,10 @@ class NewTemplates1106Test(unittest.TestCase):
         ids = {item["id"]: item for item in cwt.BUILTIN_TEMPLATES}
         self.assertEqual(ids["court-refund-account"]["name"], "胜诉退费银行账号确认书")
         self.assertIn("诉讼中", ids["mediation-agreement-litigation"]["name"])
-        self.assertEqual(ids["mediation-agreement"]["name"], "调解协议书", "原诉前调解模板不动")
+        self.assertEqual(ids["mediation-agreement"]["name"], "调解协议书（诉前调解）")
+        self.assertEqual(cwt.infringement_wording("不正当竞争纠纷"), "不正当竞争")
+        self.assertEqual(cwt.infringement_wording("侵害商标权纠纷"), "侵害原告注册商标专用权")
+        self.assertEqual(cwt.infringement_wording(""), "侵害原告合法权益")
 
     def test_our_agent_only_on_client_side(self):
         record = SimpleNamespace(customer="甲公司")
