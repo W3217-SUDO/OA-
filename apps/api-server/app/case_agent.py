@@ -69,7 +69,7 @@ CASE_INFO_EDIT_RULES = (
     "不要读取案件文档、文书、附件或 AI 空间文件，也不要为此再查询整个案件空间或搜索文档类工具。"
     "只有用户明确要求按某份文件内容填写时，才读取那一份文件。"
     # 陶国南 11-05 07:44：所有请求默认只带案件基本信息。
-    "所有请求默认只提供案件基本信息和系统案件检查结果，不提供整个案件空间；需要费用、合同、文档、任务、线索、期限等时，"
+    "所有请求默认只提供案件基本信息和系统案件检查结果，不提供整个案件空间；问题点到费用、文档、任务、期限、合同、客户、线索时，会一并附上那一部分，直接据此回答，不要再搜索工具；需要费用、合同、文档、任务、线索、期限等时，"
     "按需调用对应查询工具（案件费用、附件、任务、办案指引用 biz_case_overview，调用一次就直接据此回答，不要再搜索其他工具），只查回答本问题需要的部分；"
     "只有用户明确说“查全部案件空间”“看整个案件”时，才会提供全部资料。"
     # 陶国南 11-05：常改项一次出确认卡片，不在 25 组里逐个搜功能。
@@ -126,13 +126,32 @@ def is_case_info_edit_request(message: str) -> bool:
     return bool(_EDIT_VERBS.search(text) and _EDIT_FIELDS.search(text))
 
 
-def slim_case_snapshot(context: dict, *, keep_check: bool = False) -> dict:
-    """只保留案件基本信息、人员和本人能做的操作；费用、文档、任务、线索等不带。
+# 问题点到哪部分就只附上那部分（11-05 实测“这个案件有哪些费用”：只给基本信息时模型找费用工具搜了 15 次、用了 2 分钟）。
+CASE_TOPIC_SECTIONS = (
+    ("finances", "费用", re.compile(r"(费用|收费|官费|诉讼费|律师费|代理费|付款|请款|开票|发票|退费|到账|回款|收款|欠款|账款|财务)")),
+    ("documents", "文档", re.compile(r"(文档|附件|材料|文书|证据|判决书|裁定书|起诉状|答辩状|传票|通知书|文件)")),
+    ("tasks", "任务", re.compile(r"(任务|待办)")),
+    ("deadlines", "期限", re.compile(r"(期限|截止|到期|开庭|庭审|日程|提醒|时效|举证期|上诉期)")),
+    ("contracts", "合同", re.compile(r"(合同|委托协议|签约)")),
+    ("customer", "客户", re.compile(r"(客户|委托人|委托方)")),
+    ("relationships", "线索和调查", re.compile(r"(线索|调查|取证)")),
+)
+
+
+def case_topics(message: str) -> list[str]:
+    text = str(message or "")
+    return [key for key, _, pattern in CASE_TOPIC_SECTIONS if pattern.search(text)]
+
+
+def slim_case_snapshot(context: dict, *, keep_check: bool = False, topics: list[str] | tuple[str, ...] = ()) -> dict:
+    """只保留案件基本信息、人员和本人能做的操作，加上问题点到的那部分资料（topics）；其余费用、文档、任务、线索等不带。
     keep_check=True 时带上系统算好的案件检查结果（“归纳案件情况”“优先待办事项”要用，内容很短）。"""
-    keep = ("schema_version", "space", "case", "people", "capabilities", "document_readings", *(("case_check",) if keep_check else ()))
+    keep = ("schema_version", "space", "case", "people", "capabilities", "document_readings", *(("case_check",) if keep_check else ()),
+            *[key for key in topics if key in dict((k, 1) for k, _, _ in CASE_TOPIC_SECTIONS)])
     slim = {key: context[key] for key in keep if key in context}
-    slim["scope_note"] = ("本轮只提供案件基本信息。需要费用、合同、文档、任务、线索、期限等其他资料时，"
-                          "按需调用对应查询工具（如 biz_case_overview），不要一次查全部；用户说“查全部案件空间”时才会提供全部资料。")
+    attached = [label for key, label, _ in CASE_TOPIC_SECTIONS if key in topics and key in context]
+    slim["scope_note"] = (("本轮按问题附上了案件的" + "、".join(attached) + "资料，直接据此回答，不要再调用工具查同样的内容；" if attached else "本轮只提供案件基本信息。")
+                          + "需要其他资料时，按需调用对应查询工具（如 biz_case_overview），不要一次查全部；用户说“查全部案件空间”时才会提供全部资料。")
     return slim
 
 
@@ -311,8 +330,8 @@ def build_case_model_messages(
     from .agent_mcp.model_context import MODEL_QUERY_RULES, model_result_view
     scope = snapshot.get("_model_scope")
     if scope in ("basic", "basic_edit"):
-        # 陶国南 11-05 07:44：除非用户让查全部案件空间，模型只看案件基本信息（改信息时连检查结果也不带）。
-        snapshot = slim_case_snapshot(snapshot, keep_check=scope == "basic")
+        # 陶国南 11-05 07:44：除非用户让查全部案件空间，模型只看案件基本信息和问题点到的那部分（改信息时连检查结果也不带）。
+        snapshot = slim_case_snapshot(snapshot, keep_check=scope == "basic", topics=snapshot.get("_model_topics") or ())
     prioritized_snapshot = {
         "document_readings": snapshot.get("document_readings") or [],
         # 501222：检查结果放前面，长案件截断时也保得住。

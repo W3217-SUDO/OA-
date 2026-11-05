@@ -143,6 +143,20 @@ class PromptOnlySlimTest(unittest.TestCase):
         self.assertIn("HT-SECRET-9", full)
 
 
+class TopicSectionsTest(unittest.TestCase):
+    def test_question_topic_attaches_only_that_section(self):
+        from app.case_agent import case_topics
+        self.assertEqual(case_topics("这个案件有哪些费用"), ["finances"])
+        self.assertEqual(case_topics("下次开庭是什么时候"), ["deadlines"])
+        self.assertEqual(case_topics("归纳案件情况"), [])
+        full = {"case": {"id": 1}, "finances": {"fees": [{"title": "一审诉讼费"}]}, "documents": [{"name": "判决书"}], "tasks": [1]}
+        slim = slim_case_snapshot(full, keep_check=True, topics=case_topics("这个案件有哪些费用"))
+        self.assertIn("finances", slim)
+        self.assertNotIn("documents", slim)
+        self.assertIn("费用", slim["scope_note"])
+        self.assertNotIn("finances", slim_case_snapshot(full, keep_check=True, topics=[]))
+
+
 class ChineseOnlyLabelTest(unittest.TestCase):
     def test_call_tool_label_has_no_english_name(self):
         label, _ = describe("oa_call_tool", {"name": "oa_update_case_settlement_amount_put", "arguments": {}})
