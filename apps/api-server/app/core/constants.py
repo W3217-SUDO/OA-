@@ -238,6 +238,7 @@ DEFAULT_HIDDEN_MENU_KEYS = {"finance-internal-void", *IPR_MENU_KEYS_REMOVED_5016
 # 这些子菜单不随已授权的父菜单（如老角色存的“知识产权中心”ipr）自动继承，只有单独勾了才给。
 PARENT_GRANT_EXCLUDED_MENU_KEYS = frozenset({
     "ipr-my-cases",
+    "ipr-patent-transfer", "ipr-trademark-transfer",  # 280146/501616 专利转文、商标转文
     "ipr-receipt-custom-import", "ipr-invoice-import-case", "ipr-invoice-import-contract",
     "ipr-patent-invoice-upload", "ipr-patent-receipt-upload", "ipr-other-invoice-upload",
 })

@@ -116,6 +116,23 @@ class IprTransferCenterTest(unittest.IsolatedAsyncioTestCase):
         rows = [[c.text for c in r.cells] for r in Document(io.BytesIO(trademark.content)).tables[-1].rows]
         self.assertEqual(rows[-1][:5], ["1", "HDTM2000003", "HDTM2000003名称", "35", "HDTM2000003-NO"])
 
+    def test_new_menus_not_granted_by_parent(self):
+        from app.core.permissions import _expand_menu_permission_keys
+        keys = _expand_menu_permission_keys(["ipr"])
+        self.assertIn("ipr-patent-annual-fee", keys)
+        self.assertNotIn("ipr-patent-transfer", keys, "新菜单先只给管理员，不随父菜单给出去")
+        self.assertIn("ipr-patent-transfer", _expand_menu_permission_keys(["ipr", "ipr-patent-transfer"]))
+        from app.core.constants import MENU_CHILDREN_BY_KEY
+        from app.core.permissions import _drop_partial_parent_menu_keys
+        old_children = [key for key in MENU_CHILDREN_BY_KEY["ipr"] if key not in {"ipr-patent-transfer", "ipr-trademark-transfer"}]
+        def descendants(key):
+            out = []
+            for child in MENU_CHILDREN_BY_KEY.get(key, []):
+                out += [child, *descendants(child)]
+            return out
+        saved = ["ipr", *old_children, *[d for c in old_children for d in descendants(c)]]
+        self.assertIn("ipr", _drop_partial_parent_menu_keys(saved), "没勾新菜单时保存角色，知识产权中心大类不被去掉")
+
     def test_every_item_has_a_template(self):
         from app.areas.ipr.transfer_templates import TEMPLATES
         for kind, (_, items, other) in tc.KINDS.items():
