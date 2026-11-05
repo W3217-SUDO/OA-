@@ -73,13 +73,18 @@ BUILTIN_TEMPLATES = [{
     "id": "mediation-agreement-litigation", "name": "调解协议（诉讼中，请法院确认）", "file": "MEDIATION_LITIGATION_DOCX",
     "options": {"诉讼费承担方": ["原告", "被告", "原、被告各半"]},
     "optional": ["涉案产品", "回收负责人", "回收联系电话", "收款联行号", "付款期限"],
+}, {
+    # 陶国南 11-05 12:16：送达地址确认书。当事人=本所委托人；送达地址默认沪知所地址（系统参数）加经办律师姓名和手机，短信送达号码用经办律师手机。
+    "id": "delivery-address", "name": "送达地址确认书", "file": "DELIVERY_ADDRESS_DOCX",
+    "options": {}, "optional": ["送达联系方式", "送达邮编", "短信送达号码"],
 }]
 # 系统自动取值的字段；模板里出现其他占位字段时，按“需要人工填写”处理。
 AUTO_FIELDS = ("法院", "法院案号", "原告", "被告", "第三人", "案由", "开庭律师", "经办律师", "律师助理", "客户名称", "案件编号", "生成日期",
                "原告信息", "被告信息", "委托诉讼代理人", "代理律所", "赔偿金额", "赔偿金额大写", "收款户名", "收款开户行", "收款账号",
                "付款期限", "签署日期", "申请人信息", "被申请人信息", "落款日期", "保全金额",
                "收案日期", "起诉日期", "结案日期", "开庭日期", "处理结果", "归档日期", "保管期限",
-               "调解原告信息", "调解被告信息", "付款被告", "收款联行号", "委托人名称", "委托人联系方式", "退费开户行", "退费户名", "退费账号")
+               "调解原告信息", "调解被告信息", "付款被告", "收款联行号", "委托人名称", "委托人联系方式", "退费开户行", "退费户名", "退费账号",
+               "送达地址", "送达联系方式", "送达邮编", "短信送达号码")
 # 陶国南 11-04 14:28：日期都要生成。案件里没有约定付款日期时，付款期限默认生成日起 7 天（样本是起草后约 3 天），可以改。
 DEFAULT_PAYMENT_DAYS = 7
 PAYMENT_DATE_KEYS = ("agreed_payment_date", "payment_deadline", "settlement_payment_date", "promised_payment_date", "mediation_payment_date")
@@ -169,7 +174,8 @@ NOTE = re.compile(r"[（(][^（）()]*[）)]\s*")
 FIELD_HINTS = (
     (("调解原告信息",), "调解原告信息"), (("调解被告信息",), "调解被告信息"), (("付款被告",), "付款被告"), (("收款联行号",), "收款联行号"),
     (("委托人名称",), "委托人名称"), (("委托人联系方式",), "委托人联系方式"), (("退费开户行",), "退费开户行"), (("退费户名",), "退费户名"),
-    (("退费账号",), "退费账号"),
+    (("退费账号",), "退费账号"), (("送达地址",), "送达地址"), (("送达联系方式",), "送达联系方式"), (("送达邮编",), "送达邮编"),
+    (("短信送达号码",), "短信送达号码"),
     (("收案日期",), "收案日期"), (("起诉日期",), "起诉日期"), (("结案日期",), "结案日期"), (("开庭日期",), "开庭日期"),
     (("处理结果",), "处理结果"), (("归档日期",), "归档日期"), (("保管期限",), "保管期限"),
     (("被申请人信息",), "被申请人信息"), (("申请人信息",), "申请人信息"), (("落款日期",), "落款日期"), (("保全金额",), "保全金额"),
@@ -624,6 +630,22 @@ async def _client_contact(record: BusinessRecord, db: AsyncSession) -> dict[str,
             "退费户名": (_first(profile, "bank_account_name", "account_name") or name) if account else "", "退费账号": account}
 
 
+async def _delivery_contacts(db: AsyncSession, lawyers: list[str]) -> dict[str, str]:
+    """送达地址确认书：送达地址=沪知所地址（系统参数）+“经办律师姓名律师手机”；联系方式、短信送达号码用经办律师手机，没填的留空手写。"""
+    address = await firm_address(db)
+    rows = (await db.scalars(select(User).where(User.username.in_(lawyers)))).all() if lawyers else []
+    by_name = {row.username.casefold(): row for row in rows}
+    people = []
+    for token in lawyers:
+        user = by_name.get(str(token).casefold())
+        mobile = str(((user.profile if user else None) or {}).get("mobile") or "").strip()
+        people.append(((user.display_name if user else str(token)), mobile))
+    mobiles = list(dict.fromkeys(mobile for _, mobile in people if mobile))
+    first_name, first_mobile = people[0] if people else ("", "")
+    contact = f"，{first_name}律师{first_mobile}" if first_name else ""
+    return {"送达地址": address + contact, "送达联系方式": first_mobile, "送达邮编": "", "短信送达号码": "、".join(mobiles)}
+
+
 async def _applicant_lines(data: dict, names: list[str], identities_key: str, db: AsyncSession, *, applicant: bool) -> str:
     identities = {str(item.get("name") or "").strip(): item for item in data.get(identities_key) or [] if isinstance(item, dict)}
     profiles = await _party_profiles(names, db)
@@ -812,6 +834,7 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
         "调解被告信息": await _mediation_lines(data, defendants, "defendant_identities", db, label="被告",
                                          agent=_our_agent(record, defendants, people(handling))) if _wanted("调解被告信息") else "",
         "付款被告": "、".join(defendants),
+        **(await _delivery_contacts(db, handling) if _wanted("送达地址", "送达联系方式", "短信送达号码") else {}),
         **(await _client_contact(record, db) if _wanted("委托人名称", "委托人联系方式", "退费开户行", "退费户名", "退费账号") else {}),
         **(await firm_account(db)),
     }
