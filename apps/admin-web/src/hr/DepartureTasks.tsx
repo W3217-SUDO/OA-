@@ -3,6 +3,7 @@ import { Alert, Button, Card, Empty, Input, Modal, Space, Tag, message } from "a
 import Table from "../components/ResizableTable";
 import { KeywordPersonSelect, personKeywordMatches } from "../components/KeywordPersonSelect";
 import { api } from "../api";
+import { POPUP_WIDTH } from "../components/common/popupSize";
 
 // 501631（tgn 11-05）：办离职/停用前，此人负责的未结束任务必须先转交；发起人、协作人的任务转交时一并换人。
 // 已离职人员的存量任务由系统管理员在“离职人员未结束任务”清单里按人批量转交。
@@ -102,7 +103,7 @@ export function DepartureHandoverModal({ username, name, action = "办理离职"
   useEffect(() => { void load(); }, [load]);
   const ownerCount = items.filter((item) => item.roles.includes("负责人")).length;
   return (
-    <Modal open={Boolean(username)} title={`${name || username || ""} 名下未结束的任务`} width={1000} onCancel={onClose} destroyOnHidden
+    <Modal open={Boolean(username)} title={`${name || username || ""} 名下未结束的任务`} width={POPUP_WIDTH.xl} onCancel={onClose} destroyOnHidden
       footer={<Space>
         <Button onClick={onClose}>关闭</Button>
         {onCleared && <Button type="primary" disabled={loading || ownerCount > 0} onClick={onCleared}>继续{action}</Button>}
