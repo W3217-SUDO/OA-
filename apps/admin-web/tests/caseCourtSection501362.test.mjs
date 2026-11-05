@@ -12,7 +12,9 @@ test("501362：没人填过法院信息时不显示法院信息栏，填了才�
   assert.equal(getCaseDetailSectionVisibility({ first_court_filing_date: "2026-11-05" }).court, true);
 });
 
-test("501362：填写入口仍在“操作 › 修改法院信息”", () => {
+test("501362：填写入口仍在“操作 › 修改法院信息”（501640 起民事案件叫“修改法院和公证信息”）", () => {
   const constants = readFileSync(new URL("../src/legal/constants.tsx", import.meta.url), "utf8");
-  assert.ok(constants.includes('"修改法院信息"'));
+  const page = readFileSync(new URL("../src/legal/CaseCenterPage.tsx", import.meta.url), "utf8");
+  assert.ok(constants.includes('"修改法院和公证信息"'));
+  assert.ok(page.includes('"修改法院信息"'), "刑事、行政案件仍叫修改法院信息");
 });

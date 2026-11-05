@@ -554,17 +554,22 @@ export const shouldShowCompanyScheduleSinglePageJumper = (initialView: string, r
 export const isCivilCaseType = (caseType: unknown) => ["民事案件", "民事争议", "民事"].includes(String(caseType || "").trim());
 export const isNormalCaseBasicType = (caseType: unknown) => isCivilCaseType(caseType) || ["刑事案件", "行政案件及国家赔偿"].includes(String(caseType || "").trim());
 
+// 501640（tgn 11-06 07:41/07:51）：案件详情“操作”按同类合并成 7 项，带子菜单的鼠标移上去展开，子项打开的还是原来的修改窗口。
 export const getLegacyCaseDetailPrimaryOperationLabels = () => [
   "修改基本信息",
-  "修改案件阶段",
-  "修改公证信息",
-  "修改开庭律师",
-  "修改当事人",
-  "修改法院信息",
-  "修改诉讼或判决金额",
+  "修改诉讼参与人",
+  "修改法院和公证信息",
   "申请归档",
-  "更多操作",
+  "文书生成",
+  "案件合并",
+  "复制案件",
 ];
+
+export const getLegacyCaseDetailGroupItemLabels = () => ({
+  basic: ["基本信息", "案件阶段", "诉讼或判决金额"],
+  participants: ["当事人", "开庭律师", "经办律师、律师助理、案源人"],
+  court: ["公证信息", "公安信息", "检察院信息"],
+});
 
 export const getLegacyCaseDetailMoreOperationLabels = () => [
   "生成授权委托书",
@@ -574,8 +579,6 @@ export const getLegacyCaseDetailMoreOperationLabels = () => [
   "生成二审所函(对方上诉)",
   "生成执行所函",
   "生成身份证明",
-  "案件合并",
-  "复制案件",
 ];
 
 export const getCompanyScheduleCourtLevels = () => [

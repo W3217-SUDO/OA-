@@ -58,7 +58,7 @@ Upload
 import Table from "../components/ResizableTable";
 import type { FitStackGroup } from "../components/ResizableTable";
 import dayjs from "dayjs";
-import type { Key } from "react";
+import type { Key, ReactNode } from "react";
 import { useEffect,useMemo,useRef,useState } from "react";
 import { api } from "../api";
 import { rememberBusinessRecordDetailTarget } from "../businessRecordDetailNavigation";
@@ -233,6 +233,7 @@ getCompanyScheduleCourtLevels,
 getCompanySchedulePageSizeOptions,
 getCompanyScheduleQueryFields,
 getCustomCaseDocumentFolders,
+getLegacyCaseDetailGroupItemLabels,
 getLegacyCaseDetailMoreOperationLabels,
 getLegacyCaseDetailPrimaryOperationLabels,
 isCivilCaseType,
@@ -283,7 +284,7 @@ TaskRow
 export {
 buildCasePhaseItems,
 buildCasePhaseItemsFromCounts,CasePhasePickerTree,getCaseDocumentMoveCategoryOptions,getCasePhaseDefinitions,getCompanyArbitrationColumnSchema,getCompanyArbitrationQueryFields,getCompanyCriminalColumnSchema,getCompanyCriminalQueryFields,getCompanyScheduleCourtLevels,getCompanySchedulePageSizeOptions,getCompanyScheduleQueryFields,
-getLegacyCaseDetailMoreOperationLabels,getLegacyCaseDetailPrimaryOperationLabels,getLegacyCaseDocumentGenerationItems,getLegacyGroupedCaseColumnSchema,isCivilCaseType,isCompanyCaseListRoute,isMyCaseListRoute,isNormalCaseBasicType,scopeCasesByListRoute,shouldShowCaseListActions,shouldShowCompanyScheduleActions,shouldShowCompanyScheduleSinglePageJumper,shouldUseCompanyArbitrationColumns,shouldUseCompanyArbitrationQueryFields,shouldUseCompanyCriminalQueryFields,shouldUseCompanySchedulePagination,shouldUseCompanyScheduleQueryFields
+getLegacyCaseDetailGroupItemLabels,getLegacyCaseDetailMoreOperationLabels,getLegacyCaseDetailPrimaryOperationLabels,getLegacyCaseDocumentGenerationItems,getLegacyGroupedCaseColumnSchema,isCivilCaseType,isCompanyCaseListRoute,isMyCaseListRoute,isNormalCaseBasicType,scopeCasesByListRoute,shouldShowCaseListActions,shouldShowCompanyScheduleActions,shouldShowCompanyScheduleSinglePageJumper,shouldUseCompanyArbitrationColumns,shouldUseCompanyArbitrationQueryFields,shouldUseCompanyCriminalQueryFields,shouldUseCompanySchedulePagination,shouldUseCompanyScheduleQueryFields
 } from "./constants";
 
 
@@ -3026,50 +3027,48 @@ export default function CaseCenterPage({
       onOk: () => duplicateCase(viewingCounselCase),
     });
   };
-  const caseDetailMoreActionButtons = viewingCounselCase ? <>
-    {counselDetailCapabilities.can_generate_document && !detailEditLocked && <>
-      <Button type="text" block onClick={() => void generateCaseDocument("authorization-letter")}>{moreOperationLabels[0]}</Button>
-      <Button type="text" block onClick={() => void generateCaseDocument("first-instance-appellant-lawyer-letter")}>{moreOperationLabels[1]}</Button>
-      <Button type="text" block onClick={() => void generateCaseDocument("first-instance-appellee-lawyer-letter")}>{moreOperationLabels[2]}</Button>
-      <Button type="text" block onClick={() => void generateCaseDocument("second-instance-appellant-lawyer-letter")}>{moreOperationLabels[3]}</Button>
-      <Button type="text" block onClick={() => void generateCaseDocument("second-instance-appellee-lawyer-letter")}>{moreOperationLabels[4]}</Button>
-      <Button type="text" block onClick={() => void generateCaseDocument("execution-lawyer-letter")}>{moreOperationLabels[5]}</Button>
-      <Button type="text" block onClick={() => void generateCaseDocument("identity-certificate")}>{moreOperationLabels[6]}</Button>
-    </>}
-    {counselDetailCapabilities.can_merge_case && !detailEditLocked && <Button type="text" block onClick={() => { mergeCaseForm.resetFields(); setMergingCase(viewingCounselCase); }}>{moreOperationLabels[7]}</Button>}
-    {counselDetailCapabilities.can_duplicate_case && <Button type="text" block onClick={confirmLegacyDuplicateCase}>{moreOperationLabels[8]}</Button>}
-  </> : null;
+  // 501640（tgn 11-06）：同类操作合并成子菜单；每个子项的显示仍按原来的权限，打开的仍是原来的修改窗口，没有删掉任何功能。
+  const caseDetailGroupItemLabels = getLegacyCaseDetailGroupItemLabels();
+  const legacySubmenu = (label: string, testId: string, items: ReactNode[], disabled = false) => items.some(Boolean) ? <div className="case-detail-legacy-submenu" data-testid={testId}>
+    <Button type="text" block disabled={disabled} className="case-detail-legacy-submenu-trigger">{label}</Button>
+    <div className="case-detail-legacy-submenu-panel" data-testid={`${testId}-panel`}>{items}</div>
+  </div> : null;
+  const caseDetailDocumentButtons = viewingCounselCase && counselDetailCapabilities.can_generate_document && !detailEditLocked ? [
+    ["authorization-letter", 0], ["first-instance-appellant-lawyer-letter", 1], ["first-instance-appellee-lawyer-letter", 2],
+    ["second-instance-appellant-lawyer-letter", 3], ["second-instance-appellee-lawyer-letter", 4], ["execution-lawyer-letter", 5], ["identity-certificate", 6],
+  ].map(([kind, index]) => <Button key={kind} type="text" block onClick={() => void generateCaseDocument(String(kind))}>{moreOperationLabels[index as number]}</Button>) : [];
   const caseDetailPrimaryActionButtons = viewingCounselCase ? <div className="case-detail-legacy-operation-menu">
-    {counselDetailCapabilities.can_edit_basic && <Button type="text" block disabled={detailEditLocked} onClick={openLegacyBasicInfo}>{primaryOperationLabels[0]}</Button>}
-    {counselDetailCapabilities.can_change_phase && <Button type="text" block disabled={detailEditLocked} onClick={() => void openPhaseChange([viewingCounselCase])}>{primaryOperationLabels[1]}</Button>}
-    {counselDetailCapabilities.can_edit_notary && isCivilCaseType(viewingCounselCase.data.case_type) && <Button type="text" block disabled={detailEditLocked} onClick={openLegacyNotaryInfo}>{primaryOperationLabels[2]}</Button>}
-    {counselDetailCapabilities.can_edit_hearing_lawyer && <Button type="text" block disabled={detailEditLocked} onClick={() => openCaseHearingLawyer(viewingCounselCase)}>{primaryOperationLabels[3]}</Button>}
-    {counselDetailCapabilities.can_edit_litigants && <Button type="text" block disabled={detailEditLocked} onClick={() => openCaseLitigants(viewingCounselCase)}>{primaryOperationLabels[4]}</Button>}
-    {counselDetailCapabilities.can_edit_criminal_public_security && viewingCounselCase.data.case_type === "刑事案件" && <Button type="text" block disabled={detailEditLocked} onClick={() => openCriminalMaintenance(viewingCounselCase, "public-security")}>修改公安信息</Button>}
-    {counselDetailCapabilities.can_edit_court_info && <div className="case-detail-legacy-submenu">
-      <Button type="text" block disabled={detailEditLocked} className="case-detail-legacy-submenu-trigger">{viewingCounselCase.data.case_type === "仲裁" ? "修改仲裁信息" : primaryOperationLabels[5]}</Button>
-      <div className="case-detail-legacy-submenu-panel" data-testid="case-detail-court-submenu">
-        {getCompanyScheduleCourtLevels().map(([key, label]) => <Button key={key} type="text" block onClick={() => openCompanyScheduleCourtInfo(viewingCounselCase, key)}>{label}</Button>)}
-      </div>
-    </div>}
-    {counselDetailCapabilities.can_edit_criminal_procuratorate && viewingCounselCase.data.case_type === "刑事案件" && <div className="case-detail-legacy-submenu">
-      <Button type="text" block disabled={detailEditLocked} className="case-detail-legacy-submenu-trigger">修改检察院信息</Button>
-      <div className="case-detail-legacy-submenu-panel" data-testid="case-detail-procuratorate-submenu">
-        {CRIMINAL_PROCURATORATE_LEVELS.map(([level, label]) => <Button key={level} type="text" block disabled={detailEditLocked} onClick={() => openCriminalMaintenance(viewingCounselCase, "procuratorates", level)}>{label}</Button>)}
-      </div>
-    </div>}
-    {counselDetailCapabilities.can_edit_settlement && (isNormalCaseBasicType(viewingCounselCase.data.case_type) || viewingCounselCase.data.case_type === "仲裁") && <Button type="text" block disabled={detailEditLocked} onClick={openLegacySettlementAmount}>{primaryOperationLabels[6]}</Button>}
+    {legacySubmenu(primaryOperationLabels[0], "case-detail-basic-submenu", [
+      counselDetailCapabilities.can_edit_basic && <Button key="basic" type="text" block disabled={detailEditLocked} onClick={openLegacyBasicInfo}>{caseDetailGroupItemLabels.basic[0]}</Button>,
+      counselDetailCapabilities.can_change_phase && <Button key="phase" type="text" block disabled={detailEditLocked} onClick={() => void openPhaseChange([viewingCounselCase])}>{caseDetailGroupItemLabels.basic[1]}</Button>,
+      counselDetailCapabilities.can_edit_settlement && (isNormalCaseBasicType(viewingCounselCase.data.case_type) || viewingCounselCase.data.case_type === "仲裁") && <Button key="settlement" type="text" block disabled={detailEditLocked} onClick={openLegacySettlementAmount}>{caseDetailGroupItemLabels.basic[2]}</Button>,
+    ])}
+    {legacySubmenu(primaryOperationLabels[1], "case-detail-participants-submenu", [
+      counselDetailCapabilities.can_edit_litigants && <Button key="litigants" type="text" block disabled={detailEditLocked} onClick={() => openCaseLitigants(viewingCounselCase)}>{caseDetailGroupItemLabels.participants[0]}</Button>,
+      counselDetailCapabilities.can_edit_hearing_lawyer && <Button key="hearing" type="text" block disabled={detailEditLocked} onClick={() => openCaseHearingLawyer(viewingCounselCase)}>{caseDetailGroupItemLabels.participants[1]}</Button>,
+      counselDetailCapabilities.can_edit_basic && <Button key="lawyers" type="text" block disabled={detailEditLocked} onClick={openLegacyBasicInfo}>{caseDetailGroupItemLabels.participants[2]}</Button>,
+    ])}
+    {legacySubmenu(viewingCounselCase.data.case_type === "仲裁" ? "修改仲裁信息" : isCivilCaseType(viewingCounselCase.data.case_type) ? primaryOperationLabels[2] : "修改法院信息", "case-detail-court-submenu", [
+      ...(counselDetailCapabilities.can_edit_court_info ? getCompanyScheduleCourtLevels().map(([key, label]) => <Button key={key} type="text" block disabled={detailEditLocked} onClick={() => openCompanyScheduleCourtInfo(viewingCounselCase, key)}>{viewingCounselCase.data.case_type === "仲裁" ? label : `${label}法院`}</Button>) : []),
+      counselDetailCapabilities.can_edit_notary && isCivilCaseType(viewingCounselCase.data.case_type) && <Button key="notary" type="text" block disabled={detailEditLocked} onClick={openLegacyNotaryInfo}>{caseDetailGroupItemLabels.court[0]}</Button>,
+      counselDetailCapabilities.can_edit_criminal_public_security && viewingCounselCase.data.case_type === "刑事案件" && <Button key="public-security" type="text" block disabled={detailEditLocked} onClick={() => openCriminalMaintenance(viewingCounselCase, "public-security")}>{caseDetailGroupItemLabels.court[1]}</Button>,
+      counselDetailCapabilities.can_edit_criminal_procuratorate && viewingCounselCase.data.case_type === "刑事案件" && <div key="procuratorate" className="case-detail-legacy-submenu">
+        <Button type="text" block disabled={detailEditLocked} className="case-detail-legacy-submenu-trigger">{caseDetailGroupItemLabels.court[2]}</Button>
+        <div className="case-detail-legacy-submenu-panel" data-testid="case-detail-procuratorate-submenu">
+          {CRIMINAL_PROCURATORATE_LEVELS.map(([level, label]) => <Button key={level} type="text" block disabled={detailEditLocked} onClick={() => openCriminalMaintenance(viewingCounselCase, "procuratorates", level)}>{label}</Button>)}
+        </div>
+      </div>,
+    ])}
     {counselDetailCapabilities.can_archive && <div className="case-detail-legacy-submenu">
-      <Button type="text" block disabled={ARCHIVE_LOCKED_STATUSES.includes(viewingCounselCase.status)} className="case-detail-legacy-submenu-trigger">{primaryOperationLabels[7]}</Button>
+      <Button type="text" block disabled={ARCHIVE_LOCKED_STATUSES.includes(viewingCounselCase.status)} className="case-detail-legacy-submenu-trigger">{primaryOperationLabels[3]}</Button>
       <div className="case-detail-legacy-submenu-panel" data-testid="case-detail-archive-submenu">
         <Button type="text" block disabled={ARCHIVE_LOCKED_STATUSES.includes(viewingCounselCase.status)} onClick={() => void openArchive(viewingCounselCase, "normal")}>正常归档</Button>
         <Button type="text" block disabled={ARCHIVE_LOCKED_STATUSES.includes(viewingCounselCase.status)} onClick={() => void openArchive(viewingCounselCase, "deficit")}>亏损归档</Button>
       </div>
     </div>}
-    {(counselDetailCapabilities.can_generate_document || counselDetailCapabilities.can_merge_case || counselDetailCapabilities.can_duplicate_case) && <div className="case-detail-legacy-submenu case-detail-legacy-more-submenu" data-testid="case-detail-more-operation">
-      <Button type="text" block className="case-detail-legacy-submenu-trigger">{primaryOperationLabels[8]}</Button>
-      <div className="case-detail-legacy-submenu-panel" data-testid="case-detail-more-operation-panel">{caseDetailMoreActionButtons}</div>
-    </div>}
+    {legacySubmenu(primaryOperationLabels[4], "case-detail-document-submenu", caseDetailDocumentButtons)}
+    {counselDetailCapabilities.can_merge_case && !detailEditLocked && <Button type="text" block onClick={() => { mergeCaseForm.resetFields(); setMergingCase(viewingCounselCase); }}>{primaryOperationLabels[5]}</Button>}
+    {counselDetailCapabilities.can_duplicate_case && <Button type="text" block onClick={confirmLegacyDuplicateCase}>{primaryOperationLabels[6]}</Button>}
   </div> : null;
   const companyScheduleCourtLevelLabel = getCompanyScheduleCourtLevels().find(([key]) => key === companyScheduleCourtInfo?.level)?.[1] || "";
   const caseOperationsMenu = <CaseOperationsMenu

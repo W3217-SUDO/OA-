@@ -76,7 +76,7 @@ test("第9行法律顾问：新建与修改基本信息新增选填案由，提�
 test("第12/13行：刑事操作菜单只剩一个修改法院信息，检察院按一审/二审/再审子菜单逐级维护", () => {
   const menu = page.slice(page.indexOf("const caseDetailPrimaryActionButtons"), page.indexOf("const companyScheduleCourtLevelLabel"));
   assert.ok(!menu.includes('openCriminalMaintenance(viewingCounselCase, "courts")'), "删除刑事专用法院入口");
-  assert.equal((menu.match(/primaryOperationLabels\[5\]/g) || []).length, 1);
+  assert.equal((menu.match(/"case-detail-court-submenu"/g) || []).length, 1, "501640：法院信息一组只有一个入口");
   assert.match(menu, /data-testid="case-detail-procuratorate-submenu"/);
   assert.match(menu, /openCriminalMaintenance\(viewingCounselCase, "procuratorates", level\)/);
   const { criminalProcuratorateFields, CRIMINAL_PROCURATORATE_LEVELS } = loadModule("../src/legal/services/workflowActions.tsx");

@@ -77,6 +77,8 @@ CASE_INFO_EDIT_RULES = (
     "直接调用 biz_case_update_info（case_id 用当前案件 ID），第一次就带 confirm=true，直接生成确认卡片（卡片写明每项从多少改成多少），"
     "用户点批准才执行；不要先给文字计划、不要等用户回复“确认”，卡片就是确认；回复里一句话说明已生成卡片、请在卡片上批准即可；"
     "不要为这些项目调用 oa_list_tool_groups 或 oa_search_tools。"
+    "一句话要改几块（例如同时加开庭律师和经办律师：开庭律师走 biz_case_update_info，经办律师走基本信息）时，同一轮把每一块的确认卡片都生成出来，"
+    "回复里一句话说明共几项、在确认窗口里一起批准，不要只做其中一块（501634）。"
     + "\n" + "案件信息字段对照（陶国南 11-05：听到哪项就知道是案件详情哪个区块、哪个字段，直接办，不到处找）：" + "\n" + "{CASE_FIELD_MAP}"
 )
 
@@ -108,7 +110,25 @@ CASE_FIELD_MAP_ROWS = (
     ("案件日志、写日志", "案件日志", "日志内容", "组 07 搜 oa_create_case_log_post"),
     ("案件费用、内部费用、律师费、诉讼费", "费用", "费用范围、类型、金额、经办人等", "biz_case_fee_create_and_request_payment"),
 )
-CASE_FIELD_MAP = "\n".join(f"- {said} → {block} › {fields} → {how}" for said, block, fields, how in CASE_FIELD_MAP_ROWS)
+# 501640（tgn 11-06）：页面“操作”菜单合并成 7 组，对照里写上每个区块在哪一组，智能体和用户说的是同一个入口。
+CASE_MENU_GROUPS = (
+    ("诉讼/判决金额", "修改基本信息 › 诉讼或判决金额"), ("案件阶段", "修改基本信息 › 案件阶段"), ("基本信息", "修改基本信息 › 基本信息"),
+    ("开庭律师", "修改诉讼参与人 › 开庭律师"), ("当事人信息", "修改诉讼参与人 › 当事人"),
+    ("法院信息", "修改法院和公证信息"), ("公证信息", "修改法院和公证信息 › 公证信息"),
+    ("公安信息", "修改法院信息 › 公安信息"), ("检察院信息", "修改法院信息 › 检察院信息"),
+)
+
+
+def case_menu_group(block: str) -> str:
+    for prefix, group in CASE_MENU_GROUPS:
+        if block.startswith(prefix):
+            return group
+    return ""
+
+
+CASE_FIELD_MAP = "\n".join(
+    f"- {said} → {block} › {fields} → {how}" + (f"（页面“操作”：{group}）" if (group := case_menu_group(block)) else "")
+    for said, block, fields, how in CASE_FIELD_MAP_ROWS)
 CASE_INFO_EDIT_RULES = CASE_INFO_EDIT_RULES.replace("{CASE_FIELD_MAP}", CASE_FIELD_MAP)
 
 # 陶国南 11-05：改、填案件信息时不带整个案件空间（费用、文档、任务、线索、检查等），只带案件基本信息，省时间也省费用。
