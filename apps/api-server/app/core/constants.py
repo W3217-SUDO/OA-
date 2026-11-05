@@ -122,7 +122,7 @@ DEFAULT_SYSTEM_MENUS = [
     # BUG20261030004（高勤兰、思法汇成确认）：按老系统顺序 专利监控、专利转文、专利转票、专利年费、商标监控、商标转文、商标转票、案件重提、案件文件，
     # 原有菜单排在后面；1~7 号位留给分批上线的监控、转文、转票、年费。
     # 501613（范文玲 11-05）：“我的案件”放第一项，按我在案件里的角色分组。
-    ("ipr", "", "知产非诉", "file-text", 67), ("ipr-my-cases", "ipr", "我的案件", "", 0), ("ipr-patent-annual-fee", "ipr", "专利年费", "", 7), ("ipr-case-reboot", "ipr", "案件重提", "", 3), ("ipr-case-files", "ipr", "案件文件", "", 11),
+    ("ipr", "", "知产非诉", "file-text", 67), ("ipr-my-cases", "ipr", "我的案件", "", 0), ("ipr-patent-transfer", "ipr", "专利转文", "", 5), ("ipr-patent-annual-fee", "ipr", "专利年费", "", 7), ("ipr-trademark-transfer", "ipr", "商标转文", "", 9), ("ipr-case-reboot", "ipr", "案件重提", "", 3), ("ipr-case-files", "ipr", "案件文件", "", 11),
     ("ipr-custom-file-import", "ipr-case-files", "案件自定义文件导入", "", 1),
     # 501618（高勤兰 11-05）：案件文件下按旧系统补齐收据、发票的导入和上传（“专利收据导入”待技术部确认后再加）。
     ("ipr-receipt-custom-import", "ipr-case-files", "收据自定义文件导入", "", 2), ("ipr-invoice-import-case", "ipr-case-files", "发票文件导入(案件)", "", 3),

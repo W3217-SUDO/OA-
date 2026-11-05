@@ -2458,3 +2458,8 @@ async def update_ipr_official_processing(
 # 501617：专利年费“修改首年年度及减缓比例”（放在最后，main.py 按顺序切片）。
 from app.areas.ipr.annual_fee_year import router as annual_fee_year_router  # noqa: E402
 router.include_router(annual_fee_year_router)
+
+
+# 280146 / 501616：知识产权中心“专利转文”“商标转文”（放在最后，main.py 按顺序切片）。
+from app.areas.ipr.transfer_center import router as transfer_center_router  # noqa: E402
+router.include_router(transfer_center_router)

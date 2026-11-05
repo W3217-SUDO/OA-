@@ -186,6 +186,7 @@ const IprCaseRebootPage = lazyWithVersionRecovery("ipr-case-reboot", () => impor
 const IprAnnualFeePage = lazyWithVersionRecovery("ipr-patent-annual-fee", () => import("./IprAnnualFeePage"));
 const IprMyCasesPage = lazyWithVersionRecovery("ipr-my-cases", () => import("./IprMyCasesPage"));
 const IprFeeFileImportPage = lazyWithVersionRecovery("ipr-fee-file-import", () => import("./IprFeeFileImportPage"));
+const IprTransferPage = lazyWithVersionRecovery("ipr-transfer", () => import("./IprTransferPage"));
 const TaskCenterPage = lazyWithVersionRecovery("task", () => import("./tp"));
 // 501629（tgn 11-05）：VIP 任务在案件详情“客户任务”里单独发，任务中心不再有“VIP任务”页面；VIP 任务数据和接口保留。
 const BusinessPage = lazyWithVersionRecovery("business", () => import("./BusinessPage"));
@@ -414,7 +415,9 @@ const menuItems: NavItem[] = [
       // 501616：按老系统“案件中心”菜单；监控、转文、转票做好一个加一个。
       { key: "ipr-my-cases", label: "我的案件" },
       { key: "ipr-case-reboot", label: "案件重提" },
+      { key: "ipr-patent-transfer", label: "专利转文" },
       { key: "ipr-patent-annual-fee", label: "专利年费" },
+      { key: "ipr-trademark-transfer", label: "商标转文" },
       { key: "ipr-case-files", label: "案件文件", children: [
         { key: "ipr-custom-file-import", label: "案件自定义文件导入" },
         ...Object.entries(IPR_FEE_FILE_PAGES).map(([key, page]) => ({ key, label: page.label })),
@@ -2056,6 +2059,8 @@ export default function App() {
       <IprMyCasesPage onNavigate={navigate} />
     ) : IPR_FEE_FILE_PAGES[route] ? (
       <IprFeeFileImportPage route={route} />
+    ) : route === "ipr-patent-transfer" || route === "ipr-trademark-transfer" ? (
+      <IprTransferPage key={route} kind={route === "ipr-patent-transfer" ? "patent" : "trademark"} onNavigate={navigate} />
     ) : route.startsWith(IPR_CASE_TAB_PREFIX) ? (
       <IprCenterPage key={active} initialView={parseIprCaseDetailRoute(active)?.kind === "商标" ? "ipr-trademark" : "ipr-patent"}
         detailCaseId={parseIprCaseDetailRoute(active)?.id} onNavigate={(target) => navigate(target, { reuse: true })} />
