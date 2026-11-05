@@ -39,6 +39,18 @@ export default function FeedbackPage({ onNavigate, openPages, menuPages, resolve
     return merged.map((page) => ({ ...page, label: feedbackPageLabel(page.key, page.label) }));
   }, [sourceRoute, openPages, resolvePageLabel]);
 
+  // 详情按钮行吸在页头下面：页头高度随宽度变化（手机上页签换行），量出来交给样式（ResizeObserver，Chrome 100 支持）。
+  useEffect(() => {
+    const head = headRef.current?.closest<HTMLElement>(".ant-card-head");
+    const card = head?.parentElement;
+    if (!head || !card || typeof ResizeObserver === "undefined") return;
+    const update = () => card.style.setProperty("--feedback-head-h", `${head.offsetHeight}px`);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(head);
+    return () => observer.disconnect();
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     void api.get<FeedbackStatusCounts>("/feedback/status-counts", { params: { mine: true } })

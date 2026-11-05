@@ -178,3 +178,13 @@
 .feedback-page-head .ant-segmented::-webkit-scrollbar { display: none; }
 .feedback-page-head .ant-segmented-group { flex-wrap: nowrap; }
 .feedback-page-head .ant-segmented-item-label { white-space: nowrap; }
+/* 详情里的“返回列表、刷新、状态…”这一行也吸顶，贴在页头下面（tgn 11-05 追加，BUG20261105023）。 */
+.feedback-page-card .feedback-detail-head {
+  position: sticky;
+  top: var(--feedback-head-h, 57px);
+  z-index: 5;
+  margin-top: -12px;
+  padding: 12px 0 10px;
+  background: var(--oa-surface, #fff);
+  box-shadow: 0 6px 8px -8px rgba(15, 23, 42, 0.18);
+}

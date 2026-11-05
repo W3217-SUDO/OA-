@@ -189,7 +189,8 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
   return <section aria-label="反馈详情">
     {/* 页头按钮排一排（手机上放不下时横向滑动，不换行）。 */}
     <div className="feedback-detail-head" role="toolbar" aria-label="反馈操作">
-      <Button onClick={onBack}>返回列表</Button>
+      {/* 返回列表回到列表顶部（tgn 11-05，BUG20261105023）。 */}
+      <Button onClick={(event) => { event.currentTarget.closest(".page-workbench")?.scrollTo(0, 0); onBack(); }}>返回列表</Button>
       <Button onClick={() => void load()} loading={loading}>刷新</Button>
       <Tag color={statusColors[feedback.status] || "default"}>{feedback.status}</Tag>
       {feedback.reporter_new_reply && <Tag color="orange">提交人有新回复</Tag>}
