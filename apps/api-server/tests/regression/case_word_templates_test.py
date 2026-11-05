@@ -349,6 +349,42 @@ class CaseWordTemplatesTest(unittest.IsolatedAsyncioTestCase):
             for leaked in leaked_words:
                 self.assertNotIn(leaked, text, item["name"])
 
+    async def test_builtin_case_summary_1105(self):
+        """陶国南 11-05 办案小结（诉讼）：委托人、案由、各日期、开庭日期、处理结果初稿从案件带出；案情概况、体会、保管期限可留空手写。"""
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, self.case_id)
+            case.status = "已归档"
+            case.data = {**case.data, "case_register_date": "2023-04-01T10:00:00", "first_court_filing_date": "2024-04-22",
+                         "case_closed_at": "2026-01-08T10:33:11", "first_court_hearing_date": "2025-07-28T09:30:00",
+                         "second_court_hearing_date": "2025-11-25T09:30:00", "litigation_amount": "500000.00",
+                         "judgment_amount": "100000.00", "settlement_amount": "100000.00", "archived_at": "2026-09-29T13:53:17"}
+            await db.commit()
+        body = (await self.client.post(self.url("case-summary", "preview"), json={"values": {}})).json()
+        self.assertEqual(body["missing"], [])
+        fields = {field["key"]: field["value"] for field in body["fields"]}
+        self.assertEqual(fields["客户名称"], "青岛尚美数智科技集团有限公司")
+        self.assertEqual((fields["收案日期"], fields["起诉日期"], fields["结案日期"]), ("2023年4月1日", "2024年4月22日", "2026年1月8日"))
+        self.assertEqual(fields["开庭日期"], "2025.7.28；2025.11.25")
+        self.assertEqual(fields["处理结果"], "判决结案，诉讼标的额500000元，判决金额100000元")
+        self.assertEqual(fields["归档日期"], "二〇二六年九月二十九日")
+        download = await self.client.post(self.url("case-summary", "download"), json={"values": {"办案体会": "正常处理"}})
+        self.assertEqual(download.status_code, 200, download.text)
+        document = Document(BytesIO(download.content))
+        cells = [cell.text for row in document.tables[0].rows for cell in row.cells]
+        for value in ("青岛尚美数智科技集团有限公司", "侵害商标权纠纷", "2023年4月1日", "2025.7.28；2025.11.25", "正常处理"):
+            self.assertIn(value, cells)
+        self.assertNotIn("（", "".join(cells), "说明括号都去掉了")
+        self.assertIn("归 档 日 期：二〇二六年九月二十九日", [p.text for p in document.paragraphs])
+        raw = "\n".join(cell.text for row in Document(BytesIO(await module._template_bytes(module.BUILTIN_TEMPLATES[-1], None))).tables[0].rows for cell in row.cells)
+        for leaked in ("立邦", "商标侵权", "2024.5.14", "1.2万"):
+            self.assertNotIn(leaked, raw)
+
+    def test_handling_result_draft(self):
+        record = BusinessRecord(module="case", serial_no="X", title="X", status="一审和解结案")
+        self.assertEqual(module._handling_result(record, {"settlement_amount": "8000", "judgment_amount": "8000"}), "和解结案，和解金额8000元")
+        record.status = "一审庭后待判"
+        self.assertEqual(module._handling_result(record, {}), "")
+
     def test_id_card_in_credit_code_is_a_person(self):
         number = "41082320020104022X"
         self.assertTrue(module._is_person("刘希杰", {}, number, {"credit_code": number}))

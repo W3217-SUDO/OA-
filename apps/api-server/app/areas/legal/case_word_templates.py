@@ -57,16 +57,22 @@ BUILTIN_TEMPLATES = [{
 }, {
     "id": "non-public-hearing", "name": "不公开审理申请书", "file": "NON_PUBLIC_HEARING_DOCX",
     "options": {}, "optional": [],
+}, {
+    # 陶国南 11-05：办案小结（诉讼）。案情概况、办案体会、保管期限由律师填，可以留空手写；事务所审查意见、承办律师签名留给手写。
+    "id": "case-summary", "name": "办案小结（诉讼）", "file": "CASE_SUMMARY_DOCX",
+    "options": {}, "optional": ["简要案情工作概况", "办案体会", "保管期限", "处理结果", "开庭日期", "起诉日期", "结案日期"],
 }]
 # 系统自动取值的字段；模板里出现其他占位字段时，按“需要人工填写”处理。
 AUTO_FIELDS = ("法院", "法院案号", "原告", "被告", "第三人", "案由", "开庭律师", "经办律师", "律师助理", "客户名称", "案件编号", "生成日期",
                "原告信息", "被告信息", "委托诉讼代理人", "代理律所", "赔偿金额", "赔偿金额大写", "收款户名", "收款开户行", "收款账号",
-               "付款期限", "签署日期", "申请人信息", "被申请人信息", "落款日期", "保全金额")
+               "付款期限", "签署日期", "申请人信息", "被申请人信息", "落款日期", "保全金额",
+               "收案日期", "起诉日期", "结案日期", "开庭日期", "处理结果", "归档日期")
 # 陶国南 11-04 14:28：日期都要生成。案件里没有约定付款日期时，付款期限默认生成日起 7 天（样本是起草后约 3 天），可以改。
 DEFAULT_PAYMENT_DAYS = 7
 PAYMENT_DATE_KEYS = ("agreed_payment_date", "payment_deadline", "settlement_payment_date", "promised_payment_date", "mediation_payment_date")
 # 多个当事人逐行列出（每人一段，段落前面的“原告：”“被告：”跟着重复）。
-MULTILINE_FIELDS = {"原告信息", "被告信息", "申请人信息", "被申请人信息", "事实和理由", "财产线索", "变更后诉讼请求"}
+MULTILINE_FIELDS = {"原告信息", "被告信息", "申请人信息", "被申请人信息", "事实和理由", "财产线索", "变更后诉讼请求",
+                    "简要案情工作概况", "办案体会", "处理结果"}
 # 由别的字段算出来的，不单独填：赔偿金额大写跟着赔偿金额走。
 DERIVED_FIELDS = {"赔偿金额大写": "赔偿金额"}
 # 陶国南 11-04 14:19：律所用系统所在的上海沪知律师事务所，收款账户用沪知所的账户——
@@ -148,6 +154,8 @@ W = "{%s}" % WORD_NS["w"]
 NOTE = re.compile(r"[（(][^（）()]*[）)]\s*")
 # 按说明文字猜对应案件里的哪一项；猜不到的设成“生成时手填”，管理员可以在模板页改。
 FIELD_HINTS = (
+    (("收案日期",), "收案日期"), (("起诉日期",), "起诉日期"), (("结案日期",), "结案日期"), (("开庭日期",), "开庭日期"),
+    (("处理结果",), "处理结果"), (("归档日期",), "归档日期"),
     (("被申请人信息",), "被申请人信息"), (("申请人信息",), "申请人信息"), (("落款日期",), "落款日期"), (("保全金额",), "保全金额"),
     (("原告信息",), "原告信息"), (("被告信息",), "被告信息"), (("原告名称",), "原告"), (("被告名称",), "被告"),
     (("委托诉讼代理人",), "委托诉讼代理人"), (("代理律所",), "代理律所"), (("赔偿金额大写",), "赔偿金额大写"), (("赔偿金额",), "赔偿金额"),
@@ -514,6 +522,46 @@ def chinese_date(value: datetime) -> str:
     return "".join(CN_DIGITS[int(digit)] for digit in str(value.year)) + f"年{small(value.month)}月{small(value.day)}日"
 
 
+def _day(value) -> datetime | None:
+    text = str(value or "").strip()[:10]
+    try:
+        return datetime.strptime(text, "%Y-%m-%d") if text else None
+    except ValueError:
+        return None
+
+
+def _day_text(*values) -> str:
+    day = next((day for day in map(_day, values) if day), None)
+    return f"{day.year}年{day.month}月{day.day}日" if day else ""
+
+
+HEARING_DATE_KEYS = ("first_court_hearing_date", "second_court_hearing_date", "last_court_hearing_date", "execution_court_hearing_date")
+CLOSING_WORDS = ("判决结案", "和解结案", "调解结案", "撤诉结案", "执行结案", "执行终本")
+
+
+def _hearing_days(data: dict) -> str:
+    """开庭日期按样本写成“2024.5.14；2025.11.18”，一审、二审、再审、执行各次开庭都列出。"""
+    days = sorted({day for day in (_day(data.get(key)) for key in HEARING_DATE_KEYS) if day})
+    return "；".join(f"{day.year}.{day.month}.{day.day}" for day in days)
+
+
+def _handling_result(record: BusinessRecord, data: dict) -> str:
+    """处理结果的初稿：结案方式 + 诉讼标的额 + 判决/和解金额，律师可以改写。"""
+    status = record.status or ""
+    claim, judged, settled = (_amount_text(data.get(key)) for key in ("litigation_amount", "judgment_amount", "settlement_amount"))
+    # 已归档的案件阶段里看不出怎么结的：有判决金额写判决结案，有和解金额写和解结案。
+    closing = next((word for word in CLOSING_WORDS if word in status), "") or ("判决结案" if judged else "和解结案" if settled else "")
+    parts = [closing]
+    if claim:
+        parts.append(f"诉讼标的额{claim}元")
+    # 旧数据里判决金额和和解金额常是同一个数，按结案方式只写一个。
+    if judged and "和解" not in closing and "调解" not in closing:
+        parts.append(f"判决金额{judged}元")
+    elif settled or judged:
+        parts.append(f"{'调解' if '调解' in closing else '和解'}金额{settled or judged}元")
+    return "，".join(part for part in parts if part)
+
+
 def _amount_text(value) -> str:
     text = str(value or "").replace(",", "").strip()
     try:
@@ -601,6 +649,13 @@ async def case_field_values(record: BusinessRecord, db: AsyncSession, today: dat
         "被申请人信息": await _applicant_lines(data, defendants, "defendant_identities", db, applicant=False),
         "落款日期": chinese_date(today),
         "保全金额": _amount_text(data.get("litigation_amount") or data.get("claim_amount")),
+        # 陶国南 11-05 办案小结：收案=建案登记日，起诉=一审立案日，结案=结案时间，归档日期=归档时间（还没归档就写生成当天）。
+        "收案日期": _day_text(data.get("case_register_date"), record.created_at.isoformat() if record.created_at else ""),
+        "起诉日期": _day_text(data.get("first_court_filing_date"), data.get("filing_date"), data.get("filing_time")),
+        "结案日期": _day_text(data.get("case_closed_at"), data.get("closing_time")),
+        "开庭日期": _hearing_days(data),
+        "处理结果": _handling_result(record, data),
+        "归档日期": chinese_date(_day(data.get("archived_at")) or today),
         **(await firm_account(db)),
     }
 
