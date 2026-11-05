@@ -2,7 +2,7 @@ import { roleActionAllowed } from "../../roleActions";
 import { Alert,Button,Card,Descriptions,Form,Input,Modal } from "antd";
 import Table from "../../components/ResizableTable";
 import dayjs from "dayjs";
-import { personDisplayName } from "../constants";
+import { iprCaseIgnoresStatus, personDisplayName } from "../constants";
 import type { IprBusinessLog,IprOperationLog,IprRecord } from "../types";
 
 const timeText = (value?: string) => (value ? dayjs(value).format("YYYY-MM-DD HH:mm") : "—");
@@ -40,7 +40,7 @@ export function IprBusinessLogsPanel({
   confirmIprDeletion,
 }: IprBusinessLogsPanelProps) {
   // 迁移来的历史案件也能写日志，只有已结案不行（BUG20261028013）。
-  const canWrite = detail.status !== "已结案";
+  const canWrite = detail.status !== "已结案" || iprCaseIgnoresStatus(detail);
   const canDelete = (row: IprBusinessLog) =>
     row.created_by === profile.username || ["admin", "manager"].includes(profile.role || "");
   return (

@@ -1,3 +1,4 @@
+import { iprCaseIgnoresStatus } from "../constants";
 import { POPUP_WIDTH } from "../../components/common/popupSize";
 import { Card,Checkbox,Modal } from "antd";
 import Table from "../../components/ResizableTable";
@@ -23,7 +24,7 @@ interface IprContactsPanelProps {
 export function IprContactsPanel({ detail, caseCustomers, onOpenContactSelector, caseContacts, contactOpen, contactCustomer, contactCandidates, documentContactIds, technologyContactIds, onCloseContactSelector, onSaveContacts, onDocumentContactChange, onTechnologyContactChange }: IprContactsPanelProps) {
   // 右键菜单按原系统：添加案件联系人（BUG20261028020）。联系人从案件客户的联系人里选，先选主客户。
   const customer = caseCustomers.find((row) => row.is_primary) || caseCustomers[0];
-  const editable = ["草稿", "已驳回", "在办"].includes(detail.status);
+  const editable = ["草稿", "已驳回", "在办"].includes(detail.status) || iprCaseIgnoresStatus(detail);
   return (
     <>
       <Card

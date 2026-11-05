@@ -1,6 +1,6 @@
 import { Alert,Button,Card,Checkbox,DatePicker,Descriptions,Form,Input,Modal,Select,Space } from "antd";
 import Table from "../../components/ResizableTable";
-import { personDisplayName } from "../constants";
+import { iprCaseIgnoresStatus, personDisplayName } from "../constants";
 import type { IprCaseEvent,IprDetailPageState,IprRecord,ReminderEventType } from "../types";
 
 interface IprRemindersPanelProps {
@@ -52,12 +52,12 @@ export function IprRemindersPanel({ detail, iprSectionErrors, iprCaseEvents, rem
               刷新
             </Button>
             {/* 按原系统“新增”“设定”；迁移来的历史案件也能用，只有已结案不行（BUG20261028013）。 */}
-            {detail.status !== "已结案" && (
+            {(detail.status !== "已结案" || iprCaseIgnoresStatus(detail)) && (
               <Button size="small" type="primary" onClick={() => onOpenEvent()}>
                 新增
               </Button>
             )}
-            {detail.status !== "已结案" && (
+            {(detail.status !== "已结案" || iprCaseIgnoresStatus(detail)) && (
               <Button size="small" onClick={onOpenSuppression}>
                 设定
               </Button>
@@ -103,7 +103,7 @@ export function IprRemindersPanel({ detail, iprSectionErrors, iprCaseEvents, rem
               title: "操作",
               width: 130,
               render: (_, row: IprCaseEvent) =>
-                detail.status !== "已结案" && canManageIprCaseEvent(row) ? (
+                (detail.status !== "已结案" || iprCaseIgnoresStatus(detail)) && canManageIprCaseEvent(row) ? (
                   <Space size={0}>
                     <Button type="link" onClick={() => onOpenEvent(row)}>
                       编辑

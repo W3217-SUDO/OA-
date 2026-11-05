@@ -96,6 +96,13 @@ class IprCaseInfoEditTest(unittest.IsolatedAsyncioTestCase):
             record = await db.get(BusinessRecord, self.case_id)
             record.status = "已结案"
             await db.commit()
+        # 501190：非诉个案已结案也能写日志；诉讼类已结案仍不行。
+        open_closed = await self.client.post(f"{API}/ipr/cases/{self.case_id}/logs", json={"content": "x"})
+        self.assertEqual(open_closed.status_code, 201, open_closed.text)
+        async with self.sessions() as db:
+            record = await db.get(BusinessRecord, self.case_id)
+            record.data = {**(record.data or {}), "case_category": "litigation"}
+            await db.commit()
         closed = await self.client.post(f"{API}/ipr/cases/{self.case_id}/logs", json={"content": "x"})
         self.assertEqual(closed.status_code, 409)
 

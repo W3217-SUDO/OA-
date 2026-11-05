@@ -1,7 +1,7 @@
 import { KeywordPersonSelect } from "../../components/KeywordPersonSelect";
 import { Alert,Button,Card,DatePicker,Form,Input,Modal,Select,Space,Tag } from "antd";
 import Table from "../../components/ResizableTable";
-import { personDisplayName } from "../constants";
+import { iprCaseIgnoresStatus, personDisplayName } from "../constants";
 import type { IprCaseTask,IprDetailPageState,IprRecord,PeopleOption } from "../types";
 import { IprRowContextMenu } from "./IprRowContextMenu";
 import { roleActionAllowed } from "../../roleActions";
@@ -53,7 +53,7 @@ export function IprTasksPanel({
             <Button size="small" onClick={onRefresh}>
               刷新
             </Button>
-            {detail.status === "在办" && (
+            {(detail.status === "在办" || iprCaseIgnoresStatus(detail)) && (
               <Button
                 size="small"
                 type="primary"
@@ -78,7 +78,7 @@ export function IprTasksPanel({
           rows={iprCaseTasks}
           rowKey={(row) => row.id}
           items={() => [
-            { key: "create", label: "发布任务", disabled: detail.status !== "在办" || !roleActionAllowed("ipr.case.task.create"), onClick: () => onOpenTask(detail) },
+            { key: "create", label: "发布任务", disabled: !(detail.status === "在办" || iprCaseIgnoresStatus(detail)) || !roleActionAllowed("ipr.case.task.create"), onClick: () => onOpenTask(detail) },
             { key: "refresh", label: "刷新", onClick: onRefresh },
           ]}
         >

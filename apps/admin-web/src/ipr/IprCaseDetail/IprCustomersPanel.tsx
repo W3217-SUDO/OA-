@@ -1,3 +1,4 @@
+import { iprCaseIgnoresStatus } from "../constants";
 import { POPUP_WIDTH } from "../../components/common/popupSize";
 import { Button,Card,Checkbox,Modal,Space,Tag } from "antd";
 import Table from "../../components/ResizableTable";
@@ -45,7 +46,8 @@ export function IprCustomersPanel({
         extra={
           detail.status === "草稿" ||
           detail.status === "已驳回" ||
-          detail.status === "在办" ? (
+          detail.status === "在办" ||
+          iprCaseIgnoresStatus(detail) ? (
             <Button size="small" onClick={onOpenCustomerSelector}>
               维护案件客户
             </Button>

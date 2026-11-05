@@ -1,3 +1,4 @@
+import { iprCaseIgnoresStatus } from "../constants";
 import { useEffect, useState } from "react";
 import { Button, Upload, message } from "antd";
 import { api } from "../../api";
@@ -32,7 +33,7 @@ export function IprTrademarkImage({ detail, onSaved }: { detail: IprRecord; onSa
       setUploading(false);
     }
   };
-  const canUpload = detail.status !== "已结案" && roleActionAllowed("ipr.case.update");
+  const canUpload = (detail.status !== "已结案" || iprCaseIgnoresStatus(detail)) && roleActionAllowed("ipr.case.update");
   return (
     <div className="ipr-trademark-image">
       <div className="ipr-trademark-image-frame">

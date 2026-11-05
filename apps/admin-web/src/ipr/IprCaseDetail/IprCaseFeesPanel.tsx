@@ -3,7 +3,7 @@ import dayjs from "dayjs";
 import { Alert,Button,DatePicker,Form,Input,InputNumber,Modal,Select,Space,Typography,message } from "antd";
 import Table from "../../components/ResizableTable";
 import { api } from "../../api";
-import { personDisplayName } from "../constants";
+import { iprCaseIgnoresStatus, personDisplayName } from "../constants";
 import type { Attachment,IprRecord } from "../types";
 import { iprDateText,iprFlagChecked } from "./iprCaseInfo";
 import { IprRowContextMenu } from "./IprRowContextMenu";
@@ -118,7 +118,8 @@ export function IprCaseFeesPanel({ detail, onOpenContract }: { detail: IprRecord
   ];
 
   const active = detail.status === "在办";
-  const canCreate = active && roleActionAllowed("ipr.case.fee.create");
+  // 501190：新增、修改不看状态（非诉）；开票、付款申请仍要在办（canManage）。
+  const canCreate = (active || iprCaseIgnoresStatus(detail)) && roleActionAllowed("ipr.case.fee.create");
   const canManage = active && roleActionAllowed("ipr.case.fee.manage");
   const isDraft = (fee: CaseFeeRow) => fee.status === "草稿" && !fee.data?.locked && !fee.data?.is_locked && !fee.data?.payment_application_id;
   const openEdit = (fee: CaseFeeRow | "new") => {

@@ -4,7 +4,7 @@ import { Alert,Button,Card,Checkbox,DatePicker,Descriptions,Input,Select,Space,T
 import { api } from "../../api";
 import Table from "../../components/ResizableTable";
 import dayjs from "dayjs";
-import { isIprLawsuit,isLegacyIprRecord,personDisplayName } from "../constants";
+import { iprCaseIgnoresStatus,isIprLawsuit,isLegacyIprRecord,personDisplayName } from "../constants";
 import type { CpcApplication,IprRecord } from "../types";
 import { ANNUAL_YEAR_OPTIONS,IPR_CASE_EDIT_FIELDS,IPR_CASE_FLAG_FIELDS,RELIEF_RATE_OPTIONS,TRADE_TYPE_OPTIONS,isTrademarkCase,iprCaseEditValues,iprCaseFlags,iprCaseInfoItems } from "./iprCaseInfo";
 
@@ -315,7 +315,7 @@ function IprCaseInfoGrid({ detail, onOpenRebootCase, onSaved }: Pick<IprCaseDeta
   const [values, setValues] = useState<Record<string, string>>({});
   const [flags, setFlags] = useState<Record<string, boolean>>({});
   const [phaseOptions, setPhaseOptions] = useState<string[]>([]);
-  const canEdit = detail.status !== "已结案";
+  const canEdit = detail.status !== "已结案" || iprCaseIgnoresStatus(detail);
   const startEdit = () => {
     setValues(iprCaseEditValues(detail));
     setFlags(Object.fromEntries(iprCaseFlags(detail).map((flag) => [flag.key, flag.checked])));

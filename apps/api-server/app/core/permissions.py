@@ -2428,10 +2428,20 @@ async def _ensure_ipr_litigation_case_write(case_id: int, identity: dict, db: As
     return record
 
 
+def ipr_case_ignores_status(record: BusinessRecord) -> bool:
+    """501190（思法汇成 11-05 确认第 1 条）：非诉的专利、商标个案不看案件状态。
+
+    草稿、待审批、失效、已结案、老系统阶段等都一样，个案里的文档、费用、任务、客户、联系人、期限维护照常可用，
+    权限仍按各人原有的；诉讼类知识产权案件（case_category=litigation）不变。
+    开票申请、付款申请、CPC 专利申报仍按原状态限制（第 2、3 条待定）。
+    """
+    return record.module == "ipr_case" and (record.data or {}).get("case_category", "non_litigation") != "litigation"
+
+
 async def _ensure_active_ipr_case_write(case_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
     record = await _ensure_record_module(case_id, "ipr_case", identity, db)
     await _require_record_owner_or_manager(record, identity, db)
-    if record.status not in {"草稿", "已驳回", "在办"}:
+    if record.status not in {"草稿", "已驳回", "在办"} and not ipr_case_ignores_status(record):
         raise HTTPException(status_code=409, detail="当前案件状态不能维护客户或案件联系人")
     return record
 
@@ -2442,7 +2452,7 @@ async def _ensure_ipr_case_assisted_fee_write(
     """Guard dedicated assistance workflow mutations from generic fee bypasses."""
     case_record = await _ensure_record_module(case_id, "ipr_case", identity, db)
     await _require_record_owner_or_manager(case_record, identity, db)
-    if case_record.status != "在办":
+    if case_record.status != "在办" and not ipr_case_ignores_status(case_record):
         raise HTTPException(status_code=409, detail="只有在办知识产权案件可以维护协助费")
     return case_record
 
@@ -2451,7 +2461,7 @@ async def _ipr_case_assisted_fee_capabilities(
     case_record: BusinessRecord, identity: dict, db: AsyncSession,
 ) -> dict[str, bool]:
     """Expose the same ownership rule enforced by assistance workflow writes."""
-    if case_record.status != "在办":
+    if case_record.status != "在办" and not ipr_case_ignores_status(case_record):
         return {"can_manage": False}
     if identity.get("role") == "admin" or case_record.owner == identity["username"]:
         return {"can_manage": True}
@@ -2464,7 +2474,7 @@ async def _ipr_case_assisted_fee_capabilities(
 async def _ensure_ipr_case_fee_write(case_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
     record = await _ensure_record_module(case_id, "ipr_case", identity, db)
     await _require_record_owner_or_manager(record, identity, db)
-    if record.status != "在办":
+    if record.status != "在办" and not ipr_case_ignores_status(record):
         raise HTTPException(status_code=409, detail="只有在办知识产权案件可以维护案件费用")
     return record
 
@@ -2472,7 +2482,7 @@ async def _ensure_ipr_case_fee_write(case_id: int, identity: dict, db: AsyncSess
 async def _ensure_active_ipr_case_write(case_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
     record = await _ensure_record_module(case_id, "ipr_case", identity, db)
     await _require_record_owner_or_manager(record, identity, db)
-    if record.status != "在办":
+    if record.status != "在办" and not ipr_case_ignores_status(record):
         raise HTTPException(status_code=409, detail="只有在办知识产权案件可以维护提醒")
     return record
 
@@ -2481,13 +2491,13 @@ async def _ensure_ipr_case_note_write(case_id: int, identity: dict, db: AsyncSes
     """案件提醒、案件日志的新增和维护（BUG20261028013）：迁移来的历史案件（受理、年费监控等阶段）也能写，只有已结案不行。"""
     record = await _ensure_record_module(case_id, "ipr_case", identity, db)
     await _require_record_owner_or_manager(record, identity, db)
-    if record.status == "已结案":
+    if record.status == "已结案" and not ipr_case_ignores_status(record):
         raise HTTPException(status_code=409, detail="已结案的案件不能维护提醒和日志")
     return record
 
 
 async def _ipr_annual_fee_capabilities(case_record: BusinessRecord, identity: dict, db: AsyncSession) -> dict:
-    if case_record.status != "在办":
+    if case_record.status != "在办" and not ipr_case_ignores_status(case_record):
         return {"can_manage": False}
     try:
         await _require_record_owner_or_manager(case_record, identity, db)
@@ -2509,8 +2519,17 @@ async def _ensure_ipr_case_file_write(case_id: int, identity: dict, db: AsyncSes
     """Dedicated guard for IPR case files; generic attachment routes must not bypass it."""
     record = await _ensure_record_module(case_id, "ipr_case", identity, db)
     await _require_record_owner_or_manager(record, identity, db)
-    if not ipr_case_files_writable(record.status):
+    if not ipr_case_files_writable(record.status) and not ipr_case_ignores_status(record):
         raise HTTPException(status_code=409, detail="仅在办知识产权案件可以维护案件文档")
+    return record
+
+
+async def _ensure_ipr_cpc_write(case_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
+    """CPC 专利申报仍按原来的文档状态限制（501190 第 3 条待思法汇成定）。"""
+    record = await _ensure_record_module(case_id, "ipr_case", identity, db)
+    await _require_record_owner_or_manager(record, identity, db)
+    if not ipr_case_files_writable(record.status):
+        raise HTTPException(status_code=409, detail="仅在办知识产权案件可以生成CPC申报")
     return record
 
 

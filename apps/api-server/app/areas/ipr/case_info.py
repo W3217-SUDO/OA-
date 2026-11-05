@@ -4,6 +4,7 @@
 新系统字段名（application_no 等）一并同步，修改记一条系统日志。
 商标案件按原系统商标页另有商标类别、商品服务、初审公告、商标类型、颜色/声音/三维标志和商标图样（BUG20261030005）。
 """
+from app.core.permissions import ipr_case_ignores_status
 from datetime import date
 from pathlib import Path
 from uuid import uuid4
@@ -113,7 +114,7 @@ async def update_ipr_case_info(case_id: int, body: IprCaseInfoInput, identity: d
     from app.core.system import _allowed_field_keys, _record_dict
     record = await _ensure_record_module(case_id, "ipr_case", identity, db)
     await _require_record_owner_or_manager(record, identity, db)
-    if record.status in {"已结案"}:
+    if record.status in {"已结案"} and not ipr_case_ignores_status(record):
         raise HTTPException(status_code=409, detail="已结案的案件不能修改")
     values = body.model_dump(exclude_unset=True)
     if "cost_slow_rate" in values and values["cost_slow_rate"] not in (None, "", *RELIEF_RATES):
@@ -205,7 +206,7 @@ async def upload_ipr_trademark_image(case_id: int, file: UploadFile = File(...),
     await _require_record_owner_or_manager(record, identity, db)
     if (record.data or {}).get("case_kind") != "商标":
         raise HTTPException(status_code=422, detail="只有商标案件有商标图样")
-    if record.status in {"已结案"}:
+    if record.status in {"已结案"} and not ipr_case_ignores_status(record):
         raise HTTPException(status_code=409, detail="已结案的案件不能修改")
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in TRADEMARK_IMAGE_SUFFIXES:

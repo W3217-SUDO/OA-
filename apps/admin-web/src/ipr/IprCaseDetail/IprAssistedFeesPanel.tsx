@@ -1,7 +1,7 @@
 import { StatusTag } from "../../components/common/StatusTag";
 import { Alert,Button,Card,DatePicker,Form,Input,Modal,Select,Space } from "antd";
 import Table from "../../components/ResizableTable";
-import { personDisplayName } from "../constants";
+import { iprCaseIgnoresStatus, personDisplayName } from "../constants";
 import type { AssistedFee,Attachment,IprDetailPageState,IprRecord } from "../types";
 import { IprRowContextMenu } from "./IprRowContextMenu";
 
@@ -88,7 +88,7 @@ export function IprAssistedFeesPanel({
             <Button size="small" onClick={onRefresh}>
               刷新
             </Button>
-            {detail.status === "在办" && canManageAssistedFees ? (
+            {(detail.status === "在办" || iprCaseIgnoresStatus(detail)) && canManageAssistedFees ? (
               <Button type="primary" size="small" onClick={onOpenCreate}>
                 新增协助费
               </Button>
@@ -109,7 +109,7 @@ export function IprAssistedFeesPanel({
           rows={assistedFees}
           rowKey={(row) => row.id}
           items={() => [
-            { key: "create", label: "新建资助费用", disabled: detail.status !== "在办" || !canManageAssistedFees, onClick: onOpenCreate },
+            { key: "create", label: "新建资助费用", disabled: !(detail.status === "在办" || iprCaseIgnoresStatus(detail)) || !canManageAssistedFees, onClick: onOpenCreate },
             { key: "refresh", label: "刷新", onClick: onRefresh },
           ]}
         >
@@ -181,28 +181,28 @@ export function IprAssistedFeesPanel({
               render: (_, row: AssistedFee) => (
                 <Space size={0}>
                   {row.status === "待确认" &&
-                    detail.status === "在办" &&
+                    (detail.status === "在办" || iprCaseIgnoresStatus(detail)) &&
                     canManageAssistedFees && (
                       <Button type="link" onClick={() => onOpenEdit(row)}>
                         编辑
                       </Button>
                     )}
                   {row.status === "待确认" &&
-                    detail.status === "在办" &&
+                    (detail.status === "在办" || iprCaseIgnoresStatus(detail)) &&
                     canManageAssistedFees && (
                       <Button type="link" onClick={() => onConfirm(row)}>
                         确认
                       </Button>
                     )}
                   {row.status === "待办理" &&
-                    detail.status === "在办" &&
+                    (detail.status === "在办" || iprCaseIgnoresStatus(detail)) &&
                     canManageAssistedFees && (
                       <Button type="link" onClick={() => onOpenTransact(row)}>
                         办理
                       </Button>
                     )}
                   {(row.status === "待确认" || row.status === "待办理") &&
-                    detail.status === "在办" &&
+                    (detail.status === "在办" || iprCaseIgnoresStatus(detail)) &&
                     canManageAssistedFees && (
                       <Button
                         type="link"

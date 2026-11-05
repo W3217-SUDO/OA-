@@ -1,3 +1,4 @@
+import { iprCaseIgnoresStatus } from "../constants";
 import { roleActionAllowed } from "../../roleActions";
 import { Alert,Button,DatePicker,Form,Input,Modal,Radio,Select,Space,Tag } from "antd";
 import Table from "../../components/ResizableTable";
@@ -68,7 +69,7 @@ export function IprFilesPanel({
   };
 
   // 迁移案件的状态是老系统阶段名，和老系统一样都能维护文档；新系统流程里的草稿、待审批、已驳回、已结案除外（BUG20261028020）。
-  const active = !!detail.status && !["草稿", "待审批", "已驳回", "已结案"].includes(detail.status);
+  const active = (!!detail.status && !["草稿", "待审批", "已驳回", "已结案"].includes(detail.status)) || iprCaseIgnoresStatus(detail);
   const canManage = active && roleActionAllowed("ipr.case.file.manage");
   // 右键菜单按原系统：上传、查看、下载、标记已转、删除、生成申请文件、刷新。
   const menuItems = (row: Attachment | null) => [
@@ -85,7 +86,7 @@ export function IprFilesPanel({
       onClick: () => row && confirmIprDeletion("file", row.original_name, () => onDeleteFile(row)),
     },
     {
-      key: "generate", label: "生成申请文件", disabled: !row || detail.status !== "在办" || !roleActionAllowed("ipr.case.document.generate"),
+      key: "generate", label: "生成申请文件", disabled: !row || !(detail.status === "在办" || iprCaseIgnoresStatus(detail)) || !roleActionAllowed("ipr.case.document.generate"),
       onClick: () => row && onGenerateApplication(row),
     },
     { key: "refresh", label: "刷新", onClick: onRefresh },

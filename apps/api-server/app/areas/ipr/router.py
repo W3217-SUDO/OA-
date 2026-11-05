@@ -1,4 +1,5 @@
 """知识产权案件路由编排。"""
+from app.core.permissions import ipr_case_ignores_status
 from app.core.storage import attachment_local_path
 from typing import Literal
 from app.core.soft_delete import keep_deleted_file
@@ -875,7 +876,7 @@ async def update_ipr_case(case_id: int, body: IprCaseUpdateInput, identity: dict
     if (record.data or {}).get("legacy_ipr_case_id", (record.data or {}).get("legacy_case_id")) not in (None, ""):
         raise HTTPException(status_code=409, detail="Historical IPR cases are read-only")
     await _require_record_owner_or_manager(record, identity, db)
-    if record.status not in {"草稿", "已驳回", "在办"}:
+    if record.status not in {"草稿", "已驳回", "在办"} and not ipr_case_ignores_status(record):
         raise HTTPException(status_code=409, detail="仅草稿、已驳回或在办的知识产权案件可以修改")
     before = record.status
     previous_phase = (record.data or {}).get("case_phase")
@@ -951,7 +952,7 @@ async def update_ipr_case_links(case_id: int, body: IprCaseCrossModuleLinkInput,
     if (record.data or {}).get("legacy_ipr_case_id", (record.data or {}).get("legacy_case_id")) not in (None, ""):
         raise HTTPException(status_code=409, detail="Historical IPR cases are read-only")
     await _require_record_owner_or_manager(record, identity, db)
-    if record.status not in {"草稿", "已驳回", "在办"}:
+    if record.status not in {"草稿", "已驳回", "在办"} and not ipr_case_ignores_status(record):
         raise HTTPException(status_code=409, detail="当前案件状态不能维护跨模块关联")
     data = dict(record.data or {})
     changed: list[str] = []
@@ -1260,7 +1261,7 @@ async def replace_ipr_case_law_firms(case_id: int, body: IprCaseLawFirmReplaceIn
     )
     case_record = await _ensure_record_module(case_id, "ipr_case", identity, db)
     await _require_record_owner_or_manager(case_record, identity, db)
-    if case_record.status not in {"草稿", "已驳回", "在办"}:
+    if case_record.status not in {"草稿", "已驳回", "在办"} and not ipr_case_ignores_status(case_record):
         raise HTTPException(status_code=409, detail="当前案件状态不能维护协作律所")
     selected_ids = list(dict.fromkeys(body.law_firm_ids))
     if any(item <= 0 for item in selected_ids):
@@ -1296,7 +1297,7 @@ async def maintain_ipr_case(case_id: int, body: IprCaseMaintenanceInput, identit
     )
     record = await _ensure_record_module(case_id, "ipr_case", identity, db)
     await _require_record_owner_or_manager(record, identity, db)
-    if record.status != "在办":
+    if record.status != "在办" and not ipr_case_ignores_status(record):
         raise HTTPException(status_code=409, detail="只有在办知识产权案件可以维护期限、年费和费率")
     values = body.model_dump(exclude_unset=True, exclude={"comment"})
     if not values:

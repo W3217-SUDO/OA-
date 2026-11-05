@@ -29,7 +29,7 @@ class IprAnnualFeeContractTest(unittest.IsolatedAsyncioTestCase):
             db.add(User(username="different-user", display_name="Different", department="Other", password_hash="test", role="user"))
             active = BusinessRecord(module="ipr_case", serial_no="CODEX-ANNUAL-001", title="Annual fee test case", customer="Test customer", status="在办", owner=ADMIN["username"], department="IPR", data={"annual_fee_year": 1})
             other = BusinessRecord(module="ipr_case", serial_no="CODEX-ANNUAL-002", title="Other annual fee case", customer="Test customer", status="在办", owner=ADMIN["username"], department="IPR", data={})
-            archived = BusinessRecord(module="ipr_case", serial_no="CODEX-ANNUAL-003", title="Archived annual fee case", customer="Test customer", status="已归档", owner=ADMIN["username"], department="IPR", data={})
+            archived = BusinessRecord(module="ipr_case", serial_no="CODEX-ANNUAL-003", title="Archived annual fee case", customer="Test customer", status="已归档", owner=ADMIN["username"], department="IPR", data={"case_category": "litigation"})  # 501190：非诉不看状态
             db.add_all([active, other, archived])
             await db.flush()
             self.case_id, self.other_case_id, self.archived_case_id = active.id, other.id, archived.id

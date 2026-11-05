@@ -1,3 +1,4 @@
+import { iprCaseIgnoresStatus } from "../constants";
 import { POPUP_WIDTH } from "../../components/common/popupSize";
 import { Button,Card,Modal } from "antd";
 import Table from "../../components/ResizableTable";
@@ -35,7 +36,8 @@ export function IprLawFirmsPanel({
         extra={
           detail.status === "草稿" ||
           detail.status === "已驳回" ||
-          detail.status === "在办" ? (
+          detail.status === "在办" ||
+          iprCaseIgnoresStatus(detail) ? (
             <Button size="small" onClick={onOpenLawFirmSelector}>
               维护协作律所
             </Button>

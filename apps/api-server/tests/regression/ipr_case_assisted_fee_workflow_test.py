@@ -50,7 +50,8 @@ class IprCaseAssistedFeeWorkflowTest(unittest.IsolatedAsyncioTestCase):
             ])
             self.case_id = await self._add_record(db, "ipr_case", "在办", "CODEX-IPR-ASSISTED-001")
             self.other_case_id = await self._add_record(db, "ipr_case", "在办", "CODEX-IPR-ASSISTED-002")
-            self.archived_case_id = await self._add_record(db, "ipr_case", "已归档", "CODEX-IPR-ASSISTED-ARCHIVED")
+            # 501190：非诉个案不看状态，状态限制只对诉讼类知识产权案件有效。
+            self.archived_case_id = await self._add_record(db, "ipr_case", "已归档", "CODEX-IPR-ASSISTED-ARCHIVED", {"case_category": "litigation"})
             self.generic_record_id = await self._add_record(db, "finance", "草稿", "CODEX-IPR-ASSISTED-GENERIC")
             await db.commit()
         self.upload_root = Path(tempfile.mkdtemp(prefix="codex-ipr-assisted-fee-"))
@@ -64,11 +65,11 @@ class IprCaseAssistedFeeWorkflowTest(unittest.IsolatedAsyncioTestCase):
         app.dependency_overrides[current_identity] = lambda: self.identity
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://ipr-assisted.test")
 
-    async def _add_record(self, db: AsyncSession, module: str, status: str, serial_no: str) -> int:
+    async def _add_record(self, db: AsyncSession, module: str, status: str, serial_no: str, data: dict | None = None) -> int:
         record = BusinessRecord(
             module=module, serial_no=serial_no, title=serial_no, customer="CODEX customer",
             status=status, owner="CODEX-IPR-ASSISTED-admin", department="IPR",
-            data={}, created_at=datetime(2026, 9, 5, tzinfo=timezone.utc),
+            data=data or {}, created_at=datetime(2026, 9, 5, tzinfo=timezone.utc),
             updated_at=datetime(2026, 9, 5, tzinfo=timezone.utc),
         )
         db.add(record); await db.flush()
