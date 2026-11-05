@@ -65,9 +65,11 @@ export function rememberFeedbackSource(route: string) {
   rememberPageControls(route);
 }
 
-export function rememberFeedbackTarget(id: number) {
+// notify=false：随后会按目标重新打开页面（navigate 不带 reuse），由新页面加载时读取；
+// 这时不能通知已打开的旧页面，否则旧页面先把目标取走，新页面拿不到，只剩空白的填写页（501602）。
+export function rememberFeedbackTarget(id: number, notify = true) {
   sessionStorage.setItem(FEEDBACK_TARGET_KEY, String(id));
-  window.dispatchEvent(new Event("sunhold:feedback-target"));
+  if (notify) window.dispatchEvent(new Event("sunhold:feedback-target"));
 }
 
 // 问题链接：?page=feedback&id=<反馈 ID> 直接打开该问题详情（群提醒里附这个链接，2026-10-27）。

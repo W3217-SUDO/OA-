@@ -104,7 +104,8 @@ export default function NotificationCenter({ onNavigate, grantedMenuKeys }: { on
     setUnread((value) => Math.max(0, value - (item.is_read ? 0 : 1)));
     window.dispatchEvent(new Event("sunhold:notifications-updated"));
     if (item.source_type === "contract" && item.source_id) rememberContractDetailTarget({ id: item.source_id });
-    if (item.source_type === "feedback" && item.source_id) rememberFeedbackTarget(item.source_id);
+    // 501602（高勤兰 11-05）：跳转会重新打开目标页面，目标只留给新页面读取，不通知已打开的旧页面。
+    if (item.source_type === "feedback" && item.source_id) rememberFeedbackTarget(item.source_id, false);
     if (item.source_type === "case" && item.source_id) rememberCaseDetailTarget({ id: item.source_id });
     if (item.source_type === "task" && item.source_id) {
       if (item.target_route?.startsWith("investigation-task-")) {
@@ -115,7 +116,6 @@ export default function NotificationCenter({ onNavigate, grantedMenuKeys }: { on
     }
     if (iprWarningRoute && item.source_id) {
       window.sessionStorage.setItem("sunhold:ipr-warning-target", String(item.source_id));
-      window.dispatchEvent(new Event("sunhold:ipr-warning-target"));
     }
     if (["clue", "notary", "evidence"].includes(item.source_type) && item.source_id) rememberInvestigationDetailTarget({ id: item.source_id, module: item.source_type });
     if (["finance", "finance_package", "finance_settlement", "finance_archive_settlement"].includes(item.source_type) && item.source_id) rememberBusinessRecordDetailTarget({ id: item.source_id, module: item.source_type as "finance" | "finance_package" | "finance_settlement" | "finance_archive_settlement" });
