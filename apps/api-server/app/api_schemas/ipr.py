@@ -32,6 +32,24 @@ class IprCaseCreateInput(BaseModel):
     description: str = Field(default="", max_length=2000)
     # 合同中心“新建案件 → 非诉案件”带入的合同（BUG20261027008）。
     contract_record_id: int | None = Field(default=None, gt=0)
+    # 501614（fwl 11-05）：专利非诉案件按旧系统“案件新建”弹窗的字段。
+    agent: str | None = Field(default=None, max_length=255)
+    writer: str | None = Field(default=None, max_length=255)
+    card_no: str | None = Field(default=None, max_length=64)
+    inventor: str | None = Field(default=None, max_length=255)
+    authorization_date: date | None = None
+    source_date: date | None = None
+    case_source: str | None = Field(default=None, max_length=255)
+    ref_case_no: str | None = Field(default=None, max_length=128)
+    first_annual_year: int | None = Field(default=None, ge=1, le=30)
+    cost_slow_rate: str | None = Field(default=None, max_length=8)
+    has_priority: bool | None = None
+    has_foreign: bool | None = None
+    has_relief: bool | None = None
+    has_advanced: bool | None = None
+    has_request_view: bool | None = None
+    has_private_inventor: bool | None = None
+    has_iu: bool | None = None
 
 
 class IprCaseUpdateInput(BaseModel):
@@ -53,6 +71,18 @@ class IprCaseUpdateInput(BaseModel):
     writer: str | None = Field(default=None, max_length=255)
     submitter: str | None = Field(default=None, max_length=255)
     inventor: str | None = Field(default=None, max_length=255)
+    card_no: str | None = Field(default=None, max_length=64)
+    authorization_date: date | None = None
+    ref_case_no: str | None = Field(default=None, max_length=128)
+    first_annual_year: int | None = Field(default=None, ge=1, le=30)
+    cost_slow_rate: str | None = Field(default=None, max_length=8)
+    has_priority: bool | None = None
+    has_foreign: bool | None = None
+    has_relief: bool | None = None
+    has_advanced: bool | None = None
+    has_request_view: bool | None = None
+    has_private_inventor: bool | None = None
+    has_iu: bool | None = None
     contract_record_id: int | None = Field(default=None, gt=0)
     court_case_no: str | None = Field(default=None, max_length=128)
     court_name: str | None = Field(default=None, max_length=256)

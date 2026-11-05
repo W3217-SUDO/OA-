@@ -579,6 +579,15 @@ async def create_ipr_case(body: IprCaseCreateInput, identity: dict = Depends(cur
             "plaintiff": body.plaintiff.strip(), "defendant": body.defendant.strip(),
             "third_parties": body.third_parties.strip(), "litigation_courts": [], "litigation_parties": [],
         })
+    # 501614：专利非诉案件按旧系统弹窗的字段；案源日默认今天、案源人和案件管理人默认本人。
+    from app.areas.ipr.patent_form import apply_patent_form
+    form_values = body.model_dump(exclude_unset=True, include={
+        "agent", "writer", "card_no", "inventor", "authorization_date", "source_date", "case_source", "ref_case_no", "first_annual_year",
+        "cost_slow_rate", "has_priority", "has_foreign", "has_relief", "has_advanced", "has_request_view", "has_private_inventor", "has_iu"})
+    form_values.setdefault("source_date", date.today())
+    form_values.setdefault("case_source", identity["username"])
+    form_values["case_manager"] = data["case_manager"]
+    await apply_patent_form(data, form_values, db)
     record = BusinessRecord(module="ipr_case", serial_no=serial_no, title=body.title.strip(), customer=customer.title, status="草稿", owner=identity["username"], department=customer.department, description=body.description.strip(), data=data)
     db.add(record); await db.flush()
     db.add(IprCaseCustomer(case_record_id=record.id, customer_record_id=customer.id, is_primary=True, created_by=identity["username"]))
@@ -934,9 +943,14 @@ async def update_ipr_case(case_id: int, body: IprCaseUpdateInput, identity: dict
         if has_litigation_data or has_litigation_fee:
             raise HTTPException(status_code=409, detail="诉讼案件已有法院、当事人或费用记录，不能改为非诉讼案件")
     data["case_category"] = next_category
-    for key in {"application_no", "application_type", "applicant", "case_manager", "case_phase", "case_source", "agent", "writer", "submitter", "inventor"}:
+    from app.areas.ipr.patent_form import FLAG_KEYS, apply_patent_form
+    form_values = {key: values.pop(key) for key in ("agent", "writer", "case_source", "case_manager", "card_no", "inventor", "applicant",
+                                                    "authorization_date", "source_date", "ref_case_no", "first_annual_year", "cost_slow_rate", *FLAG_KEYS)
+                   if key in values}
+    for key in {"application_no", "application_type", "case_phase", "submitter"}:
         if key in values:
             data[key] = str(values.pop(key) or "").strip()
+    await apply_patent_form(data, form_values, db)
     for key in {"application_date", "deadline", "acceptance_date", "source_date"}:
         if key in values:
             data[key] = str(values.pop(key) or "")

@@ -774,6 +774,11 @@ export default function IprCenterPage({
       case_category: "non_litigation",
       case_phase: "申请立案",
       rate: 0,
+      // 501614：案源日默认今天，案源人、案件管理人默认本人，费用减缓比例默认无减缓。
+      source_date: dayjs(),
+      case_source: profile.username,
+      case_manager: profile.username,
+      cost_slow_rate: "1.00",
     });
     setCreateOpen(true);
   };
@@ -802,6 +807,25 @@ export default function IprCenterPage({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialView]);
+  // 501614：专利非诉案件按旧系统弹窗的字段（旧系统迁来的值照原样带出）。
+  const iprPatentFormValues = (record: IprRecord) => {
+    const data = record.data as Record<string, any>;
+    const flag = (value: unknown) => value === true || value === "T";
+    const day = (value: unknown) => (value ? dayjs(String(value)) : undefined);
+    const rate = String(data.cost_slow_rate ?? "");
+    return {
+      agent: data.agent || data.procurator, writer: data.writer || data.copywriter, card_no: data.card_no,
+      applicant: String(data.applicant || data.applicant_name || "").split(/[,，、]/).map((item) => item.trim()).filter(Boolean),
+      inventor: data.inventor || data.case_inventor, authorization_date: day(data.authorization_date),
+      source_date: day(data.source_date || data.case_origin_date), case_source: data.case_source || data.case_origin_people,
+      ref_case_no: data.ref_case_no, first_annual_year: data.first_annual_year ? Number(data.first_annual_year) : undefined,
+      cost_slow_rate: ["1.00", "0.85", "0.70"].includes(rate) ? rate : "1.00",
+      case_manager: data.case_manager || data.business_owner,
+      has_priority: flag(data.has_priority), has_foreign: flag(data.has_foreign), has_relief: flag(data.has_relief),
+      has_advanced: flag(data.has_advanced), has_request_view: flag(data.has_request_view),
+      has_private_inventor: flag(data.has_private_inventor), has_iu: flag(data.has_iu),
+    };
+  };
   const openEdit = (record: IprRecord) => {
     setEditing(record);
     form.resetFields();
@@ -814,6 +838,7 @@ export default function IprCenterPage({
       // 501611：没填申请类型的旧案件，编辑时默认选中旧系统的案件类型，点保存才写入。
       application_type: record.data.application_type || record.data.case_type_name,
       case_phase: record.data.case_phase || "申请立案",
+      ...iprPatentFormValues(record),
       applicant: record.data.applicant,
       case_manager: record.data.case_manager,
       application_date: record.data.application_date
@@ -846,6 +871,7 @@ export default function IprCenterPage({
       application_no: record.data.application_no,
       application_type: record.data.application_type || record.data.case_type_name,
       case_phase: record.data.case_phase || "申请立案",
+      ...iprPatentFormValues(record),
       applicant: record.data.applicant,
       case_manager: record.data.case_manager,
       application_date: record.data.application_date
@@ -1491,7 +1517,9 @@ export default function IprCenterPage({
           setCreateOpen(false);
           setEditing(null);
         }}
-        onCreate={create}
+        onCreate={() => void create()}
+        onCreateAndNew={() => void create(true)}
+        peopleOptions={peopleOptions.map((item) => ({ value: item.username, label: item.label }))}
         onOpenDeadlineOffset={() => {
           deadlineOffsetForm.resetFields();
           deadlineOffsetForm.setFieldsValue({

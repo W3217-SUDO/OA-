@@ -175,7 +175,7 @@ export function createIprWorkflowActions(context: IprWorkflowDependencies) {
                 message.error(getIprApiErrorMessage(error, "截止日期计算失败"));
         }
     };
-    const create = async () => {
+    const create = async (keepOpen = false) => {
         const { form, editing, setCreateOpen, setEditing, load } = context;
         try {
             const values = await form.validateFields();
@@ -183,7 +183,14 @@ export function createIprWorkflowActions(context: IprWorkflowDependencies) {
                 ...values,
                 application_date: values.application_date?.format("YYYY-MM-DD"),
                 deadline: values.deadline?.format("YYYY-MM-DD"),
+                // 501614：专利非诉案件按旧系统弹窗的字段；申请人可加多个，存成逗号分隔（和旧系统迁来的一样）。
+                authorization_date: values.authorization_date?.format?.("YYYY-MM-DD"),
+                source_date: values.source_date?.format?.("YYYY-MM-DD"),
+                applicant: Array.isArray(values.applicant) ? values.applicant.join(",") : values.applicant,
             };
+            for (const key of ["authorization_date", "source_date"]) {
+                if (payload[key] === undefined) delete payload[key];
+            }
             if (payload.case_category !== "litigation") {
                 IPR_LAWSUIT_FIELDS.forEach((field) => delete payload[field]);
             }
@@ -196,6 +203,16 @@ export function createIprWorkflowActions(context: IprWorkflowDependencies) {
             else {
                 await api.post("/ipr/cases", payload);
                 message.success("Draft created");
+                if (keepOpen) {
+                    // 501614 保存并新建：保留客户、合同、类型、代理人等，清空本件的名称、申请人、发明人等，接着新建下一件。
+                    const keep = ["case_kind", "case_category", "customer", "contract_record_id", "contract_no", "application_type", "case_phase",
+                        "agent", "writer", "case_source", "case_manager", "source_date", "cost_slow_rate"];
+                    const kept = Object.fromEntries(keep.map((key) => [key, form.getFieldValue(key)]));
+                    form.resetFields();
+                    form.setFieldsValue(kept);
+                    void load();
+                    return;
+                }
             }
             setCreateOpen(false);
             setEditing(null);
