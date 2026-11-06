@@ -6,10 +6,12 @@ import type { AgentQuestion } from "./caseAgentAsk";
 // 501634（tgn 11-06 15:31 确认）：输入框上方的问题条，参照 tgn 截图：一题一页（1/4），编号选项点一下就选，
 // 最后一行“其他补充…”可自己打字（回车或右箭头提交）。多题全部答完再一起交给 onSubmit。
 // 写入确认也用它（选项为批准/驳回）。关掉只是稍后处理，不算回答。样式不用 :has、dvh、color-mix、@container（钉钉 Chrome 100）。
-export function CaseAgentQuestionBar({ questions, disabled, busy, onSubmit, onClose, testId = "case-agent-question-bar", note }: {
+export function CaseAgentQuestionBar({ questions, disabled, busy, onSubmit, onClose, testId = "case-agent-question-bar", note, disabledOptions = [] }: {
   questions: AgentQuestion[];
   disabled?: boolean;
   busy?: boolean;
+  /** 不能选的选项（例如卡片内容没读到时的“批准并执行”），原因写在 note 里。 */
+  disabledOptions?: string[];
   onSubmit: (answers: string[], typed: boolean[]) => void;
   onClose: () => void;
   testId?: string;
@@ -25,7 +27,7 @@ export function CaseAgentQuestionBar({ questions, disabled, busy, onSubmit, onCl
   const current = questions[Math.min(page, questions.length - 1)];
   const answer = (value: string, isTyped: boolean) => {
     const text = value.trim();
-    if (!text || disabled || busy) return;
+    if (!text || disabled || busy || (!isTyped && disabledOptions.includes(text))) return;
     const nextAnswers = [...answers]; nextAnswers[page] = text;
     const nextTyped = [...typed]; nextTyped[page] = isTyped;
     setAnswers(nextAnswers); setTyped(nextTyped); setDraft("");
@@ -45,11 +47,11 @@ export function CaseAgentQuestionBar({ questions, disabled, busy, onSubmit, onCl
         <Tooltip title="稍后再答（不算回答）"><Button type="text" size="small" icon={<CloseOutlined />} aria-label="关闭问题条" onClick={onClose} /></Tooltip>
       </span>
     </div>
-    {note ? <div className="case-agent-question-note">{note}</div> : null}
+    {note ? <div className="case-agent-question-note" role="status">{note}</div> : null}
     <div className="case-agent-question-options" role="listbox" aria-label="选项">
       {current.options.map((option, index) => {
         const chosen = answers[page] === option && !typed[page];
-        return <button key={option} type="button" role="option" aria-selected={chosen} disabled={disabled || busy}
+        return <button key={option} type="button" role="option" aria-selected={chosen} disabled={disabled || busy || disabledOptions.includes(option)}
           className={chosen ? "case-agent-question-option is-chosen" : "case-agent-question-option"} onClick={() => answer(option, false)}>
           <span className="case-agent-question-index">{index + 1}</span>
           <span className="case-agent-question-text">{option}</span>

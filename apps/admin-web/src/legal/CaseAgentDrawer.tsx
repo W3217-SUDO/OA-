@@ -216,8 +216,15 @@ export const CaseAgentDrawer = ({
     }
   };
   const single = orderedWaiting.length === 1;
+  const unreadable = orderedWaiting.filter((action) => !hasAgentOperationPreview(action));
+  const executing = orderedWaiting.some((action) => action.status === "executing");
+  const preparingCard = orderedWaiting.some((action) => Boolean((action as { preparing?: boolean }).preparing));
   const confirmQuestion = { question: confirmTitle(orderedWaiting), options: single ? ["批准并执行", "驳回，不修改"] : ["全部批准并执行", "全部驳回"] };
   // 选了选项就批准/驳回；在“其他补充…”里写了要怎么改：先驳回这一版（不执行），再把补充发给智能体，按补充重新出卡片。
+  const confirmNote = deciding || agentDecisionLoading || executing ? "正在执行，请稍候…（执行较慢时可以先关掉，稍后回来看结果）"
+    : preparingCard ? "回复写完即可确认"
+    : unreadable.length === orderedWaiting.length && orderedWaiting.length ? "操作内容没有读到，不能批准；可以驳回，或在“其他补充”里重新说一遍要改什么"
+    : unreadable.length ? `有 ${unreadable.length} 项操作内容没有读到，批准时会跳过这几项` : undefined;
   const answerConfirm = async (answers: string[], typed: boolean[]) => {
     if (typed[0]) {
       if (await decideAll("rejected")) void sendOrGenerate(`对刚才的修改补充：${answers[0]}`);
@@ -318,7 +325,8 @@ export const CaseAgentDrawer = ({
         </div>}
         {waitingActions.length && confirmBarOpen ? <CaseAgentQuestionBar testId="case-agent-confirm-bar" questions={[confirmQuestion]}
           busy={deciding || Boolean(agentDecisionLoading)} disabled={orderedWaiting.every((action) => actionDisabled(action))}
-          note={(orderedWaiting.some((action) => (action as { preparing?: boolean }).preparing)) ? "回复写完即可确认" : undefined}
+          note={confirmNote}
+          disabledOptions={unreadable.length === orderedWaiting.length ? [confirmQuestion.options[0]] : []}
           onSubmit={(answers, typed) => void answerConfirm(answers, typed)} onClose={closeConfirm} />
           : askOpen ? <CaseAgentQuestionBar questions={lastAsk} busy={agentSending}
             onSubmit={(answers) => { setDismissedAsk((current) => [...current, lastAskKey]); void sendOrGenerate(formatAgentAnswers(lastAsk, answers)); }}

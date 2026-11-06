@@ -878,7 +878,10 @@ class CaseAgentRuntime:
             action = next((item for item in actions if item.get("id") == action_id), None)
             if not action:
                 raise KeyError(action_id)
-            if action.get("status") != "pending":
+            # 501634（tgn 11-06 15:49）：确认请求执行时间较长时，期间页面刷新会先把卡片同步成“正在执行”；
+            # 本次执行完带着真实结果回来时仍要记下结果，否则卡片会一直停在“正在执行”、按钮全灰。
+            resumable = action.get("status") == "executing" and execution_result is not None and action.get("type") == "mcp.call"
+            if action.get("status") != "pending" and not resumable:
                 raise ValueError("action_already_decided")
             action.update({
                 "status": decision,

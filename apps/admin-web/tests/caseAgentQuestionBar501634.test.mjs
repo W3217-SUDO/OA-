@@ -79,3 +79,19 @@ test("案件智能体：不再弹浮动确认窗口；卡片在对话里，确�
   assert.doesNotMatch(css, /case-agent-confirm-float|position: fixed/);
   assert.doesNotMatch(css, /color-mix\(|:has\(|@container|dvh/);
 });
+
+test("501634 15:49：正在执行时问题条写明原因；内容没读到时只禁“批准并执行”，驳回和补充仍可用", async () => {
+  const drawer = read("../src/legal/CaseAgentDrawer.tsx");
+  assert.match(drawer, /正在执行，请稍候…/);
+  assert.match(drawer, /disabledOptions=\{unreadable\.length === orderedWaiting\.length \? \[confirmQuestion\.options\[0\]\] : \[\]\}/);
+  const CaseAgentQuestionBar = await load("../src/legal/CaseAgentQuestionBar.tsx", "CaseAgentQuestionBar");
+  const submitted = [];
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(CaseAgentQuestionBar, { questions: [{ question: "确认？", options: ["批准并执行", "驳回，不修改"] }],
+    disabledOptions: ["批准并执行"], note: "操作内容没有读到", onSubmit: (a) => submitted.push(a), onClose: () => {} })); });
+  const options = renderer.root.findAll((node) => node.type === "button" && node.props.role === "option");
+  assert.deepEqual(options.map((node) => node.props.disabled), [true, false]);
+  await act(async () => options[1].props.onClick());
+  assert.deepEqual(submitted, [["驳回，不修改"]]);
+  assert.match(textOf(renderer.toJSON()), /操作内容没有读到/);
+});

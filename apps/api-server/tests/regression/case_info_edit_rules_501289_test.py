@@ -58,3 +58,39 @@ class CaseAskRules501634Test(__import__("unittest").TestCase):
         self.assertNotIn("确认窗口", case_agent.CASE_INFO_EDIT_RULES)
         import inspect
         self.assertIn("{CASE_INFO_EDIT_RULES}{CASE_ASK_RULES}", inspect.getsource(case_agent))
+
+
+class CaseAgentDecisionRace501634Test(__import__("unittest").IsolatedAsyncioTestCase):
+    """501634（tgn 11-06 15:49）：执行期间页面刷新把卡片同步成“正在执行”，执行完回来仍要记下结果，不能报 409 卡住。"""
+
+    async def test_executing_mcp_card_accepts_its_own_result(self):
+        from contextlib import asynccontextmanager
+        from app.case_agent import CaseAgentRuntime
+
+        class Store:
+            def __init__(self, values):
+                self.values = values
+            @asynccontextmanager
+            async def operation(self, thread):
+                yield
+            async def write(self, thread, values):
+                self.values = values
+
+        def runtime(status, action_type="mcp.call"):
+            item = CaseAgentRuntime.__new__(CaseAgentRuntime)
+            item.store = Store({"pending_actions": [{"id": "a1", "type": action_type, "status": status}], "messages": []})
+            item.error = ""
+            async def ensure(*args, **kwargs):
+                return item.store.values
+            item._ensure_private_state = ensure
+            item._public_state = lambda case_id, operator, values, *rest: values
+            return item
+
+        done = await runtime("executing").decide_action(case_id=1, action_id="a1", decision="approved", operator="tgn",
+                                                        execution_result={"status": "succeeded"})
+        self.assertEqual(done["pending_actions"][0]["status"], "approved")
+        with self.assertRaises(ValueError):  # 没带执行结果（重复点击）仍拦下
+            await runtime("executing").decide_action(case_id=1, action_id="a1", decision="approved", operator="tgn")
+        with self.assertRaises(ValueError):  # 已处理完的不能再改
+            await runtime("approved").decide_action(case_id=1, action_id="a1", decision="rejected", operator="tgn",
+                                                    execution_result={"status": "rejected"})
