@@ -948,6 +948,8 @@ export default function CaseCenterPage({
   const casePaymentTypeSelectOptions = buildCasePaymentTypeSelectOptions(casePaymentTypes);
   const selectedCasePaymentType = casePaymentTypes.find((item) => item.id === selectedPaymentTypeId);
   const activeFeeContractScope = editingFeeRow ? feeExpenseScope : String(feeItems[0]?.expense_scope || "");
+  // 501662：平台费用 → 新增代理费的窗口（“新增平台代理费”）不显示所属线索。
+  const platformAgencyFeeDraft = activeFeeContractScope === "平台" && feeSubtypePreset === "agency";
   const feeContractOptions = useMemo(
     () => buildCaseFeeContractOptions(contracts, feeCase || viewingCounselCase, editingFeeRow, activeFeeContractScope),
     [activeFeeContractScope, contracts, editingFeeRow, feeCase, viewingCounselCase],
@@ -3797,16 +3799,17 @@ export default function CaseCenterPage({
                 <span className="case-fee-row-actions"><Button type="text" aria-label="新增费用行" icon={<PlusOutlined />} onClick={() => add({ ...feeForm.getFieldValue(["items", field.name]), amount: undefined })} /><Button type="text" danger aria-label="删除费用行" icon={<CloseOutlined />} disabled={fields.length === 1} onClick={() => remove(field.name)} /></span>
                 <Form.Item name={[field.name, "title"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "expense_scope"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "expense_subtype"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "fee_type"]} hidden><Input /></Form.Item><Form.Item name={[field.name, "handler"]} hidden><Input /></Form.Item>
               </div>)}
-            </div> : <div className="case-fee-entry-table case-fee-entry-table-with-clue">
-              <div className="case-fee-entry-head"><span>案号</span><span>合同号</span><span>费用类型</span><span>所属线索</span><span>金额</span><span>备注</span><span>截止日期</span><span>操作</span></div>
+            </div> : <div className={platformAgencyFeeDraft ? "case-fee-entry-table case-fee-entry-table-full-contract" : "case-fee-entry-table case-fee-entry-table-with-clue case-fee-entry-table-full-contract"}>
+              {/* 501662（shenhe 11-06）：平台代理费不登记所属线索，去掉这一列；合同号格子只显示完整合同号 */}
+              <div className="case-fee-entry-head"><span>案号</span><span>合同号</span><span>费用类型</span>{!platformAgencyFeeDraft && <span>所属线索</span>}<span>金额</span><span>备注</span><span>截止日期</span><span>操作</span></div>
               {fields.map((field) => <div className="case-fee-entry-row" key={field.key}>
                 <span className="case-fee-static-value">{feeCase?.serial_no || "—"}</span>
-                <Form.Item name={[field.name, "contract_record_id"]} rules={[{ required: true, message: "请选择合同" }]}><Select showSearch optionFilterProp="label" placeholder="请选择" options={feeContractOptions} /></Form.Item>
+                <Form.Item name={[field.name, "contract_record_id"]} rules={[{ required: true, message: "请选择合同" }]}><Select showSearch optionFilterProp="label" placeholder="请选择" popupMatchSelectWidth={320} options={feeContractOptions} labelRender={(selected) => String(feeContractOptions.find((item) => item.value === selected.value)?.label ?? selected.label ?? "").split("｜")[0]} /></Form.Item>
                 <Form.Item name={[field.name, "fee_type_id"]} rules={[{ required: true, message: "请选择末级费用类型" }]}><Select showSearch optionFilterProp="label" placeholder="请选择" popupMatchSelectWidth={180} options={feeTypeSelectOptions} onChange={(value) => { const option = feeTypeSelection(feeTypeCatalog, value); feeForm.setFieldValue(["items",field.name,"expense_subtype"],option?.name); feeForm.setFieldValue(["items",field.name,"fee_type"],option?.base_fee_type); feeForm.setFieldValue(["items",field.name,"title"],`${feeCase?.title || ""}${option?.name || ""}`); const clues = feeCaseClueOptions(); if (isClueFeeName(option?.name) && clues.length === 1 && !feeForm.getFieldValue(["items",field.name,"clue_record_id"])) feeForm.setFieldValue(["items",field.name,"clue_record_id"], clues[0].value); }} /></Form.Item>
                 {/* 501337：公证费、公证服务费登记所属线索，移线索时一起带走 */}
-                <Form.Item noStyle shouldUpdate={(prev, next) => prev.items?.[field.name]?.expense_subtype !== next.items?.[field.name]?.expense_subtype}>
+                {!platformAgencyFeeDraft && <Form.Item noStyle shouldUpdate={(prev, next) => prev.items?.[field.name]?.expense_subtype !== next.items?.[field.name]?.expense_subtype}>
                   {() => <Form.Item name={[field.name, "clue_record_id"]}><Select allowClear placeholder={isClueFeeName(feeForm.getFieldValue(["items", field.name, "expense_subtype"])) ? "请选择" : "—"} disabled={!isClueFeeName(feeForm.getFieldValue(["items", field.name, "expense_subtype"])) || !feeCaseClueOptions().length} options={feeCaseClueOptions()} /></Form.Item>}
-                </Form.Item>
+                </Form.Item>}
                 <Form.Item name={[field.name, "amount"]} rules={[{ required: true, message: "请输入金额" }]}><InputNumber min={0.01} precision={2} className="case-fee-amount-input" /></Form.Item>
                 <Form.Item name={[field.name, "description"]}><Input /></Form.Item>
                 <Form.Item name={[field.name, "deadline"]}><DatePicker /></Form.Item>
