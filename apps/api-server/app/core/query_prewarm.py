@@ -163,14 +163,63 @@ async def prewarm_once(sessions, bind):
     entries += await _recent_entries(client, key, DASHBOARD_KIND,
                                      within_seconds=settings.query_prewarm_dashboard_recent_minutes * 60,
                                      limit=settings.query_prewarm_dashboard_recent_limit)
-    warmed, failed, busy = await _replay_entries(sessions, entries)
+    warmed, failed, busy = await _replay_entries(sessions, entries, pause=settings.query_prewarm_item_pause_seconds)
     logger.info("查询预热完成：%s 项，失败 %s 项，正在别处计算 %s 项，耗时 %.1f 秒",
                 warmed, failed, busy, time.monotonic() - started)
 
 
+DASHBOARD_SECTIONS = ("metrics_finance", "metrics_cases", "todos", "cases", "portals", "rejections")
+
+
+async def _dashboard_identity_for(user, db):
+    """按真实请求的鉴权流程得到工作台身份，和用户自己打开工作台时算出的缓存键相同。"""
+    from starlette.requests import Request
+    from app.core.dashboard_metrics_cache import dashboard_cache_identity
+    from app.security import create_token, current_identity
+
+    request = Request({
+        "type": "http", "method": "GET", "path": f"{settings.api_prefix}/dashboard", "query_string": b"", "headers": [],
+        "scheme": "http", "server": ("internal", 80), "client": ("127.0.0.1", 0), "root_path": "",
+    })
+    identity = await current_identity(request, create_token(user.username, user.role, 5), db)
+    return dashboard_cache_identity(identity)
+
+
+async def seed_dashboards_for_active_users(sessions, bind):
+    """还没打开过系统的在职账号也登记工作台预热，第一次打开不用等现算（11-06：沪知全员即将第一次使用）。
+
+    身份走真实鉴权，权限范围和本人打开时一样；只登记，不写业务数据。单个账号失败不影响其它账号。
+    """
+    from sqlalchemy import select
+    from app.models import User
+
+    client, key = shared.client(), _registry_key(bind)
+    known = {(entry.get("identity") or {}).get("username") for entry in await _recent_entries(client, key, DASHBOARD_KIND)}
+    async with sessions() as db:
+        users = list((await db.scalars(select(User).where(
+            User.is_active.is_(True), User.must_change_password.is_not(True), User.username.not_in(known or {""}),
+        ))).all())
+    seeded = 0
+    for user in users:
+        try:
+            async with sessions() as db:
+                identity = await _dashboard_identity_for(user, db)
+                for section in DASHBOARD_SECTIONS:
+                    await remember(db, DASHBOARD_KIND, section, identity, {})
+            seeded += 1
+        except Exception as exc:  # 账号数据有问题只影响它自己第一次打开要现算
+            logger.warning("工作台预热登记失败：%s user=%s", _failure(exc), user.username)
+    return seeded
+
+
 async def prewarm_dashboards_morning(sessions, bind):
-    """每天上班前：最近几天用过系统的人的工作台各分区都按今天的日期算好。"""
+    """每天上班前：最近几天用过系统的人和尚未用过的在职账号，工作台各分区都按今天的日期算好。"""
     started = time.monotonic()
+    if settings.query_prewarm_seed_active_users:
+        try:
+            await seed_dashboards_for_active_users(sessions, bind)
+        except Exception as exc:  # 登记失败不影响已登记账号的预热
+            logger.warning("工作台预热登记跳过：%s", _failure(exc))
     entries = await _recent_entries(shared.client(), _registry_key(bind), DASHBOARD_KIND)
     warmed, failed, busy = await _replay_entries(sessions, entries, pause=_MORNING_PAUSE_SECONDS)
     users = len({(entry.get("identity") or {}).get("username") for entry in entries})
@@ -207,6 +256,7 @@ async def query_prewarm_loop():
     if not (settings.query_prewarm_enabled and settings.cache_redis_url.strip()) or engine.dialect.name != "postgresql":
         return
     last_state = None
+    last_round = 0.0
     morning_done_on = None
     while True:
         await asyncio.sleep(settings.query_prewarm_interval_seconds)
@@ -214,6 +264,9 @@ async def query_prewarm_loop():
             if _morning_due(datetime.now(), morning_done_on):
                 morning_done_on = date.today()
                 await prewarm_dashboards_morning(SessionLocal, engine)
+                continue
+            # 数据一直在变时也留出间隔，预热不和用户请求抢 CPU（11-06 压测）。
+            if time.monotonic() - last_round < settings.query_prewarm_round_gap_seconds:
                 continue
             state = await _data_state(SessionLocal)
             if state is None or state == last_state:
@@ -223,6 +276,7 @@ async def query_prewarm_loop():
                 continue
             await prewarm_once(SessionLocal, engine)
             last_state = state
+            last_round = time.monotonic()
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # Redis 未就绪或数据库暂时不可用时下一轮再试

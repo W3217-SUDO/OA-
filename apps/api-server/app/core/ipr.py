@@ -415,10 +415,14 @@ async def _materialize_ipr_case_warnings(identity: dict, db: AsyncSession) -> in
     await _require_record_module_menu("ipr_case", identity, db, action="查看")
     today = date.today()
     rules = list((await db.scalars(select(IprCaseWarningRule).where(IprCaseWarningRule.is_active.is_(True)))).all())
-    cases = await _visible_ipr_cases(identity, db)
+    # 11-06 压测：后台给每个账号同步通知都会走到这里，原来先把可见的知产案件（约 1.4 万条完整 JSON）全部读进内存再逐条判断。
+    # 没有启用的规则就不读；只读在办且有负责人的案件（原循环第一步就跳过其余案件）。
+    if not rules:
+        return 0
+    cases = await _visible_ipr_cases(identity, db, [BusinessRecord.status == "在办"])
     created = 0
     for case_record in cases:
-        if case_record.status != "在办" or not str(case_record.owner or "").strip():
+        if not str(case_record.owner or "").strip():
             continue
         data = case_record.data or {}
         for rule in rules:

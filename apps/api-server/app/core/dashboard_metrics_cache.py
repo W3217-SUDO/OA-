@@ -3,12 +3,15 @@ import asyncio
 import hashlib
 import json
 import logging
-from collections import OrderedDict
+from collections import OrderedDict, deque
+from contextlib import asynccontextmanager
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import date
-from time import monotonic
+from time import monotonic, time
 from types import SimpleNamespace
+from uuid import uuid4
+from weakref import WeakKeyDictionary
 
 from app.core.dashboard_metrics import dashboard_metrics
 from app.core.query_cache_flow import read_shared_query, release_lock
@@ -135,10 +138,129 @@ async def _publish_dashboard_query(key, token, snapshot, result):
 # 计算放在独立任务里：用户离开页面（499）不会中断它，算完照常写缓存；同一进程里同一账号同一分区只算一份。
 # 预热重放不传 compute_in，始终按原流程算最新值。
 SECTIONS = {"metrics_finance", "metrics_cases", "todos", "cases", "portals", "rejections"}
+
+
+def dashboard_cache_identity(identity):
+    """工作台数字和用户当时停在哪个页面无关；页面头已决定的权限字段（角色、页面能力、数据范围）都留在键里。
+
+    11-06 查到：缓存键带 _request_page，同一账号从不同页面取工作台各算一份（生产 8 个账号登记了 499 份）。
+    """
+    return {**identity, "_request_page": ""}
 _LAST_PREFIX = "sunhold:dashboard:last:v1"
 # 某个分区的返回结构做了不兼容的改动时加一，旧版本留下的“最近一次结果”就不再拿出来用。
 LAST_RESULT_SHAPE = 1
 _refreshing: dict[str, asyncio.Task] = {}
+# 11-06 压测：一个人打开工作台要算 6 块，任何一笔写入都让所有人的结果过期，几十人同时用时重算把 CPU 和连接池占满，
+# 别的页面也跟着超时。所以每个进程同时只算一份，有人等着的排在后台刷新前面；已有旧结果的，同一块冷却期内不重复算。
+_REFRESH_COOLDOWN_PREFIX = "sunhold:dashboard:refresh:v1"
+# 冷却期开始后这么久内仍告诉前端“新结果快好了”，前端继续短轮询；之后不再轮询，等下一次刷新。
+_REFRESH_RETRY_WINDOW_SECONDS = 30
+
+
+_GLOBAL_SLOT_PREFIX = "sunhold:dashboard:compute:v1"
+_GLOBAL_SLOT_SECONDS = 90
+_GLOBAL_POLL_SECONDS = 0.2
+_RELEASE_SLOT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0"
+
+
+async def _global_slot(urgent):
+    """跨进程名额（4 个进程共用）：后台只用 0 号，等结果的可用全部。Redis 不可用时不限制，只靠进程内名额。"""
+    if not settings.cache_redis_url.strip():
+        return None
+    token = uuid4().hex
+    slots = range(settings.dashboard_global_compute_slots if urgent else 1)
+    try:
+        client = shared.client()
+        while True:
+            for index in slots:
+                key = f"{_GLOBAL_SLOT_PREFIX}:{index}"
+                if await client.set(key, token, nx=True, ex=_GLOBAL_SLOT_SECONDS):
+                    return key, token
+            await asyncio.sleep(_GLOBAL_POLL_SECONDS)
+    except (RedisError, HTTPException):
+        return None
+
+
+async def _release_global_slot(lease):
+    if lease is None:
+        return
+    try:
+        await asyncio.shield(shared.client().eval(_RELEASE_SLOT, 1, lease[0], lease[1]))
+    except (RedisError, HTTPException) as exc:
+        logger.warning("控制台计算名额释放失败：%s", type(exc).__name__)  # 到期自动释放
+
+
+class ComputeGate:
+    """按进程限制同时运行的重算数；等结果的请求优先于后台刷新。只在单个事件循环内使用。"""
+
+    def __init__(self, slots=1):
+        self.slots = slots
+        self.running = 0
+        self.waiting = {True: deque(), False: deque()}
+
+    def _wake(self):
+        for lane in (self.waiting[True], self.waiting[False]):
+            while lane and self.running < self.slots:
+                waiter = lane.popleft()
+                if not waiter.done():
+                    self.running += 1
+                    waiter.set_result(None)
+
+    def promote(self, waiter):
+        """后台排队的刷新来了等结果的人：提到优先队列。"""
+        if waiter in self.waiting[False]:
+            self.waiting[False].remove(waiter)
+            self.waiting[True].append(waiter)
+
+    @asynccontextmanager
+    async def slot(self, *, urgent=False, ticket=None):
+        waiter = asyncio.get_running_loop().create_future()
+        if ticket is not None:
+            ticket["waiter"] = waiter
+        self.waiting[bool(urgent)].append(waiter)
+        self._wake()
+        try:
+            await waiter
+        except asyncio.CancelledError:
+            if waiter.done() and not waiter.cancelled():
+                self.running -= 1
+                self._wake()
+            raise
+        lease = None
+        try:
+            lease = await _global_slot(urgent)
+            yield
+        finally:
+            await _release_global_slot(lease)
+            self.running -= 1
+            self._wake()
+
+
+_gates = WeakKeyDictionary()
+
+
+def compute_gate():
+    loop = asyncio.get_running_loop()
+    gate = _gates.get(loop)
+    if gate is None:
+        gate = _gates[loop] = ComputeGate(settings.dashboard_compute_concurrency)
+    return gate
+
+
+async def _refresh_state(key):
+    """started：本次由我发起；recent：刚有人发起，新结果快好了；cooling：冷却中，先用旧结果。"""
+    cooldown = settings.dashboard_stale_refresh_cooldown_seconds
+    cooldown_key = f"{_REFRESH_COOLDOWN_PREFIX}:{hashlib.sha256(key.encode()).hexdigest()}"
+    now = time()
+    try:
+        client = shared.client()
+        if await client.set(cooldown_key, str(now), nx=True, ex=cooldown):
+            return "started"
+        started_at = await client.get(cooldown_key)
+        started_at = float(started_at.decode() if isinstance(started_at, bytes) else started_at)
+    except (RedisError, HTTPException, TypeError, ValueError, AttributeError):
+        return "started"  # 冷却记录读写失败时按原流程刷新
+    return "recent" if now - started_at < _REFRESH_RETRY_WINDOW_SECONDS else "cooling"
 
 
 def _swr_available(db):
@@ -194,18 +316,22 @@ async def _stale_result(db, key, identity=None, section=None):
     return cached["result"]
 
 
-def _shared_refresh(key, identity, section, compute_in, parameters=None):
+def _shared_refresh(key, identity, section, compute_in, parameters=None, *, urgent=True):
     task = _refreshing.get(key)
     if task is not None:
+        if urgent and task.ticket.get("waiter") is not None:
+            compute_gate().promote(task.ticket["waiter"])
         return task
+    ticket = {}
 
     async def refresh():
         from app.database import SessionLocal
 
         try:
-            async with SessionLocal() as session:
-                return await cached_dashboard_query(session, identity, section, lambda: compute_in(session),
-                                                    parameters=parameters, remember_last=True)
+            async with compute_gate().slot(urgent=urgent, ticket=ticket):
+                async with SessionLocal() as session:
+                    return await cached_dashboard_query(session, identity, section, lambda: compute_in(session),
+                                                        parameters=parameters, remember_last=True)
         finally:
             _refreshing.pop(key, None)
 
@@ -214,6 +340,7 @@ def _shared_refresh(key, identity, section, compute_in, parameters=None):
             logger.warning("控制台后台计算失败：%s section=%s", type(done.exception()).__name__, section)
 
     task = _refreshing[key] = asyncio.create_task(refresh())
+    task.ticket = ticket
     task.add_done_callback(observe)
     return task
 
@@ -234,10 +361,14 @@ async def cached_dashboard_query(db, identity, section, compute, *, compute_in=N
         stale = await _stale_result(db, key, identity, section)
         if db.in_transaction():
             await db.rollback()
-        task = _shared_refresh(key, deepcopy(identity), section, compute_in, parameters)
         if stale is not None:
-            tag_request("cache", "stale")
-            return {**stale, "stale": True}
+            state = "started" if key in _refreshing else await _refresh_state(key)
+            if state == "started":
+                _shared_refresh(key, deepcopy(identity), section, compute_in, parameters, urgent=False)
+            tag_request("cache", "stale" if state != "cooling" else "cooldown")
+            # 冷却中不带 stale 标记：前端不用再短轮询，等下一次定时刷新。
+            return {**stale, "stale": True} if state != "cooling" else stale
+        task = _shared_refresh(key, deepcopy(identity), section, compute_in, parameters)
         tag_request("cache", "shared")
         return deepcopy(await asyncio.shield(task))
     # 留存期只控制清理；每次命中仍由共享流程核对当前业务修订号。

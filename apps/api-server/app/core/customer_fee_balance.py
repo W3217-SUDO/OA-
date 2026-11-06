@@ -219,19 +219,12 @@ async def managed_customers_official_unreceived(db, username: str, *, company: b
 
     company=True 时是全公司全部客户（管理员类账号，陶国南 11-01 定）。
     """
-    import json
-    token = json.dumps(username, ensure_ascii=False)
-    data = BusinessRecord.data
-    conditions = [BusinessRecord.module == "customer"]
-    if not company:
-        conditions.append(or_(
-            BusinessRecord.owner == username,
-            data["customer_managers"].as_string().contains(token, autoescape=True),
-            data["coordinators"].as_string().contains(token, autoescape=True),
-            # 客户账号挂在 contact_accounts（旧系统协作人 TypeId=2，不分大小写），也算本人的客户（陶国南 11-02 选 1A）。
-            func.lower(func.coalesce(data["contact_accounts"].as_string(), "")).contains(
-                json.dumps(username.lower(), ensure_ascii=False), autoescape=True),
-        ))
-    customers = (await db.execute(select(BusinessRecord.id, BusinessRecord.serial_no).where(*conditions))).all()
+    if company:
+        customers = (await db.execute(select(BusinessRecord.id, BusinessRecord.serial_no).where(
+            BusinessRecord.module == "customer"))).all()
+    else:
+        # 客户账号挂在 contact_accounts（旧系统协作人 TypeId=2，不分大小写），也算本人的客户（陶国南 11-02）。
+        from app.core.person_customers import person_customer_rows
+        customers = await person_customer_rows(db, username, contact_accounts=True)
     balances = await customer_fee_balances(db, customers)
     return round(sum(item["official_fee_unreceived"] for item in balances.values()), 2)
