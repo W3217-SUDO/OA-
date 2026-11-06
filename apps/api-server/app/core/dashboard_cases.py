@@ -14,7 +14,7 @@ from app.core.record_projection_query import read_record_projections
 
 
 async def dashboard_cases(identity, db):
-    scope, modules = await dashboard_scope(identity, db)
+    scope, modules = await dashboard_scope(identity, db, module="case")
     conditions = [BusinessRecord.module == "case", BusinessRecord.status != "已合并", BusinessRecord.module.in_(modules), *scope]
     today = datetime.now(timezone.utc).astimezone(CASE_EVENT_TIME_ZONE).date()
     current_month = today.replace(day=1)

@@ -20,7 +20,7 @@ from app.models_shared import (
     FinanceFeeInput,
 )
 from app.core.json_relation_query import scalar_in_values
-from sqlalchemy import false
+from sqlalchemy import false, union
 from app.core.generated_file_records import PRIVATE_MODULES, require_generated_record_access
 
 
@@ -679,15 +679,30 @@ async def _record_dicts_for_identity(records, identity: dict, db: AsyncSession) 
     )
 
 
-def _case_personal_scope_condition(username: str):
+def _case_personal_scope_arms(username: str) -> tuple:
     exact_username_token = f'"{username}"'
-    return or_(
+    return (
         BusinessRecord.owner == username,
         BusinessRecord.data["case_team_usernames"].as_string().contains(exact_username_token),
         BusinessRecord.data["legacy_participants"].as_string().contains(
             f'"staff_name":"{username}"'
         ),
     )
+
+
+def _case_personal_scope_condition(username: str):
+    return or_(*_case_personal_scope_arms(username))
+
+
+def _module_scope_union(module: str, arms: list):
+    """范围条件的 UNION 写法：每一条各走索引，只读命中的行，匹配结果和 OR 相同。
+
+    内层 FROM 和外层是同一张表，correlate(None) 让条件都落在内层。结果只含 module 这个模块的行，
+    调用方查别的模块时只会查不到，不会多看到。
+    """
+    return BusinessRecord.id.in_(union(*(
+        select(BusinessRecord.id).where(BusinessRecord.module == module, arm).correlate(None) for arm in arms
+    )))
 
 
 CASE_MINE_TEXT_FIELDS = (
@@ -886,7 +901,12 @@ async def _ipr_own_cases_only(identity: dict, db: AsyncSession) -> bool:
     return await gate_enabled(db)
 
 
-async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
+async def _record_scope_conditions(identity: dict, db: AsyncSession, *, module: str | None = None) -> list:
+    """当前账号能看到的记录范围。
+
+    module 只在查询已限定 BusinessRecord.module == module 时才传：case、customer 改用 UNION 走索引
+    （11-07 压测：OR 写法每次打开列表把约 6 千份案件 JSON 解析 4～5 次，占慢 SQL 近一半），范围本身不变。
+    """
     from app.core.conflict_review import can_review_conflicts
     protected_scope = [] if await can_review_conflicts(identity, db) else [or_(
         BusinessRecord.module != "conflict_review", BusinessRecord.owner == identity.get("username", ""),
@@ -918,12 +938,13 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     # PostgreSQL.
     exact_username_token = f'"{user.username}"'
     # 案源人（客户来源）默认就有客户管理人的权限（陶国南 2026-11-01），不受部门范围限制。
-    managed_customer = and_(BusinessRecord.module == "customer", or_(
+    managed_customer_arms = (
         BusinessRecord.data["customer_managers"].as_string().contains(exact_username_token),
         BusinessRecord.owner == user.username,
         BusinessRecord.data["customer_source"].as_string() == user.username,
         BusinessRecord.data["source_person"].as_string() == user.username,
-    ))
+    )
+    managed_customer = and_(BusinessRecord.module == "customer", or_(*managed_customer_arms))
     shared_to_text = BusinessRecord.data["shared_to"].as_string()
     shared_with_text = BusinessRecord.data["shared_with"].as_string()
     shared_customer = and_(BusinessRecord.module == "customer", shared_with_text.contains(exact_username_token))
@@ -989,14 +1010,23 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     if scope == "本部门数据":
         from app.core.department_visibility import visible_department_names
         department_names = await visible_department_names(user.username, user.department, db)
-        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.department.in_(department_names), public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, coordinated_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, assisted_clue, pending_contract_approval))]
-    if scope == "授权审批数据":
-        # Approval range is not a blanket view of every pending record.  A
-        # contract becomes visible here only for its current pending approver;
-        # other modules retain their own owner/share/participant projections
-        # until they expose an equally concrete candidate relation.
-        return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, coordinated_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, assisted_clue, pending_contract_approval))]
-    return [*protected_scope, include_customer_menu_scope(or_(BusinessRecord.owner == user.username, public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, coordinated_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, assisted_clue, pending_contract_approval))]
+        base_scope = BusinessRecord.department.in_(department_names)
+    else:
+        # “授权审批数据”不是所有待审批记录都能看：合同只对当前待审批人可见（pending_contract_approval），
+        # 其他模块在有同样具体的候选关系前仍按负责人、共享、参与人判断。
+        base_scope = BusinessRecord.owner == user.username
+    if module == "case":
+        arms = [base_scope, exact_shared_to, *_case_personal_scope_arms(user.username)]
+        if identity.get("_request_method") in {"GET", "HEAD"}:
+            arms.append(coordinated_case)
+        return [*protected_scope, _module_scope_union("case", arms)]
+    if module == "customer":
+        arms = [base_scope, BusinessRecord.status == "公海", *managed_customer_arms, shared_with_text.contains(exact_username_token),
+                BusinessRecord.data["coordinators"].as_string().contains(exact_username_token), exact_shared_to]
+        if customer_menu_scope is not None:
+            arms.append(customer_menu_scope)
+        return [*protected_scope, _module_scope_union("customer", arms)]
+    return [*protected_scope, include_customer_menu_scope(or_(base_scope, public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, coordinated_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, assisted_clue, pending_contract_approval))]
 
 
 async def _visible_legacy_ipr_case_ids(identity: dict, db: AsyncSession) -> set[int]:

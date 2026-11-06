@@ -88,7 +88,7 @@ async def search_archive_cases(body, identity, db, *, export=False):
     for start, end in ((body.review_from, body.review_to), (body.submit_from, body.submit_to)):
         if start and end and start > end:
             raise HTTPException(status_code=422, detail="开始日期不能晚于结束日期")
-    conditions = [BusinessRecord.module == "case", *(await _record_scope_conditions(identity, db))]
+    conditions = [BusinessRecord.module == "case", *(await _record_scope_conditions(identity, db, module="case"))]
     submitter = func.trim(_text("archive_submitter"))
     reviewer = func.trim(_text("archive_reviewer"))
     internal_reviewer = func.trim(_text("archive_internal_reviewer"))

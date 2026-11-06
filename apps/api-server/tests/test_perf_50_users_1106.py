@@ -7,13 +7,16 @@ from unittest.mock import AsyncMock, patch
 import app.main  # noqa: F401
 from sqlalchemy import select
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 
 from app.core import dashboard_metrics_cache as cache
 from app.core import ipr
 from app.core import permissions
-from app.core.startup_migrations import _apply_customer_coordinator_trgm_indexes
+from app.core.startup_migrations import _apply_record_scope_indexes
 from app.core.task_query import stream_task_rows
-from app.models import BusinessRecord
+from app.database import Base
+from app.models import BusinessRecord, User
 
 
 class ComputeGateTest(unittest.IsolatedAsyncioTestCase):
@@ -107,13 +110,83 @@ class SqlShapeTest(unittest.TestCase):
         self.assertIn("''", sql, "空串是字面量，表达式才能匹配索引")
 
     def test_index_revision_expressions_exist(self):
-        source = inspect.getsource(_apply_customer_coordinator_trgm_indexes)
-        for field in ("customer_managers", "coordinators", "contact_accounts"):
+        source = inspect.getsource(_apply_record_scope_indexes)
+        for field in ("customer_managers", "coordinators", "contact_accounts", "shared_with", "shared_to", "source_person",
+                      "customer_source", "case_team_usernames", "legacy_participants", "customer_record_id"):
             self.assertIn(field, source)
-        self.assertIn("WHERE module = 'customer'", source)
+        self.assertIn("WHERE module = '{module}'", source)
 
     def test_task_stream_parses_each_row_once(self):
         self.assertIn("json_to_record", inspect.getsource(stream_task_rows))
+
+
+class ModuleScopeEquivalenceTest(unittest.IsolatedAsyncioTestCase):
+    """_record_scope_conditions(module=...) 只换写法：每个账号看到的案件、客户和原写法一模一样。"""
+
+    async def asyncSetUp(self):
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
+        async with self.engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        self.sessions = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
+        self.users = ("ann", "joann", "bob", "carol", "dave")
+        async with self.sessions() as db:
+            for username in self.users:
+                db.add(User(username=username, display_name=username, password_hash="isolated-only", department="D1", role="staff"))
+            rows = [
+                ("customer", "owner-ann", "T", "ann", "D1", {}),
+                ("customer", "managers", "T", "x", "D2", {"customer_managers": ["joann"]}),
+                ("customer", "coord", "T", "x", "D2", {"coordinators": ["bob"]}),
+                ("customer", "source", "T", "x", "D2", {"customer_source": "carol"}),
+                ("customer", "person", "T", "x", "D2", {"source_person": "dave"}),
+                ("customer", "shared-with", "T", "x", "D2", {"shared_with": ["ann"]}),
+                ("customer", "shared-to", "T", "x", "D2", {"shared_to": ["bob"]}),
+                ("customer", "public", "公海", "x", "D2", {}),
+                ("customer", "other", "T", "x", "D2", {"customer_managers": ["nobody"]}),
+                ("case", "c-owner", "S", "ann", "D1", {}),
+                ("case", "c-team", "S", "x", "D2", {"case_team_usernames": ["joann"]}),
+                ("case", "c-part", "S", "x", "D2", {"legacy_participants": '[{"staff_name":"bob"}]'}),
+                ("case", "c-shared", "S", "x", "D2", {"shared_to": ["carol"]}),
+                ("case", "c-customer", "S", "x", "D2", {"customer_record_id": 2}),
+                ("case", "c-coord", "S", "x", "D2", {"customer_record_id": 3}),
+                ("case", "c-other", "S", "x", "D2", {"customer_record_id": 9}),
+                ("task", "t-owner", "S", "ann", "D1", {"case_team_usernames": ["bob"]}),
+            ]
+            for index, (module, serial, status, owner, department, data) in enumerate(rows, start=1):
+                db.add(BusinessRecord(id=index, module=module, serial_no=serial, title=serial, status=status, owner=owner,
+                                      department=department, data=data))
+            await db.commit()
+
+    async def asyncTearDown(self):
+        await self.engine.dispose()
+
+    async def test_same_rows_as_or_form_for_every_user_and_method(self):
+        seen = {}
+        async with self.sessions() as db:
+            for username in self.users:
+                for method in ("GET", "POST"):
+                    identity = {"username": username, "role": "staff", "role_ids": ["staff"], "_actual_role": "staff",
+                                "_actual_role_ids": ["staff"], "_request_method": method}
+                    for module in ("case", "customer"):
+                        base = BusinessRecord.module == module
+                        old = set((await db.scalars(select(BusinessRecord.id).where(
+                            base, *(await permissions._record_scope_conditions(identity, db))))).all())
+                        new = set((await db.scalars(select(BusinessRecord.id).where(
+                            base, *(await permissions._record_scope_conditions(identity, db, module=module))))).all())
+                        self.assertEqual(old, new, (username, method, module))
+                        seen[(username, method, module)] = old
+        self.assertIn(2, seen[("joann", "GET", "customer")])
+        self.assertNotIn(1, seen[("joann", "GET", "customer")], "ann 不能因为 joann 的名字串被匹配")
+        self.assertIn(14, seen[("joann", "GET", "case")], "客户管理人读取时能看到客户的案件")
+        self.assertNotIn(14, seen[("joann", "POST", "case")], "写操作不算协作范围")
+        self.assertNotIn(16, seen[("ann", "GET", "case")])
+
+    async def test_other_module_never_leaks_through_the_module_form(self):
+        async with self.sessions() as db:
+            identity = {"username": "ann", "role": "staff", "role_ids": ["staff"], "_actual_role": "staff",
+                        "_actual_role_ids": ["staff"], "_request_method": "GET"}
+            rows = set((await db.scalars(select(BusinessRecord.id).where(
+                *(await permissions._record_scope_conditions(identity, db, module="case"))))).all())
+        self.assertEqual({r for r in rows if r > 16 or r < 10}, set(), "传了 case 就只含案件，任务不会混进来")
 
 
 class IprWarningsTest(unittest.IsolatedAsyncioTestCase):

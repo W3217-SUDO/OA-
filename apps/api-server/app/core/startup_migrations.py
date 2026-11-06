@@ -182,24 +182,38 @@ def _apply_clue_linked_case_no_index(connection: Connection, _upgrade_schema: Ca
     connection.execute(text("ANALYZE business_records"))
 
 
-def _apply_customer_coordinator_trgm_indexes(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
-    """客户管理人/协作人/客户账号的模糊匹配走索引（_coordinated_case_condition 的 UNION 各条）。
+def _apply_record_scope_indexes(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    """案件、客户范围条件走索引（_coordinated_case_condition 和 _module_scope_union 的 UNION 各条）。
 
-    只收客户行（约 1.3 万条），建索引约 1 秒；要等同步写事务结束，等不到就让启动报错并按发布流程处理。
+    只收客户和案件行（约 2 万条），全部建完约 10 秒，其间写 business_records 要等；要等同步写事务结束，等不到就让启动报错并按发布流程处理。
     """
     if connection.dialect.name != "postgresql":
         return
     connection.execute(text("SET LOCAL lock_timeout = '5s'"))
     connection.execute(text("SET LOCAL statement_timeout = '60s'"))
     connection.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
-    for name, expression in (
-        ("managers", "(data ->> 'customer_managers')"),
-        ("coordinators", "(data ->> 'coordinators')"),
-        ("contacts", "lower(COALESCE(CAST(data ->> 'contact_accounts' AS VARCHAR), ''))"),
+    for module, name, expression in (
+        ("customer", "managers", "(data ->> 'customer_managers')"),
+        ("customer", "coordinators", "(data ->> 'coordinators')"),
+        ("customer", "contacts", "lower(COALESCE(CAST(data ->> 'contact_accounts' AS VARCHAR), ''))"),
+        ("customer", "shared_with", "(data ->> 'shared_with')"),
+        ("customer", "shared_to", "(data ->> 'shared_to')"),
+        ("case", "shared_to", "(data ->> 'shared_to')"),
+        ("case", "team", "(data ->> 'case_team_usernames')"),
+        ("case", "participants", "(data ->> 'legacy_participants')"),
     ):
         connection.execute(text(
-            f"CREATE INDEX IF NOT EXISTS ix_business_records_customer_{name}_trgm ON business_records "
-            f"USING gin (({expression}) gin_trgm_ops) WHERE module = 'customer'"
+            f"CREATE INDEX IF NOT EXISTS ix_business_records_{module}_{name}_trgm ON business_records "
+            f"USING gin (({expression}) gin_trgm_ops) WHERE module = '{module}'"
+        ))
+    # _record_scope_conditions(module=...) 的等值条件：案件按客户、客户按案源人。
+    for name, module, expression in (
+        ("case_customer_record_id", "case", "(data ->> 'customer_record_id')"),
+        ("customer_source", "customer", "(data ->> 'customer_source')"),
+        ("customer_source_person", "customer", "(data ->> 'source_person')"),
+    ):
+        connection.execute(text(
+            f"CREATE INDEX IF NOT EXISTS ix_business_records_{name} ON business_records ({expression}) WHERE module = '{module}'"
         ))
     connection.execute(text("ANALYZE business_records"))
 
@@ -320,7 +334,7 @@ def _run_versioned_schema_migrations(
         # 501187 非诉申请人库；新表要补财务缓存触发器。
         ("ipr_applicants_v1", _apply_ipr_applicants),
         ("finance_query_revision_ipr_applicants_v1", _apply_finance_query_revision),
-        ("business_record_customer_coordinator_trgm_v1", _apply_customer_coordinator_trgm_indexes),
+        ("business_record_scope_trgm_v1", _apply_record_scope_indexes),
     )
     for revision, migration in revisions:
         if connection.execute(

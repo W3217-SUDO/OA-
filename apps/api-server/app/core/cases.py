@@ -1218,17 +1218,17 @@ async def _case_search_scope_conditions(body: CounselCaseSearchInput, identity: 
     record_conditions = [BusinessRecord.module == "case", BusinessRecord.status != "已合并"]
     global_company_scope = body.scope == "global" and await _can_search_all_cases_from_global_search(identity, db)
     if body.dashboard_queue:
-        record_conditions.extend(await _record_scope_conditions(identity, db))
+        record_conditions.extend(await _record_scope_conditions(identity, db, module="case"))
     elif body.scope == "global":
         # 客户等附加条件只能缩小结果，不能绕过无公司案件权限时的个人范围。
         if not global_company_scope:
-            record_conditions.extend(await _record_scope_conditions(identity, db))
+            record_conditions.extend(await _record_scope_conditions(identity, db, module="case"))
             record_conditions.append(await _case_mine_scope_condition(identity, db))
     elif body.scope == "department" and relation_customer is None:
         from app.core.case_department_scope import department_case_condition
         record_conditions.append(await department_case_condition(identity, db))
     elif relation_customer is None:
-        record_conditions.extend(await _record_scope_conditions(identity, db))
+        record_conditions.extend(await _record_scope_conditions(identity, db, module="case"))
         if body.scope == "mine":
             # 客户协作人的客户案件也进“我的案件”，行上标“协作”、只能查看（陶威 2026-10-31）。
             record_conditions.append(or_(
