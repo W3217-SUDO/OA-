@@ -90,7 +90,7 @@ async def list_records(
         # Department contracts are classified by the linked customer's active
         # managers below. Applying the contract row's stamped department first
         # would discard rows whose legacy department is stale.
-        conditions.extend(await _record_scope_conditions(identity, db))
+        conditions.extend(await _record_scope_conditions(identity, db, module=module))
     if keyword:
         like = f"%{keyword}%"
         conditions.append(or_(BusinessRecord.serial_no.ilike(like), BusinessRecord.title.ilike(like), BusinessRecord.customer.ilike(like), BusinessRecord.owner.ilike(like)))

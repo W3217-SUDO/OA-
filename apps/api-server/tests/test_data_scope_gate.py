@@ -163,7 +163,9 @@ class DataScopeGateApiTest(unittest.IsolatedAsyncioTestCase):
             plain = await self.personal.get(f"{API}/dashboard", params={"section": section})
             with_page = await self.personal.get(f"{API}/dashboard", params={"section": section}, headers={"X-OA-Page": "customer-mine"})
             self.assertEqual(plain.status_code, 200, plain.text)
-            self.assertEqual(plain.json(), with_page.json(), section)
+            self.assertEqual(
+                    {key: value for key, value in plain.json().items() if key != "computed_at"},
+                    {key: value for key, value in with_page.json().items() if key != "computed_at"}, section)
 
     async def test_login_identity_never_blocked(self):
         me = await self.personal.get(f"{API}/auth/me", headers={"X-OA-Page": "not-a-real-page"})

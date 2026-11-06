@@ -389,7 +389,7 @@ async def batch_update_cases(body: CaseBatchUpdateInput, identity: dict = Depend
     if case_ids: requested.append(BusinessRecord.id.in_(case_ids))
     if case_nos: requested.append(BusinessRecord.serial_no.in_(case_nos))
     visible_cases = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "case", or_(*requested), *(await _record_scope_conditions(identity, db)),
+        BusinessRecord.module == "case", or_(*requested), *(await _record_scope_conditions(identity, db, module="case")),
     ))).all())
     by_id = {case.id: case for case in visible_cases}; by_no = {case.serial_no: case for case in visible_cases}
     missing_ids = [case_id for case_id in case_ids if case_id not in by_id]
@@ -1034,7 +1034,7 @@ async def case_summary(identity: dict = Depends(current_identity), db: AsyncSess
         _record_scope_conditions,
     )
     counts = dict((await db.execute(select(BusinessRecord.status, func.count()).where(
-        BusinessRecord.module == "case", *(await _record_scope_conditions(identity, db)),
+        BusinessRecord.module == "case", *(await _record_scope_conditions(identity, db, module="case")),
     ).group_by(BusinessRecord.status))).all())
     return {
         "total": sum(counts.values()),
@@ -1068,7 +1068,7 @@ async def list_pending_execution_cases(
     records = list((await db.scalars(
         select(BusinessRecord).where(
             BusinessRecord.module == "case",
-            *(await _record_scope_conditions(identity, db)),
+            *(await _record_scope_conditions(identity, db, module="case")),
         ).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc())
     )).all())
     pending = [record for record in records if _is_pending_execution_case(record)]
@@ -4318,7 +4318,7 @@ async def batch_review_case_archive(body: ArchiveBatchReviewInput, identity: dic
     await _require_case_action(identity, db, "case.archive.review")
     try:
         records = list((await db.scalars(select(BusinessRecord).where(
-            BusinessRecord.id.in_(ids), BusinessRecord.module == "case", *(await _record_scope_conditions(identity, db)),
+            BusinessRecord.id.in_(ids), BusinessRecord.module == "case", *(await _record_scope_conditions(identity, db, module="case")),
         ).order_by(BusinessRecord.id).with_for_update())).all())
         if len(records) != len(ids):
             raise HTTPException(status_code=404, detail="选中的案件不存在或无权访问，整批未审核")
