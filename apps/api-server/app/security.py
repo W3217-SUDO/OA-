@@ -297,6 +297,8 @@ async def _page_access_decision(request: Request, db: AsyncSession, menu_keys: l
         return not is_export_path(path), True
     if not any(_menu_candidate_granted(granted, candidate) for candidate in header_candidates):
         return False, False
+    if external and path == "/search":
+        return False, False  # 外部账号全局搜索只按本人范围（陶威 2026-11-07）；内部账号等菜单范围表定了再说
     kind = header_read_kind(path, header_candidates, path_candidates)
     if is_export_path(path):
         kind = "deny"

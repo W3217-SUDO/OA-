@@ -242,6 +242,13 @@ class ExternalAccountTest(unittest.IsolatedAsyncioTestCase):
         response = await self.client.get(f"{API}/customers", params={"scope": "company"})
         self.assertEqual(response.status_code, 403)
 
+    async def test_search_not_elevated_by_page_header(self):
+        plain = await self.client.get(f"{API}/search", params={"q": "客户"})
+        with_page = await self.client.get(f"{API}/search", params={"q": "客户"}, headers={"X-OA-Page": "customer-mine"})
+        self.assertEqual(plain.status_code, 200, plain.text)
+        self.assertEqual(plain.json(), with_page.json())
+        self.assertNotIn("别人的客户", with_page.text)
+
     async def test_switch_off_restores(self):
         async with self.sessions() as db:
             db.add(SystemConfig(key=GATE_CONFIG_KEY, label="数据范围闸门", group="权限", value="off"))
