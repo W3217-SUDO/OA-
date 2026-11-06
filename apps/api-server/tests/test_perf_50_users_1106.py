@@ -144,6 +144,47 @@ class FreshCacheSkipsGateTest(unittest.IsolatedAsyncioTestCase):
         refresh.assert_not_called()
 
 
+class PriorityAndPendingTest(unittest.IsolatedAsyncioTestCase):
+    def _db(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(new=(), dirty=(), deleted=(), in_transaction=lambda: False,
+                               get_bind=lambda: SimpleNamespace(
+                                   url=SimpleNamespace(render_as_string=lambda hide_password: "postgresql://x/oa"),
+                                   dialect=SimpleNamespace(name="postgresql")))
+
+    def _common(self):
+        return (patch.object(cache.settings, "cache_redis_url", "redis://cache/0"),
+                patch("app.core.query_cache.shared.source_revision", return_value="src"))
+
+    async def test_priority_skips_cooldown_and_is_urgent(self):
+        a, b = self._common()
+        with a, b, patch.object(cache, "_cached_state", new=AsyncMock(return_value=("stale", {"x": 1}))), \
+                patch.object(cache, "_priority_refresh_allowed", new=AsyncMock(return_value=True)), \
+                patch.object(cache, "_refresh_state", new=AsyncMock(return_value="cooling")) as cooldown, \
+                patch.object(cache, "_shared_refresh") as refresh:
+            result = await cache.cached_dashboard_query(self._db(), {"username": "u"}, "todos", AsyncMock(),
+                                                        compute_in=lambda s: None, priority=True)
+        self.assertEqual(result, {"x": 1, "stale": True})
+        cooldown.assert_not_called()
+        self.assertTrue(refresh.call_args.kwargs["urgent"])
+
+    async def test_never_computed_returns_pending_without_blocking(self):
+        a, b = self._common()
+        slow = asyncio.get_running_loop().create_future()
+        with a, b, patch.object(cache, "_cached_state", new=AsyncMock(return_value=(None, None))), \
+                patch.object(cache, "_shared_refresh", return_value=slow), \
+                patch.object(cache.settings, "dashboard_foreground_wait_seconds", 0.01):
+            result = await cache.cached_dashboard_query(self._db(), {"username": "u"}, "todos", AsyncMock(),
+                                                        compute_in=lambda s: None, allow_pending=True)
+        self.assertEqual(result, {"pending": True, "stale": True})
+        self.assertFalse(slow.cancelled(), "后台计算不被取消")
+        slow.cancel()
+
+    def test_computed_at_only_adds_one_key(self):
+        result = cache.with_computed_at({"todos": [1]})
+        self.assertEqual(set(result), {"todos", "computed_at"})
+
+
 class DashboardIdentityTest(unittest.TestCase):
     def test_page_does_not_split_cache_but_permissions_do(self):
         base = {"username": "u", "role": "user", "_page_menu_capability": False, "_page_scope_actual": True}

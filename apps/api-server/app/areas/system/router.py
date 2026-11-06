@@ -1495,9 +1495,13 @@ async def dashboard_http(
     request: Request,
     identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
     section: str | None = Query(default=None, pattern="^(metrics|metrics_finance|metrics_cases|todos|cases|rejections|portals)$"),
+    refresh: bool = Query(default=False, description="用户自己操作后或点刷新：跳过冷却，优先重算"),
+    allow_pending: bool = Query(default=False, description="从没算过时不久等，先返回 pending"),
 ):
     from app.core.dashboard_request import run_dashboard_read
-    from app.core.dashboard_metrics_cache import cached_dashboard_query, dashboard_cache_identity, read_dashboard_metrics
+    from app.core.dashboard_metrics_cache import (
+        cached_dashboard_query, dashboard_cache_identity, read_dashboard_metrics, with_computed_at,
+    )
 
     if section == "metrics":
         calculation = read_dashboard_metrics(identity, db)
@@ -1506,9 +1510,11 @@ async def dashboard_http(
         # 11-05：分端待办、审批驳回提醒也走缓存（陶国南同意的工作台提速方案）。
         await query_prewarm.remember(db, "dashboard", section, identity, {})
         parameters = await _dashboard_cache_parameters(section, db)
-        calculation = cached_dashboard_query(db, identity, section, lambda: dashboard(identity, db, section),
-                                             compute_in=lambda session: dashboard(identity, session, section),
-                                             parameters=parameters)
+        async def timed(session):
+            return with_computed_at(await dashboard(identity, session, section))
+
+        calculation = cached_dashboard_query(db, identity, section, lambda: timed(db), compute_in=timed,
+                                             parameters=parameters, priority=refresh, allow_pending=allow_pending)
     else:
         calculation = dashboard(identity, db, section)
     return await run_dashboard_read(request, calculation)
@@ -1537,8 +1543,12 @@ async def _replay_dashboard_section(section, identity, parameters, db):
     if db.in_transaction():
         await db.rollback()
     async with compute_gate().slot():  # 预热和用户请求共用名额，用户优先
-        await cached_dashboard_query(db, identity, section, lambda: dashboard(identity, db, section),
-                                     parameters=parameters, remember_last=True)
+        from app.core.dashboard_metrics_cache import with_computed_at
+
+        async def timed():
+            return with_computed_at(await dashboard(identity, db, section))
+
+        await cached_dashboard_query(db, identity, section, timed, parameters=parameters, remember_last=True)
 
 
 query_prewarm.register("dashboard", _replay_dashboard_section)

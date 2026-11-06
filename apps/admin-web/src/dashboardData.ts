@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "./api";
+import { api, DATA_CHANGED_EVENT } from "./api";
 
 export type DashboardData = {
   metrics: {
@@ -69,6 +69,10 @@ const refreshIntervalMs = 5 * 60_000;
 const staleRetryMs = 3_000;
 // 11-05：每天第一次进入先显示前一天的结果，高峰时后台重算可能要十几二十秒，多取几次（最多约 24 秒）。
 const staleRetryLimit = 8;
+// 从没算过的账号：后台算好前显示“正在计算”，最多再取约 3 分钟。
+const pendingRetryLimit = 60;
+// 用户提交后稍等再刷新工作台，连续几个提交只刷新一次。
+const dataChangedDebounceMs = 3_000;
 
 // 控制台首屏：先显示本浏览器里该账号上次的结果，后台照常取最新数据后替换。
 // 只存在本机 localStorage，按账号区分，退出登录时清除；超过一天不再使用。
@@ -116,7 +120,10 @@ export function useDashboardData(requestedSections: readonly DashboardSection[] 
   });
   const [errors, setErrors] = useState<Partial<Record<DashboardSection, string>>>({});
   const [caseMetricsError, setCaseMetricsError] = useState<string>();
-  const loader = useRef<(section: DashboardSection) => void>(() => {});
+  const [computedAt, setComputedAt] = useState<Partial<Record<DashboardSection, string>>>({});
+  const loader = useRef<(section: DashboardSection, force?: boolean, refresh?: boolean) => void>(() => {});
+  const generationHasMetric = useRef(false);
+  const [calculating, setCalculating] = useState<Partial<Record<DashboardSection, boolean>>>({});
   useEffect(() => {
     let active = true;
     const pending = new Map<DashboardSection, AbortController>();
@@ -133,13 +140,13 @@ export function useDashboardData(requestedSections: readonly DashboardSection[] 
     let caseMetricsController: AbortController | undefined;
     const staleRetries = new Map<DashboardSection, number>();
     const staleTimers = new Set<number>();
-    const retryWhenStale = (section: DashboardSection, stale: unknown) => {
+    const retryWhenStale = (section: DashboardSection, stale: unknown, pendingResult = false) => {
       if (!stale) {
         staleRetries.delete(section);
         return;
       }
       const attempt = (staleRetries.get(section) ?? 0) + 1;
-      if (attempt > staleRetryLimit) return;
+      if (attempt > (pendingResult ? pendingRetryLimit : staleRetryLimit)) return;
       staleRetries.set(section, attempt);
       const timer = window.setTimeout(() => {
         staleTimers.delete(timer);
@@ -147,8 +154,19 @@ export function useDashboardData(requestedSections: readonly DashboardSection[] 
       }, staleRetryMs);
       staleTimers.add(timer);
     };
-    const load = (section: DashboardSection, force = true) => {
+    const noteComputedAt = (section: DashboardSection, value: unknown) => {
+      if (typeof value !== "string") return;
+      // 财务卡片和案件卡片共用 metrics：记较早的那个，“更新于”不夸大新鲜度。
+      setComputedAt((previous) => ({
+        ...previous,
+        [section]: section === "metrics" && previous[section] && generationHasMetric.current ? [previous[section]!, value].sort()[0] : value,
+      }));
+      if (section === "metrics") generationHasMetric.current = true;
+    };
+    const load = (section: DashboardSection, force = true, refresh = false) => {
       if (!active || pending.has(section)) return;
+      if (section === "metrics") generationHasMetric.current = false;
+      const requestParams = { allow_pending: true, ...(refresh ? { refresh: true } : {}) };
       if (!force && (document.hidden || Date.now() - (lastAttempt.get(section) ?? 0) < refreshIntervalMs)) return;
       lastAttempt.set(section, Date.now());
       const controller = new AbortController();
@@ -156,10 +174,11 @@ export function useDashboardData(requestedSections: readonly DashboardSection[] 
       const generation = section === "metrics" ? ++metricsGeneration : 0;
       let remaining = section === "metrics" ? 2 : 1;
       let metricsStale = false;
+      let metricsPending = false;
       const finish = () => {
         if (--remaining > 0 || pending.get(section) !== controller) return;
         pending.delete(section);
-        if (section === "metrics" && active && generation === metricsGeneration) retryWhenStale(section, metricsStale);
+        if (section === "metrics" && active && generation === metricsGeneration) retryWhenStale(section, metricsStale, metricsPending);
         if (active && (section !== "metrics" || generation === metricsGeneration)) {
           setLoading((previous) => ({ ...previous, [section]: false }));
         }
@@ -177,11 +196,18 @@ export function useDashboardData(requestedSections: readonly DashboardSection[] 
           requestController: AbortController,
           onError: (detail: string | undefined) => void,
         ) => {
-          api.get<Pick<DashboardData, "metrics"> & { stale?: boolean }>("/dashboard", { params: { section: apiSection }, signal: requestController.signal })
+          api.get<Pick<DashboardData, "metrics"> & { stale?: boolean; pending?: boolean; computed_at?: string }>("/dashboard", { params: { section: apiSection, ...requestParams }, signal: requestController.signal })
             .then(({ data: result }) => {
               if (!active || requestController.signal.aborted || generation !== metricsGeneration) return;
               loaded.add(section);
               if (result.stale) metricsStale = true;
+              if (result.pending) {
+                metricsPending = true;
+                setCalculating((previous) => ({ ...previous, [section]: true }));
+                return;
+              }
+              setCalculating((previous) => ({ ...previous, [section]: false }));
+              noteComputedAt(section, result.computed_at);
               setData((previous) => {
                 if (!active || requestController.signal.aborted || generation !== metricsGeneration) return previous;
                 const metrics = new Map(previous.metrics?.map((metric) => [metric.key, metric]));
@@ -206,12 +232,20 @@ export function useDashboardData(requestedSections: readonly DashboardSection[] 
         });
         return;
       }
-      api.get<Partial<DashboardData> & { stale?: boolean }>("/dashboard", { params: { section }, signal: controller.signal })
+      api.get<Partial<DashboardData> & { stale?: boolean; pending?: boolean; computed_at?: string }>("/dashboard", { params: { section, ...requestParams }, signal: controller.signal })
         .then(({ data: result }) => {
           if (active && !controller.signal.aborted) {
+            if (result.pending) {
+              setCalculating((previous) => ({ ...previous, [section]: true }));
+              retryWhenStale(section, true, true);
+              return;
+            }
+            setCalculating((previous) => ({ ...previous, [section]: false }));
             loaded.add(section);
             retryWhenStale(section, result.stale);
             delete result.stale;
+            noteComputedAt(section, result.computed_at);
+            delete result.computed_at;
             setData((previous) => {
               const next = { ...previous, ...result };
               remember(section, next);
@@ -231,8 +265,16 @@ export function useDashboardData(requestedSections: readonly DashboardSection[] 
     const refreshStale = () => requestedSections.forEach((section) => load(section, false));
     const timer = window.setInterval(refreshStale, refreshIntervalMs);
     document.addEventListener("visibilitychange", refreshStale);
+    let changedTimer: number | undefined;
+    const onDataChanged = () => {
+      window.clearTimeout(changedTimer);
+      changedTimer = window.setTimeout(() => requestedSections.forEach((section) => load(section, true, true)), dataChangedDebounceMs);
+    };
+    window.addEventListener(DATA_CHANGED_EVENT, onDataChanged);
     return () => {
       active = false;
+      window.clearTimeout(changedTimer);
+      window.removeEventListener(DATA_CHANGED_EVENT, onDataChanged);
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", refreshStale);
       staleTimers.forEach((timer) => window.clearTimeout(timer));
@@ -241,5 +283,7 @@ export function useDashboardData(requestedSections: readonly DashboardSection[] 
     };
   }, [requestedSections]);
   const retry = useCallback((section: DashboardSection) => loader.current(section), []);
-  return { data, loading, errors, caseMetricsError, retry };
+  const refreshAll = useCallback(() => requestedSections.forEach((section) => loader.current(section, true, true)), [requestedSections]);
+  const updatedAt = Object.values(computedAt).filter(Boolean).sort()[0];
+  return { data, loading, calculating, errors, caseMetricsError, retry, refreshAll, updatedAt };
 }

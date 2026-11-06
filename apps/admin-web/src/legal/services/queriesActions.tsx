@@ -334,7 +334,8 @@ export function createCaseQueriesActions(context: CaseQueriesDependencies) {
                 setWarehouseCatalog([]);
             }
             const [contractRes, hearingRes, summaryRes, referenceRes, customerRes, clueRes, feeTypeRes] = await Promise.all([
-                api.get("/cases/eligible-contracts"),
+                // 全部可见合同只有新建案件页和费用窗口用（CaseCenterPage 里打开费用窗口时再取），进案件中心不再读（11-06 压测）。
+                isCreateView ? api.get("/cases/eligible-contracts") : Promise.resolve({ data: { items: [] as ContractRow[] } }),
                 api.get("/hearings"),
                 api.get("/cases/summary"),
                 api.get("/cases/reference-options"),

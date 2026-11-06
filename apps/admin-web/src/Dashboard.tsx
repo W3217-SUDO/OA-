@@ -28,6 +28,12 @@ function greetingByHour(hour: number) {
   return "晚上好";
 }
 
+const updatedAtLabel = (updatedAt?: string) => {
+  if (!updatedAt) return "";
+  const minutes = Math.max(0, dayjs().diff(dayjs(updatedAt), "minute"));
+  return minutes < 1 ? "刚刚更新" : minutes < 60 ? `更新于 ${minutes} 分钟前` : `更新于 ${dayjs(updatedAt).format("HH:mm")}`;
+};
+
 export default function Dashboard({
   view,
   isNarrowViewport,
@@ -47,7 +53,7 @@ export default function Dashboard({
   assistantFocusRequested: boolean;
   onAssistantFocusHandled: () => void;
 }) {
-  const { data, loading, errors, retry } = useDashboardData();
+  const { data, loading, calculating, errors, retry, refreshAll: refreshDashboard, updatedAt } = useDashboardData();
   // 运行时由路由外的容器持有，提醒切到独立 Ai 页面后仍保留当前对话和草稿。
   const workspace = usePersonalWorkspaceContext();
   const detailRequest = useRef<AbortController | null>(null);
@@ -65,6 +71,7 @@ export default function Dashboard({
   const canOpenCustomer = canNavigate("customer-detail-");
   const sectionStatus = (section: DashboardSection) => errors[section]
     ? <div className="dashboard-section-status" role="alert">{errors[section]} <Button size="small" onClick={() => retry(section)}>重试</Button></div>
+    : calculating[section] ? <div className="dashboard-section-status" role="status">正在计算，算好后自动显示…</div>
     : loading[section] ? <div className="dashboard-section-status" role="status">正在加载...</div> : null;
   const navigateMetric = (metric: DashboardData["metrics"][number]) => {
     if (!canNavigate(metric.route)) return;
@@ -208,7 +215,7 @@ export default function Dashboard({
       onAsk={askAgent}
     />
   );
-  const refreshAll = () => { retry("todos"); retry("cases"); retry("rejections"); retry("metrics"); retry("portals"); };
+  const refreshAll = refreshDashboard;
   const greeting = greetingByHour(now.hour());
   const displayName = workspace.status?.identity?.display_name;
   return (
@@ -218,6 +225,7 @@ export default function Dashboard({
         {!isNarrowViewport && (
           <header className="wb-hero">
             <DashboardGreeting greeting={greeting} name={displayName} briefing={briefing} />
+            <span className="wb-hero-updated" role="status">{updatedAtLabel(updatedAt)}</span>
             <Button className="wb-hero-refresh" onClick={refreshAll} aria-label="刷新工作台">刷新</Button>
           </header>
         )}
@@ -252,6 +260,7 @@ export default function Dashboard({
               onNavigate={onNavigate}
               onOpenCase={(caseNo) => void openDashboardDetail("case", caseNo)}
               onRefresh={refreshAll}
+              updatedLabel={updatedAtLabel(updatedAt)}
               portals={errors.portals ? [] : data.portals}
               portalData={data}
               portalsLoading={loading.portals}

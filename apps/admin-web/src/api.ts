@@ -3,6 +3,9 @@ import { handleConflictReviewError, handleConflictReviewResponse } from './confl
 import { isNonlitigationFinancePage } from './finance/services/financeBusinessType'
 
 export const AUTH_EXPIRED_EVENT = 'sunhold:auth-expired'
+// 用户提交成功（写操作）后广播，工作台据此尽快刷新自己的数字。
+export const DATA_CHANGED_EVENT = 'sunhold:data-changed'
+const NOT_A_DATA_CHANGE = /(\/search$|\/read$|\/export|\/auth\/|agent|\/mcp|\/preview)/
 export const api = axios.create({baseURL:'/api/v1'})
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('access_token')
@@ -20,6 +23,11 @@ api.interceptors.request.use(config => {
 api.interceptors.response.use(
   response=>{
     handleConflictReviewResponse(response, api)
+    const method = String(response.config?.method || 'get').toLowerCase()
+    if (method !== 'get' && method !== 'head' && typeof window !== 'undefined'
+      && !NOT_A_DATA_CHANGE.test(String(response.config?.url || '').split('?')[0])) {
+      window.dispatchEvent(new Event(DATA_CHANGED_EVENT))
+    }
     return response
   },
   error=>{
