@@ -593,9 +593,14 @@ async def import_notary_storage(file: UploadFile = File(...), identity: dict = D
         shown = values
         if item.module == "evidence":
             values = {key: values[key] for key in ("certificate_no", "warehouse", "invoice_no", "case_no")}
-            # 旧系统迁来的证物有的只有 notarial_no，一起更新，页面上读哪个都一致。
-            if values["certificate_no"] and data.get("notarial_no"):
-                data["notarial_no"] = values["certificate_no"]
+            # 页面先读 notarization_no；旧系统迁来的证物几个键都有值，全部更新，读哪个都一致。
+            if values["certificate_no"]:
+                data["notarization_no"] = values["certificate_no"]
+                for key in ("notary_no", "notarial_no"):
+                    if data.get(key):
+                        data[key] = values["certificate_no"]
+            # 陶威 11-06“公证 A”：记下导入过哪几项，沪知同步不覆盖（scripts/hz_sync/notary_import_keep.py）。
+            data["notary_import_fields"] = sorted({*(data.get("notary_import_fields") or []), *(key for key in ("certificate_no", "warehouse", "invoice_no") if values[key])})
         item.data = {**data, **{key: value for key, value in values.items() if value}}
         db.add(WorkflowEvent(record_id=item.id, action="导入公证仓库信息", from_status=item.status, to_status=item.status, operator=identity["username"], comment=f"导入文件第 {row_no} 行"))
         imported_rows.append({

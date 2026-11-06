@@ -91,9 +91,12 @@ class NotaryStorageImportTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((single["certificate_no"], single["warehouse"], single["invoice_no"], single["case_no"]),
                          ("(2026)赣洪江证内字第1009号", "上海一仓", "FP001", "HZMS2600001"))
         self.assertNotIn("investigator", single)  # 调查员等线索信息不写到证物上
+        self.assertEqual(single["notarization_no"], "(2026)赣洪江证内字第1009号")  # 页面先读这个键
+        self.assertEqual(single["notary_import_fields"], ["certificate_no", "invoice_no", "warehouse"])  # 同步按它保留
         second = await self.data(self.second)
         self.assertEqual((second["invoice_no"], second.get("warehouse")), ("FP002", None))  # 空格子不覆盖
         self.assertNotIn("invoice_no", await self.data(self.first))
+        self.assertEqual(second["notary_import_fields"], ["certificate_no", "invoice_no"])  # 空格子不算导入过
 
     async def test_csv_still_works_and_other_formats_are_refused(self):
         csv_text = ",".join(HEADER) + "\nM26043645,,,,,,,上海四仓,,\n"
