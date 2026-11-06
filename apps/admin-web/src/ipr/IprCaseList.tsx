@@ -151,6 +151,25 @@ export function IprCaseList({
           </Button>
         ),
       },
+      // 501197（思法汇成 11-06）：客户后面新增申请人、案件阶段、管理人，老列都保留；没填的留空。
+      {
+        title: "申请人",
+        width: 180,
+        ellipsis: true,
+        render: (_, row) => row.data.applicant_name || row.data.applicant || row.data.applicants || "",
+      },
+      {
+        title: "案件阶段",
+        width: 120,
+        ellipsis: true,
+        render: (_, row) => row.data.case_phase || row.status || "",  // 和个案页案件阶段的取值一致
+      },
+      {
+        title: "管理人",
+        width: 120,
+        ellipsis: true,
+        render: (_, row) => row.data.case_manager || row.data.case_officer_name || "",
+      },
       {
         title: "处理人",
         width: 110,
@@ -348,7 +367,7 @@ export function IprCaseList({
           selectedRowKeys: selectedIprCaseIds,
           onChange: (keys) => onSelectedIdsChange(keys.map(Number)),
         }}
-        scroll={{ x: 1250 }}
+        scroll={{ x: 1670 }}
         pagination={{
           current: page,
           pageSize,
