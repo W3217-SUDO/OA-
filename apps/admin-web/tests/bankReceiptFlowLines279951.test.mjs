@@ -14,7 +14,7 @@ test("四个银行回款页走未导入流水列表，已导入时显示原到�
   assert.match(route, /!query\.routeConfig\?\.upload \|\| financeScope === "unclassified"/);
   assert.match(route, /fixedBank=\{bank\}/);
   const scope = read("../src/finance/bankReceiptScope.ts");
-  assert.match(scope, /\(icbc\|citic\|boc\|cmb\)/);
+  assert.match(scope, /\(icbc\|citic\|boc\|cmb\|gdicbc\)/); // 501588：国定工行同工行
 });
 
 test("查询、上传、导入、删除排在一排，导入删除用银行原始流水同一套接口", () => {
