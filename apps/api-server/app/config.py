@@ -36,7 +36,9 @@ class Settings(BaseSettings):
     # 工作台每个进程同时重算几份；已有旧结果时同一账号同一块多久才重算一次（秒）。
     dashboard_compute_concurrency: int = Field(default=1, ge=1, le=16)
     dashboard_global_compute_slots: int = Field(default=2, ge=1, le=16)
-    dashboard_stale_refresh_cooldown_seconds: int = Field(default=120, ge=1, le=3600)
+    dashboard_stale_refresh_cooldown_seconds: int = Field(default=300, ge=1, le=3600)
+    # 后台刷新每算 1 秒至少歇几秒（2 表示最多占一个计算名额的三分之一时间）。
+    dashboard_background_rest_ratio: float = Field(default=2, ge=0, le=20)
     query_prewarm_seed_active_users: bool = True
     query_prewarm_round_gap_seconds: float = Field(default=120, ge=0, le=3600)
     query_prewarm_item_pause_seconds: float = Field(default=0.3, ge=0, le=10)

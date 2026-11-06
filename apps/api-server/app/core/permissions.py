@@ -887,11 +887,6 @@ async def _ipr_own_cases_only(identity: dict, db: AsyncSession) -> bool:
 
 
 async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
-    from app.core.record_scope_projection import single_parse_condition
-    return [single_parse_condition(item, db) for item in await _record_scope_conditions_raw(identity, db)]
-
-
-async def _record_scope_conditions_raw(identity: dict, db: AsyncSession) -> list:
     from app.core.conflict_review import can_review_conflicts
     protected_scope = [] if await can_review_conflicts(identity, db) else [or_(
         BusinessRecord.module != "conflict_review", BusinessRecord.owner == identity.get("username", ""),
