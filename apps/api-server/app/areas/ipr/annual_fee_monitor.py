@@ -28,6 +28,22 @@ from app.core.dependencies import (
 
 router = APIRouter()
 
+
+async def _annual_fee_list_granted(identity: dict, db: AsyncSession) -> bool:
+    """501617：左侧“年费清单”照老系统单独授权（老系统恒达、申浩都没配这个菜单，实际谁都看不到）。
+    只认真实角色和个人权限：有页面的人会被提升成 admin，不能按提升后的角色放行。"""
+    from app.core.archived_case_people import is_actual_system_admin
+    from app.core.constants import IPR_ANNUAL_FEE_LIST_ACTION
+    from app.core.permissions import _user_permission_payload
+    from app.models import User
+    if is_actual_system_admin(identity):
+        return True
+    user = await db.scalar(select(User).where(User.username == identity.get("username"), User.is_active.is_(True)))
+    if not user:
+        return False
+    keys = set((await _user_permission_payload(user, db)).get("action_keys") or [])
+    return "*" in keys or IPR_ANNUAL_FEE_LIST_ACTION in keys
+
 # 国家知识产权局专利年费标准（元/年，不含费减）：(截至第几年, 金额)
 _FEE_TABLE = {
     "发明": [(3, 900), (6, 1200), (9, 2000), (12, 4000), (15, 6000), (20, 8000)],
@@ -320,6 +336,8 @@ async def ipr_annual_fee_monitor_summary(identity: dict = Depends(current_identi
     from app.core.permissions import _require_record_module_menu
     await _require_record_module_menu("ipr_case", identity, db, action="查看")
     views = _views(date.today())
+    if not await _annual_fee_list_granted(identity, db):
+        views = [item for item in views if item["group"] != "年费清单"]
     rows = await _monitored_fee_rows(identity, db, min(item["start"] for item in views), max(item["end"] for item in views))
     items = []
     for view in views:
@@ -355,6 +373,8 @@ async def _list_rows(query: _ListQuery, identity: dict, db: AsyncSession) -> tup
     selected = next((item for item in _views(date.today()) if item["key"] == query.view), None)
     if not selected:
         raise HTTPException(status_code=422, detail="年费清单/监控项目无效，请刷新页面")
+    if selected["group"] == "年费清单" and not await _annual_fee_list_granted(identity, db):
+        raise HTTPException(status_code=403, detail="“年费清单”需要单独授权，请联系系统管理员")
     rows = await _monitored_fee_rows(identity, db, selected["start"], selected["end"])
     if selected["unpaid_only"]:
         rows = [row for row in rows if not _out_of_monitor(row)]

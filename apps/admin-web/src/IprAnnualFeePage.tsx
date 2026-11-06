@@ -224,7 +224,8 @@ export default function IprAnnualFeePage({ onNavigate }: { onNavigate?: (route: 
     void loadRows(view, {});
   };
 
-  const groups = ["年费清单", "年费监控"].map((name) => ({ name, items: summary.filter((item) => item.group === name) }));
+  // 501617：“年费清单”照老系统单独授权，没授权的后端不返回，这里整组不显示。
+  const groups = ["年费清单", "年费监控"].map((name) => ({ name, items: summary.filter((item) => item.group === name) })).filter((group) => group.items.length);
   const current = summary.find((item) => item.key === view);
 
   return (

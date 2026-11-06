@@ -943,6 +943,9 @@ MENUS_EXACT_MARKER = "config:menus-exact"
 PUBLIC_MENU_KEYS = ("user-center", "user-messages", "user-communications", "user-account")
 
 INTERNAL_REVIEW_APPROVE_ACTION = "finance.internal.review.approve"
+# 501617（陶国南 11-06“按照老系统的一样”）：专利年费左侧“年费清单”照老系统单独授权、默认谁都没有；
+# 不用 ipr. 开头，免得给了页面就自动带上（PAGE_GRANTED_ACTION_ROOTS）。
+IPR_ANNUAL_FEE_LIST_ACTION = "annual_fee.list.view"
 INTERNAL_REVIEW_REJECT_ACTION = "finance.internal.review.reject"
 
 
@@ -1100,6 +1103,7 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
         )
     definitions.extend([
         {"code": "conflict.review.approve", "menu_key": "customer-conflict", "label": "利益冲突审批"},
+        {"code": IPR_ANNUAL_FEE_LIST_ACTION, "menu_key": "ipr-patent-annual-fee", "label": "年费清单（单独授权）"},
         {"code": INTERNAL_REVIEW_APPROVE_ACTION, "menu_key": "finance-internal-audit", "label": "审批（同意）"},
         {"code": INTERNAL_REVIEW_REJECT_ACTION, "menu_key": "finance-internal-audit", "label": "审批（拒绝）"},
         *({"code": code, "menu_key": "case-mine", "label": label} for code, label in (
