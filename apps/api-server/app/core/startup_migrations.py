@@ -169,6 +169,19 @@ def _apply_contract_link_indexes(connection: Connection, _upgrade_schema: Callab
     connection.execute(text("ANALYZE business_records"))
 
 
+def _apply_clue_linked_case_no_index(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    """sync_case_clues 的 6 个关联条件只差这一个索引；补上后整条 OR 不再逐行解析线索 JSON（陶威 11-06 同意）。
+
+    沪知同步一轮写事务可达数分钟，建索引要等它结束，期间所有写入都会排队；等不到就让这次启动失败、版本回滚，不让业务卡住。
+    """
+    if connection.dialect.name != "postgresql":
+        return
+    connection.execute(text("SET LOCAL lock_timeout = '5s'"))
+    connection.execute(text("SET LOCAL statement_timeout = '60s'"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_business_records_data_linked_case_no ON business_records ((data ->> 'linked_case_no'))"))
+    connection.execute(text("ANALYZE business_records"))
+
+
 def _apply_refund_candidate_indexes(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
     """只有少数费用登记退费进度或是律师代理费(退费)；部分索引只收这些行，表达式与 dashboard_scope 查询一致。"""
     if connection.dialect.name != "postgresql":
@@ -274,6 +287,8 @@ def _run_versioned_schema_migrations(
         ("incoming_payment_business_type_v1", _apply_incoming_business_type),
         # 501222：案件阶段预期停留天数按陶国南 11-03 给的天数预填一次，之后在系统参数里改。
         ("case_phase_expected_days_v1", _apply_case_phase_expected_days),
+        # 改案件保存时查关联线索慢（陶威 11-06 同意加索引）。
+        ("business_record_linked_case_no_index_v1", _apply_clue_linked_case_no_index),
     )
     for revision, migration in revisions:
         if connection.execute(
