@@ -15,6 +15,7 @@ from sqlalchemy.orm import aliased
 from app.core.constants import UPLOAD_ROOT
 from app.core.feedback_serial_migration import FEEDBACK_SERIAL_PREFIX
 from app.core.dependencies import current_identity, get_db, settings
+from app.areas.system.feedback_forward import FEEDBACK_REVIEWER_USERNAME, queue_file_forward, queue_forward
 from app.models import BusinessRecord, FileAttachment, Notification, User, WorkflowEvent
 
 router = APIRouter()
@@ -24,12 +25,18 @@ FEEDBACK_TZ = ZoneInfo("Asia/Shanghai")
 # 确认后回到待处理开始改，改完发给提交人验证，验证通过即已解决，没解决就重新打开。
 # 2026-10-28 加“已撤回”（陶威）：提交人在动手修改之前可以撤回（“没有动手改之前可以撤回，改了就不能撤回”），
 # 撤回后不再处理，页面只读，暂不支持重新打开。
-FEEDBACK_STATUSES = ("待处理", "待确认", "待验证", "已解决", "已撤回")
-FEEDBACK_STATUS_GROUPS = {"open": ("待处理", "待确认", "待验证"), "closed": ("已解决", "已撤回")}
+# 2026-11-06 加“待审核”（用户要求）：免审账号之外提交的单，范文玲（账号 fwl）审核通过后才开始处理。
+# 按账号判断，不按姓名（fwll 是另一个人）。只有上线后新提交的单带 data.reviewer，旧单流程不变。
+REVIEW_STATUS = "待审核"
+REVIEW_ACTION = "审核通过"
+REVIEW_EXEMPT_USERNAMES = frozenset({FEEDBACK_REVIEWER_USERNAME, "tgn", "shenhe"})
+REVIEW_WAIT_MESSAGE = "这个问题要等范文玲审核通过后才能处理"
+FEEDBACK_STATUSES = (REVIEW_STATUS, "待处理", "待确认", "待验证", "已解决", "已撤回")
+FEEDBACK_STATUS_GROUPS = {"open": (REVIEW_STATUS, "待处理", "待确认", "待验证"), "closed": ("已解决", "已撤回")}
 WITHDRAW_ACTION = "撤回"
 WITHDRAWN_STATUS = "已撤回"
 # 待确认随时可撤；待处理只在还没动手时可撤；待验证、已解决都已改过，不能撤。
-WITHDRAWABLE_STATUSES = frozenset({"待处理", "待确认"})
+WITHDRAWABLE_STATUSES = frozenset({REVIEW_STATUS, "待处理", "待确认"})
 # 出现过这些就算已经动手改了：提交人确认修改，或处理人直接报了处理完成（含旧流程的“已处理”）。
 WORK_STARTED_ACTIONS = frozenset({"确认修改", "处理完成，请验证"})
 WORK_STARTED_STATUSES = frozenset({"待验证", "已处理"})
@@ -117,8 +124,23 @@ def _assignee(record: BusinessRecord) -> str:
     return str((record.data or {}).get("assignee") or "")
 
 
+def _review_required(record: BusinessRecord) -> bool:
+    return (record.data or {}).get("reviewer") == FEEDBACK_REVIEWER_USERNAME
+
+
 def _can_view(record: BusinessRecord, identity: dict) -> bool:
-    return _is_admin(identity) or identity["username"] in {record.owner, _assignee(record)}
+    if _is_admin(identity) or identity["username"] in {record.owner, _assignee(record)}:
+        return True
+    return identity["username"] == FEEDBACK_REVIEWER_USERNAME and _review_required(record)
+
+
+def _own_scope(identity: dict):
+    """非管理员能在列表里看到的范围：自己提交的、指派给自己的；审核人还能看到要自己审核的单。"""
+    return or_(
+        BusinessRecord.owner == identity["username"],
+        BusinessRecord.data["assignee"].as_string() == identity["username"],
+        BusinessRecord.data["reviewer"].as_string() == identity["username"],
+    )
 
 
 def _can_handle(record: BusinessRecord, identity: dict) -> bool:
@@ -168,7 +190,7 @@ def _work_started(events) -> bool:
 
 def _withdrawable(record: BusinessRecord, events) -> bool:
     status = _status(record.status)
-    return status == "待确认" or (status == "待处理" and not _work_started(events))
+    return status in {REVIEW_STATUS, "待确认"} or (status == "待处理" and not _work_started(events))
 
 
 def _can_withdraw(record: BusinessRecord, identity: dict, events) -> bool:
@@ -185,15 +207,23 @@ def _require_open(record: BusinessRecord) -> None:
 def _action_definition(record: BusinessRecord, identity: dict, action: str) -> tuple[set[str], str] | None:
     if action == WITHDRAW_ACTION:
         return (set(WITHDRAWABLE_STATUSES), WITHDRAWN_STATUS) if record.owner == identity["username"] else None
+    if action == REVIEW_ACTION:
+        # 只有范文玲本人能审核通过，管理员、问题处理助手都不能代点，备注代记也不行。
+        if identity["username"] == FEEDBACK_REVIEWER_USERNAME and _review_required(record):
+            return {REVIEW_STATUS}, "待处理"
+        return None
     if _can_handle(record, identity) and action in HANDLER_ACTIONS:
-        return HANDLER_ACTIONS[action]
+        allowed, target = HANDLER_ACTIONS[action]
+        # 要审核的单：待验证时又提新需求，必须先转回待审核，不能直接发方案绕过审核。
+        return (allowed - {"待验证"} if _review_required(record) else allowed), target
     if action in _reporter_actions(record, identity):
-        return REPORTER_ACTIONS[action]
+        allowed, target = REPORTER_ACTIONS[action]
+        return allowed, (REVIEW_STATUS if action == REOPEN_ACTION and _review_required(record) else target)
     return None
 
 
 def _available_actions(record: BusinessRecord, identity: dict) -> list[str]:
-    return [action for action in (*HANDLER_ACTIONS, *REPORTER_ACTIONS)
+    return [action for action in (REVIEW_ACTION, *HANDLER_ACTIONS, *REPORTER_ACTIONS)
             if (definition := _action_definition(record, identity, action)) and _status(record.status) in definition[0]]
 
 
@@ -237,6 +267,14 @@ def _mark_reply(record: BusinessRecord, identity: dict) -> None:
         record.data = {**(record.data or {}), "reporter_new_reply": True}
     else:
         _clear_reporter_new_reply(record)
+
+
+def _queue_event_forward(record: BusinessRecord, event: WorkflowEvent) -> None:
+    """要审核的单：提交人的回复和说明转发给范文玲；重新打开要她重新审，不管谁代点都转发。"""
+    if not _review_required(record):
+        return
+    if event.action == REOPEN_ACTION or (event.operator == record.owner and (event.action in {"回复", WITHDRAW_ACTION} or event.comment)):
+        queue_forward(record, "event", event_id=event.id)
 
 
 def _clear_reporter_new_reply(record: BusinessRecord) -> None:
@@ -346,19 +384,25 @@ async def _new_feedback(db: AsyncSession, identity: dict, description: str, page
         data["route"] = route.strip()
     if control_names:
         data["controls"] = control_names
+    needs_review = identity["username"] not in REVIEW_EXEMPT_USERNAMES
+    if needs_review:
+        data["reviewer"] = FEEDBACK_REVIEWER_USERNAME
+    status = REVIEW_STATUS if needs_review else "待处理"
     record = BusinessRecord(
         module="bug_feedback", serial_no=await _next_feedback_serial(db),
-        title=description[:100], customer="", status="待处理", owner=identity["username"],
+        title=description[:100], customer="", status=status, owner=identity["username"],
         description=description, data=data,
     )
     db.add(record)
     await db.flush()
     event = WorkflowEvent(
-        record_id=record.id, action="提交反馈", from_status="", to_status="待处理",
+        record_id=record.id, action="提交反馈", from_status="", to_status=status,
         operator=identity["username"], comment="",
     )
     db.add(event)
     await db.flush()
+    if needs_review:
+        queue_forward(record, "submit", event_id=event.id)
     return record, event
 
 
@@ -407,10 +451,7 @@ async def feedback_status_counts(
     conditions = [BusinessRecord.module == "bug_feedback", BusinessRecord.deleted_at.is_(None)]
     # mine：“我的反馈”只看自己提交或指派给自己的（管理员也一样）；全部反馈在问题处理中心看。
     if mine or not _is_admin(identity):
-        conditions.append(or_(
-            BusinessRecord.owner == identity["username"],
-            BusinessRecord.data["assignee"].as_string() == identity["username"],
-        ))
+        conditions.append(_own_scope(identity))
     conditions.extend(_created_between(date_from, date_to))
     rows = (await db.execute(select(BusinessRecord.status, func.count()).where(*conditions)
                              .group_by(BusinessRecord.status))).all()
@@ -434,10 +475,7 @@ async def list_feedback(
     conditions = [BusinessRecord.module == "bug_feedback", BusinessRecord.deleted_at.is_(None)]  # 核心 Table 联接不带自动过滤，显式排除已删除
     # mine：“我的反馈”只看自己提交或指派给自己的（管理员也一样）；全部反馈在问题处理中心看。
     if mine or not _is_admin(identity):
-        conditions.append(or_(
-            BusinessRecord.owner == identity["username"],
-            BusinessRecord.data["assignee"].as_string() == identity["username"],
-        ))
+        conditions.append(_own_scope(identity))
     if status:
         conditions.append(BusinessRecord.status.in_(_stored_statuses(status)))
     elif group:
@@ -555,6 +593,7 @@ async def add_feedback_message(
             stored_paths.append(_save_screenshot(
                 db, record.id, upload, data, suffix, identity["username"], REPLY_CATEGORY[category], event.id,
             ))
+        _queue_event_forward(record, event)
         await _notify_participants(db, record, identity["username"], event.action, event.id)
         await db.commit()
         return {"status": _status(record.status)}
@@ -578,6 +617,10 @@ async def transition_feedback(
     allowed_statuses, next_status = definition
     previous_status = _status(record.status)
     _require_open(record)
+    if action in HANDLER_ACTIONS and previous_status == REVIEW_STATUS:
+        raise HTTPException(409, REVIEW_WAIT_MESSAGE)
+    if action in HANDLER_ACTIONS and previous_status == "待验证" and _review_required(record):
+        raise HTTPException(409, "提交人又提了新需求，要先转回待审核，等范文玲审核通过后再发方案")
     if action == WITHDRAW_ACTION and not _withdrawable(record, (await db.scalars(select(WorkflowEvent).where(
             WorkflowEvent.record_id == record.id))).all()):
         raise HTTPException(409, "已开始修改，不能撤回")
@@ -597,6 +640,7 @@ async def transition_feedback(
     )
     db.add(event)
     await db.flush()
+    _queue_event_forward(record, event)
     await _notify_participants(db, record, identity["username"], action, event.id)
     await db.commit()
     return {"status": record.status}
@@ -725,6 +769,7 @@ async def reply_feedback(
     )
     db.add(event)
     await db.flush()
+    _queue_event_forward(record, event)
     await _notify_participants(db, record, identity["username"], event.action, event.id)
     await db.commit()
     return {"status": current, "event_id": event.id}
@@ -773,12 +818,16 @@ async def upload_feedback_file(
     stored_path = UPLOAD_ROOT / stored_name
     stored_path.write_bytes(bytes(content))
     try:
-        db.add(FileAttachment(
+        attachment = FileAttachment(
             record_id=record.id, category=category, original_name=Path(name).name,
             stored_name=stored_name, content_type=request.headers.get("content-type") or "application/octet-stream",
             size=len(content), path=str(stored_path), uploader=identity["username"],
             remark=str(event_id) if event_id else "",
-        ))
+        )
+        db.add(attachment)
+        await db.flush()
+        if _review_required(record) and record.owner == identity["username"]:
+            queue_file_forward(record, attachment.id, event_id)
         await db.commit()
     except Exception:
         await db.rollback()

@@ -1,6 +1,7 @@
 """问题处理中心：编号按提交日期加当天流水；管理员可以删除问题（逻辑删除，删除后编号不重用）。"""
 import re
 import unittest
+from unittest.mock import patch
 from datetime import datetime
 
 import httpx
@@ -24,6 +25,10 @@ STAFF = {"username": "CODEXFBSTAFF", "role": "staff", "role_ids": ["staff"], "_a
 
 class FeedbackSerialAndDeleteTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
+        # 这里测的是免审账号的流程；要范文玲审核的单见 test_feedback_review_fanwl.py。
+        exempt = patch.object(feedback, "REVIEW_EXEMPT_USERNAMES", feedback.REVIEW_EXEMPT_USERNAMES | {STAFF["username"], ADMIN["username"]})
+        exempt.start()
+        self.addCleanup(exempt.stop)
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
         async with self.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)

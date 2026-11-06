@@ -26,16 +26,17 @@ type Props = {
   navKey?: number;
   onChanged?: () => void;
 };
+// 免审账号之外提交的单先到“待审核”，范文玲审核通过后才进入下面的流程（2026-11-06，后端强制）。
 // 处理流程：待处理 →（处理人写好怎么改）待确认 →（提交人确认修改）待处理 →（处理完）待验证 →（验证通过）已解决；
 // 没解决可重新打开回到待处理；解决前提交人可以撤回（已撤回，不再处理，2026-10-28）。
-const statuses = ["待处理", "待确认", "待验证", "已解决", "已撤回"];
+const statuses = ["待审核", "待处理", "待确认", "待验证", "已解决", "已撤回"];
 export type FeedbackView = "create" | "open" | "closed";
 // 处理中 = 还要有人处理或等提交人验证的；已解决 = 验证通过的和撤回的（tgn 选 A）。
 export const FEEDBACK_GROUP_STATUSES: Record<"open" | "closed", string[]> = {
-  open: ["待处理", "待确认", "待验证"], closed: ["已解决", "已撤回"],
+  open: ["待审核", "待处理", "待确认", "待验证"], closed: ["已解决", "已撤回"],
 };
 const statusColors: Record<string, string> = {
-  待处理: "warning", 待确认: "gold", 待验证: "processing", 已解决: "success", 已撤回: "default",
+  待审核: "orange", 待处理: "warning", 待确认: "gold", 待验证: "processing", 已解决: "success", 已撤回: "default",
 };
 
 export default function FeedbackManager({ sourceRoute, pageControls, openPages, menuPages, onNavigate, center = false, view, onViewChange, navKey = 0, onChanged }: Props) {

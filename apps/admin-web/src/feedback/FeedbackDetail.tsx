@@ -20,9 +20,9 @@ const requiresComment: Record<string, string> = {
 };
 // 状态流转说明的长度上限，与服务端 FeedbackTransition.comment 一致。
 const TRANSITION_COMMENT_LIMIT = 2000;
-const primaryActions = new Set(["确认修改", "处理完成，请验证", "验证通过"]);
+const primaryActions = new Set(["审核通过", "确认修改", "处理完成，请验证", "验证通过"]);
 const statusColors: Record<string, string> = {
-  待处理: "warning", 待确认: "gold", 待验证: "processing", 已解决: "success", 已撤回: "default",
+  待审核: "orange", 待处理: "warning", 待确认: "gold", 待验证: "processing", 已解决: "success", 已撤回: "default",
 };
 
 export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props) {
@@ -180,10 +180,12 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
   if (!feedback) return null;
   const actions = feedback.available_actions;
   const withdrawn = feedback.status === "已撤回";
-  const hint = actions.includes("确认修改")
+  const hint = actions.includes("审核通过") ? "同意处理就点“审核通过”；不同意请直接回复，问题会留在待审核。"
+    : feedback.status === "待审核" ? "等待范文玲审核，审核通过后才开始处理；可以继续回复补充。"
+    : actions.includes("确认修改")
     ? "没问题点“确认修改”，确认后才开始改；有意见直接回复。"
     : actions.includes("验证通过") ? "解决了点“验证通过”；没解决或还有新需求，写明后点“还有问题”。如需修改请点『还有问题』，只回复不会改状态。"
-    : feedback.reporter_new_reply && actions.includes("未解决，重新打开") ? "提交人在待验证时有新回复：如果是新需求或没解决，写明依据后点“还有问题”转回待处理。"
+    : feedback.reporter_new_reply && actions.includes("未解决，重新打开") ? "提交人在待验证时有新回复：如果是新需求或没解决，写明依据后点“还有问题”转回。"
     : actions.includes("请确认修改方案") ? "改之前先写好打算怎么改，点“请确认修改方案”交提交人确认。" : "";
 
   return <section aria-label="反馈详情">

@@ -208,6 +208,7 @@ async def lifespan(_: FastAPI):
         _dingtalk_notification_loop,
     )
     from app.core.notification_scheduler import notification_scheduler_loop
+    from app.areas.system.feedback_forward import feedback_review_forward_loop
     from app.core.attachment_oss_sync import attachment_oss_sync_loop
     from app.core.query_prewarm import query_prewarm_loop
     if settings.app_env.strip().lower() == "production":
@@ -247,6 +248,7 @@ async def lifespan(_: FastAPI):
         asyncio.create_task(_business_rule_loop()),
         asyncio.create_task(_dingtalk_notification_loop()),
         asyncio.create_task(notification_scheduler_loop()),
+        asyncio.create_task(feedback_review_forward_loop()),
         asyncio.create_task(attachment_oss_sync_loop()),
         asyncio.create_task(query_prewarm_loop()),
     ]))

@@ -4,6 +4,7 @@
 提交人在待确认时有意见直接回复，状态留在待确认；被指派的处理人也能替提交人确认（如非诉问题由指定的人确认）。
 """
 import unittest
+from unittest.mock import patch
 
 import httpx
 from fastapi import FastAPI
@@ -28,6 +29,10 @@ API = "/api/v1/feedback"
 
 class FeedbackConfirmFlowTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
+        # 这里测的是免审账号的流程；要范文玲审核的单见 test_feedback_review_fanwl.py。
+        exempt = patch.object(feedback, "REVIEW_EXEMPT_USERNAMES", feedback.REVIEW_EXEMPT_USERNAMES | {STAFF["username"], ADMIN["username"]})
+        exempt.start()
+        self.addCleanup(exempt.stop)
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
         async with self.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
@@ -113,7 +118,7 @@ class FeedbackConfirmFlowTest(unittest.IsolatedAsyncioTestCase):
         self.identity = dict(ADMIN)
         await self._transition("请确认修改方案", "打算这样改")
         counts = (await self.client.get(f"{API}/status-counts")).json()
-        self.assertEqual(list(counts["counts"]), ["待处理", "待确认", "待验证", "已解决", "已撤回"])
+        self.assertEqual(list(counts["counts"]), ["待审核", "待处理", "待确认", "待验证", "已解决", "已撤回"])
         self.assertEqual(counts["counts"]["待确认"], 1)
         self.identity = dict(STAFF)
         mine = (await self.client.get(f"{API}/status-counts", params={"mine": True})).json()

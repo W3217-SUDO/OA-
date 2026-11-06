@@ -5,6 +5,7 @@
 撤回记一条“撤回”处理记录并通知其他参与人，不删数据；撤回后只读，也不能重新打开。
 """
 import unittest
+from unittest.mock import patch
 
 import httpx
 from fastapi import FastAPI
@@ -29,6 +30,10 @@ API = "/api/v1/feedback"
 
 class FeedbackWithdrawTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
+        # 这里测的是免审账号的流程；要范文玲审核的单见 test_feedback_review_fanwl.py。
+        exempt = patch.object(feedback, "REVIEW_EXEMPT_USERNAMES", feedback.REVIEW_EXEMPT_USERNAMES | {STAFF["username"], ADMIN["username"]})
+        exempt.start()
+        self.addCleanup(exempt.stop)
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
         async with self.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
