@@ -227,7 +227,7 @@ async def list_internal_payment_packages(
         _record_dicts_for_identity, _record_scope_conditions,
     )
     # 501666（shenhe 11-06）：待核销/已核销列表按费用类型筛选——包里任一笔费用是所选类型就列出。
-    wanted_fee_types = {item.strip() for item in fee_types.split(",") if item.strip() and item.strip() not in {"请选择", "全部"}}
+    wanted_fee_types = {item.strip() for item in (fee_types if isinstance(fee_types, str) else "").split(",") if item.strip() and item.strip() not in {"请选择", "全部"}}
     legacy_status_by_page_id = {
         "5001003006": "待核销",
         "50001003006": "待核销",
