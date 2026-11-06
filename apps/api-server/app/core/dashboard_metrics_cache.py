@@ -309,18 +309,20 @@ async def _last_result(db, identity, section):
     return result if isinstance(result, dict) else None
 
 
-async def _stale_result(db, key, identity=None, section=None):
+async def _cached_state(db, key, identity=None, section=None):
+    """("fresh", 结果)：缓存还是最新的；("stale", 结果)：有旧结果可先给；(None, None)：从没算过或读不到。"""
     try:
         cached = await query_cache_store.read(key)
     except RedisError:
-        return None
+        return None, None
     if cached is None:
         # 当天（或这个版本）还没有结果：拿最近一次的结果先显示。
-        return None if section is None else await _last_result(db, identity, section)
+        last = None if section is None else await _last_result(db, identity, section)
+        return ("stale", last) if last is not None else (None, None)
     snapshot = await dashboard_snapshot(db)
-    if snapshot is None or snapshot == cached["snapshot"]:
-        return None  # 最新结果由独立任务走共享流程，一次读缓存即返回
-    return cached["result"]
+    if snapshot is None:
+        return None, None
+    return ("fresh" if snapshot == cached["snapshot"] else "stale"), cached["result"]
 
 
 def _shared_refresh(key, identity, section, compute_in, parameters=None, *, urgent=True):
@@ -365,16 +367,19 @@ async def cached_dashboard_query(db, identity, section, compute, *, compute_in=N
         from app.core.query_cache import _query_key
 
         key = _query_key(db, identity, f"dashboard.{section}", parameters, date.today())
-        stale = await _stale_result(db, key, identity, section)
+        state, cached = await _cached_state(db, key, identity, section)
         if db.in_transaction():
             await db.rollback()
-        if stale is not None:
-            state = "started" if key in _refreshing else await _refresh_state(key)
-            if state == "started":
+        if state == "fresh":  # 读缓存不排计算名额（分支 3 审查指出）
+            tag_request("cache", "shared")
+            return deepcopy(cached)
+        if state == "stale":
+            refresh = "started" if key in _refreshing else await _refresh_state(key)
+            if refresh == "started":
                 _shared_refresh(key, deepcopy(identity), section, compute_in, parameters, urgent=False)
-            tag_request("cache", "stale" if state != "cooling" else "cooldown")
+            tag_request("cache", "stale" if refresh != "cooling" else "cooldown")
             # 冷却中不带 stale 标记：前端不用再短轮询，等下一次定时刷新。
-            return {**stale, "stale": True} if state != "cooling" else stale
+            return {**cached, "stale": True} if refresh != "cooling" else cached
         task = _shared_refresh(key, deepcopy(identity), section, compute_in, parameters)
         tag_request("cache", "shared")
         return deepcopy(await asyncio.shield(task))

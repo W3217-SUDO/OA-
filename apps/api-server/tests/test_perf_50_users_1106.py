@@ -126,6 +126,24 @@ class IprWarningsTest(unittest.IsolatedAsyncioTestCase):
         visible.assert_not_called()
 
 
+class FreshCacheSkipsGateTest(unittest.IsolatedAsyncioTestCase):
+    async def test_fresh_cache_returns_without_waiting_for_slot(self):
+        from types import SimpleNamespace
+
+        db = SimpleNamespace(new=(), dirty=(), deleted=(), in_transaction=lambda: False,
+                             get_bind=lambda: SimpleNamespace(
+                                 url=SimpleNamespace(render_as_string=lambda hide_password: "postgresql://x/oa"),
+                                 dialect=SimpleNamespace(name="postgresql")))
+        with patch.object(cache.settings, "cache_redis_url", "redis://cache/0"), \
+                patch("app.core.query_cache.shared.source_revision", return_value="src"), \
+                patch.object(cache.query_cache_store, "read", new=AsyncMock(return_value={"snapshot": "1:1:", "result": {"x": 1}})), \
+                patch.object(cache, "dashboard_snapshot", new=AsyncMock(return_value="1:1:")), \
+                patch.object(cache, "_shared_refresh") as refresh:
+            result = await cache.cached_dashboard_query(db, {"username": "u"}, "todos", AsyncMock(), compute_in=lambda session: None)
+        self.assertEqual(result, {"x": 1})
+        refresh.assert_not_called()
+
+
 class DashboardIdentityTest(unittest.TestCase):
     def test_page_does_not_split_cache_but_permissions_do(self):
         base = {"username": "u", "role": "user", "_page_menu_capability": False, "_page_scope_actual": True}
@@ -150,7 +168,9 @@ class SeedActiveUsersTest(unittest.IsolatedAsyncioTestCase):
                 return False
 
             async def scalars(self, statement):
-                users = [SimpleNamespace(username="broken"), SimpleNamespace(username="new1")]
+                users = [SimpleNamespace(username="broken", role="user", profile={}),
+                         SimpleNamespace(username="new1", role="user", profile={}),
+                         SimpleNamespace(username="external", role="user", profile={"permission_role": "外部案源人"})]
                 return SimpleNamespace(all=lambda: users)
 
         async def identity_for(user, db):
