@@ -752,6 +752,14 @@ body {
 .form-grid .span-2 {
   grid-column: span 2;
 }
+/* 501635：发任务第一行“案号 + 任务主题”，两列等宽，选了案件标签也不把主题框挤出弹窗 */
+.form-grid.task-subject-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.task-subject-row .ant-form-item,
+.task-subject-row .ant-select {
+  min-width: 0;
+}
 .workflow-finished {
   color: var(--oa-text-3);
 }

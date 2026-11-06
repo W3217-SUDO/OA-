@@ -65,10 +65,34 @@ async def task_case_options(
     rows = (await db.scalars(select(BusinessRecord).where(*conditions).order_by(
         *exact_first, BusinessRecord.updated_at.desc(), BusinessRecord.id.desc(),
     ).limit(limit))).all()
+    people = await _case_preset_people(rows, db)
     return {"items": [{
         "id": row.id, "serial_no": row.serial_no, "title": row.title, "customer": row.customer, "status": row.status,
         "court_case_no": str((row.data or {}).get("court_case_no") or (row.data or {}).get("first_court_case_no") or ""),
+        **people[row.id],
     } for row in rows]}
+
+
+# 501635（tgn 11-06）：发任务选常见主题时自动带负责人——“跟进案件”带律师助理，“案件研究”带开庭律师。
+# 案件里登记的可能是账号也可能是中文名，统一换成在职账号；换不出来的不带（前端留空让人手选）。
+CASE_PRESET_FIELDS = {
+    "assistant_usernames": ("assistant_usernames", "assistant_username", "assistants", "assistant"),
+    "hearing_lawyer_usernames": ("hearing_lawyer_usernames", "hearing_lawyer_username", "hearing_lawyers", "hearing_lawyer", "court_lawyer_username", "court_lawyer"),
+}
+
+
+async def _case_preset_people(rows, db: AsyncSession) -> dict[int, dict[str, list[str]]]:
+    from app.core.case_task_members import _names
+    raw = {row.id: {key: list(dict.fromkeys(name for field in fields for name in _names((row.data or {}).get(field))))
+                    for key, fields in CASE_PRESET_FIELDS.items()} for row in rows}
+    wanted = {name for item in raw.values() for names in item.values() for name in names}
+    by_username, by_name = {}, {}
+    if wanted:
+        for user in (await db.scalars(select(User).where(User.is_active.is_(True), or_(User.username.in_(wanted), User.display_name.in_(wanted))))).all():
+            by_username[user.username] = user.username
+            by_name.setdefault(user.display_name or "", user.username)
+    resolve = lambda name: by_username.get(name) or by_name.get(name)
+    return {row_id: {key: list(dict.fromkeys(filter(None, map(resolve, names)))) for key, names in item.items()} for row_id, item in raw.items()}
 
 
 @router.get(f"{settings.api_prefix}/tasks/customer-options")

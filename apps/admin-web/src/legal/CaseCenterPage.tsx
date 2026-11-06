@@ -28,6 +28,7 @@ UpOutlined,
 UploadOutlined
 } from "@ant-design/icons";
 import type { TableColumnsType, UploadFile } from "antd";
+import { TaskSubjectFields } from "../tp/TaskSubjectFields";
 import { ROUTE_RESET_EVENT } from "../routeReset";
 import {
 Alert,
@@ -4024,8 +4025,8 @@ export default function CaseCenterPage({
       <Drawer open={Boolean(caseTaskCreateCase)} size={POPUP_WIDTH.md} title="案件任务" onClose={() => { setCaseTaskCreateCase(null); taskForm.resetFields(); setCaseTaskMaterialFiles([]); }} destroyOnHidden footer={<Space><Button type="primary" onClick={createCaseTask}>确定</Button><Button onClick={() => { setCaseTaskCreateCase(null); taskForm.resetFields(); setCaseTaskMaterialFiles([]); }}>取消</Button></Space>}>
         <Steps size="small" current={0} items={[{title:"任务填写"},{title:"任务分派"},{title:"任务处理"},{title:"任务完成"}]} style={{ marginBottom: 20 }} />
         <Form form={taskForm} layout="vertical">
-          <Form.Item label="案件编号"><Input value={caseTaskCreateCase?.serial_no || ""} disabled /></Form.Item>
-          <Form.Item label="任务主标题" name="title" rules={[{ required: true, message: "请输入任务主标题" }]}><Input placeholder="请输入任务主标题" /></Form.Item>
+          <TaskSubjectFields form={taskForm} caseNo={() => caseTaskCreateCase?.serial_no || ""}
+            caseField={<Form.Item label="案件编号"><Input value={caseTaskCreateCase?.serial_no || ""} disabled /></Form.Item>} />
           <Form.Item label="优先级" name="priority"><Radio.Group options={[{value:"重要",label:"重要"},{value:"普通",label:"一般"}]} /></Form.Item>
           <Form.Item label="VIP任务" name="is_vip" valuePropName="checked"><Checkbox>标记为VIP任务</Checkbox></Form.Item>
           <div className="form-grid">
@@ -4034,7 +4035,6 @@ export default function CaseCenterPage({
             <Form.Item label="任务开始时间" name="start_at" rules={[{ required: true, message: "请选择开始时间" }]}><DatePicker showTime={{format:"HH:mm"}} format="YYYY-MM-DD HH:mm" style={{ width: "100%" }} /></Form.Item>
             <Form.Item label="结束时间" name="end_at" rules={[{ required: true, message: "请选择结束时间" }]}><DatePicker showTime={{format:"HH:mm"}} format="YYYY-MM-DD HH:mm" style={{ width: "100%" }} /></Form.Item>
           </div>
-          <Form.Item label="任务描述" name="description"><Input.TextArea rows={4} /></Form.Item>
           <Form.Item label="任务附件（可多选，单个不超过20MB）"><Upload multiple fileList={caseTaskMaterialFiles} beforeUpload={(file) => { setCaseTaskMaterialFiles((items) => [...items, file]); return false; }} onRemove={(file) => setCaseTaskMaterialFiles((items) => items.filter((item) => item.uid !== file.uid))}><Button icon={<UploadOutlined />}>上传附件</Button></Upload></Form.Item>
         </Form>
       </Drawer>
@@ -4811,13 +4811,8 @@ export default function CaseCenterPage({
         />
         {taskCase && getCaseCapability(taskCase).can_create_case_task && <Card size="small" title="新建案件任务" style={{ marginTop: 16 }}>
           <Form form={taskForm} layout="vertical">
-            <Form.Item
-              label="任务名称"
-              name="title"
-              rules={[{ required: true }]}
-            >
-              <Input />
-            </Form.Item>
+            <TaskSubjectFields form={taskForm} caseNo={() => taskCase?.serial_no || ""}
+              caseField={<Form.Item label="案件编号"><Input value={taskCase?.serial_no || ""} disabled /></Form.Item>} />
             <div className="form-grid">
               <Form.Item
                 label="负责人"
@@ -4861,9 +4856,6 @@ export default function CaseCenterPage({
                 />
               </Form.Item>
             </div>
-            <Form.Item label="任务说明" name="description">
-              <Input.TextArea rows={3} />
-            </Form.Item>
             <Form.Item label="任务附件（可多选，单个不超过20MB）"><Upload multiple fileList={caseTaskMaterialFiles} beforeUpload={(file) => { setCaseTaskMaterialFiles((items) => [...items, file]); return false; }} onRemove={(file) => setCaseTaskMaterialFiles((items) => items.filter((item) => item.uid !== file.uid))}><Button icon={<UploadOutlined />}>上传附件</Button></Upload></Form.Item>
             <Button type="primary" onClick={createCaseTask}>
               创建案件任务

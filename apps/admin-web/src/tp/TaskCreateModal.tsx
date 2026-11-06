@@ -3,7 +3,6 @@ import {
   Button,
   DatePicker,
   Form,
-  Input,
   Modal,
   Select,
   Upload,
@@ -14,6 +13,7 @@ import type { FormInstance } from "antd";
 import dayjs from "dayjs";
 import type { PeopleOption } from "./types";
 import { TaskCasePicker, TaskCustomerPicker } from "./TaskLinkPickers";
+import { TASK_SUBJECT_PRESETS, TaskSubjectFields, applyTaskSubjectPreset } from "./TaskSubjectFields";
 
 export interface TaskCreateModalProps {
   open: boolean;
@@ -52,9 +52,29 @@ export default function TaskCreateModal(props: TaskCreateModalProps) {
       onCancel={onCancel}
     >
       <Form form={createForm} layout="vertical">
-        <Form.Item label="任务内容" name="title" rules={[{ required: true }]}>
-          <Input />
-        </Form.Item>
+        <TaskSubjectFields
+          form={createForm}
+          caseNo={() => String((createForm.getFieldValue("case_nos") || [])[0] || "")}
+          caseField={(
+          <Form.Item
+            label="关联案件"
+            name="case_nos"
+            extra="不填为事务性任务；选了案件即为案件任务"
+          >
+            <TaskCasePicker
+              onPick={(item) => {
+                // 关联案件时任务客户取案件的客户（与后端一致）：客户还没填就带出来。
+                if (item.customer && !String(createForm.getFieldValue("customer") || "").trim()) {
+                  createForm.setFieldValue("customer", item.customer);
+                }
+                // 先选了常见主题、后选案件：再带一次负责人
+                const title = String(createForm.getFieldValue("title") || "");
+                if (TASK_SUBJECT_PRESETS.some((preset) => preset.value === title)) void applyTaskSubjectPreset(createForm, title, item.serial_no);
+              }}
+            />
+          </Form.Item>
+          )}
+        />
         <div className="form-grid">
           <Form.Item label="负责人" name="owner" rules={[{ required: true }]}>
             <KeywordPersonSelect
@@ -118,25 +138,8 @@ export default function TaskCreateModal(props: TaskCreateModalProps) {
             }))}
           />
         </Form.Item>
-        <Form.Item
-          label="关联案件"
-          name="case_nos"
-          extra="不填为事务性任务，直接发给负责人；选了案件即为案件任务。可直接输入案号搜索，或点放大镜查找。"
-        >
-          <TaskCasePicker
-            onPick={(item) => {
-              // 关联案件时任务客户取案件的客户（与后端一致）：客户还没填就带出来。
-              if (item.customer && !String(createForm.getFieldValue("customer") || "").trim()) {
-                createForm.setFieldValue("customer", item.customer);
-              }
-            }}
-          />
-        </Form.Item>
         <Form.Item label="客户" name="customer">
           <TaskCustomerPicker />
-        </Form.Item>
-        <Form.Item label="任务说明" name="description">
-          <Input.TextArea rows={3} />
         </Form.Item>
         <Form.Item label="任务资料附件（可多选，单个不超过 20MB）">
           <Upload

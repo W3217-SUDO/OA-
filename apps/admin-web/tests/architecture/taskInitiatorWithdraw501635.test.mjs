@@ -13,3 +13,13 @@ test("501635: own tasks hide 申请取消任务 and offer direct withdraw everyw
   assert.match(read("TaskList"), /canWithdrawTask\(selected\) && \(\s*roleActionAllowed\("task\.withdraw"\)/);
   assert.match(read("TaskDetail"), /props\.canWithdrawTask\(communication\)[\s\S]{0,200}props\.onWithdraw\(communication\)/);
 });
+
+test("501635: 发任务 case + subject in one row, presets fill owner/deadline, content required", () => {
+  const fields = fs.readFileSync(new URL("../../src/tp/TaskSubjectFields.tsx", import.meta.url), "utf8");
+  assert.match(fields, /value: "跟进案件", ownerField: "assistant_usernames"[\s\S]*days: 10/);
+  assert.match(fields, /value: "案件研究", ownerField: "hearing_lawyer_usernames"[\s\S]*days: 10/);
+  assert.match(fields, /label="任务内容" name="description" rules=\{\[\{ required: true/);
+  assert.match(read("TaskCreateModal"), /<TaskSubjectFields/);
+  const casePage = fs.readFileSync(new URL("../../src/legal/CaseCenterPage.tsx", import.meta.url), "utf8");
+  assert.equal(casePage.match(/<TaskSubjectFields/g)?.length, 2, "both case task forms use it");
+});
