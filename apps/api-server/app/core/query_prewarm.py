@@ -200,7 +200,11 @@ async def seed_dashboards_for_active_users(sessions, bind):
             User.is_active.is_(True), User.must_change_password.is_not(True), User.username.not_in(known or {""}),
         ))).all())
     seeded = 0
+    from app.core.data_scope_gate import is_external_role
     for user in users:
+        # 外部账号（案源人、客户联系人等）多数从不登录，每天替他们算是白算。
+        if "admin" not in (user.role or "") and is_external_role((user.profile or {}).get("permission_role")):
+            continue
         try:
             async with sessions() as db:
                 identity = await _dashboard_identity_for(user, db)
