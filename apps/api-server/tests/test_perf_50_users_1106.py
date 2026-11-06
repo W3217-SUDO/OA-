@@ -120,6 +120,13 @@ class SqlShapeTest(unittest.TestCase):
         self.assertIn("json_to_record", inspect.getsource(stream_task_rows))
 
 
+class RecordListOrderTest(unittest.TestCase):
+    def test_ties_have_stable_order(self):
+        # 批量导入后大量记录 updated_at 相同；没有第二关键字时并列行的顺序随执行计划变，翻页可能重复或漏行。
+        from app.areas.legal import record_queries
+        self.assertIn("order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc())", inspect.getsource(record_queries.list_records))
+
+
 class ModuleScopeEquivalenceTest(unittest.IsolatedAsyncioTestCase):
     """_record_scope_conditions(module=...) 只换写法：每个账号看到的案件、客户和原写法一模一样。"""
 
