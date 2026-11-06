@@ -1168,6 +1168,9 @@ def _system_action_definitions(menu_keys: list[str] | set[str] | None = None) ->
         *({"code": code, "menu_key": menu_key, "label": label} for code, label, menu_key in IPR_ROLE_ACTIONS),
         *({"code": code, "menu_key": menu_key, "label": label} for code, label, menu_key in TASK_INVESTIGATION_ROLE_ACTIONS),
         *({"code": code, "menu_key": menu_key, "label": label} for code, menu_key, label in FINANCE_EDIT_DELETE_ACTIONS),
+        # 501684（范文玲 11-06 15:23）：“给别人配置财务操作”也能在角色权限里按角色勾选、关闭（挂在员工管理下）；
+        # 不做全角色默认勾选，上线时谁都不多出权限，原来员工管理里按人勾的照常有效。
+        {"code": "finance.actions.configure", "menu_key": "hr-all", "label": "给别人配置财务操作"},
     ])
     return definitions
 
