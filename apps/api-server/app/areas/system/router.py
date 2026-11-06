@@ -955,7 +955,7 @@ async def list_system_configs(keyword: str = "", page: int | None = Query(None, 
     items = (await db.scalars(select(SystemConfig).order_by(SystemConfig.id))).all()
     from app.areas.capability_market.connector_store import CONNECTOR_CONFIG_PREFIX
     from app.harness_agent.model_providers import CONFIG_KEY as MODEL_PROVIDER_CONFIG_KEY
-    items = [item for item in items if not item.key.startswith(CONNECTOR_CONFIG_PREFIX) and item.key != MODEL_PROVIDER_CONFIG_KEY]
+    items = [item for item in items if not item.key.startswith(CONNECTOR_CONFIG_PREFIX) and item.key not in {MODEL_PROVIDER_CONFIG_KEY, "feedback_review"}]
     from app.global_agent_skills import GLOBAL_SKILL_CONFIG_KEY
     from app.agent_permissions import is_actual_system_admin
     from app.user_agent_skills import USER_SKILL_CONFIG_PREFIX
@@ -979,6 +979,8 @@ async def list_system_configs(keyword: str = "", page: int | None = Query(None, 
 
 @router.patch(f"{settings.api_prefix}/system/configs/{{config_key}}")
 async def update_system_config(config_key: str, body: SystemConfigUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    if config_key == "feedback_review":
+        raise HTTPException(status_code=409, detail="审核设置只能在问题处理中心修改")
     from app.core.conflict_review import CONFIG_KEY, auto_review_status, can_manage_auto_review
     from app.core.permissions import (
         _require_admin,

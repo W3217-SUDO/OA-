@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.areas.system import feedback
+from app.areas.system import feedback, feedback_review_config
 from app.core import soft_delete
 from app.core.dependencies import current_identity, get_db
 from app.database import Base
@@ -30,7 +30,7 @@ API = "/api/v1/feedback"
 class FeedbackConfirmFlowTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         # 这里测的是免审账号的流程；要范文玲审核的单见 test_feedback_review_fanwl.py。
-        exempt = patch.object(feedback, "REVIEW_EXEMPT_USERNAMES", feedback.REVIEW_EXEMPT_USERNAMES | {STAFF["username"], ADMIN["username"]})
+        exempt = patch.object(feedback_review_config, "DEFAULT_EXEMPT", (STAFF["username"], ADMIN["username"]))
         exempt.start()
         self.addCleanup(exempt.stop)
         self.engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)

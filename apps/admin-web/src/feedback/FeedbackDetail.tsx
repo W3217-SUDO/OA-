@@ -181,7 +181,7 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
   const actions = feedback.available_actions;
   const withdrawn = feedback.status === "已撤回";
   const hint = actions.includes("审核通过") ? "同意处理就点“审核通过”；不同意请直接回复，问题会留在待审核。"
-    : feedback.status === "待审核" ? "等待范文玲审核，审核通过后才开始处理；可以继续回复补充。"
+    : feedback.status === "待审核" ? `等待${feedback.reviewer_display_name || "审核人"}审核，审核通过后才开始处理；可以继续回复补充。`
     : actions.includes("确认修改")
     ? "没问题点“确认修改”，确认后才开始改；有意见直接回复。"
     : actions.includes("验证通过") ? "解决了点“验证通过”；没解决或还有新需求，写明后点“还有问题”。如需修改请点『还有问题』，只回复不会改状态。"
@@ -212,6 +212,8 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
       </Popconfirm>}
     </div>
     {error && <Alert type="error" showIcon title={error} style={{ marginBottom: 16 }} />}
+    {feedback.status === "待审核" && feedback.reviewer_active === false && <Alert type="warning" showIcon style={{ marginBottom: 16 }}
+      title={`审核人${feedback.reviewer_display_name || ""}已停用，这个问题暂时没人能审核。请管理员到问题处理中心的“审核设置”更换审核人。`} />}
     <Descriptions bordered size="small" column={{ xs: 1, sm: 2, md: 2 }} items={[
       { key: "serial", label: "反馈编号", children: feedback.legacy_serial_no
         ? `${feedback.serial_no}（原编号 ${feedback.legacy_serial_no}）` : feedback.serial_no },

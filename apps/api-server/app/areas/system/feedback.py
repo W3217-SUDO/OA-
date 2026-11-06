@@ -15,8 +15,12 @@ from sqlalchemy.orm import aliased
 from app.core.constants import UPLOAD_ROOT
 from app.core.feedback_serial_migration import FEEDBACK_SERIAL_PREFIX
 from app.core.dependencies import current_identity, get_db, settings
-from app.areas.system.feedback_forward import FEEDBACK_REVIEWER_USERNAME, queue_file_forward, queue_forward
-from app.models import BusinessRecord, FileAttachment, Notification, User, WorkflowEvent
+from app.areas.system.feedback_forward import queue_file_forward, queue_forward, requeue_for_new_reviewer
+from app.areas.system.feedback_review_config import (
+    BOT_USERNAME, CONFIG_KEY as REVIEW_CONFIG_KEY, ReviewConfig, active_reviewer, load_review_config,
+)
+from app.core import change_log
+from app.models import BusinessRecord, FileAttachment, Notification, SystemConfig, User, WorkflowEvent
 
 router = APIRouter()
 
@@ -25,12 +29,12 @@ FEEDBACK_TZ = ZoneInfo("Asia/Shanghai")
 # 确认后回到待处理开始改，改完发给提交人验证，验证通过即已解决，没解决就重新打开。
 # 2026-10-28 加“已撤回”（陶威）：提交人在动手修改之前可以撤回（“没有动手改之前可以撤回，改了就不能撤回”），
 # 撤回后不再处理，页面只读，暂不支持重新打开。
-# 2026-11-06 加“待审核”（用户要求）：免审账号之外提交的单，范文玲（账号 fwl）审核通过后才开始处理。
-# 按账号判断，不按姓名（fwll 是另一个人）。只有上线后新提交的单带 data.reviewer，旧单流程不变。
+# 2026-11-06 加“待审核”（用户要求）：免审账号之外提交的单，审核人审核通过后才开始处理。
+# 审核人和免审账号在审核设置里配（默认 fwl；fwl、tgn、shenhe），按账号判断，不按姓名（fwll 是另一个人）。
+# 只有上线后新提交的单带 data.review，旧单流程不变。
 REVIEW_STATUS = "待审核"
 REVIEW_ACTION = "审核通过"
-REVIEW_EXEMPT_USERNAMES = frozenset({FEEDBACK_REVIEWER_USERNAME, "tgn", "shenhe"})
-REVIEW_WAIT_MESSAGE = "这个问题要等范文玲审核通过后才能处理"
+REVIEW_MARK = "required"
 FEEDBACK_STATUSES = (REVIEW_STATUS, "待处理", "待确认", "待验证", "已解决", "已撤回")
 FEEDBACK_STATUS_GROUPS = {"open": (REVIEW_STATUS, "待处理", "待确认", "待验证"), "closed": ("已解决", "已撤回")}
 WITHDRAW_ACTION = "撤回"
@@ -74,7 +78,7 @@ def _stored_statuses(status: str) -> set[str]:
 
 # 自动化处理（问题巡检会话）写入的回复和状态操作用这个身份，页面显示为“问题处理助手”，
 # 和管理者本人在网页上的回复区分开（用户要求，2026-10-27）。不是登录账号，权限按管理员。
-FEEDBACK_BOT_USERNAME = "feedback-bot"
+FEEDBACK_BOT_USERNAME = BOT_USERNAME
 FEEDBACK_BOT_DISPLAY_NAME = "问题处理助手"
 FEEDBACK_BOT_IDENTITY = {"username": FEEDBACK_BOT_USERNAME, "display_name": FEEDBACK_BOT_DISPLAY_NAME,
                          "role": "admin", "role_ids": ["admin"], "_actual_role_ids": ["admin"]}
@@ -102,6 +106,11 @@ class FeedbackTransition(BaseModel):
     comment: str = Field(default="", max_length=2000)
 
 
+class FeedbackReviewConfigUpdate(BaseModel):
+    reviewer: str = Field(default="", max_length=64)
+    exempt: list[str] = Field(default_factory=list, max_length=200)
+
+
 class FeedbackAssignment(BaseModel):
     username: str = Field(min_length=1, max_length=64)
 
@@ -125,22 +134,34 @@ def _assignee(record: BusinessRecord) -> str:
 
 
 def _review_required(record: BusinessRecord) -> bool:
-    return (record.data or {}).get("reviewer") == FEEDBACK_REVIEWER_USERNAME
+    return (record.data or {}).get("review") == REVIEW_MARK
 
 
-def _can_view(record: BusinessRecord, identity: dict) -> bool:
+def _can_view(record: BusinessRecord, identity: dict, reviewer: str) -> bool:
     if _is_admin(identity) or identity["username"] in {record.owner, _assignee(record)}:
         return True
-    return identity["username"] == FEEDBACK_REVIEWER_USERNAME and _review_required(record)
+    return identity["username"] == reviewer and _review_required(record)
 
 
-def _own_scope(identity: dict):
-    """非管理员能在列表里看到的范围：自己提交的、指派给自己的；审核人还能看到要自己审核的单。"""
-    return or_(
+def _own_scope(identity: dict, reviewer: str):
+    """非管理员能在列表里看到的范围：自己提交的、指派给自己的；审核人还能看到要审核的单。"""
+    conditions = [
         BusinessRecord.owner == identity["username"],
         BusinessRecord.data["assignee"].as_string() == identity["username"],
-        BusinessRecord.data["reviewer"].as_string() == identity["username"],
-    )
+    ]
+    if identity["username"] == reviewer:
+        conditions.append(BusinessRecord.data["review"].as_string() == REVIEW_MARK)
+    return or_(*conditions)
+
+
+def _can_edit_review_config(identity: dict) -> bool:
+    """只有管理员真人账号能改审核设置：问题处理助手、智能体和 MCP 调用都不行，会话不能靠改设置绕过审核。"""
+    return (_is_admin(identity) and identity["username"] != FEEDBACK_BOT_USERNAME
+            and change_log.source_var.get() not in {"mcp", "agent"})
+
+
+async def _reviewer_name(db: AsyncSession, config: ReviewConfig) -> str:
+    return await db.scalar(select(User.display_name).where(User.username == config.reviewer)) or config.reviewer
 
 
 def _can_handle(record: BusinessRecord, identity: dict) -> bool:
@@ -165,7 +186,7 @@ async def _get_feedback(db: AsyncSession, feedback_id: int, identity: dict, *, l
     if lock:
         statement = statement.with_for_update()
     record = await db.scalar(statement)
-    if not record or not _can_view(record, identity):
+    if not record or not _can_view(record, identity, (await load_review_config(db)).reviewer):
         raise HTTPException(404, "反馈不存在或无权查看")
     return record
 
@@ -204,12 +225,12 @@ def _require_open(record: BusinessRecord) -> None:
         raise HTTPException(409, "提交人已撤回这个问题，不再处理")
 
 
-def _action_definition(record: BusinessRecord, identity: dict, action: str) -> tuple[set[str], str] | None:
+def _action_definition(record: BusinessRecord, identity: dict, action: str, reviewer: str) -> tuple[set[str], str] | None:
     if action == WITHDRAW_ACTION:
         return (set(WITHDRAWABLE_STATUSES), WITHDRAWN_STATUS) if record.owner == identity["username"] else None
     if action == REVIEW_ACTION:
-        # 只有范文玲本人能审核通过，管理员、问题处理助手都不能代点，备注代记也不行。
-        if identity["username"] == FEEDBACK_REVIEWER_USERNAME and _review_required(record):
+        # 只有当前审核人本人能审核通过，管理员、问题处理助手都不能代点，备注代记也不行。
+        if identity["username"] == reviewer and _review_required(record):
             return {REVIEW_STATUS}, "待处理"
         return None
     if _can_handle(record, identity) and action in HANDLER_ACTIONS:
@@ -222,9 +243,9 @@ def _action_definition(record: BusinessRecord, identity: dict, action: str) -> t
     return None
 
 
-def _available_actions(record: BusinessRecord, identity: dict) -> list[str]:
+def _available_actions(record: BusinessRecord, identity: dict, reviewer: str) -> list[str]:
     return [action for action in (REVIEW_ACTION, *HANDLER_ACTIONS, *REPORTER_ACTIONS)
-            if (definition := _action_definition(record, identity, action)) and _status(record.status) in definition[0]]
+            if (definition := _action_definition(record, identity, action, reviewer)) and _status(record.status) in definition[0]]
 
 
 async def _notify_participants(
@@ -270,7 +291,7 @@ def _mark_reply(record: BusinessRecord, identity: dict) -> None:
 
 
 def _queue_event_forward(record: BusinessRecord, event: WorkflowEvent) -> None:
-    """要审核的单：提交人的回复和说明转发给范文玲；重新打开要她重新审，不管谁代点都转发。"""
+    """要审核的单：提交人的回复和说明转发给审核人；重新打开要重新审，不管谁代点都转发。"""
     if not _review_required(record):
         return
     if event.action == REOPEN_ACTION or (event.operator == record.owner and (event.action in {"回复", WITHDRAW_ACTION} or event.comment)):
@@ -384,9 +405,9 @@ async def _new_feedback(db: AsyncSession, identity: dict, description: str, page
         data["route"] = route.strip()
     if control_names:
         data["controls"] = control_names
-    needs_review = identity["username"] not in REVIEW_EXEMPT_USERNAMES
+    needs_review = identity["username"] not in (await load_review_config(db)).exempt
     if needs_review:
-        data["reviewer"] = FEEDBACK_REVIEWER_USERNAME
+        data["review"] = REVIEW_MARK
     status = REVIEW_STATUS if needs_review else "待处理"
     record = BusinessRecord(
         module="bug_feedback", serial_no=await _next_feedback_serial(db),
@@ -442,6 +463,69 @@ async def create_feedback(
         raise
 
 
+async def _review_config_payload(db: AsyncSession, identity: dict) -> dict:
+    config = await load_review_config(db)
+    can_edit = _can_edit_review_config(identity)
+    reviewer = await active_reviewer(db, config)
+    payload = {
+        "reviewer": config.reviewer, "exempt": sorted(config.exempt), "can_edit": can_edit,
+        "reviewer_active": reviewer is not None, "reviewer_display_name": await _reviewer_name(db, config),
+    }
+    if can_edit:
+        users = (await db.scalars(select(User).where(
+            User.is_active.is_(True), User.username != FEEDBACK_BOT_USERNAME,
+        ).order_by(User.display_name, User.username))).all()
+        payload["users"] = [{"username": user.username, "display_name": user.display_name} for user in users]
+    return payload
+
+
+@router.get(f"{settings.api_prefix}/feedback/review-config")
+async def get_feedback_review_config(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    if not _is_admin(identity):
+        raise HTTPException(403, "仅管理员可以查看审核设置")
+    return await _review_config_payload(db, identity)
+
+
+@router.put(f"{settings.api_prefix}/feedback/review-config")
+async def update_feedback_review_config(
+    body: FeedbackReviewConfigUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db),
+):
+    if not _can_edit_review_config(identity):
+        raise HTTPException(403, "只有管理员本人可以修改审核设置")
+    reviewer = body.reviewer.strip()
+    if not reviewer:
+        raise HTTPException(422, "必须选择审核人")
+    exempt = sorted({item.strip() for item in body.exempt if item.strip()})
+    names = {reviewer, *exempt}
+    if FEEDBACK_BOT_USERNAME in names:
+        raise HTTPException(422, "问题处理助手不能当审核人，也不能免审")
+    active = set((await db.scalars(select(User.username).where(User.username.in_(names), User.is_active.is_(True)))).all())
+    if reviewer not in active:
+        raise HTTPException(422, "审核人必须是在职账号")
+    if missing := sorted(names - active):
+        raise HTTPException(422, f"免审账号必须是在职账号：{'、'.join(missing)}")
+    previous = await load_review_config(db)
+    item = await db.scalar(select(SystemConfig).where(SystemConfig.key == REVIEW_CONFIG_KEY).with_for_update())
+    value = {"reviewer": reviewer, "exempt": exempt}
+    if item:
+        item.value = value
+        item.updated_by = identity["username"]
+    else:
+        db.add(SystemConfig(key=REVIEW_CONFIG_KEY, label="问题处理中心审核设置", group="问题处理中心", value=value,
+                            description="审核人和免审账号，只能在问题处理中心的审核设置里改", updated_by=identity["username"]))
+    if reviewer != previous.reviewer:
+        # 已在待审核的单由新审核人审：内容再发给新审核人一遍，没发出去的重新计次。
+        records = (await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "bug_feedback", BusinessRecord.deleted_at.is_(None),
+            BusinessRecord.data["review"].as_string() == REVIEW_MARK,
+            or_(BusinessRecord.status == REVIEW_STATUS, BusinessRecord.data["review_forward_pending"].as_string().is_not(None)),
+        ).with_for_update())).all()
+        for record in records:
+            requeue_for_new_reviewer(record, still_in_review=record.status == REVIEW_STATUS)
+    await db.commit()
+    return await _review_config_payload(db, identity)
+
+
 @router.get(f"{settings.api_prefix}/feedback/status-counts")
 async def feedback_status_counts(
     mine: bool = Query(False), date_from: date | None = Query(None), date_to: date | None = Query(None),
@@ -451,7 +535,7 @@ async def feedback_status_counts(
     conditions = [BusinessRecord.module == "bug_feedback", BusinessRecord.deleted_at.is_(None)]
     # mine：“我的反馈”只看自己提交或指派给自己的（管理员也一样）；全部反馈在问题处理中心看。
     if mine or not _is_admin(identity):
-        conditions.append(_own_scope(identity))
+        conditions.append(_own_scope(identity, (await load_review_config(db)).reviewer))
     conditions.extend(_created_between(date_from, date_to))
     rows = (await db.execute(select(BusinessRecord.status, func.count()).where(*conditions)
                              .group_by(BusinessRecord.status))).all()
@@ -475,7 +559,7 @@ async def list_feedback(
     conditions = [BusinessRecord.module == "bug_feedback", BusinessRecord.deleted_at.is_(None)]  # 核心 Table 联接不带自动过滤，显式排除已删除
     # mine：“我的反馈”只看自己提交或指派给自己的（管理员也一样）；全部反馈在问题处理中心看。
     if mine or not _is_admin(identity):
-        conditions.append(_own_scope(identity))
+        conditions.append(_own_scope(identity, (await load_review_config(db)).reviewer))
     if status:
         conditions.append(BusinessRecord.status.in_(_stored_statuses(status)))
     elif group:
@@ -522,6 +606,7 @@ async def get_feedback(feedback_id: int, identity: dict = Depends(current_identi
         record.owner, _assignee(record), identity["username"],
     })))).all()
     names = {user.username: user.display_name for user in users}
+    review_config = await load_review_config(db)
     has_screenshot = bool(await db.scalar(select(FileAttachment.id).where(
         FileAttachment.record_id == record.id, FileAttachment.category == "问题反馈截图",
     ).limit(1)))
@@ -543,7 +628,9 @@ async def get_feedback(feedback_id: int, identity: dict = Depends(current_identi
     return {
         **_serialize_feedback(record, names.get(record.owner, ""), names.get(_assignee(record), ""), has_screenshot),
         "can_assign": _is_admin(identity), "can_delete": _is_admin(identity),
-        "available_actions": _available_actions(record, identity),
+        "available_actions": _available_actions(record, identity, review_config.reviewer),
+        "reviewer_display_name": await _reviewer_name(db, review_config) if _status(record.status) == REVIEW_STATUS else "",
+        "reviewer_active": await active_reviewer(db, review_config) is not None,
         "can_withdraw": _can_withdraw(record, identity, events),
         "attachments": [{
             "id": item.id, "name": item.original_name, "size": item.size,
@@ -611,16 +698,17 @@ async def transition_feedback(
 ):
     record = await _get_feedback(db, feedback_id, identity, lock=True)
     action = body.action.strip()
-    definition = _action_definition(record, identity, action)
+    review_config = await load_review_config(db)
+    definition = _action_definition(record, identity, action, review_config.reviewer)
     if definition is None:
         raise HTTPException(403, "无权执行此操作")
     allowed_statuses, next_status = definition
     previous_status = _status(record.status)
     _require_open(record)
     if action in HANDLER_ACTIONS and previous_status == REVIEW_STATUS:
-        raise HTTPException(409, REVIEW_WAIT_MESSAGE)
+        raise HTTPException(409, f"这个问题要等{await _reviewer_name(db, review_config)}审核通过后才能处理")
     if action in HANDLER_ACTIONS and previous_status == "待验证" and _review_required(record):
-        raise HTTPException(409, "提交人又提了新需求，要先转回待审核，等范文玲审核通过后再发方案")
+        raise HTTPException(409, f"提交人又提了新需求，要先转回待审核，等{await _reviewer_name(db, review_config)}审核通过后再发方案")
     if action == WITHDRAW_ACTION and not _withdrawable(record, (await db.scalars(select(WorkflowEvent).where(
             WorkflowEvent.record_id == record.id))).all()):
         raise HTTPException(409, "已开始修改，不能撤回")

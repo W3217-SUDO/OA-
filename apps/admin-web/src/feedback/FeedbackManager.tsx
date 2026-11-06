@@ -7,6 +7,7 @@ import { beijingTime } from "./time";
 import { api } from "../api";
 import FeedbackDetail from "./FeedbackDetail";
 import FeedbackForm from "./FeedbackForm";
+import FeedbackReviewSettings from "./FeedbackReviewSettings";
 import { consumeFeedbackStatusFilter, consumeFeedbackTarget, readFeedbackIdFromUrl, syncFeedbackIdToUrl, type FeedbackPageOption } from "./navigation";
 import type { FeedbackPage, FeedbackRecord, FeedbackStatusCounts } from "./types";
 
@@ -192,6 +193,7 @@ export default function FeedbackManager({ sourceRoute, pageControls, openPages, 
           onChange={(value) => { setDateRange(value as [Dayjs | null, Dayjs | null] | null); setPage(1); }} />
         <Button onClick={() => setReload((current) => current + 1)} loading={loading}>刷新</Button>
         {!center && !view && <Button type="primary" onClick={() => setCreating(true)}>提交反馈</Button>}
+        {center && canDelete && <FeedbackReviewSettings />}
       </Space>
       {statusTabs && <Segmented aria-label="按状态筛选反馈" className="feedback-status-tabs" style={{ marginBottom: 12 }} value={status}
         onChange={(value) => { setStatus(String(value)); setPage(1); }}

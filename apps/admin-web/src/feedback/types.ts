@@ -19,6 +19,15 @@ export type FeedbackRecord = {
   reporter_new_reply?: boolean;
 };
 
+export type FeedbackReviewConfig = {
+  reviewer: string;
+  reviewer_display_name: string;
+  reviewer_active: boolean;
+  exempt: string[];
+  can_edit: boolean;
+  users?: { username: string; display_name: string }[];
+};
+
 export type FeedbackEvent = {
   id: number;
   action: string;
@@ -49,6 +58,9 @@ export type FeedbackDetails = FeedbackRecord & {
   /** 管理员可以删除问题（逻辑删除，可在回收站恢复）。 */
   can_delete?: boolean;
   available_actions: string[];
+  /** 待审核时等谁审核；审核人停用时页面提示管理员换人。 */
+  reviewer_display_name?: string;
+  reviewer_active?: boolean;
   /** 提交人本人、还没动手修改时可以撤回（待确认，或从未确认修改过的待处理；撤回后不再处理，页面只读）。 */
   can_withdraw?: boolean;
 };

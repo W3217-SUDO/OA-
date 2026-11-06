@@ -8,11 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.areas.system import feedback, feedback_forward
-from app.core import soft_delete
+from app.areas.system import feedback, feedback_forward, feedback_review_config
+from app.core import change_log, soft_delete
 from app.core.dependencies import current_identity, get_db
 from app.database import Base
-from app.models import BusinessRecord, User, WorkflowEvent
+from app.models import BusinessRecord, DataChangeLog, User
 
 
 def person(username, role="staff", name=""):
@@ -27,6 +27,8 @@ SHENHE = person("shenhe", "auditor", "审核管理（赵媛）")
 ADMIN = person("admin", "admin", "管理者")
 STAFF = person("CODEXFWLSTAFF", "staff", "普通提交人")
 BOT = feedback.FEEDBACK_BOT_IDENTITY
+NEW = person("CODEXFWLNEW", "staff", "新审核人")
+DINGTALK = {"fwl": "156133631033066318", "CODEXFWLNEW": "999"}
 API = "/api/v1/feedback"
 PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 16
 
@@ -40,7 +42,9 @@ class ReviewBase(unittest.IsolatedAsyncioTestCase):
         soft_delete.set_actor("CODEXFWL")
         async with self.sessions() as db:
             db.add_all([User(username=item["username"], display_name=item["display_name"], password_hash="isolated-only",
-                             department="CODEXFWL", role=item["role"]) for item in (FWL, FWLL, TGN, SHENHE, ADMIN, STAFF)])
+                             department="CODEXFWL", role=item["role"],
+                             profile={"dingtalk_user_id": DINGTALK.get(item["username"], "")})
+                        for item in (FWL, FWLL, TGN, SHENHE, ADMIN, STAFF, NEW)])
             await db.commit()
         self.identity = dict(STAFF)
         app = FastAPI()
@@ -309,6 +313,119 @@ class ReviewForwardTest(ReviewBase):
         self.assertEqual(len(self.sent), 2)
         self.assertIn("正文在前", self.sent[0][2])
         self.assertIn("回复在后", self.sent[1][2])
+
+
+class ReviewConfigTest(ReviewBase):
+    async def _save(self, identity, reviewer, exempt=()):
+        self.identity = dict(identity)
+        return await self.client.put(f"{API}/review-config", json={"reviewer": reviewer, "exempt": list(exempt)})
+
+    async def test_missing_or_bad_config_uses_defaults(self):
+        self.identity = dict(ADMIN)
+        data = (await self.client.get(f"{API}/review-config")).json()
+        self.assertEqual((data["reviewer"], data["exempt"]), ("fwl", ["fwl", "shenhe", "tgn"]))
+        self.assertTrue(data["can_edit"])
+        for value in ("坏数据", {"reviewer": "", "exempt": []}, {"reviewer": "feedback-bot", "exempt": []}, {"reviewer": "x"}):
+            config = feedback_review_config.parse_review_config(value)
+            self.assertEqual(config.reviewer, "fwl", value)
+            self.assertEqual(config.exempt, frozenset({"fwl", "tgn", "shenhe"}))
+
+    async def test_admin_change_takes_effect(self):
+        saved = await self._save(TGN, NEW["username"], [STAFF["username"]])
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(saved.json()["reviewer"], NEW["username"])
+        # 名单换了：STAFF 免审，原来免审的 shenhe 要审。
+        self.assertEqual((await self._detail(await self._submit(STAFF)))["status"], "待处理")
+        self.assertEqual((await self._detail(await self._submit(SHENHE)))["status"], "待审核")
+
+    async def test_bot_agents_and_non_admins_cannot_change(self):
+        for identity in (BOT, STAFF, SHENHE, person("fwl", "staff", "范文玲")):
+            self.assertEqual((await self._save(identity, STAFF["username"])).status_code, 403, identity["username"])
+        for source in ("mcp", "agent"):
+            token = change_log.set_source(source)
+            try:
+                self.assertEqual((await self._save(ADMIN, STAFF["username"])).status_code, 403, source)
+            finally:
+                change_log.source_var.reset(token)
+        self.identity = dict(ADMIN)
+        self.assertEqual((await self.client.get(f"{API}/review-config")).json()["reviewer"], "fwl")
+
+    async def test_invalid_reviewer_rejected(self):
+        self.assertEqual((await self._save(ADMIN, "  ")).status_code, 422)
+        self.assertEqual((await self._save(ADMIN, "不存在的人")).status_code, 422)
+        self.assertEqual((await self._save(ADMIN, "feedback-bot")).status_code, 422)
+        self.assertEqual((await self._save(ADMIN, "fwl", ["feedback-bot"])).status_code, 422)
+        self.assertEqual((await self._save(ADMIN, "fwl", ["不存在的人"])).status_code, 422)
+        async with self.sessions() as db:
+            user = await db.scalar(select(User).where(User.username == NEW["username"]))
+            user.is_active = False
+            await db.commit()
+        self.assertEqual((await self._save(ADMIN, NEW["username"])).status_code, 422)
+
+    async def test_generic_config_route_cannot_change_it(self):
+        from app.areas.system import router as system_router
+        app = FastAPI()
+        app.include_router(system_router.router)
+        app.dependency_overrides[current_identity] = lambda: dict(ADMIN)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://isolated") as client:
+            response = await client.patch("/api/v1/system/configs/feedback_review", json={"value": {"reviewer": "x"}})
+        self.assertEqual(response.status_code, 409, response.text)
+
+    async def test_new_reviewer_takes_over_pending_tickets(self):
+        feedback_id = await self._submit(description="换人前的单")
+        await self._flush()
+        self.assertEqual(self.sent[0][0], "156133631033066318")
+        self.sent.clear()
+        self.assertEqual((await self._save(ADMIN, NEW["username"], ["tgn"])).status_code, 200)
+        self.assertEqual((await self._as(FWL, feedback_id, "审核通过")).status_code, 403)
+        # 审核人不是管理员也能看到并通过。
+        self.assertIn("审核通过", (await self._detail(feedback_id, NEW))["available_actions"])
+        listed = (await self.client.get(API, params={"mine": True})).json()
+        self.assertEqual([item["id"] for item in listed["items"]], [feedback_id])
+        await self._flush()
+        self.assertEqual([item[0] for item in self.sent], ["999"])
+        self.assertIn("换人前的单", self.sent[0][2])
+        self.assertEqual((await self._as(NEW, feedback_id, "审核通过")).json(), {"status": "待处理"})
+
+    async def test_same_reviewer_saved_again_does_not_resend(self):
+        await self._submit()
+        await self._flush()
+        self.sent.clear()
+        self.assertEqual((await self._save(ADMIN, "fwl", ["fwl"])).status_code, 200)
+        await self._flush()
+        self.assertEqual(self.sent, [])
+
+    async def test_disabled_reviewer_blocks_but_does_not_release(self):
+        await self._save(ADMIN, NEW["username"])
+        feedback_id = await self._submit()
+        async with self.sessions() as db:
+            user = await db.scalar(select(User).where(User.username == NEW["username"]))
+            user.is_active = False
+            await db.commit()
+        detail = await self._detail(feedback_id)
+        self.assertEqual((detail["status"], detail["reviewer_active"]), ("待审核", False))
+        self.assertEqual((await self._as(ADMIN, feedback_id, "处理完成，请验证", "x")).status_code, 409)
+        await self._flush()
+        self.assertEqual(self.sent, [])
+        pending = (await self._record(feedback_id)).data[feedback_forward.PENDING_KEY]
+        self.assertIn("审核人已停用", pending[0]["error"])
+        # 管理员换人后恢复。
+        await self._save(ADMIN, "fwl", ["tgn"])
+        await self._flush()
+        self.assertEqual(self.sent[0][0], "156133631033066318")
+        self.assertEqual((await self._as(FWL, feedback_id, "审核通过")).json(), {"status": "待处理"})
+
+    async def test_change_is_logged(self):
+        self.identity = dict(TGN)
+        soft_delete.set_actor("tgn")
+        await self.client.put(f"{API}/review-config", json={"reviewer": "fwl", "exempt": ["tgn"]})
+        await self.client.put(f"{API}/review-config", json={"reviewer": NEW["username"], "exempt": ["tgn"]})
+        async with self.sessions() as db:
+            logs = (await db.scalars(select(DataChangeLog).where(DataChangeLog.table_name == "system_configs")
+                                     .order_by(DataChangeLog.id))).all()
+        self.assertEqual(len(logs), 2)
+        self.assertEqual(logs[-1].actor, "tgn")
+        self.assertEqual(logs[-1].changes["value"]["__json__"]["reviewer"], ["fwl", NEW["username"]])
 
 
 if __name__ == "__main__":

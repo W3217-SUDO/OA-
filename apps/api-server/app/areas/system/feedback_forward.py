@@ -13,14 +13,13 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import select, update
 
+from app.areas.system.feedback_review_config import active_reviewer, load_review_config
 from app.database import SessionLocal
 from app.dingtalk import dingtalk_client
 from app.models import BusinessRecord, FileAttachment, User, WorkflowEvent
 
 logger = logging.getLogger(__name__)
 
-FEEDBACK_REVIEWER_USERNAME = "fwl"
-FEEDBACK_REVIEWER_DINGTALK_ID = "156133631033066318"
 FEEDBACK_LINK = "https://huzhilawfirm.com/?page=feedback&id={id}"
 
 PENDING_KEY = "review_forward_pending"
@@ -64,6 +63,16 @@ def queue_file_forward(record: BusinessRecord, attachment_id: int, event_id: int
         if (event_id is None and item["kind"] == "submit") or (event_id is not None and item.get("event_id") == event_id):
             return
     queue_forward(record, "file", attachment_id=attachment_id)
+
+
+def requeue_for_new_reviewer(record: BusinessRecord, *, still_in_review: bool) -> None:
+    """换审核人后：没发出去的重新计次，发给新审核人；还在待审核的单把全部内容再发给新审核人一遍。"""
+    now = _now().isoformat()
+    pending = [{**item, "attempts": 0, "error": None, "claimed_at": None, "not_before": now} if item.get("attempts") else item
+               for item in _pending(record)]
+    record.data = {**(record.data or {}), **({PENDING_KEY: pending} if pending else {})}
+    if still_in_review and not any(item["kind"] == "submit" for item in pending):
+        queue_forward(record, "submit")
 
 
 def split_parts(text: str, limit: int = PART_LIMIT) -> list[str]:
@@ -207,6 +216,9 @@ async def _flush_record(sessions, record_id: int, send, now: datetime) -> None:
                 return
             key = item["key"]
             rendered = await _render(db, record, item)
+            # 每次都读当前设置：换审核人后，新通知发给新审核人。
+            reviewer = await active_reviewer(db, await load_review_config(db))
+            dingtalk_id = str(((reviewer.profile if reviewer else None) or {}).get("dingtalk_user_id") or "").strip()
             for candidate in pending:
                 if candidate["key"] == key:
                     candidate["claimed_at"] = now.isoformat()
@@ -217,9 +229,10 @@ async def _flush_record(sessions, record_id: int, send, now: datetime) -> None:
             title, content = rendered
             parts = split_parts(content)
             try:
+                if not dingtalk_id:
+                    raise RuntimeError("审核人已停用或没有绑定钉钉，请管理员在审核设置里更换")
                 for index, part in enumerate(parts, 1):
-                    await send(FEEDBACK_REVIEWER_DINGTALK_ID,
-                               f"{title}（{index}/{len(parts)}）" if len(parts) > 1 else title, part)
+                    await send(dingtalk_id, f"{title}（{index}/{len(parts)}）" if len(parts) > 1 else title, part)
             except Exception as exc:
                 error = str(exc) or type(exc).__name__
                 logger.error("问题反馈转发审核人失败：record=%s item=%s error=%s", record_id, key, error)
