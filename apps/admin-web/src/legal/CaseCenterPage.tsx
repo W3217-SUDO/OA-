@@ -3735,6 +3735,9 @@ export default function CaseCenterPage({
         cancelText="取消"
         onOk={createCaseFee}
         onCancel={() => { setEditingFeeRow(null); feeForm.resetFields(); }}
+        // 501711：和“新增费用”共用 feeForm；关闭后不卸载的话，这里的必填项（费用名称、费用类别）还挂在表单上，
+        // 新增费用点“下一步”时被一起校验，校验失败又看不见，表现为点了没反应。
+        destroyOnHidden
       >
         <Form form={feeForm} layout="vertical">
           {editingInternalFee ? <>
@@ -3772,6 +3775,7 @@ export default function CaseCenterPage({
         title={activeFeeContractScope === "内部" && caseFeeCreateStep === 1 ? "申请付款" : activeFeeContractScope === "平台" && feeSubtypePreset === "agency" ? "新增平台代理费" : "新增费用"}
         size={POPUP_WIDTH.md}
         className={`case-fee-create-drawer${activeFeeContractScope === "内部" ? " case-internal-fee-payment-drawer" : ""}`}
+        destroyOnHidden
         onClose={() => { if (activeFeeContractScope !== "内部" || !caseFeeSubmitting) closeCaseFeeCreator(); }}
         maskClosable={activeFeeContractScope !== "内部" || !caseFeeSubmitting}
         closable={activeFeeContractScope !== "内部" || !caseFeeSubmitting}

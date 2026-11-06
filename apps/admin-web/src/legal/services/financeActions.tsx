@@ -442,7 +442,16 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         const caseSource = feeCase || (editingFeeRow ? viewingCounselCase : null);
         if (!caseSource)
             return;
-        const values = await feeForm.validateFields();
+        let values;
+        try {
+            // 501711：新增费用只校验本次填写的费用行，不让别处残留的字段卡住；校验不过要提示出来，不能点了没反应。
+            values = editingFeeRow ? await feeForm.validateFields() : await feeForm.validateFields([["items"]], { recursive: true });
+        }
+        catch (error: any) {
+            const first = error?.errorFields?.[0]?.errors?.[0];
+            message.warning(first ? `请先完善费用信息：${first}` : "请先完善费用信息");
+            return;
+        }
         const { source_file_type: sourceFileType, ...feeValues } = values;
         // This selector constrains the UI only; the current finance API has no source-file-type field.
         void sourceFileType;
@@ -467,6 +476,7 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
                     await openCounselDetail(viewingCounselCase);
             }
             else {
+                context.setCaseFeeSubmitting(true);
                 const created: CaseRow[] = [];
                 for (const item of feeValues.items || []) {
                     const { commission_mode, commission_details, ...feePayload } = item;
@@ -508,6 +518,10 @@ export function createCaseFinanceActions(context: CaseFinanceDependencies) {
         }
         catch (error: any) {
             message.error(error?.response?.data?.detail || "费用保存失败");
+        }
+        finally {
+            if (!editingFeeRow)
+                context.setCaseFeeSubmitting(false);
         }
     };
     const submitCreatedCaseFeePayments = async () => {
