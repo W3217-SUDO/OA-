@@ -3098,12 +3098,15 @@ export default function InvestigationCenterPage({
         ? "请选择 PDF，并填写要关联的公证书号；文件名不参与编号匹配。"
         : initialTab === "notary-import-invoices"
           ? "请选择 PDF，并填写要关联的发票号；文件名不参与编号匹配。"
-          : "";
-  const importAccept = ["notary-import-info", "notary-import-storage"].includes(
-    initialTab,
-  )
-    ? ".csv,text/csv"
-    : ".pdf,application/pdf";
+          : initialTab === "notary-import-storage"
+            ? "支持 Excel（.xlsx / .xls）或 UTF-8 CSV；按线索号找到线索下的证物（一条线索有多个证物时按公证书号对），更新公证书号、仓库、发票号，填了案号的关联案件；空着的格子不改原值。"
+            : "";
+  // 501692：公证书号仓库信息导入收 Excel（.xlsx/.xls）和 CSV。
+  const importAccept = initialTab === "notary-import-storage"
+    ? ".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+    : initialTab === "notary-import-info"
+      ? ".csv,text/csv"
+      : ".pdf,application/pdf";
   // Every route declares its data-column widths. Calculate the horizontal viewport
   // from those widths and include the selection column, instead of leaving a large
   // blank scroll area on narrow branches or hiding a fixed right action column.

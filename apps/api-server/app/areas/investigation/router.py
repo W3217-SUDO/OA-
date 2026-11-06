@@ -507,7 +507,10 @@ async def import_investigation_notaries(file: UploadFile = File(...), identity: 
 
 @router.post(f"{settings.api_prefix}/investigations/notaries/storage/import", status_code=status.HTTP_201_CREATED)
 async def import_notary_storage(file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    """Update warehouse/certificate/invoice/case fields on existing notary records from UTF-8 CSV."""
+    """公证书号仓库信息导入：按线索号或公证书号找到公证记录或证物，更新公证书号、仓库、发票号并关联案件。
+
+    501692/501694（fwl 11-06）：上传 Excel（.xlsx/.xls）或 UTF-8 CSV；旧系统迁来的这些信息都在证物上，
+    没有公证记录时按线索号找到线索下的证物（多个证物按公证书号对）；表里空着的格子不覆盖原值。"""
     from app.core.permissions import _require_role_action
     await _require_role_action(identity, db, "investigation.import")
     from app.core.permissions import (
@@ -516,28 +519,50 @@ async def import_notary_storage(file: UploadFile = File(...), identity: dict = D
     from app.core.system import (
         _import_relation_data, _unique_import_record,
     )
-    if not (file.filename or "").lower().endswith(".csv"):
-        raise HTTPException(status_code=422, detail="仅支持 UTF-8 CSV 文件")
+    from app.areas.investigation.notary_storage_rows import evidence_certificate, pick_evidence, read_rows
     raw = await file.read()
     if len(raw) > 5 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="导入文件不能超过 5MB")
-    try:
-        content = raw.decode("utf-8-sig")
-    except UnicodeDecodeError as exc:
-        raise HTTPException(status_code=422, detail="CSV 必须使用 UTF-8 编码") from exc
-    records = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "notary", *(await _record_scope_conditions(identity, db))))).all()
-    cases = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case", *(await _record_scope_conditions(identity, db))))).all()
+    table = read_rows(file.filename or "", raw)
+    scope = await _record_scope_conditions(identity, db)
+    records = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "notary", *scope))).all()
+    cases = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case", *scope))).all()
     by_clue = {str((item.data or {}).get("clue_no", "")).strip().casefold(): item for item in records if (item.data or {}).get("clue_no")}
     by_certificate = {str((item.data or {}).get("certificate_no", "")).strip().casefold(): item for item in records if (item.data or {}).get("certificate_no")}
+    # 证物：按线索号（线索编号或线索 ID）和公证书号建索引。
+    evidences = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "evidence", BusinessRecord.deleted_at.is_(None), *scope)
+                                  .order_by(BusinessRecord.id))).all()
+    wanted = {(row.get("线索号") or row.get("线索编号") or row.get("clue_no") or "").strip() for _, row in table} - {""}
+    clue_ids = {item.id: item.serial_no for item in (await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == "clue", BusinessRecord.serial_no.in_(wanted)))).all()} if wanted else {}
+    evidence_by_clue: dict[str, list] = {}
+    evidence_by_certificate: dict[str, list] = {}
+    for evidence in evidences:
+        data = evidence.data or {}
+        clue_key = str(data.get("clue_no") or "").strip()
+        if not clue_key and str(data.get("clue_record_id") or "").isdigit():
+            clue_key = clue_ids.get(int(data["clue_record_id"]), "")
+        if clue_key:
+            evidence_by_clue.setdefault(clue_key.casefold(), []).append(evidence)
+        if evidence_certificate(data):
+            evidence_by_certificate.setdefault(evidence_certificate(data).casefold(), []).append(evidence)
     updated = 0; errors: list[dict] = []; seen: set[int] = set(); imported_rows: list[dict] = []
-    for row_no, row in enumerate(csv.DictReader(io.StringIO(content)), 2):
+    for row_no, row in table:
         clue_no = (row.get("线索号") or row.get("线索编号") or row.get("clue_no") or "").strip()
-        certificate_no = (row.get("公证书号") or row.get("certificate_no") or "").strip()
+        certificate_no = (row.get("公证书号") or row.get("证书号") or row.get("certificate_no") or "").strip()
         item = by_clue.get(clue_no.casefold()) if clue_no else None
         if item is None and certificate_no:
             item = by_certificate.get(certificate_no.casefold())
         if item is None:
-            errors.append({"row": row_no, "error": "未找到对应公证记录（请提供有效线索号或公证书号）"}); continue
+            problem = ""
+            if clue_no:
+                item, problem = pick_evidence(evidence_by_clue.get(clue_no.casefold(), []), certificate_no)
+            if item is None and not problem and certificate_no:
+                matched = evidence_by_certificate.get(certificate_no.casefold(), [])
+                item = matched[0] if len(matched) == 1 else None
+                problem = "同一公证书号对应多个证物，请填写线索号" if len(matched) > 1 else ""
+            if item is None:
+                errors.append({"row": row_no, "error": problem or "未找到对应的线索证物或公证记录（请提供有效线索号或公证书号）"}); continue
         if item.id in seen:
             errors.append({"row": row_no, "error": "同一公证记录在文件中重复"}); continue
         data = dict(item.data or {})
@@ -555,8 +580,8 @@ async def import_notary_storage(file: UploadFile = File(...), identity: dict = D
             errors.append({"row": row_no, "error": str(exc)}); continue
         values = {
             "certificate_no": certificate_no,
-            "warehouse": (row.get("仓库") or row.get("仓库位置") or row.get("warehouse") or "").strip(),
-            "invoice_no": (row.get("发票号") or row.get("invoice_no") or "").strip(),
+            "warehouse": (row.get("仓库") or row.get("仓库名") or row.get("仓库位置") or row.get("warehouse") or "").strip(),
+            "invoice_no": (row.get("发票号") or row.get("证书发票号") or row.get("invoice_no") or "").strip(),
             "case_no": case_record.serial_no if case_record else "",
             "investigator": (row.get("调查员") or row.get("investigator") or "").strip(),
             "investigated_at": (row.get("调查时间") or row.get("investigated_at") or "").strip(),
@@ -564,16 +589,23 @@ async def import_notary_storage(file: UploadFile = File(...), identity: dict = D
             "shop_name": (row.get("店铺名称") or row.get("shop_name") or "").strip(),
             "address": (row.get("调查地址") or row.get("address") or "").strip(),
         }
+        # 证物只更新公证书号、仓库、发票号和案件关联；调查员、店铺等是线索上的信息，不在这里改。
+        shown = values
+        if item.module == "evidence":
+            values = {key: values[key] for key in ("certificate_no", "warehouse", "invoice_no", "case_no")}
+            # 旧系统迁来的证物有的只有 notarial_no，一起更新，页面上读哪个都一致。
+            if values["certificate_no"] and data.get("notarial_no"):
+                data["notarial_no"] = values["certificate_no"]
         item.data = {**data, **{key: value for key, value in values.items() if value}}
-        db.add(WorkflowEvent(record_id=item.id, action="导入公证仓库信息", from_status=item.status, to_status=item.status, operator=identity["username"], comment=f"CSV 第 {row_no} 行"))
+        db.add(WorkflowEvent(record_id=item.id, action="导入公证仓库信息", from_status=item.status, to_status=item.status, operator=identity["username"], comment=f"导入文件第 {row_no} 行"))
         imported_rows.append({
             "id": item.id,
             "线索号": clue_no or str(data.get("clue_no", "")),
-            "调查员": values["investigator"] or item.owner,
-            "调查时间": values["investigated_at"] or str(data.get("investigated_at", "")),
-            "侵权方式": values["infringement_method"] or str(data.get("infringement_method", "")),
-            "店铺名称": values["shop_name"] or str(data.get("shop_name", "")),
-            "调查地址": values["address"] or str(data.get("address", "")),
+            "调查员": shown["investigator"] or item.owner,
+            "调查时间": shown["investigated_at"] or str(data.get("investigated_at", "")),
+            "侵权方式": shown["infringement_method"] or str(data.get("infringement_method", "")),
+            "店铺名称": shown["shop_name"] or str(data.get("shop_name", "")),
+            "调查地址": shown["address"] or str(data.get("address", "")),
             "公证书号": values["certificate_no"] or str(data.get("certificate_no", "")),
             "仓库": values["warehouse"] or str(data.get("warehouse", "")),
             "发票号": values["invoice_no"] or str(data.get("invoice_no", "")),
