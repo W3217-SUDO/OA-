@@ -11,7 +11,7 @@ import json
 from datetime import date
 
 from fastapi import HTTPException
-from sqlalchemy import String, cast, or_, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import BusinessRecord, User, WorkflowEvent
@@ -19,6 +19,8 @@ from app.models import BusinessRecord, User, WorkflowEvent
 # 和任务转交一致：这些状态的任务已经结束，不算、也不能转交。
 CLOSED_TASK_STATUSES = ("已完成", "已验收", "已撤回", "已停止", "已取消", "待确认", "已拒绝", "已删除", "已回收")
 GONE_HR_STATUSES = ("离职", "停用")
+# 501631（tgn 11-06 确认）：老系统“调查任务”（调查授权）不是案件任务，不算未结束任务、不列入离职清单、不挡离职/停用。
+LEGACY_INVESTIGATION_SOURCE = "Legal_Investigation_Task"
 
 
 def _people(value) -> list[str]:
@@ -29,7 +31,9 @@ def _people(value) -> list[str]:
 
 
 def _open_task_conditions():
-    return [BusinessRecord.module == "task", or_(BusinessRecord.status.is_(None), BusinessRecord.status.not_in(CLOSED_TASK_STATUSES))]
+    source_table = func.coalesce(BusinessRecord.data["source_table"].as_string(), "")
+    return [BusinessRecord.module == "task", or_(BusinessRecord.status.is_(None), BusinessRecord.status.not_in(CLOSED_TASK_STATUSES)),
+            source_table != LEGACY_INVESTIGATION_SOURCE]
 
 
 async def _open_task_rows(db: AsyncSession, *, mention: str | None = None) -> list[dict]:

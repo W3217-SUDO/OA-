@@ -39,6 +39,10 @@ class DepartureOpenTasksTest(unittest.IsolatedAsyncioTestCase):
                 task("T-COLLAB", "other", collaborators=["leaver", "other2"]), task("T-NONE", "other"),
                 task("G-1", "gone", collaborators=["gone"]), task("G-2", "gone", status="待接收"), task("G-INIT", "other", initiator="gone"),
                 task("G-CANCEL", "gone", status="已取消"), task("NOACC", "ghost"),
+                # 501631（tgn 11-06）：老系统调查任务不是案件任务，不算未结束、不列入离职清单、不挡离职
+                task("INV-L", "leaver", source_table="Legal_Investigation_Task", migration_source="hz"),
+                task("INV-G", "gone", source_table="Legal_Investigation_Task", migration_source="hz"),
+                task("INV-X", "fanyl", source_table="Legal_Investigation_Task", migration_source="hz"),
             ]
             db.add_all(rows); await db.commit()
             self.ids = {row.serial_no: row.id for row in rows}
@@ -57,6 +61,16 @@ class DepartureOpenTasksTest(unittest.IsolatedAsyncioTestCase):
     async def employee_id(self, serial):
         async with self.sessions() as db:
             return (await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "hr", BusinessRecord.serial_no == serial))).id
+
+    async def test_legacy_investigation_tasks_not_counted(self):
+        listing = (await self.client.get(f"{API}/hr/departure-tasks", params={"username": "leaver"})).json()
+        self.assertNotIn("INV-L", [item["serial_no"] for item in listing["items"]])
+        departed = (await self.client.get(f"{API}/hr/departure-tasks")).json()
+        serials = {item["serial_no"] for group in departed["people"] for item in group["items"]}
+        self.assertFalse(serials & {"INV-L", "INV-G", "INV-X"}, departed)
+        self.assertNotIn("fanyl", [group["username"] for group in departed["people"]])
+        moved = await self.client.post(f"{API}/hr/departure-tasks/handover", json={"from_username": "gone", "recipient": "newbie", "task_ids": [self.ids["INV-G"]]})
+        self.assertNotEqual(moved.json().get("updated"), 1, moved.text)
 
     async def test_person_list_and_departure_blocked_until_handed_over(self):
         listing = (await self.client.get(f"{API}/hr/departure-tasks", params={"username": "leaver"})).json()
