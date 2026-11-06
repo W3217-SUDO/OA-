@@ -1289,82 +1289,87 @@ async def list_case_fee_contracts(
 @router.get(f"{settings.api_prefix}/cases/reference-options")
 async def list_case_reference_options(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Return active case dictionaries needed by the staged create form."""
-    from app.core.system import (
-        _is_smoke_test_username,
-    )
-    case_types = (await db.scalars(select(SystemParameter).where(
-        SystemParameter.category == "case_type", SystemParameter.is_active.is_(True),
-    ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
-    causes = (await db.scalars(select(SystemParameter).where(
-        SystemParameter.category == "cause", SystemParameter.is_active.is_(True),
-    ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
-    case_file_types = (await db.scalars(select(SystemParameter).where(
-        SystemParameter.category == "case_file_type", SystemParameter.is_active.is_(True),
-    ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
-    courts = (await db.scalars(select(SystemParameter).where(
-        SystemParameter.category == "court", SystemParameter.is_active.is_(True),
-    ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
-    court_officers = (await db.scalars(select(SystemParameter).where(
-        SystemParameter.category == "court_officer", SystemParameter.is_active.is_(True),
-    ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
-    file_type_relations = list((await db.scalars(select(CaseTypeFileTypeRelation))).all())
-    case_type_ids_by_file_type: dict[int, list[int]] = {}
-    for relation in file_type_relations:
-        case_type_ids_by_file_type.setdefault(relation.file_type_id, []).append(relation.case_type_id)
-    serialized_case_file_types = [{
-        "id": item.id, "value": item.name, "label": item.name, "code": item.code,
-        "parent_code": (item.extra or {}).get("parent_code", ""),
-        "case_type_ids": sorted(case_type_ids_by_file_type.get(item.id, [])),
-    } for item in case_file_types]
-    # 普通案件的通用上传接口接受“普通附件”作为合法兜底；向客户端公开它，
-    # 防止旧租户尚未配置案件文件类型时页面提交无效的静态分类。
-    if not any(item["value"] == "普通附件" for item in serialized_case_file_types):
-        serialized_case_file_types.append({"id": 0, "value": "普通附件", "label": "普通附件", "code": "COMMON", "parent_code": "", "case_type_ids": []})
-    # users 是人员主数据；HR 业务记录仅保存员工扩展资料，不能限制已创建账号出现在人员选择器中。
-    # 旧系统的人员选择器展示所有在职账号，因此兼容没有 HR 记录但已在系统创建的真实账号。
-    active_users = (await db.scalars(select(User).where(
-        User.is_active.is_(True),
-    ).order_by(User.display_name, User.username))).all()
-    people_options = []
-    seen_usernames: set[str] = set()
-    for item in active_users:
-        username = item.username.strip().lower()
-        if _is_smoke_test_username(item.username):
-            continue
-        if username in seen_usernames:
-            continue
-        seen_usernames.add(username)
-        # A task is assigned to a login username, so its label must come from
-        # that same identity.  HR archives are extension records and legacy
-        # imports can contain conflicting rows for one username; allowing the
-        # last HR row to overwrite the account name hides the real employee
-        # from both owner and collaborator searches.
-        display_name = str(item.display_name or "").strip() or item.username
-        people_options.append({
-            "value": item.username,
-            "label": f"{display_name}（{item.department}）",
-            "position": str((item.profile or {}).get("position") or (item.profile or {}).get("staff_role") or "").strip(),
-        })
-    # The legacy AvailableUsers endpoint searches every active staff account by
-    # Chinese display name.  Although the old control is named
-    # AssociateAvailableUser_Laywer, it does not filter by the HR position text;
-    # filtering here made valid active employees impossible to select.
-    lawyer_options = people_options
-    return {
-        "case_types": [{
-            "id": item.id,
-            "value": "民事案件" if item.name == "民事争议" else item.name,
-            "label": item.name,
-            "code": item.code,
-        } for item in case_types],
-        "causes": [{"value": item.name, "label": item.name, "code": item.code} for item in causes],
-        "case_file_types": serialized_case_file_types,
-        "courts": [{"value": item.name, "label": item.name, "code": item.code} for item in courts],
-        "court_officers": [{"value": item.name, "label": item.name, "code": item.code, "court_code": (item.extra or {}).get("court_code", ""), "role": (item.extra or {}).get("role", ""), "phone": (item.extra or {}).get("phone", "")} for item in court_officers],
-        "case_lawyers": lawyer_options,
-        "case_assistants": people_options,
-        "right_types": ["商标权", "专利权", "著作权", "不正当竞争", "商业秘密", "其他"],
-    }
+    from app.core.shared_options_cache import cached_options
+
+    async def compute():
+        from app.core.system import (
+            _is_smoke_test_username,
+        )
+        case_types = (await db.scalars(select(SystemParameter).where(
+            SystemParameter.category == "case_type", SystemParameter.is_active.is_(True),
+        ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
+        causes = (await db.scalars(select(SystemParameter).where(
+            SystemParameter.category == "cause", SystemParameter.is_active.is_(True),
+        ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
+        case_file_types = (await db.scalars(select(SystemParameter).where(
+            SystemParameter.category == "case_file_type", SystemParameter.is_active.is_(True),
+        ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
+        courts = (await db.scalars(select(SystemParameter).where(
+            SystemParameter.category == "court", SystemParameter.is_active.is_(True),
+        ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
+        court_officers = (await db.scalars(select(SystemParameter).where(
+            SystemParameter.category == "court_officer", SystemParameter.is_active.is_(True),
+        ).order_by(SystemParameter.sort_order, SystemParameter.id))).all()
+        file_type_relations = list((await db.scalars(select(CaseTypeFileTypeRelation))).all())
+        case_type_ids_by_file_type: dict[int, list[int]] = {}
+        for relation in file_type_relations:
+            case_type_ids_by_file_type.setdefault(relation.file_type_id, []).append(relation.case_type_id)
+        serialized_case_file_types = [{
+            "id": item.id, "value": item.name, "label": item.name, "code": item.code,
+            "parent_code": (item.extra or {}).get("parent_code", ""),
+            "case_type_ids": sorted(case_type_ids_by_file_type.get(item.id, [])),
+        } for item in case_file_types]
+        # 普通案件的通用上传接口接受“普通附件”作为合法兜底；向客户端公开它，
+        # 防止旧租户尚未配置案件文件类型时页面提交无效的静态分类。
+        if not any(item["value"] == "普通附件" for item in serialized_case_file_types):
+            serialized_case_file_types.append({"id": 0, "value": "普通附件", "label": "普通附件", "code": "COMMON", "parent_code": "", "case_type_ids": []})
+        # users 是人员主数据；HR 业务记录仅保存员工扩展资料，不能限制已创建账号出现在人员选择器中。
+        # 旧系统的人员选择器展示所有在职账号，因此兼容没有 HR 记录但已在系统创建的真实账号。
+        active_users = (await db.scalars(select(User).where(
+            User.is_active.is_(True),
+        ).order_by(User.display_name, User.username))).all()
+        people_options = []
+        seen_usernames: set[str] = set()
+        for item in active_users:
+            username = item.username.strip().lower()
+            if _is_smoke_test_username(item.username):
+                continue
+            if username in seen_usernames:
+                continue
+            seen_usernames.add(username)
+            # A task is assigned to a login username, so its label must come from
+            # that same identity.  HR archives are extension records and legacy
+            # imports can contain conflicting rows for one username; allowing the
+            # last HR row to overwrite the account name hides the real employee
+            # from both owner and collaborator searches.
+            display_name = str(item.display_name or "").strip() or item.username
+            people_options.append({
+                "value": item.username,
+                "label": f"{display_name}（{item.department}）",
+                "position": str((item.profile or {}).get("position") or (item.profile or {}).get("staff_role") or "").strip(),
+            })
+        # The legacy AvailableUsers endpoint searches every active staff account by
+        # Chinese display name.  Although the old control is named
+        # AssociateAvailableUser_Laywer, it does not filter by the HR position text;
+        # filtering here made valid active employees impossible to select.
+        lawyer_options = people_options
+        return {
+            "case_types": [{
+                "id": item.id,
+                "value": "民事案件" if item.name == "民事争议" else item.name,
+                "label": item.name,
+                "code": item.code,
+            } for item in case_types],
+            "causes": [{"value": item.name, "label": item.name, "code": item.code} for item in causes],
+            "case_file_types": serialized_case_file_types,
+            "courts": [{"value": item.name, "label": item.name, "code": item.code} for item in courts],
+            "court_officers": [{"value": item.name, "label": item.name, "code": item.code, "court_code": (item.extra or {}).get("court_code", ""), "role": (item.extra or {}).get("role", ""), "phone": (item.extra or {}).get("phone", "")} for item in court_officers],
+            "case_lawyers": lawyer_options,
+            "case_assistants": people_options,
+            "right_types": ["商标权", "专利权", "著作权", "不正当竞争", "商业秘密", "其他"],
+        }
+
+    return await cached_options(("case_reference_options", id(db.get_bind())), 60, compute)
 
 
 @router.post(f"{settings.api_prefix}/cases", status_code=status.HTTP_201_CREATED)

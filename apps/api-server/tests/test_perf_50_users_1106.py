@@ -185,6 +185,23 @@ class PriorityAndPendingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(set(result), {"todos", "computed_at"})
 
 
+class OptionsCacheTest(unittest.IsolatedAsyncioTestCase):
+    async def test_reuses_within_ttl_and_returns_copies(self):
+        from app.core.shared_options_cache import cached_options, clear_options_cache
+        clear_options_cache()
+        calls = []
+
+        async def compute():
+            calls.append(1)
+            return {"items": [1]}
+
+        first = await cached_options("t", 60, compute)
+        first["items"].append(2)
+        self.assertEqual(await cached_options("t", 60, compute), {"items": [1]})
+        self.assertEqual(len(calls), 1)
+        clear_options_cache()
+
+
 class DashboardIdentityTest(unittest.TestCase):
     def test_page_does_not_split_cache_but_permissions_do(self):
         base = {"username": "u", "role": "user", "_page_menu_capability": False, "_page_scope_actual": True}
