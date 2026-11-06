@@ -312,7 +312,7 @@ async def list_records(
         if exclude_archived:
             conditions.append(BusinessRecord.status.notin_(["已归档", "Archived", "archived"]))
     total = await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions))
-    result = list((await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.updated_at.desc()).offset((page - 1) * page_size).limit(page_size))).all())
+    result = list((await db.scalars(select(BusinessRecord).where(*conditions).order_by(BusinessRecord.updated_at.desc(), BusinessRecord.id.desc()).offset((page - 1) * page_size).limit(page_size))).all())
     allowed_fields = await _allowed_field_keys(identity, db)
     items = await _contract_customer_record_dicts(result, allowed_fields, db, identity)
     if module == "contract" and page_size <= 500:
