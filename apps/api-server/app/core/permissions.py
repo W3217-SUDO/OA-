@@ -772,7 +772,7 @@ def _coordinated_case_condition(username: str, dialect: str, relation: str = "an
 
     relation 为 "manager" 只看客户管理人，"coordinator" 只看协作人，默认两者都算。
     """
-    from sqlalchemy import String, cast
+    from sqlalchemy import String, cast, literal_column, union
     from sqlalchemy.orm import aliased
     customer = aliased(BusinessRecord)
     username = str(username).strip()
@@ -786,7 +786,18 @@ def _coordinated_case_condition(username: str, dialect: str, relation: str = "an
     customers = and_(customer.module == "customer", related)
     reference = BusinessRecord.data["customer_record_id"]
     if dialect == "postgresql":
-        matched = reference.as_string().in_(select(cast(customer.id, String)).where(customers))
+        # 11-06 压测：几个条件用 OR 写时规划器只能扫全部客户（每次解析 1.3 万份 JSON，生产约 1 秒，列表每行都查）。
+        # 拆成 UNION 后每个条件各走索引（ix_business_records_customer_*_trgm），匹配结果和 OR 相同。
+        # contact_accounts 这条的空串写成字面量，表达式才始终和索引一致（绑定参数在通用执行计划下匹配不上）。
+        contact_indexed = func.lower(func.coalesce(customer.data["contact_accounts"].as_string(), literal_column("''"))).contains(
+            f'"{username.lower()}"')
+        arms = {"manager": (customer.data["customer_managers"].as_string().contains(token), customer.owner == username),
+                "coordinator": (customer.data["coordinators"].as_string().contains(token), contact_indexed)}
+        chosen = arms.get(relation, (*arms["manager"], *arms["coordinator"]))
+        matched = reference.as_string().in_(union(
+            *(select(cast(customer.id, String)).where(customer.module == "customer", customer.deleted_at.is_(None), arm)
+              for arm in chosen),
+        ))
     else:
         matched = reference.as_integer().in_(select(customer.id).where(customers))
     return and_(BusinessRecord.module == "case", matched)
@@ -876,6 +887,11 @@ async def _ipr_own_cases_only(identity: dict, db: AsyncSession) -> bool:
 
 
 async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
+    from app.core.record_scope_projection import single_parse_condition
+    return [single_parse_condition(item, db) for item in await _record_scope_conditions_raw(identity, db)]
+
+
+async def _record_scope_conditions_raw(identity: dict, db: AsyncSession) -> list:
     from app.core.conflict_review import can_review_conflicts
     protected_scope = [] if await can_review_conflicts(identity, db) else [or_(
         BusinessRecord.module != "conflict_review", BusinessRecord.owner == identity.get("username", ""),

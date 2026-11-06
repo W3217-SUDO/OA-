@@ -148,12 +148,8 @@ async def legacy_rejected_counts(identity, db, *, scope: str | None = None) -> d
         return int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions)) or 0)
 
     token = json.dumps(username, ensure_ascii=False)
-    my_customers = (await db.execute(select(BusinessRecord.id, BusinessRecord.serial_no).where(
-        BusinessRecord.module == "customer", or_(
-            BusinessRecord.owner == username,
-            data["customer_managers"].as_string().contains(token, autoescape=True),
-            data["coordinators"].as_string().contains(token, autoescape=True),
-        )))).all()
+    from app.core.person_customers import person_customer_rows
+    my_customers = await person_customer_rows(db, username)
     customer_ids = {str(row.id) for row in my_customers}
     customer_nos = {str(row.serial_no) for row in my_customers if row.serial_no}
     # 合同驳回：旧系统 ContractStatus = 4，且客户协作人有我或客户 BusinessOwner 是我（这一项旧系统就是按人）。

@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 from collections.abc import AsyncIterator
 
-from sqlalchemy import Float, Integer, and_, case, cast, false, func, literal_column, or_, select
+from sqlalchemy import Float, Integer, JSON, and_, case, cast, column, false, func, literal, literal_column, or_, select, true
 
 from app.core.constants import CASE_DEFENDANT_FIELDS, CASE_PLAINTIFF_FIELDS
 from app.models import BusinessRecord, VipTask
@@ -221,16 +221,30 @@ async def stream_task_rows(
     """分批读取指定轻字段，并保留 JSON 显式 null 与缺键的差异。"""
     dialect = db.get_bind().dialect.name
     if dialect == "postgresql":
+        # 11-06 压测：data 是 json 列，每取一个键都要重新解析整份 JSON，20 多个字段就解析 20 多遍，
+        # 公司任务全表一遍在负载下要 40 秒。字段值改为每行只解析一次（取值不变）；
+        # 显式 null 与缺键的区分仍逐键判断，只涉及 presence_fields 这几个。
+        payload = case((func.json_typeof(BusinessRecord.data) == "object", BusinessRecord.data),
+                       else_=cast(literal("{}"), JSON))
+        parsed = func.json_to_record(payload).table_valued(
+            *(column(key, JSON) for key in data_fields),
+        ).render_derived(with_types=True).lateral("task_doc")
         presence = [func.json_typeof(BusinessRecord.data[key]) for key in presence_fields]
+        values = [parsed.c[key] for key in data_fields]
     elif dialect == "sqlite":
+        parsed = None
         presence = [func.json_type(BusinessRecord.data, f"$.{key}") for key in presence_fields]
+        values = [BusinessRecord.data[key] for key in data_fields]
     else:
         raise RuntimeError(f"不支持的任务列表数据库方言：{dialect}")
     query = select(
         *(getattr(BusinessRecord, key) for key in columns),
-        *(BusinessRecord.data[key] for key in data_fields),
+        *values,
         *presence,
-    ).where(*conditions, BusinessRecord.id > after_id).order_by(BusinessRecord.id)
+    ).select_from(BusinessRecord)
+    if parsed is not None:
+        query = query.join(parsed, true())
+    query = query.where(*conditions, BusinessRecord.id > after_id).order_by(BusinessRecord.id)
     if limit is not None:
         query = query.limit(limit)
     query = query.execution_options(yield_per=256)

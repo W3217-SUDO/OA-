@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     dashboard_metrics_cache_ttl_seconds: int = Field(default=86400, ge=1, le=86400)
     dashboard_metrics_cache_wait_seconds: float = Field(default=15, gt=0, le=60)
     dashboard_metrics_compute_timeout_seconds: float = Field(default=30, gt=0, le=120)
+    # 工作台每个进程同时重算几份；已有旧结果时同一账号同一块多久才重算一次（秒）。
+    dashboard_compute_concurrency: int = Field(default=1, ge=1, le=16)
+    dashboard_global_compute_slots: int = Field(default=2, ge=1, le=16)
+    dashboard_stale_refresh_cooldown_seconds: int = Field(default=120, ge=1, le=3600)
+    query_prewarm_seed_active_users: bool = True
+    query_prewarm_round_gap_seconds: float = Field(default=120, ge=0, le=3600)
+    query_prewarm_item_pause_seconds: float = Field(default=0.3, ge=0, le=10)
     # 每次命中都核对数据修订号，有效期只决定清理时机；键含业务日期，跨日自然失效。
     query_cache_ttl_seconds: int = Field(default=86400, ge=1, le=86400)
     # Redis 为 noeviction：已用内存超过上限的该比例后不再写入新结果，避免写满后加锁失败。
