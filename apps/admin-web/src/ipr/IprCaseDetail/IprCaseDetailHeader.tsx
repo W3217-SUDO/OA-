@@ -218,7 +218,7 @@ export function IprCpcPanel({ detail, cpcApplications, cpcApplicationsLoading, c
                 <Button
                   size="small"
                   type="primary"
-                  disabled={detail.status !== "在办"}
+                  disabled={detail.status !== "在办" && !iprCaseIgnoresStatus(detail)}
                   loading={cpcGenerating}
                   onClick={onGenerateCpcApplication}
                 >
@@ -233,7 +233,7 @@ export function IprCpcPanel({ detail, cpcApplications, cpcApplicationsLoading, c
             showIcon
             message="生成CPC基础申报信息快照"
             description={`当前生成 ZIP 文件，内含 UTF-8 基础信息文本供核对；它不是中国专利电子申请系统的官方提交包。${
-              detail.status === "在办"
+              detail.status === "在办" || iprCaseIgnoresStatus(detail)
                 ? ""
                 : " 仅在办案件可生成，历史文件仍可下载。"
             }`}

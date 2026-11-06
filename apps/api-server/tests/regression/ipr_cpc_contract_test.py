@@ -120,7 +120,7 @@ class IprCpcContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn((await self.client.get(f"{API}/ipr/cases/{self.patent_id}/cpc-applications")).status_code, {403, 404})
         self.assertIn((await self.client.get(generated.json()["download_url"])).status_code, {403, 404})
 
-    async def test_read_history_remains_available_after_case_closes_but_generation_does_not(self):
+    async def test_read_history_remains_available_after_case_closes_and_non_litigation_can_still_generate(self):
         generated = await self.client.post(f"{API}/ipr/cases/{self.patent_id}/cpc-applications")
         self.assertEqual(generated.status_code, 201, generated.text)
         async with self.sessions() as db:
@@ -129,7 +129,8 @@ class IprCpcContractTest(unittest.IsolatedAsyncioTestCase):
             await db.commit()
         self.assertEqual((await self.client.get(f"{API}/ipr/cases/{self.patent_id}/cpc-applications")).status_code, 200)
         self.assertEqual((await self.client.get(generated.json()["download_url"])).status_code, 200)
-        self.assertEqual((await self.client.post(f"{API}/ipr/cases/{self.patent_id}/cpc-applications")).status_code, 409)
+        # 501190 第 3 条（高勤兰 11-06“CPC专利申报，无需审批，放开”）：非诉个案结案后仍可生成；诉讼类见 501190 回归测试。
+        self.assertEqual((await self.client.post(f"{API}/ipr/cases/{self.patent_id}/cpc-applications")).status_code, 201)
 
 
 if __name__ == "__main__":

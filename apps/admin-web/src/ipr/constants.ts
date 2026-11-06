@@ -10,7 +10,7 @@ export const isIprLawsuit = (record: IprRecord | null) =>
   record?.data?.case_category === "litigation";
 
 /** 501190（思法汇成 11-05 确认）：非诉专利、商标个案不看案件状态，各页签的菜单和按钮都可用（权限照旧）；
- * 诉讼类不变；开票申请、付款申请、CPC 申报仍按原状态（待定）。 */
+ * 诉讼类不变；开票申请、付款申请（第 2 条）、CPC 申报（第 3 条，高勤兰 11-06 放开）也不看状态。 */
 export const iprCaseIgnoresStatus = (record: IprRecord | null) => !!record && !isIprLawsuit(record);
 
 export const IPR_LAWSUIT_FIELDS = ["court_case_no", "court_name", "judge", "clerk", "plaintiff", "defendant", "third_parties"] as const;

@@ -2446,7 +2446,7 @@ def ipr_case_ignores_status(record: BusinessRecord) -> bool:
 
     草稿、待审批、失效、已结案、老系统阶段等都一样，个案里的文档、费用、任务、客户、联系人、期限维护照常可用，
     权限仍按各人原有的；诉讼类知识产权案件（case_category=litigation）不变。
-    开票申请、付款申请、CPC 专利申报仍按原状态限制（第 2、3 条待定）。
+    第 2 条（陶国南 11-05）开票申请、付款申请，第 3 条（高勤兰 11-06）CPC 专利申报，也都不看状态。
     """
     return record.module == "ipr_case" and (record.data or {}).get("case_category", "non_litigation") != "litigation"
 
@@ -2538,10 +2538,10 @@ async def _ensure_ipr_case_file_write(case_id: int, identity: dict, db: AsyncSes
 
 
 async def _ensure_ipr_cpc_write(case_id: int, identity: dict, db: AsyncSession) -> BusinessRecord:
-    """CPC 专利申报仍按原来的文档状态限制（501190 第 3 条待思法汇成定）。"""
+    """CPC 专利申报：501190 第 3 条（高勤兰 11-06“CPC专利申报，无需审批，放开”）非诉个案不看状态；诉讼类仍按原文档状态限制。"""
     record = await _ensure_record_module(case_id, "ipr_case", identity, db)
     await _require_record_owner_or_manager(record, identity, db)
-    if not ipr_case_files_writable(record.status):
+    if not ipr_case_files_writable(record.status) and not ipr_case_ignores_status(record):
         raise HTTPException(status_code=409, detail="仅在办知识产权案件可以生成CPC申报")
     return record
 

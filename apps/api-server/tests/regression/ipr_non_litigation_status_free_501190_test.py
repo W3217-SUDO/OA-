@@ -1,7 +1,8 @@
 """501190（思法汇成 11-05 确认第 1 条）：非诉专利、商标个案不看案件状态。
 
 老系统迁来的“年费监控”、草稿、待审批、已结案等个案，文档、费用新增修改、发布任务、客户联系人、提醒日志都能维护；
-诉讼类知识产权案件仍按原状态限制；CPC 申报暂按原规则（第 3 条待定）。
+诉讼类知识产权案件仍按原状态限制。
+第 3 条（高勤兰 11-06“CPC专利申报，无需审批，放开”）：非诉个案 CPC 申报也不看状态。
 第 2 条（陶国南 11-05“这个确认立案不用审核”）：非诉个案开票、付款申请也不看状态。
 """
 import unittest
@@ -53,17 +54,17 @@ class IprNonLitigationStatusFree501190Test(unittest.IsolatedAsyncioTestCase):
                     record = await gate(self.ids[key], ADMIN, db)
                     self.assertTrue(ipr_case_ignores_status(record), (key, gate.__name__))
 
-    async def test_litigation_and_cpc_keep_status_rules(self):
+    async def test_litigation_keeps_status_rules_and_cpc_open_for_non_litigation(self):
         async with self.sessions() as db:
             for gate in OPEN_GATES:
                 with self.assertRaises(HTTPException, msg=gate.__name__) as raised:
                     await gate(self.ids["lit_closed"], ADMIN, db)
                 self.assertEqual(raised.exception.status_code, 409)
-            for key in ("closed", "pending"):
-                with self.assertRaises(HTTPException) as raised:
-                    await _ensure_ipr_cpc_write(self.ids[key], ADMIN, db)
-                self.assertEqual(raised.exception.status_code, 409, "CPC 申报仍按原规则（第 3 条待定）")
-            await _ensure_ipr_cpc_write(self.ids["legacy"], ADMIN, db)
+            with self.assertRaises(HTTPException) as raised:
+                await _ensure_ipr_cpc_write(self.ids["lit_closed"], ADMIN, db)
+            self.assertEqual(raised.exception.status_code, 409, "诉讼类 CPC 仍按原规则")
+            for key in ("legacy", "closed", "pending"):
+                await _ensure_ipr_cpc_write(self.ids[key], ADMIN, db)
 
     async def test_invoice_and_payment_not_blocked_by_status_for_non_litigation(self):
         from app.areas.ipr import fees
