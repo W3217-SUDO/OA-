@@ -1,0 +1,5 @@
+# 代码审查报告专用工具，装在独立环境，不进门禁的 Python 环境（门禁会校验依赖没变化）。
+# ruff、pip-audit 已在 requirements-dev，这里只放它们覆盖不到的：
+mypy==1.18.2      # Python 类型检查，Ruff 不做类型推断
+vulture==2.14     # 无用代码，Ruff 只查单文件内未使用
+coverage==7.10.7  # 改动行测试覆盖

@@ -28,6 +28,7 @@ description: OA 正式发布（Mac 发布机 → 生产服务器 oa-production-a
 
 - Node 22：`~/.local/node`；门禁 Python：`~/.local/share/oa/quality-py312`（按两个 lock 文件带哈希安装）。`~/.zprofile` 已导出 `OA_QUALITY_NODE`、`OA_QUALITY_PYTHON`。
 - pre-push 门禁：`sh scripts/install-quality-hook.sh`（装到 `.git/hooks`，不设 `core.hooksPath`，不需要 PowerShell）。
+- 代码审查报告：`sh scripts/install-review-tools.sh`。门禁通过后自动跑，只提示不拦截，见 `docs/代码审查流程.md`。
 - GitHub 远端名 `origin`；只 fetch `origin`，不 `fetch --all`。本机没有 GitHub HTTPS 凭据，推送走 SSH（本机密钥 `id_ed25519_oa` 已绑定 GitHub 账号 `W3217-SUDO`），不改 `origin` 的地址（refs 快照脚本要求 fetch/push 地址一致）：
 
   ```bash

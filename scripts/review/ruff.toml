@@ -1,0 +1,15 @@
+# 审查报告专用规则，只用于提示。门禁仍读 pyproject.toml 的 select = ["F"]，互不影响。
+# 去掉了本项目必然大量命中且不代表问题的规则：行长、函数内 import、FastAPI 的 Depends 默认值等。
+target-version = "py312"
+
+[lint]
+select = [
+    "F", "E7", "E9", "PLE", "PLW",  # 真错误和可疑写法
+    "B", "BLE", "ASYNC", "DTZ", "T20", "ERA",  # 常见隐患、吞异常、异步阻塞、时区、遗留 print、注释掉的代码
+    "S",  # 安全
+    "C90", "PLR0915",  # 复杂度、函数过长
+]
+ignore = ["B008", "E701", "E702", "E741", "PLC0415", "S101", "S603", "S607"]
+
+[lint.mccabe]
+max-complexity = 15

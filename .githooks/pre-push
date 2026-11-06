@@ -3,6 +3,7 @@
 set -eu
 
 commit=''
+base=''
 while read -r local_ref local_sha remote_ref remote_sha; do
     case "$remote_ref" in
         refs/heads/dev|refs/heads/main)
@@ -15,6 +16,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
                 exit 1
             fi
             commit="$local_sha"
+            base="$remote_sha"
             ;;
     esac
 done
@@ -36,3 +38,9 @@ report=$(mktemp -d "${TMPDIR:-/tmp}/oa-pre-push-XXXXXX")
 echo "OA pre-push: checking $commit; evidence: $report" >&2
 PYTHONDONTWRITEBYTECODE=1 PYTHONIOENCODING=utf-8 "$OA_QUALITY_PYTHON" "$root/scripts/quality_gate.py" \
     --profile source --push-commit "$commit" --node "$OA_QUALITY_NODE" ${jobs:+--jobs "$jobs"} --report-dir "$report"
+# 代码审查报告第一阶段只提示：门禁通过后才跑，结果和出错都不影响推送（docs/代码审查流程.md）。
+if [ -f "$root/scripts/review/report.py" ]; then
+    PYTHONDONTWRITEBYTECODE=1 PYTHONIOENCODING=utf-8 "$OA_QUALITY_PYTHON" "$root/scripts/review/report.py" \
+        --head "$commit" --base "$base" --node "$OA_QUALITY_NODE" --report-dir "$report/review" >&2 \
+        || echo 'OA pre-push: 代码审查报告没产出，不影响推送。' >&2
+fi

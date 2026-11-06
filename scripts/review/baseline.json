@@ -1,0 +1,4110 @@
+{
+"format": 1,
+"commit": "f3387e7b78244bb8ddcd7c35e0ddb1537614aacd",
+"total": 3417,
+"by_tool": {
+"duplicate": 211,
+"mypy": 1173,
+"npm-audit": 2,
+"pip-audit": 42,
+"ruff": 1262,
+"ts-metrics": 561,
+"vulture": 166
+},
+"files": {
+"apps/admin-web/package-lock.json": {
+"high|follow-redirects": 1,
+"high|vite": 1
+},
+"apps/admin-web/src/AgentAdminPage.tsx": {
+"TS-COMPLEXITY|9232ee4f0f": 1
+},
+"apps/admin-web/src/AgentCenterPage.tsx": {
+"TS-COMPLEXITY|ab1e7c12c0": 1,
+"TS-COMPLEXITY|be6fd9504f": 1,
+"TS-LENGTH|be6fd9504f": 1
+},
+"apps/admin-web/src/AgentOperationPreview.tsx": {
+"TS-UNUSED-EXPORT|2bafc9ff5b": 1,
+"TS-UNUSED-EXPORT|f2e4c24922": 1
+},
+"apps/admin-web/src/AgentToolRequests.tsx": {
+"TS-COMPLEXITY|36bfc4f194": 1
+},
+"apps/admin-web/src/AgentToolResult.tsx": {
+"TS-COMPLEXITY|851471727e": 1
+},
+"apps/admin-web/src/App.tsx": {
+"TS-COMPLEXITY|01b5d8bb88": 1,
+"TS-COMPLEXITY|48703581d2": 1,
+"TS-COMPLEXITY|5527fc0597": 1,
+"TS-COMPLEXITY|9b15f943d5": 1,
+"TS-COMPLEXITY|caf1ac38e7": 1,
+"TS-LENGTH|01b5d8bb88": 1,
+"TS-LENGTH|9b15f943d5": 1,
+"TS-UNUSED-EXPORT|0814464e03": 1,
+"TS-UNUSED-EXPORT|d8ca134068": 1,
+"duplicate-block|76c0b4fca9f1": 2
+},
+"apps/admin-web/src/BusinessPage.tsx": {
+"TS-COMPLEXITY|81419fae9b": 1,
+"TS-UNUSED-EXPORT|932ca37f16": 1
+},
+"apps/admin-web/src/CommunicationLogPage.tsx": {
+"TS-COMPLEXITY|934939822d": 1
+},
+"apps/admin-web/src/ConflictRuleCatalog.tsx": {
+"TS-COMPLEXITY|cd1bc7e80f": 1
+},
+"apps/admin-web/src/ContractReceivablesPage.tsx": {
+"TS-COMPLEXITY|4de845b8da": 1,
+"TS-LENGTH|e62c7c63e1": 1,
+"TS-UNUSED-EXPORT|0ca37d9f08": 1,
+"TS-UNUSED-EXPORT|1675ab7088": 1,
+"TS-UNUSED-EXPORT|1ac943def1": 1,
+"TS-UNUSED-EXPORT|3a0aba217c": 1,
+"TS-UNUSED-EXPORT|4dea02acbd": 1,
+"TS-UNUSED-EXPORT|5108f0c017": 1,
+"TS-UNUSED-EXPORT|54a856f5b2": 1,
+"TS-UNUSED-EXPORT|854c9726d3": 1,
+"TS-UNUSED-EXPORT|8db0dcb3eb": 1,
+"TS-UNUSED-EXPORT|9166c2b1ed": 1,
+"TS-UNUSED-EXPORT|969333b061": 1,
+"TS-UNUSED-EXPORT|9f96a54064": 1,
+"TS-UNUSED-EXPORT|a3ecf76e22": 1,
+"TS-UNUSED-EXPORT|b60935b4f0": 1,
+"TS-UNUSED-EXPORT|e35aba0d91": 1,
+"TS-UNUSED-EXPORT|f4b4e34e8d": 1,
+"TS-UNUSED-EXPORT|f6044cd931": 1
+},
+"apps/admin-web/src/Dashboard.tsx": {
+"TS-COMPLEXITY|85d90d95ff": 1,
+"TS-LENGTH|85d90d95ff": 1
+},
+"apps/admin-web/src/DashboardOverview.tsx": {
+"TS-COMPLEXITY|a9a3d45d75": 1
+},
+"apps/admin-web/src/GlobalSearch.tsx": {
+"TS-UNUSED-EXPORT|1cd96a618d": 1,
+"TS-UNUSED-EXPORT|dc7f80e371": 1
+},
+"apps/admin-web/src/HrCenterPage.tsx": {
+"TS-COMPLEXITY|3c853a9c81": 1,
+"TS-COMPLEXITY|4e433aaf14": 1,
+"TS-COMPLEXITY|7730b02440": 1,
+"TS-COMPLEXITY|8d3e9e3b55": 1,
+"TS-COMPLEXITY|c792477b3a": 1,
+"TS-COMPLEXITY|f16e3e6f51": 1
+},
+"apps/admin-web/src/IprAnnualFeePage.tsx": {
+"TS-LENGTH|3ab5d420de": 1
+},
+"apps/admin-web/src/IprOfficialFilePage.tsx": {
+"TS-COMPLEXITY|dd5a86804c": 1
+},
+"apps/admin-web/src/IprTransferPage.tsx": {
+"TS-LENGTH|f95158a3d7": 1
+},
+"apps/admin-web/src/JarFeeManager.tsx": {
+"TS-COMPLEXITY|94f64e3729": 1,
+"TS-LENGTH|a0bd085672": 1
+},
+"apps/admin-web/src/LegacyContractHistoryPanel.tsx": {
+"TS-UNUSED-EXPORT|2cd102c1be": 1,
+"TS-UNUSED-EXPORT|701bc08d1e": 1,
+"TS-UNUSED-EXPORT|d2381794ca": 1
+},
+"apps/admin-web/src/LegacyLsHistoryPanel.tsx": {
+"TS-UNUSED-EXPORT|0b67c2e1b5": 1,
+"TS-UNUSED-EXPORT|34ad687710": 1,
+"TS-UNUSED-EXPORT|4594ac87ad": 1,
+"TS-UNUSED-EXPORT|5520b9bc38": 1
+},
+"apps/admin-web/src/NotificationCenter.tsx": {
+"TS-COMPLEXITY|11efbfdeb8": 1
+},
+"apps/admin-web/src/OrganizationCenterPage.tsx": {
+"TS-COMPLEXITY|669ccf11fd": 1,
+"TS-LENGTH|669ccf11fd": 1,
+"duplicate-block|86a47dc1449a": 2
+},
+"apps/admin-web/src/PersonalAgentCenterPage.tsx": {
+"TS-COMPLEXITY|7bdbfdac0a": 1
+},
+"apps/admin-web/src/PlatformFinancePage.tsx": {
+"TS-COMPLEXITY|816709c261": 1,
+"TS-COMPLEXITY|884e4d2937": 1,
+"TS-COMPLEXITY|8f5bd75119": 1,
+"TS-LENGTH|122e49e6d2": 1,
+"TS-LENGTH|8f5bd75119": 1
+},
+"apps/admin-web/src/ProgressMatrixReport.tsx": {
+"TS-COMPLEXITY|058e7f644b": 1,
+"TS-UNUSED-EXPORT|4210039f7a": 1,
+"TS-UNUSED-EXPORT|4a3f7af01b": 1,
+"TS-UNUSED-EXPORT|4acb259fe8": 1,
+"TS-UNUSED-EXPORT|c260081dee": 1,
+"TS-UNUSED-EXPORT|fc39a41f7b": 1
+},
+"apps/admin-web/src/ReportCenterPage.tsx": {
+"TS-COMPLEXITY|4157827446": 1,
+"TS-UNUSED-EXPORT|4157827446": 1,
+"TS-UNUSED-EXPORT|41b4a4a129": 1,
+"TS-UNUSED-EXPORT|43f972966f": 1,
+"TS-UNUSED-EXPORT|f96dc66400": 1
+},
+"apps/admin-web/src/SystemSkillPanel.tsx": {
+"TS-COMPLEXITY|3fd0767ed9": 1,
+"TS-COMPLEXITY|d4469dbf8f": 1
+},
+"apps/admin-web/src/SystemSkillResources.tsx": {
+"TS-COMPLEXITY|3ccf7fab6b": 1
+},
+"apps/admin-web/src/UserCenterPage.tsx": {
+"TS-COMPLEXITY|0365b89486": 1
+},
+"apps/admin-web/src/VipTaskCenterPage.tsx": {
+"TS-COMPLEXITY|a855d90d4c": 1
+},
+"apps/admin-web/src/WarehousePage.tsx": {
+"TS-COMPLEXITY|a1408193f3": 1
+},
+"apps/admin-web/src/agentActionResult.ts": {
+"TS-UNUSED-EXPORT|7cf56b3f06": 1
+},
+"apps/admin-web/src/aws/DocumentCenterPage.tsx": {
+"TS-COMPLEXITY|212cb90921": 1,
+"TS-COMPLEXITY|743f63d382": 1,
+"TS-COMPLEXITY|ef714196fb": 1,
+"TS-LENGTH|ef714196fb": 1
+},
+"apps/admin-web/src/aws/DocumentReceiptPanel.tsx": {
+"TS-LENGTH|7ec38f7979": 1,
+"duplicate-block|b728de8fb535": 2
+},
+"apps/admin-web/src/aws/OfficialOutgoingDetail.tsx": {
+"TS-COMPLEXITY|cab342c24f": 1
+},
+"apps/admin-web/src/businessRecordDetailNavigation.ts": {
+"TS-UNUSED-EXPORT|1fe61a0ac7": 1,
+"TS-UNUSED-EXPORT|39ae1937de": 1,
+"TS-UNUSED-EXPORT|c741cfd820": 1
+},
+"apps/admin-web/src/capability-market/CapabilityMarket.tsx": {
+"TS-COMPLEXITY|600048199f": 1,
+"TS-COMPLEXITY|80649c2f16": 1,
+"TS-COMPLEXITY|b7872ae80a": 1
+},
+"apps/admin-web/src/capability-market/CloudRuntimeSettings.tsx": {
+"TS-COMPLEXITY|414e4eda25": 1,
+"TS-UNUSED-EXPORT|da66a154ad": 1
+},
+"apps/admin-web/src/capability-market/ConnectorConfigPanel.tsx": {
+"TS-COMPLEXITY|15713c7c61": 1,
+"TS-COMPLEXITY|a3fdaaa611": 1,
+"TS-LENGTH|a3fdaaa611": 1,
+"TS-UNUSED-EXPORT|733fe53e07": 1
+},
+"apps/admin-web/src/capability-market/DshModelProviders.tsx": {
+"TS-COMPLEXITY|9d1537a17a": 1,
+"TS-COMPLEXITY|c45964cf60": 1,
+"TS-UNUSED-EXPORT|a9a9de6cc4": 1
+},
+"apps/admin-web/src/capability-market/GlobalMcpWorkspace.tsx": {
+"TS-COMPLEXITY|8e0628b46f": 1
+},
+"apps/admin-web/src/caseContractPrefill.ts": {
+"TS-UNUSED-EXPORT|0a4cb9dc87": 1
+},
+"apps/admin-web/src/caseDetailNavigation.ts": {
+"TS-UNUSED-EXPORT|4b159a1498": 1
+},
+"apps/admin-web/src/caseLegacyParity.ts": {
+"TS-UNUSED-EXPORT|062ceb6e6b": 1,
+"TS-UNUSED-EXPORT|3101982062": 1,
+"TS-UNUSED-EXPORT|44aea94c6e": 1,
+"TS-UNUSED-EXPORT|44cef72ecd": 1,
+"TS-UNUSED-EXPORT|530fa00d44": 1,
+"TS-UNUSED-EXPORT|80c0159284": 1,
+"TS-UNUSED-EXPORT|b3f75caff9": 1
+},
+"apps/admin-web/src/caseSecondBatchParity.ts": {
+"TS-UNUSED-EXPORT|0c5889bcb0": 1,
+"TS-UNUSED-EXPORT|37af74d5e8": 1,
+"TS-UNUSED-EXPORT|5755cda8d6": 1,
+"TS-UNUSED-EXPORT|c11b69a3ed": 1,
+"TS-UNUSED-EXPORT|e527415061": 1,
+"TS-UNUSED-EXPORT|e81333a56c": 1
+},
+"apps/admin-web/src/components/LinkifiedText.tsx": {
+"TS-UNUSED-EXPORT|4e5de429d7": 1
+},
+"apps/admin-web/src/components/ResizableTable.tsx": {
+"TS-COMPLEXITY|451e7b520d": 1,
+"TS-COMPLEXITY|48ccdfa20f": 1,
+"TS-COMPLEXITY|679c34538e": 1,
+"TS-COMPLEXITY|d763d75e39": 1,
+"TS-LENGTH|d763d75e39": 1,
+"TS-UNUSED-EXPORT|cfc84c95c2": 1
+},
+"apps/admin-web/src/components/common/confirmOperation.ts": {
+"TS-UNUSED-EXPORT|898329cb9c": 1
+},
+"apps/admin-web/src/components/common/popupSize.ts": {
+"TS-UNUSED-EXPORT|86b9884299": 1
+},
+"apps/admin-web/src/components/stackedTotals.tsx": {
+"TS-UNUSED-EXPORT|f48d9b069b": 1
+},
+"apps/admin-web/src/conflict-review/ConflictReviewNotice.tsx": {
+"TS-COMPLEXITY|01b7081589": 1
+},
+"apps/admin-web/src/conflict-review/types.ts": {
+"TS-UNUSED-EXPORT|0790f8e5c4": 1,
+"TS-UNUSED-EXPORT|c70a8ccd08": 1
+},
+"apps/admin-web/src/contract/ContractCenterPage.tsx": {
+"TS-COMPLEXITY|4754da800f": 1,
+"TS-COMPLEXITY|d7cdf79a63": 1,
+"TS-LENGTH|d7cdf79a63": 1,
+"duplicate-block|5e890d254521": 2,
+"duplicate-block|9488878a1cab": 2,
+"duplicate-block|eb570f612cb0": 2
+},
+"apps/admin-web/src/contract/ContractCreateWizard.tsx": {
+"TS-COMPLEXITY|c2a845f1a8": 1,
+"TS-LENGTH|c2a845f1a8": 1
+},
+"apps/admin-web/src/contract/ContractDetailView.tsx": {
+"TS-COMPLEXITY|a8cf2ec152": 1,
+"TS-LENGTH|a8cf2ec152": 1,
+"duplicate-block|127e854088a4": 2,
+"duplicate-block|5bcf67a544a9": 2,
+"duplicate-block|d8b7aba85761": 2
+},
+"apps/admin-web/src/contract/ContractFinancialRecords.tsx": {
+"TS-LENGTH|1bda109e57": 1
+},
+"apps/admin-web/src/contract/ContractInvestigationWizard.tsx": {
+"TS-COMPLEXITY|b037ad1aa2": 1,
+"TS-LENGTH|b037ad1aa2": 1
+},
+"apps/admin-web/src/contract/ContractList.tsx": {
+"TS-COMPLEXITY|67dfae8794": 1,
+"TS-LENGTH|67dfae8794": 1
+},
+"apps/admin-web/src/contract/ContractModals.tsx": {
+"duplicate-block|9a18119d6b8d": 1
+},
+"apps/admin-web/src/contract/ContractPageWizardContent.tsx": {
+"TS-COMPLEXITY|e843aea62e": 1
+},
+"apps/admin-web/src/contract/InvoiceApplicationForm.tsx": {
+"TS-UNUSED-EXPORT|bd88884862": 1
+},
+"apps/admin-web/src/contract/InvoiceServiceItemsTable.tsx": {
+"TS-UNUSED-EXPORT|df2a975f69": 1
+},
+"apps/admin-web/src/contract/contractInvoiceApplication.ts": {
+"TS-COMPLEXITY|213933d8db": 1
+},
+"apps/admin-web/src/contract/services/documentsActions.tsx": {
+"TS-UNUSED-EXPORT|ef67e18e6c": 1
+},
+"apps/admin-web/src/contract/services/financeActions.tsx": {
+"TS-COMPLEXITY|952a62c0d2": 1,
+"TS-UNUSED-EXPORT|4727fefde8": 1
+},
+"apps/admin-web/src/contract/services/queriesActions.tsx": {
+"TS-COMPLEXITY|b72621aa9b": 1,
+"TS-COMPLEXITY|c68933596f": 1,
+"TS-LENGTH|d7d717d6a3": 1,
+"TS-UNUSED-EXPORT|56e92f3104": 1,
+"duplicate-block|3cb7afee20e4": 1
+},
+"apps/admin-web/src/contract/services/workflowActions.tsx": {
+"TS-COMPLEXITY|66bc6d533a": 1,
+"TS-LENGTH|9752cb8e67": 1,
+"TS-UNUSED-EXPORT|890574569b": 1,
+"duplicate-block|3cb7afee20e4": 1
+},
+"apps/admin-web/src/contract/types.ts": {
+"TS-UNUSED-EXPORT|46127b44a3": 1
+},
+"apps/admin-web/src/contractCenterCustomerNavigation.ts": {
+"TS-UNUSED-EXPORT|d176de3fda": 1
+},
+"apps/admin-web/src/contractPaymentNavigation.ts": {
+"TS-COMPLEXITY|371381b58b": 1
+},
+"apps/admin-web/src/crm/CompanyLookup.tsx": {
+"TS-UNUSED-EXPORT|f4a51b074c": 1
+},
+"apps/admin-web/src/crm/CustomerCenterPage.tsx": {
+"TS-COMPLEXITY|30182d2788": 1,
+"TS-COMPLEXITY|66bc6d533a": 1,
+"TS-COMPLEXITY|72693b21b5": 1,
+"TS-COMPLEXITY|97ab765d81": 1,
+"TS-LENGTH|30182d2788": 1
+},
+"apps/admin-web/src/crm/CustomerCreateEditModal.tsx": {
+"TS-LENGTH|b0df5d91f5": 1,
+"duplicate-block|13af8568707c": 1,
+"duplicate-block|3bfb13e6e9fa": 1,
+"duplicate-block|4764d0dae4d1": 1,
+"duplicate-block|783155f92293": 1,
+"duplicate-block|9e398b074d95": 1,
+"duplicate-block|c78527c8d5ed": 1,
+"duplicate-block|f149508ee741": 1
+},
+"apps/admin-web/src/crm/CustomerCreatePage.tsx": {
+"TS-LENGTH|91dc75996e": 1,
+"duplicate-block|13af8568707c": 1,
+"duplicate-block|3bfb13e6e9fa": 1,
+"duplicate-block|4764d0dae4d1": 1,
+"duplicate-block|783155f92293": 1,
+"duplicate-block|9e398b074d95": 1,
+"duplicate-block|c78527c8d5ed": 1,
+"duplicate-block|f149508ee741": 1
+},
+"apps/admin-web/src/crm/CustomerDetailDrawer.tsx": {
+"TS-LENGTH|18887e1dfb": 1,
+"duplicate-block|440e7af42714": 1
+},
+"apps/admin-web/src/crm/CustomerDetailView.tsx": {
+"TS-COMPLEXITY|c3b332cceb": 1,
+"TS-LENGTH|c3b332cceb": 1,
+"duplicate-block|440e7af42714": 1
+},
+"apps/admin-web/src/crm/CustomerList.tsx": {
+"TS-COMPLEXITY|11ab1b7e39": 1,
+"TS-LENGTH|11ab1b7e39": 1
+},
+"apps/admin-web/src/crm/CustomerModals.tsx": {
+"TS-COMPLEXITY|7a4e854e21": 1,
+"TS-LENGTH|7a4e854e21": 1
+},
+"apps/admin-web/src/crm/PartyLibraryPage.tsx": {
+"TS-COMPLEXITY|19da40dcfc": 1
+},
+"apps/admin-web/src/crm/types.ts": {
+"TS-UNUSED-EXPORT|d42a553c4c": 1
+},
+"apps/admin-web/src/customerDetailNavigation.ts": {
+"TS-UNUSED-EXPORT|a28efabae8": 1,
+"TS-UNUSED-EXPORT|f2e95eafe0": 1
+},
+"apps/admin-web/src/customerRelationNavigation.ts": {
+"TS-COMPLEXITY|aa110c0623": 1,
+"TS-UNUSED-EXPORT|c743c5a1c9": 1
+},
+"apps/admin-web/src/dashboardData.ts": {
+"TS-UNUSED-EXPORT|7d75771ce2": 1
+},
+"apps/admin-web/src/dashboardTodos.tsx": {
+"TS-UNUSED-EXPORT|b33a392b4c": 1,
+"TS-UNUSED-EXPORT|f7554ae331": 1
+},
+"apps/admin-web/src/detailRelationResolver.ts": {
+"TS-UNUSED-EXPORT|8f08f69b76": 1,
+"TS-UNUSED-EXPORT|ee991546bd": 1
+},
+"apps/admin-web/src/documentSearchDetailNavigation.ts": {
+"TS-UNUSED-EXPORT|92a4167bcc": 1,
+"TS-UNUSED-EXPORT|ac03033d20": 1
+},
+"apps/admin-web/src/feedback/FeedbackDetail.tsx": {
+"TS-COMPLEXITY|1f723d8743": 1,
+"TS-LENGTH|1f723d8743": 1
+},
+"apps/admin-web/src/feedback/FeedbackFileDrop.tsx": {
+"TS-UNUSED-EXPORT|9249991357": 1
+},
+"apps/admin-web/src/feedback/FeedbackManager.tsx": {
+"TS-COMPLEXITY|20aa4b9920": 1
+},
+"apps/admin-web/src/feedback/chat.ts": {
+"TS-UNUSED-EXPORT|7a9b8a49c4": 1,
+"TS-UNUSED-EXPORT|e8f0b89004": 1
+},
+"apps/admin-web/src/feedback/draft.ts": {
+"TS-UNUSED-EXPORT|7efe401af7": 1,
+"TS-UNUSED-EXPORT|9a6a441f5d": 1
+},
+"apps/admin-web/src/feedback/navigation.ts": {
+"TS-UNUSED-EXPORT|d1ed74fd63": 1
+},
+"apps/admin-web/src/finance/BankFlowPage.tsx": {
+"TS-COMPLEXITY|0ed43d0d8a": 1
+},
+"apps/admin-web/src/finance/ContractPaymentEditPage.tsx": {
+"TS-COMPLEXITY|af56204346": 1
+},
+"apps/admin-web/src/finance/FeeReviewDrawer.tsx": {
+"TS-LENGTH|9e0b1bb9e5": 1
+},
+"apps/admin-web/src/finance/FeeTypePicker.tsx": {
+"TS-COMPLEXITY|f6960a0485": 1,
+"TS-UNUSED-EXPORT|ee3a4a7919": 1
+},
+"apps/admin-web/src/finance/FinanceCenterPage.tsx": {
+"TS-COMPLEXITY|248f183847": 1,
+"TS-COMPLEXITY|491d3242da": 1,
+"TS-COMPLEXITY|54a7d209c8": 1,
+"TS-COMPLEXITY|6789cbe9a0": 1,
+"TS-COMPLEXITY|80b3c2f66c": 1,
+"TS-COMPLEXITY|85d3150163": 1,
+"TS-COMPLEXITY|9ba223d673": 1,
+"TS-COMPLEXITY|a0153adf1a": 1,
+"TS-COMPLEXITY|bdb9949afc": 1,
+"TS-COMPLEXITY|c6204bd2fb": 1,
+"TS-COMPLEXITY|cd0a7518ba": 1,
+"TS-COMPLEXITY|de1d3ba591": 1,
+"TS-COMPLEXITY|f28ea927c7": 1,
+"TS-COMPLEXITY|f9fc03eeb4": 1,
+"TS-COMPLEXITY|ffa02a39a0": 1,
+"TS-LENGTH|c6204bd2fb": 1,
+"TS-LENGTH|ffa02a39a0": 1,
+"duplicate-block|1f944004fb3a": 1,
+"duplicate-block|441b3c465e14": 2,
+"duplicate-block|5b2c8f1cd12b": 1,
+"duplicate-block|5fc50e97b098": 1,
+"duplicate-block|60ed3cf8108b": 1,
+"duplicate-block|8b90e5a4886c": 1,
+"duplicate-block|bff68b6e7f47": 1,
+"duplicate-block|eee730846df3": 1,
+"duplicate-block|fb0fbd3e3b76": 1
+},
+"apps/admin-web/src/finance/FinanceCenterView.tsx": {
+"TS-COMPLEXITY|7bd1b113eb": 1,
+"TS-UNUSED-EXPORT|580d65c262": 1,
+"duplicate-block|1f944004fb3a": 1,
+"duplicate-block|eee730846df3": 1
+},
+"apps/admin-web/src/finance/FinanceFeeModals.tsx": {
+"TS-COMPLEXITY|a95c13912b": 1
+},
+"apps/admin-web/src/finance/FinanceOriginalRoutesView.tsx": {
+"TS-COMPLEXITY|764aaf06a1": 1,
+"TS-COMPLEXITY|dc4ca3e5e0": 1,
+"TS-LENGTH|764aaf06a1": 1,
+"duplicate-block|38d83d28b3b8": 3,
+"duplicate-block|5b2c8f1cd12b": 1,
+"duplicate-block|5fc50e97b098": 1,
+"duplicate-block|a883c6b1d1d0": 2,
+"duplicate-block|fb0fbd3e3b76": 1
+},
+"apps/admin-web/src/finance/FinanceRefundDetailModals.tsx": {
+"TS-COMPLEXITY|b82f2a9d49": 1
+},
+"apps/admin-web/src/finance/FinanceStandardTabsView.tsx": {
+"TS-COMPLEXITY|968e5a971e": 1,
+"TS-LENGTH|968e5a971e": 1,
+"duplicate-block|60ed3cf8108b": 1
+},
+"apps/admin-web/src/finance/GeneralSettlementExpandedRow.tsx": {
+"TS-COMPLEXITY|fd50e2b974": 1,
+"TS-UNUSED-EXPORT|6c439866b7": 1
+},
+"apps/admin-web/src/finance/IncomingAllocationModal.tsx": {
+"TS-LENGTH|f33562092d": 1
+},
+"apps/admin-web/src/finance/InvoiceApplicationPage.tsx": {
+"TS-COMPLEXITY|894f2106f7": 1,
+"TS-COMPLEXITY|f28ea927c7": 1
+},
+"apps/admin-web/src/finance/LegacyHistoryPanel.tsx": {
+"TS-COMPLEXITY|18cc5db15f": 1,
+"TS-LENGTH|18cc5db15f": 1,
+"TS-LENGTH|8494e63d1a": 1
+},
+"apps/admin-web/src/finance/PaymentApplicationPage.tsx": {
+"TS-COMPLEXITY|a89f246da4": 1
+},
+"apps/admin-web/src/finance/PaymentDocument.tsx": {
+"TS-COMPLEXITY|aa8c7016cc": 1
+},
+"apps/admin-web/src/finance/SettlementContextModal.tsx": {
+"TS-COMPLEXITY|cc01019b90": 1
+},
+"apps/admin-web/src/finance/SettlementReviewModals.tsx": {
+"TS-LENGTH|c172e19c21": 1
+},
+"apps/admin-web/src/finance/columns/configuredColumns.tsx": {
+"TS-COMPLEXITY|112cbf9897": 1,
+"TS-COMPLEXITY|b6f88a1dca": 1,
+"TS-LENGTH|55b2625784": 1
+},
+"apps/admin-web/src/finance/config/routeConfigs.tsx": {
+"TS-LENGTH|f5724401b0": 1,
+"duplicate-block|2b6617e3639f": 4,
+"duplicate-block|3dfaf0bb6b95": 2,
+"duplicate-block|43c5c502ea97": 2,
+"duplicate-block|48115e5828e1": 2,
+"duplicate-block|597d90058ddc": 2,
+"duplicate-block|93f040941e02": 2,
+"duplicate-block|dad9aadd5db2": 2,
+"duplicate-block|e106fb9b12ac": 3,
+"duplicate-block|fa467035c238": 2,
+"duplicate-block|fa695147b59d": 2
+},
+"apps/admin-web/src/finance/constants.ts": {
+"TS-COMPLEXITY|28be056da0": 1,
+"TS-COMPLEXITY|726b70dfc1": 1,
+"TS-COMPLEXITY|d97dcca0d8": 1,
+"TS-COMPLEXITY|e71a4c4b78": 1,
+"TS-UNUSED-EXPORT|2c91441aca": 1,
+"TS-UNUSED-EXPORT|3e2e63f6b7": 1,
+"TS-UNUSED-EXPORT|946198bf81": 1,
+"TS-UNUSED-EXPORT|bfe2d5792d": 1,
+"TS-UNUSED-EXPORT|cc4e78234b": 1,
+"TS-UNUSED-EXPORT|db50f8c589": 1,
+"TS-UNUSED-EXPORT|e04d0c71e0": 1
+},
+"apps/admin-web/src/finance/formTypes.ts": {
+"TS-UNUSED-EXPORT|3778deb4e8": 1
+},
+"apps/admin-web/src/finance/hooks/useFinanceLinkedDetail.ts": {
+"TS-COMPLEXITY|4754da800f": 1
+},
+"apps/admin-web/src/finance/hooks/useGeneralSettlementActionState.ts": {
+"duplicate-block|8b90e5a4886c": 1
+},
+"apps/admin-web/src/finance/hooks/useInternalFinanceQuery.ts": {
+"TS-COMPLEXITY|5066d3e22f": 1
+},
+"apps/admin-web/src/finance/hooks/useRefundCaseFeeActionState.ts": {
+"duplicate-block|bff68b6e7f47": 1
+},
+"apps/admin-web/src/finance/moneyColumns.ts": {
+"TS-UNUSED-EXPORT|89362673d1": 1
+},
+"apps/admin-web/src/finance/services/accountingActions.tsx": {
+"TS-UNUSED-EXPORT|dec9084c10": 1
+},
+"apps/admin-web/src/finance/services/documentsActions.tsx": {
+"TS-UNUSED-EXPORT|54ed8f842c": 1
+},
+"apps/admin-web/src/finance/services/financeBusinessType.ts": {
+"TS-UNUSED-EXPORT|1d30c285ad": 1,
+"TS-UNUSED-EXPORT|ad0da7d7f2": 1
+},
+"apps/admin-web/src/finance/services/invoicesActions.tsx": {
+"TS-COMPLEXITY|d78add974f": 1,
+"TS-LENGTH|f3f12cc25c": 1,
+"TS-UNUSED-EXPORT|88edc29c28": 1,
+"TS-UNUSED-EXPORT|93f8387af8": 1,
+"duplicate-block|2649c19d1840": 1,
+"duplicate-block|39fc12f6ba28": 1,
+"duplicate-block|88b61fc1ffee": 1,
+"duplicate-block|d139d1c084a0": 1,
+"duplicate-block|f5122c73f484": 1
+},
+"apps/admin-web/src/finance/services/paymentsActions.tsx": {
+"TS-COMPLEXITY|96e93e1bb6": 1,
+"TS-LENGTH|63646811f9": 1,
+"TS-UNUSED-EXPORT|541420e1e0": 1,
+"duplicate-block|082203d246c6": 1
+},
+"apps/admin-web/src/finance/services/queriesActions.tsx": {
+"TS-COMPLEXITY|c22e5348bf": 1,
+"TS-COMPLEXITY|d671974260": 1,
+"TS-LENGTH|299382e9b0": 1,
+"TS-LENGTH|c22e5348bf": 1,
+"TS-UNUSED-EXPORT|a78f2b58bb": 1,
+"duplicate-block|082203d246c6": 1,
+"duplicate-block|2649c19d1840": 1,
+"duplicate-block|397b7cb48962": 1,
+"duplicate-block|39fc12f6ba28": 1,
+"duplicate-block|88b61fc1ffee": 1,
+"duplicate-block|d139d1c084a0": 1,
+"duplicate-block|f5122c73f484": 1,
+"duplicate-block|f6537765d502": 1
+},
+"apps/admin-web/src/finance/services/queryResources.ts": {
+"TS-COMPLEXITY|b85a1f116a": 1,
+"TS-UNUSED-EXPORT|9ca910da95": 1
+},
+"apps/admin-web/src/finance/services/refundsActions.tsx": {
+"TS-LENGTH|797634eb6f": 1,
+"TS-UNUSED-EXPORT|1b0ecb0554": 1
+},
+"apps/admin-web/src/finance/services/settlementsActions.tsx": {
+"TS-LENGTH|813d23e290": 1,
+"TS-UNUSED-EXPORT|9b544017bd": 1,
+"duplicate-block|397b7cb48962": 1,
+"duplicate-block|f6537765d502": 1
+},
+"apps/admin-web/src/finance/services/workflowActions.tsx": {
+"TS-COMPLEXITY|e296f62822": 1,
+"TS-UNUSED-EXPORT|1406824ce7": 1
+},
+"apps/admin-web/src/hr/DepartureTasks.tsx": {
+"TS-UNUSED-EXPORT|1e92d21dbf": 1,
+"TS-UNUSED-EXPORT|c8297db55a": 1
+},
+"apps/admin-web/src/incomingPaymentDetailNavigation.ts": {
+"TS-UNUSED-EXPORT|836801ec68": 1,
+"TS-UNUSED-EXPORT|d06256fd94": 1
+},
+"apps/admin-web/src/investigation/ClueDetail/ClueDetailHeader.tsx": {
+"TS-COMPLEXITY|2a5189c6d4": 1,
+"TS-LENGTH|2a5189c6d4": 1
+},
+"apps/admin-web/src/investigation/ClueReviewModal.tsx": {
+"TS-COMPLEXITY|7b1511e7ff": 1
+},
+"apps/admin-web/src/investigation/InvestigationCenterPage.tsx": {
+"TS-COMPLEXITY|2840a3dbbb": 1,
+"TS-COMPLEXITY|30584b1e94": 1,
+"TS-COMPLEXITY|9b46c26a46": 1,
+"TS-COMPLEXITY|cba4a20886": 1,
+"TS-COMPLEXITY|d324fb2c0c": 1,
+"TS-COMPLEXITY|e1ac9dc1d0": 1,
+"TS-COMPLEXITY|e3baf6767f": 1,
+"TS-COMPLEXITY|f1e9b774f8": 1,
+"TS-COMPLEXITY|fbfac69ae1": 1,
+"TS-LENGTH|9b46c26a46": 1,
+"TS-LENGTH|aaf8b0cd00": 1,
+"duplicate-block|03596acbaa3d": 2,
+"duplicate-block|3f560324ba5b": 3,
+"duplicate-block|683efd2108e9": 2
+},
+"apps/admin-web/src/investigation/InvestigationPartyEditor.tsx": {
+"TS-COMPLEXITY|66bc6d533a": 1,
+"TS-UNUSED-EXPORT|94ac0126c0": 1
+},
+"apps/admin-web/src/investigation/InvestigationTaskDetail.tsx": {
+"TS-COMPLEXITY|0825e3293e": 1,
+"TS-COMPLEXITY|3e6acaf5c0": 1
+},
+"apps/admin-web/src/investigation/TaskDetailDrawer.tsx": {
+"TS-LENGTH|9cc8bfd0be": 1
+},
+"apps/admin-web/src/investigation/types.ts": {
+"TS-UNUSED-EXPORT|06e160727a": 1,
+"TS-UNUSED-EXPORT|62e7071a68": 1
+},
+"apps/admin-web/src/investigationDetailNavigation.ts": {
+"TS-UNUSED-EXPORT|503b6cd736": 1
+},
+"apps/admin-web/src/ipr/IprBatchOperations.tsx": {
+"TS-LENGTH|b071e9e3a4": 1
+},
+"apps/admin-web/src/ipr/IprCaseCreateModal.tsx": {
+"TS-LENGTH|644cd6d5bb": 1,
+"duplicate-block|5bfde78795c1": 1
+},
+"apps/admin-web/src/ipr/IprCaseDetail/IprAnnualFeesPanel.tsx": {
+"TS-LENGTH|8afa934c10": 1
+},
+"apps/admin-web/src/ipr/IprCaseDetail/IprAssistedFeesPanel.tsx": {
+"TS-COMPLEXITY|7d480b95a8": 1,
+"TS-LENGTH|68b56cbd56": 1,
+"duplicate-block|dd4270ecd7ce": 2
+},
+"apps/admin-web/src/ipr/IprCaseDetail/IprCaseDetailHeader.tsx": {
+"TS-COMPLEXITY|4a78a4cf12": 1,
+"TS-COMPLEXITY|bb7a15d79c": 1
+},
+"apps/admin-web/src/ipr/IprCaseDetail/IprCaseFeesPanel.tsx": {
+"TS-LENGTH|4baa1337a7": 1
+},
+"apps/admin-web/src/ipr/IprCaseDetail/IprLawsuitPanel.tsx": {
+"TS-LENGTH|4c2db58447": 1,
+"duplicate-block|5bfde78795c1": 1
+},
+"apps/admin-web/src/ipr/IprCaseDetail/IprRemindersPanel.tsx": {
+"TS-LENGTH|2e4f599de6": 1
+},
+"apps/admin-web/src/ipr/IprCaseDetail/IprRowContextMenu.tsx": {
+"TS-UNUSED-EXPORT|5b4bc5d2cd": 1
+},
+"apps/admin-web/src/ipr/IprCaseDetail/iprCaseInfo.ts": {
+"TS-UNUSED-EXPORT|250b47f451": 1,
+"TS-UNUSED-EXPORT|5ab53bb3bd": 1,
+"TS-UNUSED-EXPORT|6c098515cc": 1,
+"TS-UNUSED-EXPORT|8b8db06ad5": 1,
+"TS-UNUSED-EXPORT|efd11d23b6": 1
+},
+"apps/admin-web/src/ipr/IprCaseList.tsx": {
+"TS-LENGTH|f62286fbad": 1
+},
+"apps/admin-web/src/ipr/IprCenterPage.tsx": {
+"TS-COMPLEXITY|22882bd807": 1,
+"TS-COMPLEXITY|e73f90d4ba": 1,
+"TS-LENGTH|22882bd807": 1,
+"duplicate-block|c943f634b920": 2
+},
+"apps/admin-web/src/ipr/IprWarningRules.tsx": {
+"TS-LENGTH|fe11866569": 1
+},
+"apps/admin-web/src/ipr/constants.ts": {
+"TS-UNUSED-EXPORT|03722d25ff": 1
+},
+"apps/admin-web/src/ipr/iprCaseTabs.ts": {
+"TS-UNUSED-EXPORT|fb61f7db85": 1
+},
+"apps/admin-web/src/ipr/services/documentsActions.tsx": {
+"TS-LENGTH|4e835c64c7": 1,
+"TS-UNUSED-EXPORT|581443cb2b": 1
+},
+"apps/admin-web/src/ipr/services/financeActions.tsx": {
+"TS-LENGTH|cc86559d0a": 1,
+"TS-UNUSED-EXPORT|238d20ed22": 1
+},
+"apps/admin-web/src/ipr/services/queriesActions.tsx": {
+"TS-LENGTH|40a41af1db": 1,
+"TS-UNUSED-EXPORT|bcc483cd02": 1
+},
+"apps/admin-web/src/ipr/services/workflowActions.tsx": {
+"TS-COMPLEXITY|7c0d3933ab": 1,
+"TS-LENGTH|182745ceff": 1,
+"TS-UNUSED-EXPORT|0ccfbfe7c8": 1
+},
+"apps/admin-web/src/ipr/types.ts": {
+"TS-UNUSED-EXPORT|af9f702e70": 1
+},
+"apps/admin-web/src/legal/CaseAgentDock.tsx": {
+"TS-COMPLEXITY|5f13a5655f": 1,
+"TS-UNUSED-EXPORT|0b5cb67b72": 1,
+"TS-UNUSED-EXPORT|214d37644b": 1,
+"TS-UNUSED-EXPORT|37a07a6f86": 1,
+"TS-UNUSED-EXPORT|56f3c3b9b6": 1,
+"TS-UNUSED-EXPORT|5fdc1b4759": 1,
+"TS-UNUSED-EXPORT|a1566abd1a": 1,
+"TS-UNUSED-EXPORT|a81fd0826a": 1,
+"TS-UNUSED-EXPORT|b608d9223e": 1,
+"TS-UNUSED-EXPORT|cecac01147": 1,
+"TS-UNUSED-EXPORT|e4c04a8c51": 1
+},
+"apps/admin-web/src/legal/CaseAgentDrawer.tsx": {
+"TS-COMPLEXITY|869c2f870f": 1,
+"TS-LENGTH|869c2f870f": 1,
+"TS-UNUSED-EXPORT|ef93159768": 1
+},
+"apps/admin-web/src/legal/CaseCenterPage.tsx": {
+"TS-COMPLEXITY|8059ba521d": 1,
+"TS-COMPLEXITY|8b0bc48973": 1,
+"TS-COMPLEXITY|b6d51d8cef": 1,
+"TS-COMPLEXITY|c250fecabe": 1,
+"TS-COMPLEXITY|e0602cfc19": 1,
+"TS-COMPLEXITY|f28ea927c7": 1,
+"TS-LENGTH|8059ba521d": 1,
+"duplicate-block|0f0402806f2f": 2
+},
+"apps/admin-web/src/legal/CaseCreateWizard.tsx": {
+"TS-COMPLEXITY|8dba3c7ff0": 1
+},
+"apps/admin-web/src/legal/CaseDetail/CaseClueDetails.tsx": {
+"TS-COMPLEXITY|d45667a0e8": 1
+},
+"apps/admin-web/src/legal/CaseDetail/CaseDetailHeader.tsx": {
+"TS-COMPLEXITY|ba07ae4ff6": 1,
+"TS-UNUSED-EXPORT|0bdc45d8c6": 1,
+"TS-UNUSED-EXPORT|1fcdcb4124": 1
+},
+"apps/admin-web/src/legal/CaseDetail/CaseDocumentsPanel.tsx": {
+"TS-COMPLEXITY|b47b8424f5": 1,
+"TS-COMPLEXITY|b9d55b6f1e": 1,
+"TS-COMPLEXITY|c823ae70cc": 1
+},
+"apps/admin-web/src/legal/CaseDetail/CaseFeesPanel.tsx": {
+"TS-COMPLEXITY|af736ff2d4": 1,
+"duplicate-block|f2d5d64cc7a1": 2
+},
+"apps/admin-web/src/legal/CaseDetail/CaseSystemLogsPanel.tsx": {
+"TS-UNUSED-EXPORT|08fb9ea1b4": 1,
+"TS-UNUSED-EXPORT|3224953cf2": 1
+},
+"apps/admin-web/src/legal/CaseDetail/caseClueLinks.ts": {
+"TS-UNUSED-EXPORT|caed61683d": 1
+},
+"apps/admin-web/src/legal/CauseSearchInput.tsx": {
+"TS-UNUSED-EXPORT|211067a8af": 1,
+"TS-UNUSED-EXPORT|b5fa8dbfec": 1
+},
+"apps/admin-web/src/legal/caseAgentAsk.ts": {
+"TS-UNUSED-EXPORT|45260a2936": 1,
+"TS-UNUSED-EXPORT|53fdba362d": 1,
+"TS-UNUSED-EXPORT|69d072d03f": 1
+},
+"apps/admin-web/src/legal/caseReceiptFiles.ts": {
+"TS-COMPLEXITY|b02f704583": 1,
+"TS-UNUSED-EXPORT|5dc5cae887": 1
+},
+"apps/admin-web/src/legal/columns/groupedOriginalCaseColumns.tsx": {
+"TS-COMPLEXITY|884b4bfe84": 1
+},
+"apps/admin-web/src/legal/constants.tsx": {
+"TS-UNUSED-EXPORT|0530db2a8c": 1,
+"TS-UNUSED-EXPORT|16bca2491b": 1,
+"TS-UNUSED-EXPORT|1d6bb27e12": 1,
+"TS-UNUSED-EXPORT|43e51ea2bb": 1,
+"TS-UNUSED-EXPORT|5781d46e1f": 1,
+"TS-UNUSED-EXPORT|7e7914ad35": 1,
+"TS-UNUSED-EXPORT|a3e9c37040": 1,
+"TS-UNUSED-EXPORT|ba97daefa0": 1,
+"TS-UNUSED-EXPORT|fe1dfebbb2": 1
+},
+"apps/admin-web/src/legal/courtDisplay.ts": {
+"TS-COMPLEXITY|66c9e94b16": 1
+},
+"apps/admin-web/src/legal/hooks/useCaseAgentWorkspace.ts": {
+"TS-LENGTH|3e6397524b": 1
+},
+"apps/admin-web/src/legal/hooks/useCaseInvoiceBatch.ts": {
+"TS-UNUSED-EXPORT|31acaf60f6": 1
+},
+"apps/admin-web/src/legal/services/assistantActions.tsx": {
+"TS-COMPLEXITY|fb59f0db2a": 1,
+"TS-COMPLEXITY|fcc13930a7": 1,
+"TS-LENGTH|7044dbd74f": 1,
+"TS-UNUSED-EXPORT|06d1bbb4ed": 1
+},
+"apps/admin-web/src/legal/services/documentsActions.tsx": {
+"TS-COMPLEXITY|e06be55147": 1,
+"TS-COMPLEXITY|ead4363096": 1,
+"TS-LENGTH|70bdf6973c": 1,
+"TS-UNUSED-EXPORT|008a7d0924": 1
+},
+"apps/admin-web/src/legal/services/financeActions.tsx": {
+"TS-COMPLEXITY|148bdbfc71": 1,
+"TS-COMPLEXITY|4b4e3def9a": 1,
+"TS-COMPLEXITY|5a17db1e27": 1,
+"TS-COMPLEXITY|8ea24fee11": 1,
+"TS-COMPLEXITY|dd4245275f": 1,
+"TS-COMPLEXITY|ef4d2af638": 1,
+"TS-COMPLEXITY|effaa69c5e": 1,
+"TS-LENGTH|d4783e5c5c": 1
+},
+"apps/admin-web/src/legal/services/phaseActions.ts": {
+"TS-UNUSED-EXPORT|fc57d0c093": 1
+},
+"apps/admin-web/src/legal/services/queriesActions.tsx": {
+"TS-COMPLEXITY|830bfdf3e1": 1,
+"TS-COMPLEXITY|cb4ef5756f": 1,
+"TS-COMPLEXITY|f42bed2136": 1,
+"TS-LENGTH|13193205ba": 1,
+"TS-UNUSED-EXPORT|326f4e1a8d": 1
+},
+"apps/admin-web/src/legal/services/workflowActions.tsx": {
+"TS-COMPLEXITY|03c0f3a9c6": 1,
+"TS-COMPLEXITY|a31a8fdcf8": 1,
+"TS-COMPLEXITY|a49cadd556": 1,
+"TS-COMPLEXITY|a7c6e31ea5": 1,
+"TS-COMPLEXITY|b6d95a23ec": 1,
+"TS-COMPLEXITY|bfb2f6daff": 1,
+"TS-COMPLEXITY|c67eead188": 1,
+"TS-COMPLEXITY|e6ec8a8725": 1,
+"TS-COMPLEXITY|f12a13d767": 1,
+"TS-LENGTH|6737997c6a": 1,
+"TS-UNUSED-EXPORT|4a93fa2e6e": 1
+},
+"apps/admin-web/src/legal/types.ts": {
+"TS-UNUSED-EXPORT|6dbea05ae5": 1,
+"TS-UNUSED-EXPORT|b03f893e98": 1,
+"TS-UNUSED-EXPORT|f04fa480ad": 1
+},
+"apps/admin-web/src/office/collaboraPostMessage.ts": {
+"TS-COMPLEXITY|3b01950304": 1,
+"TS-COMPLEXITY|53bf0615e2": 1
+},
+"apps/admin-web/src/office/useLibreOfficeSession.ts": {
+"TS-COMPLEXITY|8c08977ce6": 1,
+"TS-COMPLEXITY|c604e88c96": 1,
+"TS-COMPLEXITY|fce534650b": 1,
+"TS-LENGTH|acf9eade7a": 1,
+"TS-LENGTH|f28ea927c7": 1
+},
+"apps/admin-web/src/pageLoadTimeout.ts": {
+"TS-UNUSED-EXPORT|0486b95745": 1
+},
+"apps/admin-web/src/personal-agent/ActionConfirmation.tsx": {
+"TS-COMPLEXITY|0749639d61": 1,
+"TS-COMPLEXITY|da009ccb52": 1
+},
+"apps/admin-web/src/personal-agent/AgentMascot.tsx": {
+"TS-UNUSED-EXPORT|559ded0346": 1
+},
+"apps/admin-web/src/personal-agent/AssistantPanel.tsx": {
+"TS-COMPLEXITY|02f36140c8": 1,
+"TS-COMPLEXITY|edbe7416e8": 1,
+"TS-LENGTH|edbe7416e8": 1
+},
+"apps/admin-web/src/personal-agent/AssistantWorkspaceSidebar.tsx": {
+"TS-COMPLEXITY|47ea1d8fc6": 1
+},
+"apps/admin-web/src/personal-agent/AssistantWorkspaceTools.tsx": {
+"TS-COMPLEXITY|ea5c7c1be4": 1
+},
+"apps/admin-web/src/personal-agent/CaseMaterialsPicker.tsx": {
+"TS-COMPLEXITY|4707c9fcd1": 1
+},
+"apps/admin-web/src/personal-agent/ConfirmationHistoryDetails.tsx": {
+"TS-COMPLEXITY|b9313e8f6d": 1
+},
+"apps/admin-web/src/personal-agent/ConversationManager.tsx": {
+"TS-COMPLEXITY|7898c9b31e": 1
+},
+"apps/admin-web/src/personal-agent/ConversationMessage.tsx": {
+"TS-COMPLEXITY|eb31d2c192": 1
+},
+"apps/admin-web/src/personal-agent/ConversationWorkspaceNavigation.tsx": {
+"TS-COMPLEXITY|09f2c5806e": 1
+},
+"apps/admin-web/src/personal-agent/McpConnectionTurn.tsx": {
+"TS-COMPLEXITY|3f2a390037": 1
+},
+"apps/admin-web/src/personal-agent/MemoryControlPanel.tsx": {
+"TS-COMPLEXITY|0e932c7c14": 1,
+"TS-UNUSED-EXPORT|8ab9ef4da8": 1
+},
+"apps/admin-web/src/personal-agent/PersonalAiOfficeEditor.tsx": {
+"TS-COMPLEXITY|3c2e0d54b4": 1,
+"TS-COMPLEXITY|b3b8672508": 1,
+"TS-COMPLEXITY|b82334c77a": 1
+},
+"apps/admin-web/src/personal-agent/PersonalAiSpace.tsx": {
+"TS-COMPLEXITY|ed4bc05615": 1
+},
+"apps/admin-web/src/personal-agent/PersonalAiSpaceFiles.tsx": {
+"TS-COMPLEXITY|f8769ef685": 1
+},
+"apps/admin-web/src/personal-agent/PersonalAiSpaceSkills.tsx": {
+"TS-UNUSED-EXPORT|616001afc6": 1
+},
+"apps/admin-web/src/personal-agent/PersonalMcpConnectionCard.tsx": {
+"TS-COMPLEXITY|87f980fcd4": 1,
+"TS-COMPLEXITY|8906f8be31": 1
+},
+"apps/admin-web/src/personal-agent/SkillCatalog.tsx": {
+"TS-COMPLEXITY|e503d975a6": 1
+},
+"apps/admin-web/src/personal-agent/SkillManager.tsx": {
+"TS-COMPLEXITY|d75fbfe397": 1
+},
+"apps/admin-web/src/personal-agent/WorkPanel.tsx": {
+"TS-COMPLEXITY|ba6cb9d108": 1
+},
+"apps/admin-web/src/personal-agent/personalMcpConfig.ts": {
+"TS-COMPLEXITY|0f075d43e4": 1,
+"TS-UNUSED-EXPORT|022f15192e": 1,
+"TS-UNUSED-EXPORT|068a4806a4": 1,
+"TS-UNUSED-EXPORT|6153a0e092": 1
+},
+"apps/admin-web/src/personal-agent/types.ts": {
+"TS-UNUSED-EXPORT|3b182baf86": 1,
+"TS-UNUSED-EXPORT|5d970a864e": 1
+},
+"apps/admin-web/src/personal-agent/usePersonalConversations.ts": {
+"TS-COMPLEXITY|8e6c8e67c1": 1
+},
+"apps/admin-web/src/personal-agent/usePersonalMcpConnection.ts": {
+"TS-COMPLEXITY|73387e57bd": 1
+},
+"apps/admin-web/src/personal-agent/usePersonalWorkspace.ts": {
+"TS-COMPLEXITY|4d835b40ee": 1,
+"TS-COMPLEXITY|529ac01ec3": 1,
+"TS-COMPLEXITY|637023900c": 1,
+"TS-COMPLEXITY|71b4554c4f": 1,
+"TS-COMPLEXITY|d35ebbdbe2": 1,
+"TS-LENGTH|0f53b6402b": 1,
+"TS-UNUSED-EXPORT|5814dae4aa": 1
+},
+"apps/admin-web/src/seal/SealActionModal.tsx": {
+"TS-COMPLEXITY|f903fc439d": 1,
+"duplicate-block|7b00d2de54b6": 1
+},
+"apps/admin-web/src/seal/SealBatchStampModal.tsx": {
+"duplicate-block|7b00d2de54b6": 1
+},
+"apps/admin-web/src/seal/SealCenterPage.tsx": {
+"TS-COMPLEXITY|54b20ed559": 1,
+"TS-COMPLEXITY|ec871f41d5": 1,
+"TS-COMPLEXITY|f2d4d21b27": 1,
+"TS-LENGTH|54b20ed559": 1
+},
+"apps/admin-web/src/seal/SealCreateModal.tsx": {
+"TS-LENGTH|b9a74ce0a7": 1
+},
+"apps/admin-web/src/seal/SealDetailDrawer.tsx": {
+"TS-COMPLEXITY|8de2d9da8a": 1,
+"TS-LENGTH|8de2d9da8a": 1
+},
+"apps/admin-web/src/seal/constants.ts": {
+"TS-UNUSED-EXPORT|14b9bb3fa0": 1,
+"TS-UNUSED-EXPORT|481114db3c": 1,
+"TS-UNUSED-EXPORT|fd6f8cec9e": 1
+},
+"apps/admin-web/src/seal/types.ts": {
+"TS-UNUSED-EXPORT|ee642e7306": 1
+},
+"apps/admin-web/src/sealViewMapping.ts": {
+"TS-UNUSED-EXPORT|1aa3018554": 1,
+"TS-UNUSED-EXPORT|bad9e7f30e": 1,
+"TS-UNUSED-EXPORT|e781e95d24": 1
+},
+"apps/admin-web/src/sealWorkflowPolicy.ts": {
+"TS-UNUSED-EXPORT|02ba892088": 1,
+"TS-UNUSED-EXPORT|09b49f276a": 1,
+"TS-UNUSED-EXPORT|315873ae98": 1,
+"TS-UNUSED-EXPORT|4b9bd43375": 1,
+"TS-UNUSED-EXPORT|4fb701c51b": 1,
+"TS-UNUSED-EXPORT|8519f42d10": 1,
+"TS-UNUSED-EXPORT|87223fb4ec": 1,
+"TS-UNUSED-EXPORT|cbaabae42f": 1,
+"TS-UNUSED-EXPORT|d75f6ef5c5": 1
+},
+"apps/admin-web/src/system/SystemCenterPage.tsx": {
+"TS-COMPLEXITY|24032abf42": 1,
+"TS-COMPLEXITY|47072935bd": 1,
+"TS-COMPLEXITY|fd4d7edc42": 1,
+"TS-LENGTH|47072935bd": 1,
+"duplicate-block|3ddb4eba70aa": 1
+},
+"apps/admin-web/src/system/SystemConfigList.tsx": {
+"TS-COMPLEXITY|794302df3d": 1,
+"TS-LENGTH|56c3df523b": 1
+},
+"apps/admin-web/src/system/SystemMenuManagement.tsx": {
+"TS-LENGTH|51fbb32caa": 1
+},
+"apps/admin-web/src/system/SystemParameterManagement.tsx": {
+"TS-COMPLEXITY|1af108a0e6": 1,
+"TS-LENGTH|1af108a0e6": 1,
+"TS-LENGTH|353d8b6d19": 1,
+"duplicate-block|86a47dc1449a": 1,
+"duplicate-block|9a18119d6b8d": 1
+},
+"apps/admin-web/src/system/SystemTaskScopes.tsx": {
+"TS-UNUSED-EXPORT|cd4c7d9f85": 1
+},
+"apps/admin-web/src/system/SystemUserManagement.tsx": {
+"TS-LENGTH|b06f7ec83d": 1
+},
+"apps/admin-web/src/system/UserPagePermissionEditor.tsx": {
+"TS-COMPLEXITY|fa0e155e3d": 1,
+"TS-LENGTH|2eac841228": 1
+},
+"apps/admin-web/src/system/constants.ts": {
+"TS-UNUSED-EXPORT|665d51ce12": 1,
+"TS-UNUSED-EXPORT|8930175043": 1,
+"duplicate-block|3ddb4eba70aa": 1
+},
+"apps/admin-web/src/taskDetailNavigation.ts": {
+"TS-UNUSED-EXPORT|a51859d776": 1
+},
+"apps/admin-web/src/theme/ThemeModeProvider.tsx": {
+"TS-COMPLEXITY|95bba9abfd": 1,
+"TS-UNUSED-EXPORT|052e832ab6": 1,
+"TS-UNUSED-EXPORT|1cfd3ddce5": 1,
+"TS-UNUSED-EXPORT|4381151da3": 1,
+"TS-UNUSED-EXPORT|7b912fffd0": 1,
+"TS-UNUSED-EXPORT|95bba9abfd": 1
+},
+"apps/admin-web/src/tp/TaskActionModals.tsx": {
+"TS-UNUSED-EXPORT|0289c0d51a": 1,
+"TS-UNUSED-EXPORT|224ca4cf66": 1,
+"TS-UNUSED-EXPORT|83847305dd": 1,
+"TS-UNUSED-EXPORT|9d0568929f": 1,
+"TS-UNUSED-EXPORT|9dd301990f": 1,
+"TS-UNUSED-EXPORT|c2836feb7c": 1,
+"TS-UNUSED-EXPORT|cae9a5088c": 1
+},
+"apps/admin-web/src/tp/TaskCenterPage.tsx": {
+"TS-COMPLEXITY|162514c102": 1,
+"TS-COMPLEXITY|269475ddef": 1,
+"TS-COMPLEXITY|3a955452c5": 1,
+"TS-COMPLEXITY|d1e0032010": 1,
+"TS-COMPLEXITY|d4a9379cfb": 1,
+"TS-LENGTH|d1e0032010": 1
+},
+"apps/admin-web/src/tp/TaskCreateModal.tsx": {
+"TS-UNUSED-EXPORT|277ff112f3": 1
+},
+"apps/admin-web/src/tp/TaskDetail.tsx": {
+"TS-COMPLEXITY|3f390f88a5": 1,
+"TS-UNUSED-EXPORT|03c84b7e01": 1
+},
+"apps/admin-web/src/tp/TaskLinkPickers.tsx": {
+"TS-UNUSED-EXPORT|36f9958ace": 1,
+"TS-UNUSED-EXPORT|b318450292": 1
+},
+"apps/admin-web/src/tp/TaskList.tsx": {
+"TS-COMPLEXITY|4c19158870": 1,
+"TS-LENGTH|4c19158870": 1,
+"TS-UNUSED-EXPORT|a621ec1802": 1
+},
+"apps/admin-web/src/tp/TaskSubjectFields.tsx": {
+"TS-UNUSED-EXPORT|d406cffa8b": 1
+},
+"apps/admin-web/src/tp/constants.ts": {
+"TS-UNUSED-EXPORT|465692362e": 1
+},
+"apps/admin-web/src/workspacePermissions.ts": {
+"TS-COMPLEXITY|e18ab4bedf": 1
+},
+"apps/api-server/app/agent_attachment_reader.py": {
+"mypy:arg-type|c3f29c97d9": 1,
+"mypy:attr-defined|c9cff5c580": 1
+},
+"apps/api-server/app/agent_mcp/artifacts.py": {
+"mypy:arg-type|c2b4bf6023": 1
+},
+"apps/api-server/app/agent_mcp/business_tools.py": {
+"C901|e7c6379584": 1,
+"DTZ011|5d3195804b": 1,
+"PLR0915|e7c6379584": 1,
+"dead-code|00385ad5e0": 1,
+"dead-code|085c17225e": 1,
+"dead-code|0a845a0857": 1,
+"dead-code|0bc15ba2d9": 1,
+"dead-code|11d64049cc": 1,
+"dead-code|15ee76e68a": 1,
+"dead-code|165d177d96": 1,
+"dead-code|177f978a00": 1,
+"dead-code|205ca90b49": 1,
+"dead-code|24c640d633": 1,
+"dead-code|2faee21ae1": 1,
+"dead-code|381067c8ff": 1,
+"dead-code|4c43ed0234": 1,
+"dead-code|52b687435b": 1,
+"dead-code|53185e67e7": 1,
+"dead-code|58b55cf625": 1,
+"dead-code|5b20eacbef": 1,
+"dead-code|5c10601210": 1,
+"dead-code|677a1e9429": 1,
+"dead-code|7469e771d2": 1,
+"dead-code|86e0f9947b": 1,
+"dead-code|876fcb1dff": 1,
+"dead-code|8bc44dbd38": 1,
+"dead-code|8cb23797f2": 1,
+"dead-code|9986a7757d": 1,
+"dead-code|9ed3bda494": 1,
+"dead-code|a8b1799a6b": 1,
+"dead-code|bbff1a450d": 1,
+"dead-code|c0e7aeb066": 1,
+"dead-code|c3c5b5c208": 1,
+"dead-code|c7cbd0b693": 1,
+"dead-code|d13864fb83": 1,
+"dead-code|e27a97f2b1": 1,
+"dead-code|eb62d01ef2": 1,
+"dead-code|fe19a38372": 1,
+"mypy:arg-type|49755f14dd": 1,
+"mypy:arg-type|8fb002c10e": 1,
+"mypy:arg-type|f9c231c7fe": 1,
+"mypy:assignment|63aba8fc19": 1,
+"mypy:assignment|aecc6032c8": 1,
+"mypy:misc|016e08c1e4": 1,
+"mypy:type-var|59c2c17105": 1
+},
+"apps/api-server/app/agent_mcp/catalog.py": {
+"C901|a94722bdd1": 1,
+"PLR0915|7ff653ce3b": 1,
+"PLW2901|cc70954186": 1,
+"mypy:arg-type|16a301550c": 1,
+"mypy:attr-defined|74c70f7a80": 1,
+"mypy:attr-defined|7e00851f8f": 1,
+"mypy:attr-defined|d49983d1a7": 1,
+"mypy:attr-defined|ed48f2592e": 1,
+"mypy:attr-defined|ff81835988": 1,
+"mypy:index|27cba11c14": 1,
+"mypy:union-attr|a61a8291ba": 2,
+"mypy:var-annotated|4e35d6268e": 1,
+"mypy:var-annotated|868047e370": 1
+},
+"apps/api-server/app/agent_mcp/display_labels.py": {
+"BLE001|6a8201c196": 1,
+"BLE001|e9dc52bf39": 2,
+"C901|b27c1d00e2": 1,
+"C901|bc0c09e4f0": 1,
+"PLR0915|bc0c09e4f0": 1,
+"mypy:arg-type|cb447ac3e8": 1,
+"mypy:arg-type|dd2b38ea6c": 1
+},
+"apps/api-server/app/agent_mcp/flk_laws.py": {
+"DTZ011|404aaa5820": 1,
+"PLW0603|27efbae73d": 1,
+"mypy:arg-type|60eeab7747": 1,
+"mypy:arg-type|dbe9c441a0": 1
+},
+"apps/api-server/app/agent_mcp/gateway.py": {
+"BLE001|696feb0c59": 1,
+"BLE001|762a0332b3": 1,
+"C901|a25c8f7335": 1,
+"S110|696feb0c59": 1,
+"mypy:arg-type|043983b9ee": 1,
+"mypy:arg-type|114c92cf06": 1,
+"mypy:arg-type|192bd9582d": 1,
+"mypy:arg-type|3813b732c4": 1,
+"mypy:arg-type|5e4cefb6ca": 1,
+"mypy:arg-type|b2ac7b9143": 1,
+"mypy:arg-type|c988569bd4": 1,
+"mypy:arg-type|d087e1f4d5": 2,
+"mypy:arg-type|d73682e376": 1,
+"mypy:list-item|26c5a25e62": 1,
+"mypy:operator|b2ac7b9143": 1,
+"mypy:union-attr|3680984cee": 2
+},
+"apps/api-server/app/agent_mcp/model_context.py": {
+"C901|bcc3aac6af": 1,
+"PLR0915|bcc3aac6af": 1,
+"PLW2901|0ad9c2fc3c": 1,
+"mypy:var-annotated|187cfdc8aa": 1
+},
+"apps/api-server/app/agent_mcp/model_tools.py": {
+"BLE001|f64f0d65ee": 1,
+"C901|a462f5a96d": 1,
+"C901|af14547160": 1,
+"PLR0915|a462f5a96d": 1,
+"S110|f64f0d65ee": 1,
+"dead-code|8bc804bead": 1,
+"dead-code|a462f5a96d": 1,
+"dead-code|ec9ed03568": 1,
+"mypy:arg-type|b282856c1a": 1
+},
+"apps/api-server/app/agent_mcp/operation_guidance.py": {
+"mypy:arg-type|c5b3834736": 1
+},
+"apps/api-server/app/agent_mcp/parameter_guidance.py": {
+"C901|0645dbe18c": 1,
+"C901|47545a1f3b": 1,
+"PLR0915|0645dbe18c": 1,
+"PLW2901|5c67db8675": 1,
+"mypy:arg-type|05ce4051ba": 1
+},
+"apps/api-server/app/agent_mcp/personal_tokens.py": {
+"S105|61ee2a1583": 1,
+"dead-code|d90f212eee": 1
+},
+"apps/api-server/app/agent_mcp/router.py": {
+"BLE001|e9dc52bf39": 1,
+"mypy:arg-type|b282856c1a": 1
+},
+"apps/api-server/app/agent_mcp/safety.py": {
+"B023|3174686766": 1,
+"mypy:arg-type|35764657a7": 1
+},
+"apps/api-server/app/agent_mcp/semantic_metadata.py": {
+"mypy:union-attr|78e127eceb": 1
+},
+"apps/api-server/app/agent_mcp/semantic_search.py": {
+"C901|503550fd90": 1,
+"PLR0915|503550fd90": 1
+},
+"apps/api-server/app/agent_mcp/service.py": {
+"BLE001|e9dc52bf39": 1,
+"PLR0915|14f2a49631": 1,
+"S110|e9dc52bf39": 1,
+"mypy:arg-type|043983b9ee": 3,
+"mypy:arg-type|192bd9582d": 2,
+"mypy:arg-type|3b02ff4b5b": 1,
+"mypy:arg-type|3dfa39bdf2": 1,
+"mypy:index|e5a57c2ffe": 1,
+"mypy:union-attr|345bd14ed9": 1,
+"mypy:union-attr|c30082f01a": 1
+},
+"apps/api-server/app/agent_mcp/tool_groups.py": {
+"C901|8d6cd99bc8": 1
+},
+"apps/api-server/app/agent_mcp/transport.py": {
+"C901|f254a158f8": 1,
+"mypy:arg-type|0493c77bd4": 1,
+"mypy:arg-type|6dde00969b": 1,
+"mypy:assignment|60c148e272": 1,
+"mypy:attr-defined|97b5a43927": 1,
+"mypy:call-overload|e295288a66": 1
+},
+"apps/api-server/app/agent_mcp/web_fetch.py": {
+"dead-code|0f1479902c": 1,
+"dead-code|205f460c5f": 1,
+"dead-code|a7e4d16da1": 1
+},
+"apps/api-server/app/agent_permissions.py": {
+"S105|0ee631a65a": 1,
+"S105|b763162e47": 1
+},
+"apps/api-server/app/agent_skill_packages/court_doc_intake/scripts/extract_doc_fields.py": {
+"T201|8e5464d7d6": 1,
+"T201|ffb9702448": 1,
+"mypy:no-redef|f10a1114ab": 1
+},
+"apps/api-server/app/agent_skill_packages/court_doc_intake/scripts/fetch_court_docs.py": {
+"S310|3a2957291a": 1,
+"S310|47ce394d5f": 1,
+"T201|8611aa5a3a": 1,
+"T201|ef4be3bd62": 1,
+"T201|f7e5512932": 1
+},
+"apps/api-server/app/agent_skill_packages/court_doc_intake/scripts/normalize_case_no.py": {
+"B905|c7240d93ef": 1,
+"T201|2df3962599": 1,
+"T201|55b021979a": 1,
+"T201|eebc25e6d3": 1
+},
+"apps/api-server/app/agent_skills.py": {
+"dead-code|96c40c8092": 1,
+"dead-code|c158ee3eeb": 1
+},
+"apps/api-server/app/api_schemas/cases.py": {
+"mypy:dict-item|467977e1f9": 1,
+"mypy:dict-item|782ce018da": 1
+},
+"apps/api-server/app/api_schemas/customers.py": {
+"mypy:dict-item|308cf912c3": 1,
+"mypy:dict-item|574c3f6213": 1
+},
+"apps/api-server/app/api_schemas/finance.py": {
+"C901|1058bc9c64": 1,
+"PLR0915|1058bc9c64": 1
+},
+"apps/api-server/app/areas/agent_admin/cloud_runtime.py": {
+"BLE001|4345e44510": 1
+},
+"apps/api-server/app/areas/agent_admin/plugins.py": {
+"dead-code|2b09ebdc12": 1
+},
+"apps/api-server/app/areas/aws/court_intake.py": {
+"DTZ011|8f81c1b4cf": 1,
+"DTZ011|ccb680bcc9": 1,
+"mypy:arg-type|009ba366da": 2,
+"mypy:arg-type|267c3a16b1": 1,
+"mypy:arg-type|44efe69cc3": 3,
+"mypy:arg-type|77a2566802": 5,
+"mypy:arg-type|8e7c85bf2d": 1,
+"mypy:arg-type|95f08da442": 1,
+"mypy:arg-type|de41687855": 1,
+"mypy:attr-defined|121cd2738f": 1,
+"mypy:dict-item|77a2566802": 1,
+"mypy:operator|61084e184e": 1,
+"mypy:operator|7bc7436375": 1,
+"mypy:union-attr|9a6e4b0233": 1,
+"mypy:union-attr|b2b4516b54": 1,
+"mypy:union-attr|e3544ed651": 1,
+"mypy:union-attr|fcef3fb9fc": 1
+},
+"apps/api-server/app/areas/aws/court_service.py": {
+"BLE001|e9dc52bf39": 1,
+"DTZ011|e1a1532b89": 1,
+"mypy:union-attr|217a14488a": 1
+},
+"apps/api-server/app/areas/aws/my_today_receipts.py": {
+"DTZ011|05daba8010": 1
+},
+"apps/api-server/app/areas/aws/receipt_sources.py": {
+"mypy:arg-type|35764657a7": 1,
+"mypy:arg-type|d04371756c": 1
+},
+"apps/api-server/app/areas/aws/router.py": {
+"C901|c3687d1416": 1,
+"PLR0915|c3687d1416": 1,
+"mypy:arg-type|1cf8c806fb": 1,
+"mypy:arg-type|25142da368": 1,
+"mypy:assignment|1108029b75": 1,
+"mypy:assignment|199970238a": 1,
+"mypy:assignment|396e217c46": 1,
+"mypy:assignment|b8b84f1b9f": 1,
+"mypy:assignment|bbeef2909f": 1,
+"mypy:index|b020900dbf": 1
+},
+"apps/api-server/app/areas/capability_market/connector_format.py": {
+"C901|f39cf743f3": 1
+},
+"apps/api-server/app/areas/capability_market/connector_probe.py": {
+"BLE001|762a0332b3": 1,
+"mypy:misc|c8d9d81d53": 1
+},
+"apps/api-server/app/areas/capability_market/native_install.py": {
+"C901|35ee21ad31": 1,
+"PLR0915|35ee21ad31": 1
+},
+"apps/api-server/app/areas/capability_market/remote_files.py": {
+"C901|e93ce71af7": 1,
+"PLR0915|e93ce71af7": 1,
+"mypy:var-annotated|050ad0240d": 1
+},
+"apps/api-server/app/areas/capability_market/remote_full_law.py": {
+"BLE001|e9dc52bf39": 1,
+"dead-code|ef1aa4c651": 1
+},
+"apps/api-server/app/areas/capability_market/remote_schema.py": {
+"C901|0d68f842ef": 1,
+"C901|0ecd841ed5": 1,
+"PLR0915|0d68f842ef": 1,
+"PLW2901|03d8952ad0": 1
+},
+"apps/api-server/app/areas/capability_market/remote_session.py": {
+"BLE001|762a0332b3": 1,
+"mypy:misc|c8d9d81d53": 1
+},
+"apps/api-server/app/areas/capability_market/remote_tools.py": {
+"B905|bda39ad8fb": 1,
+"BLE001|762a0332b3": 2
+},
+"apps/api-server/app/areas/contract/export_projection.py": {
+"mypy:call-overload|555009d5ef": 1,
+"mypy:call-overload|6c562f2ce4": 1,
+"mypy:var-annotated|f997ba2d60": 2
+},
+"apps/api-server/app/areas/contract/list_amounts.py": {
+"C901|60868b3e5e": 1,
+"PLR0915|60868b3e5e": 1
+},
+"apps/api-server/app/areas/contract/receivable_export_rows.py": {
+"C901|7d5b491822": 1,
+"PLR0915|7d5b491822": 1,
+"mypy:arg-type|4b076c9d46": 1,
+"mypy:var-annotated|686301d7d3": 1
+},
+"apps/api-server/app/areas/contract/router.py": {
+"B007|a6978f43e8": 1,
+"B905|8d35230222": 1,
+"C901|0ad1825df3": 1,
+"C901|3d7705e718": 1,
+"E703|26bb6b277e": 1,
+"PLR0915|3d7705e718": 1,
+"PLR0915|4e2146d127": 1,
+"PLR0915|514dc9ab2b": 1,
+"dead-code|80be8a46eb": 2,
+"dead-code|d5db798bda": 2,
+"dead-code|d6f5b292be": 4,
+"mypy:assignment|f442868a0f": 1
+},
+"apps/api-server/app/areas/contract/template_exports.py": {
+"C901|e16b926e46": 1
+},
+"apps/api-server/app/areas/crm/company_lookup.py": {
+"ASYNC240|a6786cfb0b": 2,
+"DTZ011|05f5a01e38": 1,
+"DTZ011|310debc215": 1,
+"S324|20b5d83fc6": 1,
+"mypy:attr-defined|018914231b": 1,
+"mypy:no-redef|4850414204": 1,
+"mypy:union-attr|1424744589": 1,
+"mypy:union-attr|238d9e7eb7": 1,
+"mypy:union-attr|4b8d07c91a": 1,
+"mypy:union-attr|e639725240": 1
+},
+"apps/api-server/app/areas/crm/router.py": {
+"B905|887ddfd97f": 1,
+"B905|b23f082576": 1,
+"C901|7e3c2a78e0": 1,
+"C901|9b21f6ae4d": 1,
+"E703|320b59304e": 1,
+"PLR0915|7e3c2a78e0": 1,
+"PLR0915|9b21f6ae4d": 1,
+"PLR0915|e4181f6430": 1,
+"dead-code|76aac9a163": 1,
+"dead-code|9ed61bd865": 1,
+"dead-code|f9f5db31a6": 2,
+"mypy:arg-type|04fee0e24b": 1,
+"mypy:arg-type|18d5f9cc85": 2,
+"mypy:arg-type|19c20a1bca": 1,
+"mypy:arg-type|20d9a4c858": 1,
+"mypy:arg-type|35363ac7f4": 1,
+"mypy:arg-type|35fe9fb2a3": 1,
+"mypy:arg-type|38658ac2a5": 1,
+"mypy:arg-type|4bf17c25fe": 1,
+"mypy:arg-type|6d2c4e8372": 1,
+"mypy:arg-type|71015bffa9": 2,
+"mypy:arg-type|7bcc83de0c": 1,
+"mypy:arg-type|891e268c01": 1,
+"mypy:arg-type|936098ea8c": 2,
+"mypy:arg-type|a7351d186b": 1,
+"mypy:arg-type|c23a6d5add": 1,
+"mypy:arg-type|dd478a112c": 1,
+"mypy:arg-type|fb4d62e43d": 1,
+"mypy:assignment|1dfa4bd1f5": 1,
+"mypy:assignment|8b52f4b17c": 1,
+"mypy:attr-defined|3cc559fe0a": 1,
+"mypy:attr-defined|6b3b619347": 1,
+"mypy:func-returns-value|13baf1d120": 1,
+"mypy:misc|6b3b619347": 1,
+"mypy:misc|6d2c4e8372": 1,
+"mypy:misc|f70ff40b1d": 1,
+"mypy:union-attr|320b59304e": 1,
+"mypy:valid-type|89fa9c3a4d": 1
+},
+"apps/api-server/app/areas/data_query/router.py": {
+"mypy:arg-type|b282856c1a": 1
+},
+"apps/api-server/app/areas/data_query/source.py": {
+"C901|a1481236f9": 1,
+"mypy:arg-type|7c9644ac3b": 1
+},
+"apps/api-server/app/areas/data_query/transform.py": {
+"B023|aa8b8ec4da": 2,
+"B023|bd1ac598b8": 1,
+"mypy:call-overload|9671dc48e3": 1,
+"mypy:misc|df24aaeb57": 1,
+"mypy:var-annotated|6b231c3f88": 1
+},
+"apps/api-server/app/areas/finance/bank_flows.py": {
+"DTZ005|e75699861c": 1,
+"mypy:arg-type|0eb6bbb507": 1,
+"mypy:arg-type|8073615407": 1,
+"mypy:attr-defined|01f614643d": 1,
+"mypy:attr-defined|547f599e23": 1,
+"mypy:call-overload|12d566d230": 1,
+"mypy:call-overload|200f161113": 1,
+"mypy:call-overload|558755a254": 1,
+"mypy:call-overload|7ac0e8af66": 1,
+"mypy:call-overload|b999323d41": 1,
+"mypy:call-overload|e52404db0f": 1,
+"mypy:type-var|0eb6bbb507": 1
+},
+"apps/api-server/app/areas/finance/excel_templates.py": {
+"PLW2901|189cf115fd": 1,
+"PLW2901|ef4b4dc098": 1
+},
+"apps/api-server/app/areas/finance/export_projection.py": {
+"B023|303c33ae6c": 1,
+"C901|01b20d45f5": 1,
+"C901|580a593cd3": 1,
+"PLR0915|01b20d45f5": 1,
+"PLR0915|580a593cd3": 1,
+"mypy:arg-type|10d37a8d9c": 1,
+"mypy:arg-type|2631ccce75": 1,
+"mypy:misc|2631ccce75": 1,
+"mypy:var-annotated|5246ce9a62": 2,
+"mypy:var-annotated|f0d18e2e55": 1
+},
+"apps/api-server/app/areas/finance/fee_draft_preparation.py": {
+"C901|aa2e8c4bb1": 1
+},
+"apps/api-server/app/areas/finance/fee_notices.py": {
+"mypy:assignment|6626ba5967": 1,
+"mypy:assignment|dc467e92bd": 1
+},
+"apps/api-server/app/areas/finance/fee_workflows.py": {
+"C901|1080f3403e": 1,
+"PLR0915|1080f3403e": 1,
+"mypy:arg-type|a0394dd5d6": 1,
+"mypy:union-attr|e9bd363faf": 1
+},
+"apps/api-server/app/areas/finance/imported_settlement_exports.py": {
+"PLW2901|24dc646536": 1,
+"mypy:arg-type|25023d7ef7": 1
+},
+"apps/api-server/app/areas/finance/incoming_payments.py": {
+"C901|14b936b317": 1,
+"C901|43c10b5397": 1,
+"C901|4e88eccfae": 1,
+"C901|98bcdad9cc": 1,
+"C901|f8ddc4ee1a": 1,
+"PLR0915|09a6559d50": 1,
+"PLR0915|14b936b317": 1,
+"PLR0915|43c10b5397": 1,
+"PLR0915|4e88eccfae": 1,
+"PLR0915|98bcdad9cc": 1,
+"PLR0915|f8ddc4ee1a": 1,
+"duplicate-block|a2244ad3d32c": 2,
+"mypy:arg-type|239a65e235": 1,
+"mypy:arg-type|66457a06d7": 1,
+"mypy:assignment|50ddc0004a": 1,
+"mypy:assignment|b331da41b9": 1,
+"mypy:assignment|cacb50391f": 1,
+"mypy:assignment|e3cf4ddfd3": 1,
+"mypy:assignment|ef645cf1a6": 1,
+"mypy:list-item|87be9dea0e": 1,
+"mypy:list-item|b3d6f08382": 1,
+"mypy:union-attr|30cf5fe26b": 1,
+"mypy:union-attr|41d0f90bd1": 2,
+"mypy:union-attr|92223cd38b": 1,
+"mypy:union-attr|969c9d79c1": 1,
+"mypy:union-attr|ef59a4f823": 1,
+"mypy:union-attr|f86b1ac042": 1
+},
+"apps/api-server/app/areas/finance/incoming_query.py": {
+"C901|19b96f8101": 1,
+"mypy:assignment|a9b6b55627": 1,
+"mypy:attr-defined|f72220160b": 1
+},
+"apps/api-server/app/areas/finance/incoming_template_exports.py": {
+"DTZ011|f472cdcbf9": 1,
+"PLR0915|4b52fb945b": 1,
+"mypy:var-annotated|f0d18e2e55": 1
+},
+"apps/api-server/app/areas/finance/internal_payments.py": {
+"B905|9e92544bdb": 1,
+"C901|0a4c27ed6d": 1,
+"PLW2901|00cda006e1": 1,
+"mypy:arg-type|63587000c3": 1,
+"mypy:arg-type|66de1ba917": 1,
+"mypy:arg-type|966f17afd6": 1,
+"mypy:arg-type|f5735c9183": 1,
+"mypy:assignment|ea082e5f03": 1,
+"mypy:var-annotated|bef4bd09c3": 1
+},
+"apps/api-server/app/areas/finance/invoice_operations.py": {
+"PLR0915|2ae0844a85": 1,
+"PLR0915|c80c2c0376": 1
+},
+"apps/api-server/app/areas/finance/jar_fees.py": {
+"B904|013096a17b": 2
+},
+"apps/api-server/app/areas/finance/legacy_payment_history.py": {
+"mypy:var-annotated|d5a12aacb1": 1
+},
+"apps/api-server/app/areas/finance/payment_print_word.py": {
+"B905|9d4edac086": 1,
+"DTZ005|e0d1f48852": 1
+},
+"apps/api-server/app/areas/finance/payment_workflow.py": {
+"C901|d88703d353": 1,
+"PLR0915|d88703d353": 1,
+"mypy:arg-type|152bc8a372": 1
+},
+"apps/api-server/app/areas/finance/query_cache_routes.py": {
+"mypy:var-annotated|6f0a8f0cfd": 1
+},
+"apps/api-server/app/areas/finance/receipt_files.py": {
+"C901|383c469851": 1,
+"DTZ005|7e534ae037": 1,
+"PLR0915|383c469851": 1
+},
+"apps/api-server/app/areas/finance/refund_operations.py": {
+"PLR0915|ba32d137bf": 1,
+"mypy:assignment|e4667cfcc0": 1
+},
+"apps/api-server/app/areas/finance/router.py": {
+"C901|95c3a6b2ec": 1,
+"C901|c0e4925f98": 1,
+"PLR0915|6c0e1a3dfd": 1,
+"PLR0915|95c3a6b2ec": 1,
+"PLR0915|c0e4925f98": 1,
+"mypy:arg-type|21b1fead0a": 1,
+"mypy:arg-type|31e3e0d33a": 2,
+"mypy:arg-type|35b3472dc7": 6,
+"mypy:arg-type|95cee85c58": 1,
+"mypy:arg-type|ad2c0fa9e6": 6,
+"mypy:arg-type|db34b103ea": 1,
+"mypy:assignment|92de5c1cf8": 1,
+"mypy:assignment|ecf393e99d": 1,
+"mypy:misc|4d72af46e4": 1,
+"mypy:operator|4d72af46e4": 2,
+"mypy:var-annotated|21b1fead0a": 1,
+"mypy:var-annotated|95cee85c58": 1,
+"mypy:var-annotated|9b392c8b15": 1,
+"mypy:var-annotated|db34b103ea": 1
+},
+"apps/api-server/app/areas/finance/settlement_export_templates.py": {
+"C901|6375263d9a": 1,
+"mypy:var-annotated|6b231c3f88": 1,
+"mypy:var-annotated|75cce40fc2": 1
+},
+"apps/api-server/app/areas/finance/settlement_legacy_adoption.py": {
+"DTZ005|6c0d75bfe2": 1,
+"DTZ005|e75699861c": 1
+},
+"apps/api-server/app/areas/finance/settlement_package.py": {
+"BLE001|e9dc52bf39": 2,
+"C901|76286a57ef": 1,
+"C901|93a507b6f5": 1,
+"DTZ005|6a83040f3a": 1,
+"PLR0915|76286a57ef": 1,
+"PLR0915|93a507b6f5": 1,
+"mypy:assignment|b9f13f6d3b": 1,
+"mypy:assignment|c2e3ee52f3": 1,
+"mypy:assignment|f7cf1f228a": 1,
+"mypy:attr-defined|341b6ec190": 1,
+"mypy:attr-defined|5686ee0e4e": 1,
+"mypy:attr-defined|688869b7b9": 1,
+"mypy:attr-defined|a99b1711a9": 1,
+"mypy:attr-defined|b35d381c01": 1,
+"mypy:index|0d4fe4521b": 1,
+"mypy:misc|b9f13f6d3b": 1,
+"mypy:operator|cf237eea64": 1
+},
+"apps/api-server/app/areas/finance/settlement_sheet_template.py": {
+"duplicate-block|05a2eb836686": 2
+},
+"apps/api-server/app/areas/finance/settlements.py": {
+"B904|44eaa73adc": 2,
+"C901|3cb54990c0": 1,
+"PLR0915|3cb54990c0": 1,
+"mypy:arg-type|5beeb27062": 1,
+"mypy:assignment|51440c26e6": 5
+},
+"apps/api-server/app/areas/finance/transactions.py": {
+"mypy:arg-type|b380058083": 1
+},
+"apps/api-server/app/areas/hr/router.py": {
+"B905|3c36bdee00": 1,
+"C901|045c7c5395": 1,
+"C901|2caafa0b44": 1,
+"C901|4b48da1254": 1,
+"C901|8c920ae1ae": 1,
+"PLR0915|2caafa0b44": 1,
+"PLR0915|4b48da1254": 1,
+"PLR0915|8c920ae1ae": 1,
+"PLW2901|26dd542853": 1,
+"PLW2901|b6eb6d649d": 1,
+"PLW2901|d1ba2dc094": 1,
+"PLW2901|e33d825332": 1,
+"PLW2901|ee81e4485a": 1,
+"dead-code|385585b877": 1,
+"dead-code|46e8e5bd29": 1,
+"mypy:arg-type|9279b0702f": 2,
+"mypy:arg-type|9e65eba435": 1,
+"mypy:arg-type|fb1e1bf2ed": 1,
+"mypy:assignment|dd786d26b2": 1,
+"mypy:var-annotated|9e65eba435": 1
+},
+"apps/api-server/app/areas/investigation/router.py": {
+"B904|04981b3574": 1,
+"B904|c048951a6c": 1,
+"C901|149adda8f3": 1,
+"C901|53618b6d0a": 1,
+"C901|7091395863": 1,
+"C901|71a15489a0": 1,
+"C901|aeec774693": 1,
+"PLR0915|149adda8f3": 1,
+"PLR0915|231003410f": 1,
+"PLR0915|509937d450": 1,
+"PLR0915|53618b6d0a": 1,
+"PLR0915|7091395863": 1,
+"PLR0915|71a15489a0": 1,
+"PLR0915|aeec774693": 1,
+"PLR0915|ef9fb7f836": 1,
+"mypy:arg-type|f1f63b1cc9": 1,
+"mypy:dict-item|c30b71e583": 1,
+"mypy:return-value|a1580fd34e": 1,
+"mypy:union-attr|446224b2cd": 1,
+"mypy:union-attr|f1e3732774": 1,
+"mypy:union-attr|f3b4178fb0": 1
+},
+"apps/api-server/app/areas/investigation/task_details.py": {
+"mypy:assignment|25384f2331": 1
+},
+"apps/api-server/app/areas/ipr/annual_fee_monitor.py": {
+"B904|500997ea6a": 1,
+"B905|4bfbe1028c": 1,
+"B905|d7eb4a8d59": 1,
+"S608|6c9f146054": 1,
+"S608|8593c57ac6": 1,
+"mypy:attr-defined|48c1ad22b7": 1,
+"mypy:index|bb7a272a82": 1,
+"mypy:misc|960f6c293a": 1
+},
+"apps/api-server/app/areas/ipr/applicants.py": {
+"mypy:attr-defined|5b6d2d3fdf": 1,
+"mypy:attr-defined|dea2d461d7": 1
+},
+"apps/api-server/app/areas/ipr/case_files.py": {
+"B904|2afa6a07d7": 1,
+"B904|cdf12c45da": 1,
+"B905|ef7ec28493": 1,
+"C901|b6a9c29ea4": 1,
+"PLR0915|b6a9c29ea4": 1,
+"mypy:arg-type|1826874a5b": 4,
+"mypy:arg-type|e55937a072": 1,
+"mypy:assignment|c653a027a6": 1,
+"mypy:union-attr|1826874a5b": 4,
+"mypy:var-annotated|e55937a072": 1
+},
+"apps/api-server/app/areas/ipr/case_info.py": {
+"ASYNC240|9b41afa097": 1,
+"DTZ011|d9b0ea7298": 1,
+"dead-code|0b2a06d216": 1,
+"dead-code|0b9b229386": 1,
+"dead-code|12938e782e": 1,
+"dead-code|2144034fd6": 1,
+"dead-code|2831663395": 1,
+"dead-code|2eb186b33c": 1,
+"dead-code|2f2c171925": 1,
+"dead-code|35c4091dca": 1,
+"dead-code|39a94c7928": 1,
+"dead-code|406135efa7": 1,
+"dead-code|4284303fad": 1,
+"dead-code|5801a033d3": 1,
+"dead-code|88b828d81c": 1,
+"dead-code|94282a8966": 1,
+"dead-code|9b9bf5bf2d": 1,
+"dead-code|a1a4f00bed": 1,
+"dead-code|a49612f85b": 1,
+"dead-code|b468f2d346": 1,
+"dead-code|bf37c3b4db": 1,
+"dead-code|c96ececd18": 1,
+"dead-code|c9f619c00b": 1,
+"mypy:arg-type|4efcf69914": 1
+},
+"apps/api-server/app/areas/ipr/fee_file_import.py": {
+"C901|55f0efbd09": 1,
+"DTZ011|422df085c5": 1,
+"DTZ011|5e2d20e501": 1,
+"PLR0915|55f0efbd09": 1,
+"S608|653582bc29": 1,
+"mypy:arg-type|7c68a9125a": 1,
+"mypy:arg-type|c59276319e": 1,
+"mypy:assignment|1880b33787": 1,
+"mypy:assignment|94b4818222": 1,
+"mypy:attr-defined|0a9fc77bb3": 1,
+"mypy:attr-defined|7536c29b13": 1,
+"mypy:attr-defined|ac884e93f3": 1,
+"mypy:index|0108f0bfc5": 1,
+"mypy:index|422df085c5": 1,
+"mypy:index|79de1bd7af": 1,
+"mypy:index|83983d8f83": 1,
+"mypy:union-attr|dcaf7a6f67": 1
+},
+"apps/api-server/app/areas/ipr/fees.py": {
+"mypy:arg-type|89bc6c6d59": 1
+},
+"apps/api-server/app/areas/ipr/patent_form.py": {
+"C901|e32a3ac4e8": 1
+},
+"apps/api-server/app/areas/ipr/reminders.py": {
+"B904|1515079750": 2,
+"mypy:arg-type|bba3012f05": 1
+},
+"apps/api-server/app/areas/ipr/router.py": {
+"C901|d92b2229d1": 1,
+"PLR0915|35592e05a8": 1,
+"PLR0915|d92b2229d1": 1,
+"PLR0915|f4d35a262b": 1,
+"duplicate-block|43ab50c81fb8": 2,
+"mypy:arg-type|3b09f40a59": 1,
+"mypy:arg-type|58920ce54d": 1,
+"mypy:arg-type|643f96c549": 1,
+"mypy:arg-type|854b09ae63": 1,
+"mypy:arg-type|a9386e5de2": 1,
+"mypy:arg-type|c0f765a0f9": 1,
+"mypy:arg-type|dffcbdc04b": 1,
+"mypy:assignment|0d5852e76e": 1,
+"mypy:assignment|318122b28e": 2,
+"mypy:assignment|9d87079e8c": 1,
+"mypy:assignment|e76b0637d1": 1,
+"mypy:attr-defined|28d4f7d5ef": 1,
+"mypy:attr-defined|6b9d865982": 1,
+"mypy:attr-defined|be83be1e3c": 1,
+"mypy:index|a2818c7aae": 1,
+"mypy:union-attr|2b428a09d3": 1,
+"mypy:union-attr|9256f8d5ac": 1,
+"mypy:union-attr|e482cca4be": 1,
+"mypy:union-attr|f375672742": 1
+},
+"apps/api-server/app/areas/ipr/transfer_center.py": {
+"B904|f0d62aed46": 2,
+"B905|e97cc20c8e": 1,
+"DTZ005|72f3ecfb5b": 1,
+"DTZ005|e75699861c": 1,
+"DTZ011|aead95acd1": 1,
+"mypy:attr-defined|625c411647": 1,
+"mypy:attr-defined|b8fde724d3": 1,
+"mypy:return-value|b20d8f2a61": 1,
+"mypy:var-annotated|19891e8ad6": 1
+},
+"apps/api-server/app/areas/ipr/transfer_templates.py": {
+"duplicate-block|01d2b257b511": 3,
+"duplicate-block|2ab0d56b20b5": 4,
+"duplicate-block|3ec003149a94": 2,
+"duplicate-block|471cd5fb5668": 2,
+"duplicate-block|495563f6523e": 2,
+"duplicate-block|4e29965af450": 2,
+"duplicate-block|6bca3985dcf1": 23,
+"duplicate-block|7189ca6b72bf": 2,
+"duplicate-block|7284c39d08a9": 2,
+"duplicate-block|9a0124beb3d4": 3,
+"duplicate-block|a3b04915689e": 2,
+"duplicate-block|ad63f0d3f6c5": 2,
+"duplicate-block|b89dd573df09": 2,
+"duplicate-block|bcef38ea3fae": 2,
+"duplicate-block|cfcb1c09274d": 2,
+"duplicate-block|d7bd2ebdcca5": 2,
+"duplicate-block|f52c7a88bcd7": 3,
+"duplicate-block|fe77bf5fdb50": 2,
+"duplicate-block|ffde1a71ce3c": 3
+},
+"apps/api-server/app/areas/legal/builtin_word_templates.py": {
+"dead-code|035dc4844f": 1,
+"dead-code|0e09bf454f": 1,
+"dead-code|167c2178e1": 1,
+"dead-code|1cf504acb8": 1,
+"dead-code|3844e2a2ef": 1,
+"dead-code|3ef6414414": 1,
+"dead-code|46b5a44dfe": 1,
+"dead-code|5c17f0daf6": 1,
+"dead-code|a3ef1ee1f2": 1,
+"dead-code|b7bb1c8017": 1,
+"dead-code|c2d8653895": 1,
+"dead-code|d0be3f4582": 1,
+"dead-code|d884eb4a95": 1,
+"dead-code|df37429163": 1,
+"duplicate-block|d94351260c57": 2
+},
+"apps/api-server/app/areas/legal/case_documents.py": {
+"B007|596c683eb7": 1,
+"mypy:assignment|eee00bfbbe": 1
+},
+"apps/api-server/app/areas/legal/case_events.py": {
+"C901|1fe6c944aa": 1,
+"PLR0915|1fe6c944aa": 1,
+"mypy:arg-type|385590aec9": 1,
+"mypy:arg-type|f2357b1191": 1
+},
+"apps/api-server/app/areas/legal/case_export_projection.py": {
+"mypy:arg-type|d5b1cb61a2": 1,
+"mypy:union-attr|4dff522f57": 1
+},
+"apps/api-server/app/areas/legal/case_fee_files.py": {
+"C901|336c581bcd": 1,
+"C901|78d73c701b": 1,
+"PLR0915|78d73c701b": 1,
+"mypy:arg-type|450c4b9d5b": 1,
+"mypy:arg-type|7902f593cc": 1,
+"mypy:arg-type|b30e2892f8": 1,
+"mypy:assignment|120c29e006": 2,
+"mypy:index|0a829b9671": 1,
+"mypy:index|24e120ba88": 1,
+"mypy:type-var|1d3523123b": 1,
+"mypy:var-annotated|961dc464e6": 1
+},
+"apps/api-server/app/areas/legal/case_parties.py": {
+"DTZ011|d32af90d5b": 1,
+"DTZ011|ea412fec3b": 1,
+"mypy:arg-type|0cd002d86a": 1,
+"mypy:arg-type|8c334c5fb7": 1,
+"mypy:arg-type|8ed34791ea": 1,
+"mypy:arg-type|af12973b24": 1,
+"mypy:arg-type|eb24f9e661": 1,
+"mypy:union-attr|beb0a49787": 1
+},
+"apps/api-server/app/areas/legal/case_space.py": {
+"B007|24331cb274": 1,
+"BLE001|e9dc52bf39": 1,
+"C901|14a03ad717": 1,
+"C901|8546a04567": 1,
+"C901|a793dd8045": 1,
+"PLR0915|14a03ad717": 1,
+"PLR0915|8546a04567": 1,
+"PLR0915|a793dd8045": 1,
+"mypy:arg-type|61fd4942e9": 1,
+"mypy:arg-type|a0eafcb085": 3,
+"mypy:arg-type|c9dea03a88": 3,
+"mypy:assignment|525f3f5a6f": 1,
+"mypy:assignment|61471f6ff7": 1,
+"mypy:assignment|69655aa0f7": 1,
+"mypy:assignment|7bec02ce0f": 1,
+"mypy:assignment|dc2fcc1850": 1,
+"mypy:attr-defined|0dd434e2f9": 1,
+"mypy:union-attr|10568a8ec6": 1
+},
+"apps/api-server/app/areas/legal/case_special_queries.py": {
+"C901|6b2754749d": 1,
+"mypy:arg-type|03359e07cd": 2,
+"mypy:arg-type|9b1aa59356": 1,
+"mypy:assignment|678e715ca7": 1,
+"mypy:assignment|7fcf11f02d": 1,
+"mypy:assignment|cc838579d0": 1
+},
+"apps/api-server/app/areas/legal/case_word_templates.py": {
+"DTZ005|2e216f8cfc": 1,
+"DTZ005|369d1ec06b": 2,
+"DTZ007|16a5d04ac1": 1,
+"DTZ007|6a18f536a6": 1,
+"DTZ007|dbb946bf48": 1,
+"dead-code|7a89684c5c": 1,
+"mypy:assignment|10eb7de38a": 1,
+"mypy:assignment|849b76b34d": 1,
+"mypy:assignment|f6d3b8c2e8": 1,
+"mypy:attr-defined|956cda96d1": 1,
+"mypy:misc|c7ca7d06a0": 1,
+"mypy:operator|10eb7de38a": 1
+},
+"apps/api-server/app/areas/legal/element_complaint.py": {
+"B905|ac12b91d1f": 1,
+"C901|663e2bb1bd": 1,
+"DTZ007|2dbdf354fd": 1,
+"mypy:attr-defined|0b5d90c07e": 1
+},
+"apps/api-server/app/areas/legal/handover_projection.py": {
+"C901|6b4c3e88d3": 1,
+"DTZ011|c35d35ca31": 1,
+"PLR0915|6b4c3e88d3": 1,
+"mypy:type-var|fce06bf8ea": 1,
+"mypy:union-attr|5506cf0c04": 1,
+"mypy:union-attr|91a8b82e26": 1,
+"mypy:union-attr|d3a840e6ec": 1,
+"mypy:var-annotated|0a1e119474": 1,
+"mypy:var-annotated|29ac003969": 1,
+"mypy:var-annotated|51e7008062": 1
+},
+"apps/api-server/app/areas/legal/hearing_query.py": {
+"C901|0012926c05": 1,
+"PLR0915|0012926c05": 1,
+"mypy:var-annotated|0e539dadbf": 1
+},
+"apps/api-server/app/areas/legal/party_report.py": {
+"B905|455a6a0838": 1,
+"B905|4c0d4c24b7": 1,
+"B905|644d312aea": 1,
+"B905|c6a04c5567": 1,
+"C901|49eb715829": 1,
+"DTZ011|b4a290769a": 2,
+"PLR0915|49eb715829": 1,
+"PLW2901|7371fa207b": 1
+},
+"apps/api-server/app/areas/legal/party_risk.py": {
+"B905|2b6a349772": 1,
+"C901|778db83318": 1,
+"DTZ011|e6419dcaf1": 1,
+"PLR0915|778db83318": 1,
+"mypy:arg-type|44a1bd53b7": 1,
+"mypy:arg-type|78c8da5d99": 1,
+"mypy:return-value|8c09af6a0d": 1,
+"mypy:var-annotated|f35defbec3": 1
+},
+"apps/api-server/app/areas/legal/record_exports.py": {
+"duplicate-block|c09af6570e48": 2
+},
+"apps/api-server/app/areas/legal/record_import.py": {
+"C901|c2c9cf26ed": 1,
+"PLR0915|c2c9cf26ed": 1,
+"mypy:arg-type|37aa7e7b1a": 1,
+"mypy:arg-type|922d22bf4f": 1,
+"mypy:arg-type|d097a86029": 1,
+"mypy:arg-type|e6769ab058": 2,
+"mypy:arg-type|e819fe1519": 1,
+"mypy:union-attr|df52ada619": 1,
+"mypy:var-annotated|d9894a416a": 1
+},
+"apps/api-server/app/areas/legal/record_queries.py": {
+"C901|9da7bc6c8d": 1,
+"PLR0915|9da7bc6c8d": 1
+},
+"apps/api-server/app/areas/legal/router.py": {
+"B904|0e7d8228e2": 1,
+"B904|774bd01fc1": 1,
+"B904|b419d70713": 1,
+"B904|f764eb2af3": 1,
+"BLE001|e9dc52bf39": 2,
+"C901|18957ffa9d": 1,
+"C901|1f3f266e2c": 1,
+"C901|2a370dfd9a": 1,
+"C901|584f8c3ad5": 1,
+"C901|5e812c0a5d": 1,
+"C901|739d1a697e": 1,
+"C901|7d9e5474b9": 1,
+"C901|b7be7311a6": 1,
+"C901|c9e4e5da24": 1,
+"C901|f4df490eec": 1,
+"E703|f1036fe9b5": 1,
+"PLR0915|18957ffa9d": 1,
+"PLR0915|1f3f266e2c": 1,
+"PLR0915|2a370dfd9a": 1,
+"PLR0915|2b8714022b": 1,
+"PLR0915|5e812c0a5d": 1,
+"PLR0915|5e9394b5b5": 1,
+"PLR0915|634356af39": 1,
+"PLR0915|739d1a697e": 1,
+"PLR0915|7d9e5474b9": 1,
+"PLR0915|8ae052313d": 1,
+"PLR0915|b7be7311a6": 1,
+"PLR0915|c9e4e5da24": 1,
+"PLR0915|f4df490eec": 1,
+"PLW2901|5b0b2a35ea": 1,
+"mypy:arg-type|1f4b1e3f5e": 1,
+"mypy:arg-type|24cd7a3fea": 1,
+"mypy:arg-type|2a0bb88041": 1,
+"mypy:arg-type|6026031b98": 1,
+"mypy:arg-type|7e98b991b5": 2,
+"mypy:arg-type|914c82d84c": 1,
+"mypy:arg-type|b272b7c6fb": 1,
+"mypy:arg-type|bd2f3b86f6": 1,
+"mypy:arg-type|d4a1d1b5ba": 1,
+"mypy:arg-type|d9bd4f6bf2": 1,
+"mypy:arg-type|f3f027891f": 3,
+"mypy:assignment|682904ea87": 1,
+"mypy:assignment|9a84d0d87e": 1,
+"mypy:attr-defined|a99b1711a9": 1,
+"mypy:attr-defined|b936335629": 1,
+"mypy:dict-item|5c1f327d24": 3,
+"mypy:misc|05db0c200f": 1,
+"mypy:misc|0f2fef5f64": 1,
+"mypy:misc|501f54ff6f": 1,
+"mypy:union-attr|0c0ecb702f": 1,
+"mypy:union-attr|23ffa75dcf": 1,
+"mypy:union-attr|381ecdee7b": 2,
+"mypy:union-attr|9df1781a93": 1,
+"mypy:union-attr|a3c1d44aa2": 2,
+"mypy:union-attr|cd4ccf5080": 1,
+"mypy:union-attr|dc14260ff6": 1,
+"mypy:var-annotated|06b08923eb": 2,
+"mypy:var-annotated|15e4da7240": 1,
+"mypy:var-annotated|24cd7a3fea": 1,
+"mypy:var-annotated|d4a1d1b5ba": 1,
+"mypy:var-annotated|d9bd4f6bf2": 1,
+"mypy:var-annotated|e257a8dcb6": 1
+},
+"apps/api-server/app/areas/legal/seals.py": {
+"B904|3a88bf9506": 1,
+"BLE001|762a0332b3": 3,
+"C901|a5aca81bcc": 1,
+"PLR0915|a5aca81bcc": 1,
+"PLR0915|e8edadb23f": 1,
+"PLR0915|fa80fe2839": 1,
+"mypy:arg-type|1314297fb6": 1,
+"mypy:arg-type|50620c6cab": 1,
+"mypy:arg-type|af1cc97eef": 1,
+"mypy:var-annotated|1314297fb6": 1
+},
+"apps/api-server/app/areas/legal/stage_export.py": {
+"C901|4c596ed65c": 1,
+"PLR0915|4c596ed65c": 1,
+"mypy:var-annotated|83565af277": 1
+},
+"apps/api-server/app/areas/legal/template_documents.py": {
+"DTZ005|af4c0fe723": 1,
+"DTZ005|baef5dd8f9": 1,
+"mypy:union-attr|1482e88ae3": 1
+},
+"apps/api-server/app/areas/personal_agent/ai_space_deletion.py": {
+"C901|1e20a57167": 1,
+"PLR0915|1e20a57167": 1,
+"dead-code|794cfb2ec3": 1,
+"dead-code|be20d867e0": 1
+},
+"apps/api-server/app/areas/personal_agent/ai_space_service.py": {
+"mypy:arg-type|983a40adbe": 1
+},
+"apps/api-server/app/areas/personal_agent/confirmation_history.py": {
+"mypy:var-annotated|a1ed4efe1c": 1
+},
+"apps/api-server/app/areas/personal_agent/conversations.py": {
+"mypy:assignment|968702a5b1": 1,
+"mypy:attr-defined|ed84b94042": 1,
+"mypy:union-attr|ad6e5be87f": 1
+},
+"apps/api-server/app/areas/personal_agent/dingtalk_office_client.py": {
+"mypy:return-value|2aeba344b8": 1
+},
+"apps/api-server/app/areas/personal_agent/dingtalk_office_service.py": {
+"BLE001|e87d5466d1": 1,
+"C901|b4da3225a2": 1,
+"PLR0915|b4da3225a2": 1,
+"PLR0915|d89164e30b": 1,
+"dead-code|cd86e0ddfa": 1,
+"mypy:index|23f3566c6f": 1,
+"mypy:index|48f22b7530": 1,
+"mypy:index|4ed4d41ba8": 1,
+"mypy:union-attr|23f3566c6f": 1,
+"mypy:union-attr|4ed4d41ba8": 1
+},
+"apps/api-server/app/areas/personal_agent/materials.py": {
+"mypy:assignment|eee00bfbbe": 1
+},
+"apps/api-server/app/areas/personal_agent/mcp_chat_connection.py": {
+"BLE001|e9dc52bf39": 1,
+"PLR0915|b7d70d773c": 1
+},
+"apps/api-server/app/areas/personal_agent/mcp_chat_input.py": {
+"C901|211e921a29": 1
+},
+"apps/api-server/app/areas/personal_agent/mcp_connection_setup.py": {
+"mypy:assignment|020a36b110": 1,
+"mypy:assignment|8c3b24bc3c": 1
+},
+"apps/api-server/app/areas/personal_agent/mcp_tools.py": {
+"C901|08ddd0a51f": 1,
+"PLR0915|08ddd0a51f": 1,
+"mypy:arg-type|56e6f97c8e": 1
+},
+"apps/api-server/app/areas/personal_agent/memory_store.py": {
+"mypy:arg-type|d54e27f7e3": 2
+},
+"apps/api-server/app/areas/personal_agent/project_workspaces.py": {
+"PLW2901|9d8d504b2c": 1
+},
+"apps/api-server/app/areas/personal_agent/router.py": {
+"BLE001|e9dc52bf39": 1
+},
+"apps/api-server/app/areas/personal_agent/service.py": {
+"B904|a637d6c8f6": 1,
+"C901|4b30ba9629": 1,
+"E731|12d2b9cd82": 1,
+"PLR0915|4b30ba9629": 1,
+"PLR0915|daa4a2fb39": 1,
+"mypy:arg-type|a5f066dbb5": 1,
+"mypy:arg-type|d9141c9a40": 1
+},
+"apps/api-server/app/areas/rpt/router.py": {
+"E731|72f9ead70f": 1,
+"PLR0915|3a96599caf": 1,
+"mypy:assignment|45e0c7e370": 1,
+"mypy:assignment|63ed72ea9b": 1,
+"mypy:assignment|ec25cab186": 1,
+"mypy:attr-defined|67c3b7852b": 1,
+"mypy:call-overload|45da9e3013": 1,
+"mypy:call-overload|f99e5d49e7": 1,
+"mypy:misc|0e37806d39": 1,
+"mypy:misc|7261575e53": 1,
+"mypy:operator|45e0c7e370": 1,
+"mypy:operator|ec25cab186": 1,
+"mypy:union-attr|662819b8e2": 1,
+"mypy:union-attr|c1b36ecca0": 2
+},
+"apps/api-server/app/areas/system/agent_documents.py": {
+"BLE001|624b82b9ad": 1,
+"BLE001|66a4f337fa": 1,
+"mypy:arg-type|8ad8851994": 1,
+"mypy:assignment|b5036e5f7e": 1
+},
+"apps/api-server/app/areas/system/attachments.py": {
+"C901|0707d60b33": 1,
+"C901|3af3a19def": 1,
+"C901|cf03f4746e": 1,
+"PLR0915|0707d60b33": 1,
+"PLR0915|3af3a19def": 1,
+"PLR0915|cf03f4746e": 1,
+"duplicate-block|43a572b4be05": 1,
+"mypy:arg-type|5b6930fe49": 1,
+"mypy:arg-type|7a394aa4f3": 1,
+"mypy:arg-type|aaac23a98b": 1,
+"mypy:arg-type|bdb9e31c4e": 1,
+"mypy:arg-type|c3f29c97d9": 1,
+"mypy:arg-type|e335bcfd55": 1
+},
+"apps/api-server/app/areas/system/dingtalk_auth.py": {
+"BLE001|53be528ffc": 1,
+"DTZ005|3e1c506152": 1,
+"DTZ005|ab484a0f66": 2
+},
+"apps/api-server/app/areas/system/feedback.py": {
+"dead-code|45dc7ae5fa": 1,
+"mypy:assignment|7dc35e007b": 1,
+"mypy:attr-defined|0b21612a31": 1,
+"mypy:attr-defined|9d70fe83d5": 1,
+"mypy:attr-defined|ca7b6ef61e": 1,
+"mypy:union-attr|fa987b495d": 6
+},
+"apps/api-server/app/areas/system/feedback_forward.py": {
+"BLE001|762a0332b3": 1,
+"mypy:attr-defined|8508556bf9": 1
+},
+"apps/api-server/app/areas/system/recycle_bin.py": {
+"mypy:attr-defined|06074c8fbc": 1,
+"mypy:attr-defined|6e2d34affb": 1
+},
+"apps/api-server/app/areas/system/router.py": {
+"C901|b79ea4e5a9": 1,
+"C901|e3938b046c": 1,
+"PLR0915|728bdf03ef": 1,
+"PLR0915|e3938b046c": 1,
+"PLW0603|69e0986ad8": 2,
+"duplicate-block|6cb11016eefb": 2,
+"mypy:arg-type|9eaee96a62": 1,
+"mypy:assignment|91b4908bb8": 1,
+"mypy:assignment|d452fbac59": 1,
+"mypy:attr-defined|24166b75cd": 1,
+"mypy:attr-defined|a3651d2b18": 1,
+"mypy:attr-defined|c3a5c7ad61": 1,
+"mypy:dict-item|2ced798d45": 1,
+"mypy:dict-item|382a49c9e7": 1,
+"mypy:dict-item|73eb771d19": 2,
+"mypy:dict-item|e37ae1f99a": 1,
+"mypy:dict-item|ebc1eb1367": 1,
+"mypy:list-item|e37ae1f99a": 2,
+"mypy:operator|95d19dba2c": 1,
+"mypy:operator|cdf1f22eaf": 1
+},
+"apps/api-server/app/areas/tp/router.py": {
+"C901|4031a7a509": 1,
+"C901|5f63b598a6": 1,
+"C901|5fe4e9e283": 1,
+"C901|83f1314b20": 1,
+"E731|d52472b92e": 1,
+"PLR0915|4031a7a509": 1,
+"PLR0915|5f63b598a6": 1,
+"PLR0915|5fe4e9e283": 1,
+"PLR0915|83f1314b20": 1,
+"PLR0915|8cf7930803": 1,
+"mypy:arg-type|109348c824": 1,
+"mypy:arg-type|167ce48d50": 1,
+"mypy:arg-type|aace7af222": 1,
+"mypy:assignment|8004755f53": 1,
+"mypy:attr-defined|459ca6f9f8": 1,
+"mypy:attr-defined|662760cf46": 1,
+"mypy:attr-defined|95030dae00": 1,
+"mypy:attr-defined|ef828ba549": 1,
+"mypy:misc|aa14558c2e": 1,
+"mypy:union-attr|4a9859edad": 2,
+"mypy:var-annotated|81bb85c391": 1
+},
+"apps/api-server/app/areas/wms/router.py": {
+"mypy:arg-type|0da9cd6305": 1,
+"mypy:arg-type|d742634f0a": 1,
+"mypy:attr-defined|5bbe61ba67": 1,
+"mypy:call-overload|d4020993ec": 1,
+"mypy:var-annotated|0da9cd6305": 1,
+"mypy:var-annotated|d742634f0a": 1
+},
+"apps/api-server/app/case_agent.py": {
+"BLE001|762a0332b3": 1,
+"BLE001|e9dc52bf39": 2,
+"dead-code|b98d7ec6cd": 1,
+"dead-code|cd0d108126": 1,
+"dead-code|d6a16a86be": 1,
+"mypy:arg-type|af9515def9": 1,
+"mypy:union-attr|0bc6a5c6b2": 1,
+"mypy:union-attr|160b671560": 1,
+"mypy:union-attr|4157a9502d": 1,
+"mypy:union-attr|77594315a0": 1,
+"mypy:union-attr|8f7bcb41e9": 1,
+"mypy:union-attr|902cd02d92": 1,
+"mypy:union-attr|a4736afd8c": 1,
+"mypy:union-attr|f4b838bec7": 1
+},
+"apps/api-server/app/case_quick_checks.py": {
+"DTZ011|b4a290769a": 1,
+"mypy:arg-type|4c8cad11d6": 1,
+"mypy:assignment|da6e7945a1": 1,
+"mypy:index|6a3a37c179": 1,
+"mypy:index|da6e7945a1": 1
+},
+"apps/api-server/app/case_workflow_rules.py": {
+"DTZ011|7980417955": 1,
+"mypy:arg-type|2e533c1ac7": 1,
+"mypy:dict-item|a8308ff541": 1,
+"mypy:index|b5620ea9c0": 1
+},
+"apps/api-server/app/cloud_agent/harness.py": {
+"BLE001|75f35a1679": 1,
+"mypy:assignment|759c79a8ac": 1,
+"mypy:assignment|99d1fafffb": 1,
+"mypy:index|53fd3e1283": 1,
+"mypy:index|68b0dd6f95": 1
+},
+"apps/api-server/app/cloud_agent/runtime.py": {
+"BLE001|2786681315": 1,
+"C901|d85efdcbf2": 1,
+"PLR0915|d85efdcbf2": 1,
+"mypy:assignment|76bc7e1236": 1
+},
+"apps/api-server/app/cloud_agent/usage.py": {
+"B905|54024bc638": 1
+},
+"apps/api-server/app/config.py": {
+"S105|861e84c7d3": 1,
+"dead-code|1062246f2e": 1,
+"dead-code|52d602f367": 1,
+"dead-code|a39eb427f2": 1,
+"dead-code|bcd890e19b": 1
+},
+"apps/api-server/app/core/agency_fee_ranking.py": {
+"C901|fd6ba9b8e5": 1,
+"dead-code|0c650fffbd": 1,
+"dead-code|f838c34524": 1,
+"duplicate-block|0dfcb0f92527": 1
+},
+"apps/api-server/app/core/agency_refund.py": {
+"C901|7c78aed89f": 1,
+"DTZ005|0cdb4686b9": 1,
+"DTZ005|2b4a883fc3": 1,
+"PLR0915|7c78aed89f": 1,
+"mypy:arg-type|77e939f5ad": 1
+},
+"apps/api-server/app/core/attachment_deletion.py": {
+"mypy:attr-defined|60ca78ac87": 2,
+"mypy:attr-defined|b1be360f1c": 2
+},
+"apps/api-server/app/core/attachment_links.py": {
+"mypy:arg-type|56e28d4f98": 1
+},
+"apps/api-server/app/core/attachment_oss_sync.py": {
+"BLE001|762a0332b3": 1,
+"BLE001|e9dc52bf39": 1,
+"DTZ005|09cbc01189": 1
+},
+"apps/api-server/app/core/automatic_task_diagnostics.py": {
+"PLW0603|cc395c2b13": 1
+},
+"apps/api-server/app/core/automatic_task_lookup.py": {
+"dead-code|424f8f8744": 1
+},
+"apps/api-server/app/core/bank_document_recognition.py": {
+"C901|130620aed5": 1,
+"PLR0915|130620aed5": 1,
+"mypy:var-annotated|b18602b66b": 1
+},
+"apps/api-server/app/core/bank_statement_import.py": {
+"B023|d8759142b3": 2,
+"C901|5018d7b096": 1,
+"C901|911d42406b": 1,
+"DTZ007|a87854a0c4": 1,
+"E731|d8759142b3": 1,
+"PLR0915|5018d7b096": 1,
+"mypy:attr-defined|2d25fe2a56": 1,
+"mypy:attr-defined|42decbe236": 1,
+"mypy:attr-defined|86120d8098": 1,
+"mypy:attr-defined|b60bc99f87": 1,
+"mypy:operator|2d4cf12beb": 1
+},
+"apps/api-server/app/core/case_agent_personnel.py": {
+"mypy:arg-type|f52b81a501": 1
+},
+"apps/api-server/app/core/case_archive.py": {
+"C901|4bb6747881": 1,
+"PLR0915|4bb6747881": 1
+},
+"apps/api-server/app/core/case_archive_numbering.py": {
+"mypy:assignment|b54e43963d": 1,
+"mypy:attr-defined|005fdca7a7": 1,
+"mypy:attr-defined|177551219b": 1,
+"mypy:attr-defined|1f5f12c531": 1,
+"mypy:attr-defined|6bc3f040b8": 1,
+"mypy:union-attr|2930dae338": 1,
+"mypy:union-attr|7af7ed9e3a": 1,
+"mypy:union-attr|e6186fd587": 1
+},
+"apps/api-server/app/core/case_automation.py": {
+"B007|e6d93af1be": 1,
+"C901|65a2375105": 1,
+"C901|b171af5945": 1,
+"DTZ011|52ce55d221": 1,
+"DTZ011|557530aecd": 1,
+"DTZ011|664851b596": 1,
+"DTZ011|bf2bac5f79": 1,
+"DTZ011|ff6c7b4c1f": 1,
+"PLR0915|65a2375105": 1,
+"dead-code|e6d93af1be": 1,
+"mypy:arg-type|0aa63f1f51": 1,
+"mypy:arg-type|0bd394f7d4": 1,
+"mypy:arg-type|13618ac779": 1,
+"mypy:arg-type|49e9585194": 1,
+"mypy:arg-type|9c138dd9a4": 1,
+"mypy:arg-type|e348368178": 1,
+"mypy:attr-defined|a2c866fa3f": 2,
+"mypy:union-attr|13618ac779": 1,
+"mypy:union-attr|c3bd51dce0": 1
+},
+"apps/api-server/app/core/case_automation_sources.py": {
+"C901|d70de15667": 1,
+"PLR0915|d70de15667": 1,
+"mypy:index|094e3a319b": 1,
+"mypy:index|4ef0328dd3": 1,
+"mypy:index|e346a6f35f": 1,
+"mypy:union-attr|1863f082ec": 1
+},
+"apps/api-server/app/core/case_cause.py": {
+"mypy:union-attr|5aca77f58b": 1,
+"mypy:union-attr|80b279bcf9": 1
+},
+"apps/api-server/app/core/case_create_requirements.py": {
+"E731|5d754c41f9": 1
+},
+"apps/api-server/app/core/case_documents.py": {
+"PLR0915|b066aae969": 1,
+"mypy:var-annotated|0eb60778d8": 1
+},
+"apps/api-server/app/core/case_fee_move.py": {
+"DTZ005|1636d5f118": 1,
+"DTZ005|6e5d389390": 1,
+"dead-code|f8608fa4aa": 1,
+"mypy:attr-defined|8d143bf2ad": 1,
+"mypy:attr-defined|988bc8e6f4": 1,
+"mypy:attr-defined|fe97c92d66": 1
+},
+"apps/api-server/app/core/case_fee_payments.py": {
+"mypy:var-annotated|4276fbb600": 1
+},
+"apps/api-server/app/core/case_invoice_files.py": {
+"C901|900d10850c": 1,
+"PLR0915|900d10850c": 1,
+"mypy:arg-type|ba003a904a": 1,
+"mypy:arg-type|bebf6d7466": 1,
+"mypy:union-attr|a131ecbdf3": 1,
+"mypy:union-attr|dd0dab5bbc": 1,
+"mypy:var-annotated|2963b8a34c": 1,
+"mypy:var-annotated|5d528c3d69": 1
+},
+"apps/api-server/app/core/case_list_tasks.py": {
+"mypy:var-annotated|304e8db45f": 1
+},
+"apps/api-server/app/core/case_merge.py": {
+"B904|e2f8801146": 1,
+"B904|ec9f19fb69": 1,
+"C901|8dc24f8ebf": 1,
+"DTZ005|5c48f97a11": 1,
+"DTZ005|cdbfab70b3": 1,
+"mypy:arg-type|c713f21cac": 2,
+"mypy:assignment|1bf59b778e": 1
+},
+"apps/api-server/app/core/case_phase_expected_days.py": {
+"mypy:attr-defined|4d33ae0ade": 1
+},
+"apps/api-server/app/core/case_relation_repair.py": {
+"C901|94bdfdddbc": 1,
+"dead-code|94bdfdddbc": 1
+},
+"apps/api-server/app/core/case_relations.py": {
+"mypy:assignment|4cb7b267ac": 1,
+"mypy:call-overload|cd9329094f": 1,
+"mypy:var-annotated|debfc5a697": 1
+},
+"apps/api-server/app/core/cases.py": {
+"B023|468a828140": 1,
+"B023|a85d97e096": 1,
+"B023|f8b85ef42a": 1,
+"B905|5a5ba948a1": 1,
+"B905|882639f650": 1,
+"C901|480d18f3ff": 1,
+"C901|99e5c9a65b": 1,
+"C901|a60523bcb0": 1,
+"C901|b07a13511c": 1,
+"C901|e0acd50f80": 1,
+"PLR0915|99e5c9a65b": 1,
+"PLR0915|a60523bcb0": 1,
+"PLR0915|b07a13511c": 1,
+"PLR0915|e0acd50f80": 1,
+"mypy:assignment|029c5aef3a": 1,
+"mypy:assignment|346a8f5233": 1,
+"mypy:assignment|3b23b7b1eb": 1,
+"mypy:assignment|9b4cbe3414": 1,
+"mypy:assignment|c56eb6915f": 1,
+"mypy:misc|57c8be847c": 1,
+"mypy:misc|9d1e8e3e98": 1,
+"mypy:union-attr|0118f61f32": 1,
+"mypy:union-attr|11b4282c3f": 1,
+"mypy:union-attr|1df833e602": 1,
+"mypy:union-attr|26a227dd00": 1,
+"mypy:union-attr|3790106a50": 1,
+"mypy:union-attr|3eca3eabd5": 1,
+"mypy:union-attr|4533d6d38a": 1,
+"mypy:union-attr|76736f963e": 1,
+"mypy:union-attr|dbd9b9f86d": 1,
+"mypy:union-attr|f1a5f54eab": 1
+},
+"apps/api-server/app/core/change_log.py": {
+"B023|57b497ab51": 1,
+"B023|bbd702a5b5": 1,
+"C901|66b6d95aef": 1,
+"C901|c49270740f": 1,
+"PLR0915|66b6d95aef": 1,
+"PLW0108|bbd702a5b5": 1,
+"dead-code|0188cbb50d": 1,
+"dead-code|77ed173fa2": 2,
+"dead-code|7d4fdee233": 1,
+"dead-code|c49270740f": 1,
+"dead-code|fcb43b1687": 1,
+"mypy:arg-type|128f2f792c": 1,
+"mypy:attr-defined|06074c8fbc": 1,
+"mypy:attr-defined|99459c9370": 1
+},
+"apps/api-server/app/core/clue_conflicts.py": {
+"S608|e4009d773f": 1,
+"dead-code|017dd6964c": 1,
+"mypy:union-attr|e633a61134": 1,
+"mypy:var-annotated|98746accb1": 1
+},
+"apps/api-server/app/core/conflict_review_facts.py": {
+"DTZ011|cbe8559c31": 1,
+"mypy:arg-type|9b8211b426": 1,
+"mypy:call-overload|72184feb70": 1,
+"mypy:var-annotated|fe92c7b798": 1
+},
+"apps/api-server/app/core/conflict_review_rules.py": {
+"C901|63648fe242": 1,
+"PLR0915|63648fe242": 1,
+"mypy:assignment|100b85146d": 1,
+"mypy:call-overload|4c180de4b5": 1,
+"mypy:call-overload|e1c8f7f808": 1,
+"mypy:var-annotated|b3d4ba1790": 1
+},
+"apps/api-server/app/core/constants.py": {
+"duplicate-block|1242dfbbe569": 1,
+"mypy:assignment|2972b7d6f5": 1,
+"mypy:assignment|3fd3190a44": 1,
+"mypy:assignment|de387d370c": 2,
+"mypy:attr-defined|080cb19c88": 1
+},
+"apps/api-server/app/core/contract_delete.py": {
+"DTZ005|966daa7f15": 1,
+"DTZ005|bb1de6aa0a": 1
+},
+"apps/api-server/app/core/contract_payment_lifecycle.py": {
+"B905|5a254dd926": 1,
+"C901|88afc191b6": 1,
+"DTZ005|001c9c4ca3": 1,
+"DTZ005|01e49f0ebd": 1,
+"DTZ005|ea63bbee09": 1,
+"PLR0915|88afc191b6": 1,
+"PLW2901|9be8acb46c": 1,
+"mypy:arg-type|03cacfb7a4": 1,
+"mypy:arg-type|5a2ebe223e": 1,
+"mypy:assignment|fd3a2cae13": 1,
+"mypy:var-annotated|507a891d80": 1
+},
+"apps/api-server/app/core/contract_payment_sources.py": {
+"mypy:assignment|198d2522bf": 1,
+"mypy:attr-defined|3519a2dccf": 1,
+"mypy:attr-defined|d086879d44": 1
+},
+"apps/api-server/app/core/contracts.py": {
+"B905|7480f32cfb": 1,
+"C901|0eaa9d0a1f": 1,
+"C901|6746f05add": 1,
+"C901|7bdbe9fe40": 1,
+"PLR0915|6746f05add": 1,
+"PLR0915|7bdbe9fe40": 1,
+"PLR0915|92a14b27c6": 1,
+"mypy:arg-type|0d40967ed8": 1,
+"mypy:attr-defined|8ff2b58f3e": 1
+},
+"apps/api-server/app/core/court_intake_storage.py": {
+"DTZ005|9fceaaaab3": 1
+},
+"apps/api-server/app/core/crm.py": {
+"B905|1b9357e746": 1,
+"C901|87654ea037": 1,
+"PLR0915|87654ea037": 1,
+"dead-code|ec1fd790e5": 1,
+"duplicate-block|0dfcb0f92527": 1,
+"mypy:arg-type|1a22a2cbf3": 1,
+"mypy:arg-type|59ee7ecc46": 1,
+"mypy:arg-type|8a43728455": 1,
+"mypy:arg-type|8cd7537f51": 1,
+"mypy:arg-type|f3a48177e9": 1,
+"mypy:attr-defined|2ba55814f0": 1,
+"mypy:attr-defined|989db9b2ec": 1,
+"mypy:union-attr|2b8f040976": 1,
+"mypy:union-attr|8437bef391": 1,
+"mypy:union-attr|9fd36eafa1": 1,
+"mypy:var-annotated|8a43728455": 1,
+"mypy:var-annotated|f3a48177e9": 1
+},
+"apps/api-server/app/core/customer_commands.py": {
+"mypy:attr-defined|ab5d3a12df": 1,
+"mypy:attr-defined|d9b041259c": 1,
+"mypy:attr-defined|fa19992c15": 1,
+"mypy:valid-type|a68aab6738": 1
+},
+"apps/api-server/app/core/customer_readmodel.py": {
+"B905|66cc4441c5": 1,
+"B905|78c9e99e73": 1,
+"B905|86e0498404": 1,
+"B905|b29af5b5c1": 1,
+"mypy:misc|0ad1a39a36": 1,
+"mypy:var-annotated|78598c0236": 1
+},
+"apps/api-server/app/core/dashboard_cases.py": {
+"C901|7160a9e73f": 1,
+"PLR0915|7160a9e73f": 1
+},
+"apps/api-server/app/core/dashboard_finance.py": {
+"mypy:misc|66defbbda9": 1,
+"mypy:misc|726f14f3b6": 1,
+"mypy:misc|9453f8c791": 1,
+"mypy:misc|9b55bfd24a": 1,
+"mypy:union-attr|05621ac4cb": 1,
+"mypy:union-attr|64964005d7": 1,
+"mypy:union-attr|9d2ecb3e26": 1,
+"mypy:union-attr|ac0f8bd1b8": 1,
+"mypy:var-annotated|f0d18e2e55": 1
+},
+"apps/api-server/app/core/dashboard_finance_read_model_migration.py": {
+"B905|f933134f75": 1,
+"E731|2b0cc82f0c": 1,
+"S608|1335129057": 1,
+"S608|6ab84f6487": 1,
+"S608|830226d800": 1,
+"S608|b537eb1e92": 1,
+"S608|cbce93207a": 1,
+"S608|f6d0084044": 1,
+"dead-code|06330e6fc7": 1
+},
+"apps/api-server/app/core/dashboard_list_counts.py": {
+"B905|f7f632b73e": 1
+},
+"apps/api-server/app/core/dashboard_metrics_cache.py": {
+"DTZ011|111debd4f9": 1,
+"DTZ011|91f1c6aab5": 2,
+"DTZ011|f7f60a0d00": 1
+},
+"apps/api-server/app/core/dashboard_metrics_redis.py": {
+"ASYNC240|36f9d08d82": 1,
+"PLW0603|1d05fe26e3": 3,
+"mypy:assignment|8a48440c7e": 1
+},
+"apps/api-server/app/core/dashboard_personal_queues.py": {
+"mypy:var-annotated|9711944eed": 1,
+"mypy:var-annotated|ab9b6f0f3d": 1
+},
+"apps/api-server/app/core/dashboard_portals.py": {
+"C901|ff5f624593": 1,
+"mypy:attr-defined|ca7b6ef61e": 1
+},
+"apps/api-server/app/core/dashboard_queue_members.py": {
+"DTZ011|7202007793": 1
+},
+"apps/api-server/app/core/dashboard_revision.py": {
+"S608|a5c5097aa6": 1,
+"S608|cbce93207a": 1
+},
+"apps/api-server/app/core/dashboard_revision_migration.py": {
+"E731|c2a47070d5": 1,
+"dead-code|0820b577dd": 1
+},
+"apps/api-server/app/core/dashboard_scope.py": {
+"PLR0915|5d372d3e95": 1,
+"dead-code|22a010ff85": 1,
+"dead-code|c6e7f682bd": 1,
+"dead-code|d4de9f8b74": 1,
+"mypy:var-annotated|157295cd63": 1,
+"mypy:var-annotated|9ce5ca71cc": 1,
+"mypy:var-annotated|af5f7562bf": 1,
+"mypy:var-annotated|ce5e6929b9": 1
+},
+"apps/api-server/app/core/data_scope_gate.py": {
+"PLW0603|27ec044b01": 2,
+"PLW0603|3c303e61a2": 1,
+"dead-code|eab22b1071": 1
+},
+"apps/api-server/app/core/department_audit.py": {
+"C901|6686bd7e0d": 1,
+"PLR0915|6686bd7e0d": 1,
+"mypy:union-attr|1fddf6491e": 1,
+"mypy:union-attr|7f92419937": 1
+},
+"apps/api-server/app/core/departure_tasks.py": {
+"B007|badaf8a832": 1,
+"C901|a9a0f8b2d3": 1,
+"DTZ011|e85226940f": 1,
+"PLR0915|a9a0f8b2d3": 1,
+"mypy:assignment|f28c5d24d2": 1
+},
+"apps/api-server/app/core/documents.py": {
+"BLE001|762a0332b3": 1,
+"C901|02114af3bd": 1,
+"C901|eb4ef95be7": 1,
+"PLR0915|02114af3bd": 1,
+"PLR0915|eb4ef95be7": 1,
+"PLW2901|0126bea846": 1,
+"duplicate-block|9408f7d53a0f": 2,
+"mypy:arg-type|2fe003440d": 1,
+"mypy:assignment|a6e950ab83": 1,
+"mypy:attr-defined|0e83d28cc4": 1,
+"mypy:attr-defined|12b6f636be": 1,
+"mypy:attr-defined|1b507072f9": 1,
+"mypy:attr-defined|27614836a1": 2,
+"mypy:attr-defined|6b7a52c85d": 1,
+"mypy:attr-defined|94c65f4b3c": 2,
+"mypy:valid-type|316b4c64b7": 1,
+"mypy:valid-type|3da3c7f72a": 1,
+"mypy:valid-type|c3bd189d49": 1
+},
+"apps/api-server/app/core/fee_cash_query.py": {
+"C901|eb19a0ff4d": 1,
+"mypy:var-annotated|3e932dadeb": 1,
+"mypy:var-annotated|ccc8ce5f3c": 1
+},
+"apps/api-server/app/core/fee_list_facts.py": {
+"B905|0df1589ee2": 1
+},
+"apps/api-server/app/core/fee_receipt_pool.py": {
+"mypy:var-annotated|c8d161a3eb": 1,
+"mypy:var-annotated|e9beb078b4": 1
+},
+"apps/api-server/app/core/fee_refund_query.py": {
+"mypy:attr-defined|5ec5f580bc": 1,
+"mypy:var-annotated|500ba061c4": 1,
+"mypy:var-annotated|a467738672": 1
+},
+"apps/api-server/app/core/feedback_serial_migration.py": {
+"mypy:attr-defined|951892200f": 1
+},
+"apps/api-server/app/core/finance.py": {
+"B023|ea949231e9": 1,
+"B905|53b71d4180": 1,
+"B905|85567a60db": 1,
+"B905|c881e6b326": 1,
+"C901|0349942854": 1,
+"C901|1157bf4b93": 1,
+"C901|14ea2e653e": 1,
+"C901|19aa521e94": 1,
+"C901|1a4e352c04": 1,
+"C901|2598f011a0": 1,
+"C901|3dbd44a69a": 1,
+"C901|67d3254ce9": 1,
+"C901|8c0ec5003b": 1,
+"C901|bd73eda95d": 1,
+"C901|c324382963": 1,
+"PLR0915|0349942854": 1,
+"PLR0915|1157bf4b93": 1,
+"PLR0915|19aa521e94": 1,
+"PLR0915|1a4e352c04": 1,
+"PLR0915|2598f011a0": 1,
+"PLR0915|3dbd44a69a": 1,
+"PLR0915|8c0ec5003b": 1,
+"PLR0915|bd73eda95d": 1,
+"duplicate-block|28db0768e742": 2,
+"mypy:arg-type|0297e3cd57": 1,
+"mypy:arg-type|149358fd1e": 1,
+"mypy:arg-type|20c9b198cb": 1,
+"mypy:arg-type|2cb93ff3ac": 1,
+"mypy:arg-type|4cc552fb3c": 1,
+"mypy:arg-type|63587000c3": 1,
+"mypy:arg-type|89763fc3e4": 1,
+"mypy:arg-type|b24cf058da": 1,
+"mypy:arg-type|eb21a5254a": 1,
+"mypy:assignment|19ab7e55c1": 1,
+"mypy:assignment|1e3b4c0538": 1,
+"mypy:assignment|a383f5c6cf": 1,
+"mypy:assignment|e5d4bb51d9": 1,
+"mypy:attr-defined|51ffa98af3": 1,
+"mypy:index|7a3b506c13": 1,
+"mypy:index|c11a2aa4a1": 1,
+"mypy:index|f742126185": 1,
+"mypy:misc|ed89e532c1": 1,
+"mypy:union-attr|23ec27b9fb": 2,
+"mypy:union-attr|3d40204ff3": 1,
+"mypy:union-attr|6caf01746f": 1,
+"mypy:union-attr|7e4991a505": 1,
+"mypy:union-attr|a2523a006f": 1,
+"mypy:union-attr|a8b4075f1d": 1,
+"mypy:union-attr|c0603aa87f": 1,
+"mypy:union-attr|d83d14337c": 1,
+"mypy:union-attr|e287a6aa54": 1,
+"mypy:union-attr|e4e47a88de": 1,
+"mypy:union-attr|f529e548c2": 1,
+"mypy:var-annotated|72acff7685": 1,
+"mypy:var-annotated|ba5429b0cc": 1,
+"mypy:var-annotated|f68b9fd52e": 1
+},
+"apps/api-server/app/core/finance_batch_parity.py": {
+"dead-code|17299ed06e": 1,
+"mypy:var-annotated|cef7e40bc0": 1,
+"mypy:var-annotated|d5f12ce044": 1
+},
+"apps/api-server/app/core/finance_centers.py": {
+"B905|b3c32d3b67": 1,
+"E731|9ee402cbe7": 1,
+"mypy:assignment|0515c250d7": 1,
+"mypy:assignment|bf72fefb48": 1
+},
+"apps/api-server/app/core/finance_person_projection.py": {
+"B905|b1702afb12": 1,
+"mypy:arg-type|e917f9c658": 1,
+"mypy:index|3c89e5c096": 1,
+"mypy:index|8fd02d614d": 1,
+"mypy:union-attr|fbb4018562": 1
+},
+"apps/api-server/app/core/finance_projection.py": {
+"mypy:arg-type|11e2c1baa7": 1,
+"mypy:arg-type|20bf014b1e": 1,
+"mypy:arg-type|47bf577e7f": 1,
+"mypy:arg-type|507c5ff60b": 1
+},
+"apps/api-server/app/core/finance_query_revision.py": {
+"S608|3c8020da24": 1,
+"S608|55dcc5202a": 1,
+"S608|e426d77a35": 1,
+"S608|f395b28901": 1
+},
+"apps/api-server/app/core/finance_read_scope.py": {
+"mypy:arg-type|cbfc7c5f01": 1
+},
+"apps/api-server/app/core/finance_readmodel.py": {
+"mypy:arg-type|e101c0429d": 1,
+"mypy:assignment|2339f6a974": 1,
+"mypy:assignment|40cea647ed": 1,
+"mypy:assignment|6b1e381af1": 1,
+"mypy:assignment|c9040c13ae": 1,
+"mypy:attr-defined|1b7e324f7e": 1,
+"mypy:attr-defined|7a2cb83a05": 1,
+"mypy:var-annotated|9de72315a5": 1,
+"mypy:var-annotated|e101c0429d": 1
+},
+"apps/api-server/app/core/finance_summary_query.py": {
+"mypy:var-annotated|f0d18e2e55": 1
+},
+"apps/api-server/app/core/formatters.py": {
+"B905|2c3a8c044a": 1,
+"C901|e76e5d654f": 1,
+"PLR0915|e76e5d654f": 1,
+"mypy:arg-type|2a317cc071": 1,
+"mypy:arg-type|5ccbce128d": 1,
+"mypy:arg-type|62c5ec9549": 1,
+"mypy:arg-type|6feba80149": 1,
+"mypy:arg-type|ae8d80f42b": 2,
+"mypy:assignment|1b8b4788a8": 1,
+"mypy:attr-defined|2a0f1b67ec": 1,
+"mypy:attr-defined|eb2555db39": 1,
+"mypy:misc|ba0debbed5": 2,
+"mypy:misc|f1eb8742ef": 2,
+"mypy:union-attr|514e7b4d3b": 1,
+"mypy:union-attr|a31b769289": 1,
+"mypy:union-attr|a7d7a59902": 1,
+"mypy:union-attr|df762044e3": 1,
+"mypy:valid-type|087571c60c": 1
+},
+"apps/api-server/app/core/generated_file_storage.py": {
+"PLR0915|45faa0b456": 1,
+"mypy:arg-type|33aa054be5": 1
+},
+"apps/api-server/app/core/hearing_reminders.py": {
+"DTZ005|9a3df1b720": 1,
+"DTZ011|aead95acd1": 1,
+"PLR0915|1659e1002e": 1,
+"mypy:union-attr|a0f0d0d5cc": 1,
+"mypy:union-attr|bb070b5192": 1,
+"mypy:union-attr|ccd144f019": 1,
+"mypy:union-attr|ceccfe0dd5": 1
+},
+"apps/api-server/app/core/hz_allocation_read_model.py": {
+"dead-code|c098f3b7bc": 1
+},
+"apps/api-server/app/core/hz_allocation_read_model_migration.py": {
+"S608|4ba9b4e3c2": 1
+},
+"apps/api-server/app/core/imported_incoming_payments.py": {
+"C901|995255dd93": 1,
+"C901|f8f288118f": 1,
+"PLR0915|995255dd93": 1,
+"PLR0915|f8f288118f": 1,
+"dead-code|8a1bfeeb18": 1,
+"dead-code|995255dd93": 1,
+"dead-code|f8f288118f": 1,
+"mypy:assignment|96495d237f": 1
+},
+"apps/api-server/app/core/imported_settlement_projection.py": {
+"B905|3067a08064": 1,
+"C901|53709d55e9": 1,
+"C901|fbc556ec68": 1,
+"E731|5bfd0f2365": 1,
+"PLR0915|53709d55e9": 1,
+"PLR0915|fbc556ec68": 1,
+"mypy:arg-type|ce49f9785b": 1,
+"mypy:assignment|195ed3467d": 1,
+"mypy:attr-defined|3c14e8d0d7": 2,
+"mypy:misc|ce49f9785b": 1,
+"mypy:operator|ce49f9785b": 1,
+"mypy:var-annotated|846398cf75": 1
+},
+"apps/api-server/app/core/incoming_allocation_records.py": {
+"C901|fdaff825bc": 1,
+"mypy:operator|54c1783aef": 3,
+"mypy:var-annotated|686301d7d3": 1
+},
+"apps/api-server/app/core/incoming_contracts.py": {
+"mypy:assignment|ce6f206939": 1
+},
+"apps/api-server/app/core/incoming_legacy_amounts.py": {
+"B905|708b87151e": 1,
+"dead-code|45362bfbe4": 1,
+"dead-code|8c92701f96": 1,
+"dead-code|a11641c1c8": 1
+},
+"apps/api-server/app/core/incoming_local_amounts.py": {
+"B905|d3df096d8a": 1,
+"PLR0915|ae8e353dfe": 1,
+"mypy:arg-type|2e6123c0e2": 1,
+"mypy:assignment|24636b330e": 1,
+"mypy:assignment|69ee7a1bea": 1,
+"mypy:assignment|70eff5a239": 1,
+"mypy:assignment|bd680471e7": 1,
+"mypy:operator|ff03030362": 1,
+"mypy:var-annotated|1dfadd8b7c": 1,
+"mypy:var-annotated|cd287b1320": 1,
+"mypy:var-annotated|d9e848abbd": 1
+},
+"apps/api-server/app/core/incoming_payment_sources.py": {
+"DTZ007|4699cebfa8": 1
+},
+"apps/api-server/app/core/internal_commission_stage.py": {
+"mypy:arg-type|5f3d7df1a0": 1,
+"mypy:arg-type|638b30c860": 1
+},
+"apps/api-server/app/core/internal_finance_query.py": {
+"C901|fc7a740c67": 1,
+"PLR0915|d5c52bb8f4": 1,
+"mypy:arg-type|3b9f4f4f9f": 1,
+"mypy:arg-type|61b855fe54": 1,
+"mypy:arg-type|634e4c509b": 1,
+"mypy:attr-defined|5b3d5ad694": 1,
+"mypy:attr-defined|ac054d1e17": 1,
+"mypy:dict-item|2f1446eb2a": 1,
+"mypy:dict-item|c81bf734bb": 1,
+"mypy:dict-item|e1a6dfa8c8": 1,
+"mypy:var-annotated|3b9f4f4f9f": 1,
+"mypy:var-annotated|61b855fe54": 1,
+"mypy:var-annotated|634e4c509b": 1
+},
+"apps/api-server/app/core/internal_payment_requests.py": {
+"DTZ005|6c0d75bfe2": 1
+},
+"apps/api-server/app/core/internal_requests.py": {
+"DTZ005|0cdb4686b9": 2,
+"PLR0915|9c48a491f3": 1,
+"mypy:arg-type|1c8b325483": 1,
+"mypy:arg-type|2c9551274a": 1,
+"mypy:arg-type|851f11e97c": 1,
+"mypy:arg-type|870175e2da": 1,
+"mypy:arg-type|b566fe8a5d": 1,
+"mypy:arg-type|c4d39ac35c": 1,
+"mypy:var-annotated|facfb5e874": 1
+},
+"apps/api-server/app/core/investigation.py": {
+"C901|0616e658b7": 1,
+"PLR0915|0616e658b7": 1,
+"mypy:arg-type|e55c7bcb26": 1,
+"mypy:arg-type|f135a58f3a": 1,
+"mypy:assignment|4723261539": 1,
+"mypy:union-attr|811faba177": 2,
+"mypy:union-attr|d905f824a3": 2
+},
+"apps/api-server/app/core/investigation_task_regions.py": {
+"mypy:assignment|545e2cac80": 1,
+"mypy:assignment|ad449ac108": 1
+},
+"apps/api-server/app/core/invoice_permissions.py": {
+"mypy:assignment|26ead8701d": 1
+},
+"apps/api-server/app/core/ipr.py": {
+"C901|1027354986": 1,
+"C901|b5389349fe": 1,
+"PLR0915|1027354986": 1
+},
+"apps/api-server/app/core/json_relation_query.py": {
+"S608|0ee81306b3": 1,
+"S608|4f4010a06e": 1,
+"S608|cc2abdd467": 1,
+"S608|d6db80729d": 1,
+"dead-code|1dfdc0c4b5": 1,
+"dead-code|2c97f19b55": 1,
+"dead-code|63635c2be8": 1,
+"dead-code|733ac5dd45": 1,
+"dead-code|8c92701f96": 3,
+"dead-code|a2d6128a37": 1,
+"dead-code|fdf91b634f": 1
+},
+"apps/api-server/app/core/large_screen_overview.py": {
+"DTZ007|feefb50f74": 1,
+"mypy:union-attr|1ecda89740": 1,
+"mypy:union-attr|42457a571b": 1
+},
+"apps/api-server/app/core/legacy_case_document_folders.py": {
+"B905|91d616cbac": 1
+},
+"apps/api-server/app/core/legacy_sync.py": {
+"PLR0915|6706bb502d": 1,
+"PLR0915|8f6910865c": 1,
+"PLR0915|ab2ce3339d": 1,
+"mypy:arg-type|06667b1897": 1,
+"mypy:arg-type|153cca3982": 1,
+"mypy:arg-type|438814aecb": 1,
+"mypy:arg-type|c93ba28ef3": 1,
+"mypy:arg-type|f5a6923383": 1,
+"mypy:assignment|b9190904af": 1,
+"mypy:assignment|c9d24e42c4": 1,
+"mypy:attr-defined|021f9558c8": 1,
+"mypy:attr-defined|03d8c6728d": 1,
+"mypy:attr-defined|084d772da5": 1,
+"mypy:attr-defined|0927059d2c": 3,
+"mypy:attr-defined|0a1a6e9bd8": 2,
+"mypy:attr-defined|0cf8a4f5fc": 1,
+"mypy:attr-defined|0fbac021dc": 1,
+"mypy:attr-defined|14e4547330": 2,
+"mypy:attr-defined|16f60e41c6": 1,
+"mypy:attr-defined|16fa438d5a": 2,
+"mypy:attr-defined|1a943b1b88": 1,
+"mypy:attr-defined|1c4699f361": 1,
+"mypy:attr-defined|1cdc2baff0": 3,
+"mypy:attr-defined|217df5306d": 1,
+"mypy:attr-defined|228f063399": 3,
+"mypy:attr-defined|2d256eb73d": 1,
+"mypy:attr-defined|2fe2a8e39b": 1,
+"mypy:attr-defined|33f39ca76d": 1,
+"mypy:attr-defined|351a88cc01": 1,
+"mypy:attr-defined|37cfa4aed3": 2,
+"mypy:attr-defined|394541af07": 3,
+"mypy:attr-defined|4052595571": 1,
+"mypy:attr-defined|40ce2fa690": 2,
+"mypy:attr-defined|42f81a8104": 1,
+"mypy:attr-defined|48dc731244": 1,
+"mypy:attr-defined|49591d30b9": 2,
+"mypy:attr-defined|4b23a82c4c": 1,
+"mypy:attr-defined|504aa13972": 1,
+"mypy:attr-defined|508a026d57": 2,
+"mypy:attr-defined|5582cf30d5": 1,
+"mypy:attr-defined|56ee95f010": 1,
+"mypy:attr-defined|5cd3149031": 3,
+"mypy:attr-defined|5ee281f1ce": 1,
+"mypy:attr-defined|60b0c5e642": 1,
+"mypy:attr-defined|60e7adf40d": 1,
+"mypy:attr-defined|6128057fb5": 1,
+"mypy:attr-defined|63b2bac79e": 1,
+"mypy:attr-defined|64ea64b9dc": 2,
+"mypy:attr-defined|65dcc76ed5": 4,
+"mypy:attr-defined|70bd8c92c1": 1,
+"mypy:attr-defined|7213de98e1": 1,
+"mypy:attr-defined|737455a6b2": 2,
+"mypy:attr-defined|781e18cc51": 1,
+"mypy:attr-defined|7a364208ba": 1,
+"mypy:attr-defined|835e39e544": 1,
+"mypy:attr-defined|85600af794": 2,
+"mypy:attr-defined|85c8e7e8e7": 1,
+"mypy:attr-defined|9076dd18e4": 2,
+"mypy:attr-defined|90ffe3e960": 1,
+"mypy:attr-defined|9257ee0846": 1,
+"mypy:attr-defined|9606096590": 1,
+"mypy:attr-defined|98091c8cb3": 3,
+"mypy:attr-defined|9a5912ee44": 1,
+"mypy:attr-defined|a1af903b2b": 2,
+"mypy:attr-defined|a2617161b1": 1,
+"mypy:attr-defined|a30515663e": 1,
+"mypy:attr-defined|a64869fb25": 1,
+"mypy:attr-defined|a74850b961": 1,
+"mypy:attr-defined|a762bdc8ff": 1,
+"mypy:attr-defined|a8b41620a2": 1,
+"mypy:attr-defined|b060825f34": 2,
+"mypy:attr-defined|b51d78a8d7": 3,
+"mypy:attr-defined|b51ecc8574": 1,
+"mypy:attr-defined|b531b80362": 3,
+"mypy:attr-defined|b6ad33b7b1": 1,
+"mypy:attr-defined|b7018da3ee": 1,
+"mypy:attr-defined|bb3561956b": 3,
+"mypy:attr-defined|be45c1ade1": 2,
+"mypy:attr-defined|c10339b220": 1,
+"mypy:attr-defined|c1fbb5d958": 1,
+"mypy:attr-defined|c48886df98": 1,
+"mypy:attr-defined|ca3b80ae88": 1,
+"mypy:attr-defined|cd20b6f59a": 1,
+"mypy:attr-defined|cd79e281a4": 1,
+"mypy:attr-defined|d0c9ed67a9": 3,
+"mypy:attr-defined|d32405e833": 1,
+"mypy:attr-defined|d7dd17463a": 1,
+"mypy:attr-defined|da0cb0c0f2": 6,
+"mypy:attr-defined|dc847cdbbe": 1,
+"mypy:attr-defined|e3bfa67754": 1,
+"mypy:attr-defined|e5a6d0ea26": 2,
+"mypy:attr-defined|e8e7e717ab": 3,
+"mypy:attr-defined|e921b77bbe": 1,
+"mypy:attr-defined|ea5e954b95": 1,
+"mypy:attr-defined|ec1079c174": 1,
+"mypy:attr-defined|ece6f8c635": 1,
+"mypy:attr-defined|ed628f8f99": 2,
+"mypy:attr-defined|f02fd07f16": 1,
+"mypy:attr-defined|f041c3f74a": 1,
+"mypy:attr-defined|f0d0976bf3": 1,
+"mypy:attr-defined|f7ec60adef": 1,
+"mypy:attr-defined|f869fefca8": 1,
+"mypy:attr-defined|fc457a94a8": 2,
+"mypy:call-overload|4ffa3bed7a": 1,
+"mypy:no-redef|9f52251972": 1,
+"mypy:union-attr|fac77618f2": 1
+},
+"apps/api-server/app/core/libreoffice_config.py": {
+"PLW0603|2cb3ccfba8": 1,
+"S314|40027fbc36": 1
+},
+"apps/api-server/app/core/libreoffice_files.py": {
+"B904|f11aaa926d": 1,
+"mypy:arg-type|6c980f21ff": 1
+},
+"apps/api-server/app/core/libreoffice_save.py": {
+"PLR0915|6812ca403a": 1
+},
+"apps/api-server/app/core/libreoffice_state.py": {
+"mypy:arg-type|1864a4cd74": 1
+},
+"apps/api-server/app/core/lifecycle.py": {
+"C901|03bd54054c": 1,
+"PLR0915|03bd54054c": 1,
+"S105|8c6cabe768": 1,
+"S105|cbc650aadb": 1,
+"S608|2539ed5801": 1,
+"S608|3091dbd5a4": 2,
+"S608|729e95e8c1": 4
+},
+"apps/api-server/app/core/notification_delivery.py": {
+"C901|50ebc1055f": 1,
+"DTZ005|b5f0675435": 1,
+"PLR0915|50ebc1055f": 1,
+"mypy:assignment|d7f5c72899": 1
+},
+"apps/api-server/app/core/notification_scheduler.py": {
+"mypy:assignment|efb885abb6": 1
+},
+"apps/api-server/app/core/notification_schema_migration.py": {
+"mypy:attr-defined|0ed1eb90ad": 1,
+"mypy:attr-defined|1afbf110b8": 1
+},
+"apps/api-server/app/core/online_filing_prep.py": {
+"PLR0915|af479638ff": 1,
+"PLW2901|229761b21e": 1,
+"mypy:arg-type|a3e2516605": 1,
+"mypy:union-attr|b0da568266": 1
+},
+"apps/api-server/app/core/party_library.py": {
+"DTZ005|f064b5adda": 1,
+"PLW2901|cea8071cd0": 3,
+"mypy:arg-type|cf446e95ae": 1,
+"mypy:attr-defined|0e678dc104": 1,
+"mypy:attr-defined|9c6d6ea7c0": 1,
+"mypy:attr-defined|dbb35c0cf1": 1,
+"mypy:attr-defined|fb77580c62": 1
+},
+"apps/api-server/app/core/permissions.py": {
+"PLR0915|a796401d10": 1,
+"S608|705e171f21": 1,
+"S608|bea2e6a2ec": 1,
+"dead-code|8bb5de9c3f": 1,
+"mypy:arg-type|12479c889f": 1,
+"mypy:arg-type|9893aaa05c": 1,
+"mypy:arg-type|bce542baa4": 1,
+"mypy:dict-item|97af9c47e4": 1,
+"mypy:index|97af9c47e4": 1,
+"mypy:no-redef|3fc0c39694": 1,
+"mypy:union-attr|58195e108e": 1,
+"mypy:var-annotated|138df1b19b": 1,
+"mypy:var-annotated|e49d7483ac": 1
+},
+"apps/api-server/app/core/person_names.py": {
+"PLW0603|76da985647": 2
+},
+"apps/api-server/app/core/process_coordination.py": {
+"dead-code|89557d22d9": 1,
+"mypy:attr-defined|27047f9b69": 2,
+"mypy:attr-defined|37d8d483d0": 1,
+"mypy:attr-defined|658f68e120": 2,
+"mypy:attr-defined|81de3e6e91": 1,
+"mypy:attr-defined|dadff85365": 2,
+"mypy:attr-defined|e0f55bf8f5": 1,
+"mypy:no-redef|24115f1c80": 1
+},
+"apps/api-server/app/core/progress_reports.py": {
+"mypy:operator|d94c43a4a2": 1
+},
+"apps/api-server/app/core/projections.py": {
+"C901|5c5de99d79": 1,
+"PLR0915|5c5de99d79": 1,
+"mypy:assignment|c3c72cc8ad": 1,
+"mypy:assignment|e4fd6e0dda": 1,
+"mypy:var-annotated|1e1380c0fd": 1,
+"mypy:var-annotated|b5f157291d": 1
+},
+"apps/api-server/app/core/query_cache_flow.py": {
+"C901|a7754a67a2": 1
+},
+"apps/api-server/app/core/query_cache_store.py": {
+"mypy:call-overload|16e0ba91c0": 1
+},
+"apps/api-server/app/core/query_prewarm.py": {
+"BLE001|2b017624f7": 1,
+"BLE001|dd71e5d790": 1,
+"DTZ005|c2b94dddc1": 1,
+"DTZ011|85d348a4d2": 1,
+"DTZ011|c18bf3f6b2": 1
+},
+"apps/api-server/app/core/record_projection_query.py": {
+"B905|13ca1c0415": 1,
+"B905|4f71a372bb": 1,
+"B905|63ecdcf040": 1,
+"B905|acc1734d32": 1,
+"C901|68d525fab9": 1,
+"PLR0915|68d525fab9": 1,
+"mypy:union-attr|99bdc5777a": 1
+},
+"apps/api-server/app/core/record_read_model.py": {
+"dead-code|64d602d886": 1
+},
+"apps/api-server/app/core/record_read_model_migration.py": {
+"S608|4ba9b4e3c2": 1
+},
+"apps/api-server/app/core/refund_logs.py": {
+"mypy:misc|dc04d02826": 1
+},
+"apps/api-server/app/core/request_metrics.py": {
+"dead-code|140a81bf76": 1,
+"dead-code|a2124bda1a": 1,
+"dead-code|a7ae0d18b5": 2,
+"dead-code|c114ecce64": 2,
+"dead-code|f75dc2f047": 1
+},
+"apps/api-server/app/core/roi.py": {
+"B905|eb6e540a72": 1,
+"C901|e2e7cc398d": 1,
+"PLR0915|e2e7cc398d": 1,
+"mypy:arg-type|47d57f5c4f": 1,
+"mypy:attr-defined|29068bddd3": 1,
+"mypy:attr-defined|7109d87d9a": 1,
+"mypy:operator|26a1787d68": 1,
+"mypy:operator|47d57f5c4f": 1,
+"mypy:operator|49bc489026": 1,
+"mypy:operator|981db10d6f": 1,
+"mypy:type-var|03d819d8ab": 1,
+"mypy:type-var|73db03fa5e": 1,
+"mypy:type-var|9d4f5aa4fd": 1,
+"mypy:type-var|b70a5e96f0": 1,
+"mypy:union-attr|a0b632c518": 1
+},
+"apps/api-server/app/core/schema_alignment.py": {
+"C901|4ddc46252d": 1,
+"PLR0915|4ddc46252d": 1,
+"S608|98336504a6": 1,
+"S608|c906074c9d": 1,
+"mypy:attr-defined|d85376c0dc": 1
+},
+"apps/api-server/app/core/seal_approval.py": {
+"mypy:arg-type|0ce69a2bae": 1,
+"mypy:index|0ce69a2bae": 1
+},
+"apps/api-server/app/core/soft_delete.py": {
+"B010|a714a376ad": 1,
+"B010|fed49d2bdc": 1,
+"PLW2901|0c1c492f45": 1,
+"dead-code|0188cbb50d": 1,
+"dead-code|7d4fdee233": 1,
+"dead-code|f6746f0653": 2,
+"mypy:arg-type|8ff74d4dcc": 1,
+"mypy:arg-type|ab2ae071d3": 4,
+"mypy:attr-defined|89d7782ab1": 1,
+"mypy:attr-defined|8ca779315f": 1,
+"mypy:attr-defined|b9bbb8491b": 1,
+"mypy:attr-defined|d3eff109d9": 1
+},
+"apps/api-server/app/core/soft_delete_migration.py": {
+"C901|bb56aaad26": 1,
+"mypy:assignment|6d00cbc698": 1
+},
+"apps/api-server/app/core/staff_performance.py": {
+"mypy:union-attr|c2f6104237": 1
+},
+"apps/api-server/app/core/startup_backfills.py": {
+"dead-code|d150975603": 1
+},
+"apps/api-server/app/core/startup_data.py": {
+"C901|ec1e3ac666": 1,
+"PLR0915|ec1e3ac666": 1,
+"PLW2901|fb05828215": 1,
+"mypy:arg-type|0c091e6ef3": 1,
+"mypy:arg-type|7260eddd90": 1,
+"mypy:assignment|0c091e6ef3": 1,
+"mypy:assignment|2e3d4d1ddd": 1,
+"mypy:assignment|4479d51eac": 1,
+"mypy:assignment|939aca63ee": 1,
+"mypy:assignment|e7c3027928": 1,
+"mypy:attr-defined|0730fe9cf3": 1,
+"mypy:attr-defined|9f49535990": 1,
+"mypy:attr-defined|b282cc3e0d": 1,
+"mypy:call-overload|56cf8845d3": 1
+},
+"apps/api-server/app/core/startup_migrations.py": {
+"mypy:attr-defined|0efd3cacf7": 1,
+"mypy:attr-defined|5d524e61ce": 1,
+"mypy:attr-defined|7db3ccdf5f": 1,
+"mypy:attr-defined|830e593857": 1,
+"mypy:attr-defined|8bb5ddeedb": 1,
+"mypy:attr-defined|f82f45d002": 1
+},
+"apps/api-server/app/core/storage.py": {
+"PLW0603|4e23c22645": 1,
+"S314|b617669fba": 1,
+"dead-code|02996f6ed9": 1,
+"dead-code|c9a3799ab1": 1,
+"dead-code|d20c3fbd9b": 1,
+"duplicate-block|43a572b4be05": 1,
+"mypy:arg-type|c7a7d573a0": 1,
+"mypy:arg-type|e88331dd65": 1,
+"mypy:attr-defined|795eb0db56": 2,
+"mypy:index|e924f9575f": 1,
+"mypy:no-redef|ea0b65bae5": 1
+},
+"apps/api-server/app/core/system.py": {
+"C901|646349c325": 1,
+"C901|6c5e9bc260": 1,
+"C901|6f77fd4bdf": 1,
+"PLR0915|646349c325": 1,
+"PLR0915|6c5e9bc260": 1,
+"PLR0915|6f77fd4bdf": 1,
+"PLR0915|9db7975040": 1,
+"PLW0603|96cc1a3700": 1,
+"PLW2901|1ff474b366": 1,
+"mypy:arg-type|0fa4489c65": 1,
+"mypy:arg-type|0fde7d400c": 1,
+"mypy:arg-type|205e718e2b": 1,
+"mypy:arg-type|27fd4903b8": 1,
+"mypy:arg-type|63f1a51e92": 1,
+"mypy:arg-type|7513c0373c": 1,
+"mypy:arg-type|9d0b38b1a4": 1,
+"mypy:arg-type|a5a7306e28": 1,
+"mypy:arg-type|b98507bdbf": 1,
+"mypy:arg-type|f7b5918ed6": 1,
+"mypy:arg-type|fc9cbe562d": 1,
+"mypy:assignment|0fac8de4f2": 1,
+"mypy:assignment|27fd4903b8": 1,
+"mypy:assignment|472442d228": 1,
+"mypy:assignment|5a79f47c01": 1,
+"mypy:assignment|9c4bd6d993": 1,
+"mypy:assignment|9cfef86758": 1,
+"mypy:assignment|e2b1fde1b1": 1,
+"mypy:attr-defined|4fd01e1cb7": 1,
+"mypy:attr-defined|cf0b1d2950": 1,
+"mypy:call-overload|6441763a9f": 1,
+"mypy:call-overload|a8ff6a4967": 1,
+"mypy:union-attr|bd362d5696": 1,
+"mypy:union-attr|c334aac7b4": 1,
+"mypy:union-attr|c51ad75393": 1
+},
+"apps/api-server/app/core/task_commands.py": {
+"C901|9980be0ae2": 1,
+"PLR0915|9980be0ae2": 1,
+"mypy:assignment|3feb6add31": 1,
+"mypy:assignment|59b3d092a8": 1
+},
+"apps/api-server/app/core/task_personnel.py": {
+"mypy:var-annotated|4e1db52d4a": 1,
+"mypy:var-annotated|83752a6cb2": 1
+},
+"apps/api-server/app/core/task_query.py": {
+"B905|3810532b56": 1,
+"B905|a6614a85e7": 1,
+"B905|d851e27447": 1,
+"B905|e634f2c0ac": 1,
+"C901|f33f3aa520": 1,
+"PLR0915|f33f3aa520": 1,
+"mypy:assignment|60bc2c824f": 1
+},
+"apps/api-server/app/core/task_scopes.py": {
+"mypy:var-annotated|30ddcbe6b8": 1
+},
+"apps/api-server/app/core/tasks.py": {
+"BLE001|e9dc52bf39": 1,
+"C901|4a1286c437": 1,
+"PLR0915|4a1286c437": 1,
+"PLR0915|521004c15a": 1,
+"mypy:arg-type|5fe2d87e6e": 1,
+"mypy:arg-type|61bf320ee5": 1,
+"mypy:union-attr|6f3ec8314d": 1,
+"mypy:union-attr|74e07ce329": 1,
+"mypy:union-attr|bf2d7d674d": 1,
+"mypy:union-attr|cf07250e38": 1,
+"mypy:union-attr|d1fe17ff73": 1
+},
+"apps/api-server/app/core/user_permission_overrides.py": {
+"C901|408e54c9c1": 1,
+"PLR0915|408e54c9c1": 1
+},
+"apps/api-server/app/core/word_conversion.py": {
+"BLE001|e9dc52bf39": 1,
+"mypy:var-annotated|f34133ea31": 1
+},
+"apps/api-server/app/data_models/investigation.py": {
+"duplicate-block|4a7c909a4331": 2
+},
+"apps/api-server/app/dingtalk.py": {
+"C901|50299b7b85": 1,
+"mypy:arg-type|50ff991d5c": 1,
+"mypy:arg-type|e961ba90a6": 1
+},
+"apps/api-server/app/github_agent_skills.py": {
+"mypy:import-untyped|1ba25a0ad0": 1
+},
+"apps/api-server/app/harness_agent/affinity.py": {
+"PLW0603|5fbab91e75": 2
+},
+"apps/api-server/app/harness_agent/bridge.py": {
+"ASYNC110|3c4913df21": 1,
+"C901|841c1c9124": 1,
+"C901|cd3a4444e2": 1,
+"PLR0915|841c1c9124": 1,
+"PLR0915|cd3a4444e2": 1,
+"dead-code|faec8d4e48": 1,
+"mypy:union-attr|e6570cfe4e": 1,
+"mypy:var-annotated|7a3a692edf": 1
+},
+"apps/api-server/app/harness_agent/bundles.py": {
+"mypy:var-annotated|6d39184af6": 1
+},
+"apps/api-server/app/harness_agent/case_state.py": {
+"mypy:assignment|a3be8c3479": 1,
+"mypy:attr-defined|3384ffe895": 1,
+"mypy:attr-defined|4efdaf9d0f": 1,
+"mypy:attr-defined|5ed99c8e1c": 1,
+"mypy:attr-defined|81ab1e6229": 1,
+"mypy:attr-defined|c2376bd1d6": 1,
+"mypy:attr-defined|fdf4918ce3": 1,
+"mypy:call-arg|d4e5195dac": 3,
+"mypy:var-annotated|049c7401a9": 1,
+"mypy:var-annotated|4a2621ba76": 1
+},
+"apps/api-server/app/harness_agent/lease.py": {
+"ASYNC109|8da3585821": 1,
+"mypy:attr-defined|60ca78ac87": 2,
+"mypy:attr-defined|b1be360f1c": 2
+},
+"apps/api-server/app/harness_agent/model_providers.py": {
+"mypy:arg-type|c013dd9c22": 2,
+"mypy:call-overload|c5f4e21e39": 1,
+"mypy:index|c013dd9c22": 1,
+"mypy:operator|e5391fe3dc": 1
+},
+"apps/api-server/app/harness_agent/native_plugin_skills.py": {
+"mypy:import-untyped|1ba25a0ad0": 1,
+"mypy:var-annotated|8e3ada0c1a": 1
+},
+"apps/api-server/app/harness_agent/plugin_packages.py": {
+"mypy:attr-defined|3fb7ea6b3b": 1
+},
+"apps/api-server/app/harness_agent/plugins.py": {
+"PLR0915|8afc33a8cd": 1,
+"mypy:import-untyped|1ba25a0ad0": 1
+},
+"apps/api-server/app/harness_agent/runtime.py": {
+"C901|0ec4a479d5": 1,
+"PLR0915|0ec4a479d5": 1,
+"PLW0603|c1e2fa5d39": 1,
+"mypy:assignment|46863b7a8e": 2,
+"mypy:assignment|b4311e4e55": 2,
+"mypy:import-untyped|1ba25a0ad0": 1,
+"mypy:union-attr|107af8edc5": 1,
+"mypy:union-attr|50f8e20639": 1,
+"mypy:union-attr|a5199b06df": 4,
+"mypy:union-attr|d6a4131207": 1,
+"mypy:var-annotated|48b35f4f59": 1,
+"mypy:var-annotated|9aea3bd9c3": 1
+},
+"apps/api-server/app/harness_agent/script_broker.py": {
+"ASYNC240|030e85a5fa": 1,
+"ASYNC240|31d76eacd8": 1,
+"ASYNC240|5413e20651": 1,
+"ASYNC240|8a17bcc761": 1,
+"ASYNC240|ab8261b321": 1,
+"ASYNC240|cdeeaa8660": 1,
+"ASYNC240|e690557aa3": 1,
+"mypy:assignment|f1c2e613be": 1,
+"mypy:attr-defined|80bd749e7d": 1
+},
+"apps/api-server/app/harness_agent/script_container.py": {
+"C901|c27747b5a5": 1,
+"PLR0915|c27747b5a5": 1,
+"S108|9ab72ae605": 1
+},
+"apps/api-server/app/harness_agent/script_runtime.py": {
+"mypy:attr-defined|6eb0a031fd": 1
+},
+"apps/api-server/app/harness_agent/skills.py": {
+"C901|08ddd0a51f": 1,
+"PLR0915|08ddd0a51f": 1,
+"mypy:arg-type|7235c0fa36": 1,
+"mypy:attr-defined|cdcc93d9fe": 1,
+"mypy:call-overload|7836d9fe9d": 1,
+"mypy:import-untyped|1ba25a0ad0": 1
+},
+"apps/api-server/app/harness_agent/tool_trace.py": {
+"BLE001|e9dc52bf39": 1,
+"mypy:index|8f4410d5ca": 1,
+"mypy:index|c650332063": 1,
+"mypy:union-attr|c650332063": 1
+},
+"apps/api-server/app/ipr_cpc.py": {
+"DTZ005|34ffb5660d": 1,
+"DTZ005|432e1bb54d": 1,
+"DTZ011|06636ec449": 1,
+"DTZ011|d6141054e7": 1
+},
+"apps/api-server/app/ipr_fee_file_router.py": {
+"B904|d1068b4fd1": 1,
+"DTZ005|644ab5a275": 1,
+"DTZ005|7a5902c10c": 1,
+"mypy:return-value|fa987b495d": 1
+},
+"apps/api-server/app/legacy_contract_history_router.py": {
+"B905|ee0d3c5038": 1,
+"C901|7977e02910": 1,
+"PLR0915|7977e02910": 1,
+"S608|8b3ddd129c": 4,
+"S608|f826f50422": 1
+},
+"apps/api-server/app/legacy_ipr_history_router.py": {
+"B905|3cb57a752a": 1,
+"S608|8b3ddd129c": 1,
+"S608|bc678e8638": 1,
+"S608|f826f50422": 1
+},
+"apps/api-server/app/legacy_ls_history_router.py": {
+"B905|9e02e49251": 1,
+"S608|8b3ddd129c": 2,
+"S608|bc678e8638": 1,
+"S608|f826f50422": 1
+},
+"apps/api-server/app/legacy_schema.py": {
+"S608|f537a8840f": 1,
+"dead-code|7ff0b5d1f1": 1,
+"dead-code|86aaab923b": 1,
+"dead-code|b4a93b5139": 1,
+"mypy:arg-type|fd6a024d6c": 2,
+"mypy:assignment|3c0ff56daf": 1,
+"mypy:dict-item|0a45829de8": 2,
+"mypy:dict-item|af92022969": 2,
+"mypy:dict-item|c22c4497ae": 1,
+"mypy:operator|10f766f808": 1,
+"mypy:type-var|c22c4497ae": 1
+},
+"apps/api-server/app/routing.py": {
+"E731|f1b488c027": 1
+},
+"apps/api-server/app/security.py": {
+"BLE001|e9dc52bf39": 1,
+"S324|2e9564fdd5": 1,
+"duplicate-block|1242dfbbe569": 1
+},
+"apps/api-server/app/skill_definitions.py": {
+"mypy:import-untyped|1ba25a0ad0": 1
+},
+"apps/api-server/app/user_agent_skills.py": {
+"mypy:import-untyped|1ba25a0ad0": 1
+},
+"apps/api-server/requirements.lock": {
+"CVE-2026-112390|pillow|CVE-2026-112390": 1,
+"CVE-2026-112391|pillow|CVE-2026-112391": 1,
+"CVE-2026-112393|pillow|CVE-2026-112393": 1,
+"CVE-2026-112395|pillow|CVE-2026-112395": 1,
+"CVE-2026-112399|pillow|CVE-2026-112399": 1,
+"CVE-2026-112400|pillow|CVE-2026-112400": 1,
+"CVE-2026-112401|pillow|CVE-2026-112401": 1,
+"CVE-2026-112404|pillow|CVE-2026-112404": 1,
+"CVE-2026-112406|pillow|CVE-2026-112406": 1,
+"CVE-2026-112891|pillow|CVE-2026-112891": 1,
+"CVE-2026-112892|pillow|CVE-2026-112892": 1,
+"CVE-2026-112893|pillow|CVE-2026-112893": 1,
+"CVE-2026-112894|pillow|CVE-2026-112894": 1,
+"CVE-2026-112895|pillow|CVE-2026-112895": 1,
+"CVE-2026-112897|pillow|CVE-2026-112897": 1,
+"CVE-2026-112899|pillow|CVE-2026-112899": 1,
+"CVE-2026-112900|pillow|CVE-2026-112900": 1,
+"CVE-2026-115883|langgraph-checkpoint-postgres|CVE-2026-115883": 1,
+"CVE-2026-96638|pillow|CVE-2026-96638": 1,
+"CVE-2026-96640|pillow|CVE-2026-96640": 1,
+"CVE-2026-96778|pillow|CVE-2026-96778": 1,
+"GHSA-78g4-xqwv-q3g8|pillow|GHSA-78g4-xqwv-q3g8": 1,
+"PYSEC-2026-4320|certifi|PYSEC-2026-4320": 2,
+"PYSEC-2026-4326|pillow|PYSEC-2026-4326": 1,
+"PYSEC-2026-4327|pillow|PYSEC-2026-4327": 1,
+"PYSEC-2026-4328|pillow|PYSEC-2026-4328": 1,
+"PYSEC-2026-4329|pillow|PYSEC-2026-4329": 1,
+"PYSEC-2026-4330|pillow|PYSEC-2026-4330": 1,
+"PYSEC-2026-4331|pillow|PYSEC-2026-4331": 1,
+"PYSEC-2026-4332|pillow|PYSEC-2026-4332": 1,
+"PYSEC-2026-4333|pillow|PYSEC-2026-4333": 1,
+"PYSEC-2026-4334|pillow|PYSEC-2026-4334": 1,
+"PYSEC-2026-4335|pillow|PYSEC-2026-4335": 1,
+"PYSEC-2026-4336|pillow|PYSEC-2026-4336": 1,
+"PYSEC-2026-4337|pillow|PYSEC-2026-4337": 1,
+"PYSEC-2026-4338|pillow|PYSEC-2026-4338": 1,
+"PYSEC-2026-4339|pillow|PYSEC-2026-4339": 1,
+"PYSEC-2026-4340|pillow|PYSEC-2026-4340": 1,
+"PYSEC-2026-4341|pillow|PYSEC-2026-4341": 1,
+"PYSEC-2026-4342|pillow|PYSEC-2026-4342": 1,
+"PYSEC-2026-4343|pillow|PYSEC-2026-4343": 1
+},
+"scripts/align_hz_snapshot.py": {
+"B905|6c2768377e": 1,
+"T201|a98b9e59fc": 1
+},
+"scripts/audit-client-api-coverage.py": {
+"B023|244aa7fc14": 1,
+"B023|8fe5c91219": 1,
+"B023|e7ee557bfc": 1,
+"C901|030886fc7d": 1,
+"C901|4f5020cee2": 1,
+"C901|8bf0215dec": 1,
+"C901|c8229b1ccc": 1,
+"T201|7a58053531": 1
+},
+"scripts/audit-menu-coverage.py": {
+"T201|68140c6e48": 1
+},
+"scripts/fix_hr_ipr_migration_overwrite.py": {
+"S608|5743897915": 1,
+"S608|9e1ee9a1d8": 1,
+"S608|bd31ce6dda": 1,
+"T201|6d9733f376": 1,
+"T201|e20960d25e": 1
+},
+"scripts/hd_live_sync.py": {
+"B905|1d75ac3102": 1,
+"DTZ005|0c1c10dd3a": 1,
+"DTZ005|387554d7b4": 1,
+"DTZ005|aee3674a85": 1,
+"DTZ005|bc5b0f0bf7": 1,
+"PLR0915|2c4c5b0ebe": 1,
+"S608|1c2f250b8e": 1,
+"S608|2c67ed231f": 1,
+"S608|31569b414a": 1,
+"S608|8dfa0b237d": 1,
+"S608|d122363eff": 1,
+"S608|da948dd0f9": 1,
+"S608|def5bf0948": 1,
+"T201|35d70191eb": 1
+},
+"scripts/hz_snapshot_alignment/business.py": {
+"C901|8c0ade15aa": 1,
+"PLR0915|8c0ade15aa": 1,
+"T201|fa667c3f7a": 1
+},
+"scripts/hz_snapshot_alignment/common.py": {
+"T201|32da36c22f": 1
+},
+"scripts/hz_snapshot_alignment/events.py": {
+"S608|1466662e4c": 1,
+"S608|b7c454f5f0": 1,
+"S608|fc5410def0": 1
+},
+"scripts/hz_snapshot_alignment/page_contract_cleanup.py": {
+"S608|f10dbc0b88": 1
+},
+"scripts/hz_snapshot_alignment/page_dictionaries.py": {
+"C901|2c4c5b0ebe": 1,
+"S608|b7f129bfe5": 1
+},
+"scripts/hz_snapshot_alignment/page_finance.py": {
+"C901|2c4c5b0ebe": 1,
+"PLR0915|2c4c5b0ebe": 1
+},
+"scripts/hz_snapshot_alignment/page_relations.py": {
+"C901|2c4c5b0ebe": 1,
+"PLR0915|2c4c5b0ebe": 1
+},
+"scripts/hz_snapshot_alignment/page_warehouse.py": {
+"PLR0915|2c4c5b0ebe": 1
+},
+"scripts/hz_snapshot_alignment/people.py": {
+"ASYNC240|22b5ccd3cd": 1
+},
+"scripts/hz_snapshot_alignment/source_copy.py": {
+"B905|4b32666c03": 1,
+"S608|27a00d7843": 1,
+"T201|6d9733f376": 2
+},
+"scripts/hz_snapshot_alignment/sql_projection.py": {
+"T201|3b58dd2c6f": 1
+},
+"scripts/import_hz_snapshot.py": {
+"B905|d6edf8562e": 1,
+"C901|1aba7ac5aa": 1,
+"DTZ005|2a4497f8d2": 1,
+"PLR0915|1aba7ac5aa": 1,
+"S608|0d87c0faaa": 1,
+"S608|727bffda44": 1,
+"T201|19195572dd": 1,
+"T201|2e18633391": 1
+},
+"scripts/import_ipr_hd.py": {
+"B905|4eecbb78d0": 1,
+"DTZ005|d218e6f039": 1,
+"PLR0915|79e2beb86d": 1,
+"T201|1c60a41afd": 1
+},
+"scripts/index_workbuddy_archive.py": {
+"C901|7c257c76c4": 1,
+"PLR0915|7c257c76c4": 1,
+"T201|fa0f9443f8": 1
+},
+"scripts/migrate_cmb_menu.py": {
+"S608|3dfdd4dbf1": 1,
+"S608|75ff3c825a": 1,
+"S608|b5316be7b6": 1,
+"T201|5efb4ca534": 1,
+"T201|c942007304": 1
+},
+"scripts/migrate_legacy_hr_performance.py": {
+"B905|6bfe550509": 1,
+"T201|0e5318832b": 1,
+"T201|8b71b154ae": 1,
+"T201|9d11a24a65": 1,
+"T201|e20960d25e": 1
+},
+"scripts/migrate_legacy_ipr_user_identity.py": {
+"DTZ005|bfeecfb9ae": 1,
+"DTZ005|e980cbd42e": 1,
+"PLR0915|251d7f72a8": 1,
+"T201|0ce10b97c9": 2
+},
+"scripts/migrate_legacy_system_parameters.py": {
+"B905|b13b897293": 1,
+"T201|9abfbd9de7": 1,
+"T201|ebc098b0c3": 1
+},
+"scripts/native_runtime.py": {
+"S310|b99020ff57": 1,
+"S606|5ab6898ec6": 1,
+"S606|e4efc3d7b0": 1,
+"T201|c61accfa9f": 1
+},
+"scripts/prepare_skill_runner_network.py": {
+"T201|5fa25e2500": 1,
+"T201|eca5e2dee6": 1
+},
+"scripts/quality_gate.py": {
+"BLE001|762a0332b3": 1,
+"C901|cab05371d9": 1,
+"PLR0915|cab05371d9": 1,
+"PLW1510|f0fca284ce": 1,
+"T201|083c7f82c9": 1,
+"T201|178de4efe2": 1,
+"T201|46c1ffdc17": 1,
+"T201|49d0900c2d": 1,
+"T201|58ef74f565": 1,
+"T201|5a225e5e83": 1,
+"T201|5bf872af61": 1,
+"T201|842391ce6b": 1,
+"T201|989d81b911": 1,
+"T201|a3d5d83872": 1,
+"T201|ef4be3bd62": 1
+},
+"scripts/repair_legacy_fee_parameters.py": {
+"B007|142a7a375d": 1,
+"C901|91680b9ecf": 1,
+"F401|ac14a805b8": 1,
+"PLR0915|91680b9ecf": 1,
+"PLW2901|fe7e9ea5e4": 1,
+"T201|5b7c86b324": 1,
+"T201|98e1df2fbe": 1,
+"T201|b04e23a2ef": 1,
+"T201|b49c588ced": 1,
+"T201|cd9698e2b1": 1
+},
+"scripts/review/report.py": {
+"PLW1510|12ac909c64": 1,
+"T201|292fb77f84": 1,
+"T201|99b7452f35": 1,
+"T201|a904ef414e": 1,
+"T201|c80438a6f6": 1,
+"T201|d96ae968cb": 1,
+"T201|dd8142f8cc": 1
+},
+"scripts/runtime_package.py": {
+"C901|2cceb7785a": 1,
+"T201|0d02689fe5": 1
+},
+"scripts/smoke-api.py": {
+"BLE001|a2ad58d9f5": 20,
+"C901|2c4c5b0ebe": 1,
+"DTZ005|23c375f378": 1,
+"DTZ005|4776910b79": 1,
+"DTZ005|48a5b93f21": 1,
+"DTZ005|517188f7ef": 1,
+"DTZ005|5609919739": 1,
+"DTZ005|6c55a65eda": 1,
+"DTZ005|cc859fdb53": 1,
+"DTZ005|f7b1c2482a": 1,
+"DTZ011|0035f75ea6": 2,
+"DTZ011|0117577ca1": 1,
+"DTZ011|01777a34cd": 1,
+"DTZ011|027b26006c": 1,
+"DTZ011|02cfa69e53": 1,
+"DTZ011|0434b88283": 1,
+"DTZ011|04c2903238": 1,
+"DTZ011|071acd96b4": 1,
+"DTZ011|077eaae672": 1,
+"DTZ011|0841e0d32d": 2,
+"DTZ011|0bf2f631d2": 1,
+"DTZ011|0cca9be4e0": 2,
+"DTZ011|0ec93d40ef": 1,
+"DTZ011|0f2cf59d4a": 1,
+"DTZ011|11a122be68": 1,
+"DTZ011|135e17cf50": 1,
+"DTZ011|14987ac87f": 1,
+"DTZ011|149c872326": 1,
+"DTZ011|1584097f8a": 1,
+"DTZ011|16a78cec2f": 1,
+"DTZ011|186e6401d2": 1,
+"DTZ011|1a44a086f0": 1,
+"DTZ011|1d800cebed": 1,
+"DTZ011|1f004d2fd1": 1,
+"DTZ011|1fd9016cfa": 2,
+"DTZ011|206c9de649": 1,
+"DTZ011|23f9e8e7c3": 1,
+"DTZ011|2492476747": 1,
+"DTZ011|2554729f03": 2,
+"DTZ011|25ec93ed16": 1,
+"DTZ011|282e24e19b": 1,
+"DTZ011|2e41adb036": 1,
+"DTZ011|2eca45faf0": 1,
+"DTZ011|2f83ddcfeb": 1,
+"DTZ011|2fa413f055": 1,
+"DTZ011|3132074023": 2,
+"DTZ011|3154c83672": 2,
+"DTZ011|339a424ca2": 1,
+"DTZ011|348a5f7955": 1,
+"DTZ011|354c2c3fda": 1,
+"DTZ011|38f7c7f9c8": 1,
+"DTZ011|3b99a5178a": 1,
+"DTZ011|3d01146371": 1,
+"DTZ011|3db12a0d4f": 1,
+"DTZ011|3ebe54bc06": 1,
+"DTZ011|3f885e954d": 1,
+"DTZ011|405194826c": 1,
+"DTZ011|45e9753549": 1,
+"DTZ011|46e64abbc4": 1,
+"DTZ011|48ddabef1c": 1,
+"DTZ011|492143dd90": 1,
+"DTZ011|497c06b488": 2,
+"DTZ011|4d250bf2e6": 1,
+"DTZ011|4f91f8bf83": 1,
+"DTZ011|4ff0a4b04c": 1,
+"DTZ011|5081cfc2fc": 1,
+"DTZ011|51ba6881fa": 1,
+"DTZ011|52e45b3ee8": 1,
+"DTZ011|54dc0ec19e": 1,
+"DTZ011|56387b9d78": 1,
+"DTZ011|56b608ae4e": 1,
+"DTZ011|570621bba8": 1,
+"DTZ011|59cc876787": 1,
+"DTZ011|5dcb2339c6": 1,
+"DTZ011|5deabe8377": 1,
+"DTZ011|624544db4d": 1,
+"DTZ011|6245831474": 1,
+"DTZ011|634f5086be": 1,
+"DTZ011|6436d58caf": 1,
+"DTZ011|64547426cf": 1,
+"DTZ011|658d809a1c": 1,
+"DTZ011|670ce216c2": 1,
+"DTZ011|6722cba903": 2,
+"DTZ011|6773a3b2cb": 1,
+"DTZ011|6c3e876ec0": 1,
+"DTZ011|6c4c1e555e": 2,
+"DTZ011|6d21b19776": 1,
+"DTZ011|6dd32b2eff": 1,
+"DTZ011|6f4bc57ccf": 1,
+"DTZ011|709ad0cf88": 1,
+"DTZ011|7452fe71d9": 1,
+"DTZ011|765c82cb48": 1,
+"DTZ011|76a8084a38": 1,
+"DTZ011|7a9f2662bb": 1,
+"DTZ011|7ada47fdce": 1,
+"DTZ011|7ce00d3926": 1,
+"DTZ011|7dd72318f3": 1,
+"DTZ011|7de75e4512": 1,
+"DTZ011|7e85b19922": 1,
+"DTZ011|8100068a40": 1,
+"DTZ011|82516b63d2": 1,
+"DTZ011|834e7ec621": 1,
+"DTZ011|83db016a5d": 1,
+"DTZ011|8661a282ed": 1,
+"DTZ011|8678840fa4": 1,
+"DTZ011|873f47a646": 1,
+"DTZ011|8acaaaba42": 1,
+"DTZ011|8daa8da49d": 1,
+"DTZ011|8ecc223548": 1,
+"DTZ011|8f49e203c1": 1,
+"DTZ011|93477f06f0": 1,
+"DTZ011|943f2876b1": 1,
+"DTZ011|961dc9b9f5": 1,
+"DTZ011|96c58808a6": 1,
+"DTZ011|97f3d0bd6d": 2,
+"DTZ011|9812bb4a53": 1,
+"DTZ011|992172529e": 1,
+"DTZ011|9ab0c09474": 1,
+"DTZ011|9af3a873b2": 1,
+"DTZ011|9b2c8efdff": 2,
+"DTZ011|9c9f31d4a8": 2,
+"DTZ011|9ce06a31d3": 2,
+"DTZ011|9ed42811b9": 1,
+"DTZ011|9f88b61ccc": 1,
+"DTZ011|9fab5d837c": 1,
+"DTZ011|a1b32471f3": 1,
+"DTZ011|a29323d4b2": 1,
+"DTZ011|a2c71af808": 1,
+"DTZ011|a5b0ddb58c": 1,
+"DTZ011|a71889732c": 1,
+"DTZ011|a74d26cc9e": 1,
+"DTZ011|a78153f137": 1,
+"DTZ011|a96ef9f55a": 1,
+"DTZ011|ab7f523e28": 1,
+"DTZ011|abaaebbd50": 1,
+"DTZ011|abf4bf1da7": 1,
+"DTZ011|ac77548cac": 1,
+"DTZ011|af19b28b6f": 1,
+"DTZ011|b45ea79ce8": 2,
+"DTZ011|b771b80f56": 1,
+"DTZ011|b7e155f5d8": 1,
+"DTZ011|bb0fc7f860": 1,
+"DTZ011|bdaa41c597": 1,
+"DTZ011|c03a988df5": 2,
+"DTZ011|c3e21bdec6": 1,
+"DTZ011|c450c722b6": 1,
+"DTZ011|c62ca634ff": 1,
+"DTZ011|c70b2c685a": 1,
+"DTZ011|cb2e0ea5be": 1,
+"DTZ011|cb3de7b304": 1,
+"DTZ011|cdad9e9109": 1,
+"DTZ011|ce9aac41d3": 1,
+"DTZ011|d0469e90bf": 1,
+"DTZ011|d0eb529127": 1,
+"DTZ011|d12ca0a7f7": 2,
+"DTZ011|d16127f78c": 1,
+"DTZ011|d239bee009": 1,
+"DTZ011|d35e3ac008": 2,
+"DTZ011|d40d2ab82e": 1,
+"DTZ011|d7ba88f222": 1,
+"DTZ011|d95ac3d1bf": 1,
+"DTZ011|db3f629fc1": 1,
+"DTZ011|de8ed9be2a": 2,
+"DTZ011|dea4ffbfd6": 1,
+"DTZ011|deb422f841": 1,
+"DTZ011|ded7188abe": 1,
+"DTZ011|df92103d61": 1,
+"DTZ011|dfb316f6e0": 1,
+"DTZ011|e1e1e5aede": 1,
+"DTZ011|e3842d44b0": 1,
+"DTZ011|e3e39434eb": 1,
+"DTZ011|e7b39e9a50": 1,
+"DTZ011|eac7b20907": 2,
+"DTZ011|ec05b298c7": 1,
+"DTZ011|ed95dcea80": 2,
+"DTZ011|f0438da475": 1,
+"DTZ011|f150d678dc": 1,
+"DTZ011|f1c8884f18": 1,
+"DTZ011|f537856063": 1,
+"DTZ011|f5c9563a6f": 1,
+"DTZ011|f744807ba2": 1,
+"DTZ011|f8c2e7829a": 1,
+"DTZ011|f8cbe3e8a5": 1,
+"DTZ011|fa2b871907": 1,
+"DTZ011|fb8f9d3495": 1,
+"DTZ011|fb91fb927e": 1,
+"DTZ011|fd212c4ab5": 1,
+"DTZ011|fee0619f63": 1,
+"E731|22ee32538d": 1,
+"PLR0915|2c4c5b0ebe": 1,
+"PLW0603|bf1daa469b": 130,
+"PLW1510|0bb8fafe20": 4,
+"S110|a2ad58d9f5": 20,
+"S310|10d83699f4": 1,
+"S310|71d3bdfe6a": 3,
+"S310|8fc39ec0ea": 3,
+"S310|b6a7c0db15": 1,
+"S608|2eea45492d": 1,
+"S608|7274fce915": 2,
+"S608|7b23e51097": 1,
+"S608|9b41cdcbe9": 1,
+"S608|a1988db347": 1,
+"T201|64d2cea344": 1,
+"T201|e6a59c5361": 1,
+"T201|e70d3810f8": 1
+},
+"scripts/sync_legacy_hr_statuses.py": {
+"PLR0915|218b4a75c3": 1,
+"S608|0bdf65c64b": 1,
+"S608|2d88ac713b": 1,
+"S608|4c51dc4fab": 1,
+"S608|c037ad93b5": 1,
+"T201|6d9733f376": 3,
+"T201|e20960d25e": 1
+},
+"scripts/verify_harness.py": {
+"ASYNC240|327a84611b": 2,
+"T201|477724a74c": 1
+},
+"scripts/verify_runtime.py": {
+"B904|50b51af49d": 1,
+"PLR0915|a8b2a624cd": 1,
+"S310|b99020ff57": 1,
+"T201|c61accfa9f": 1
+}
+}
+}
