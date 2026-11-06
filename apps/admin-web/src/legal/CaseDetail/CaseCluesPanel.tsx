@@ -28,14 +28,21 @@ interface CaseCluesPanelProps {
 }
 
 type ClueEvidence = { id: number; certificate_no?: string; certificate_status?: string; certificate_stored_at?: string; item_count?: string; warehouse_name?: string; warehouse_location?: string; evidence_status?: string };
-type ClueEvidenceRow = { row_key: string; clue: CaseRow; evidence?: ClueEvidence };
+type ClueEvidenceRow = { row_key: string; clue: CaseRow; evidence?: ClueEvidence; evidence_count: number };
 
-/** 与旧系统一致，一个证物一行；没有证物的线索也显示一行（501294）。 */
-export const clueEvidenceRows = (clues: CaseRow[]): ClueEvidenceRow[] => clues.flatMap((clue) => {
+const EVIDENCE_FIELDS = ["certificate_no", "certificate_status", "certificate_stored_at", "item_count", "warehouse_name", "warehouse_location", "evidence_status"] as const;
+
+/** 501675（范文玲 11-06）：同一条线索只显示一行。有多个证物（公证书）时，各列把不同的值用“、”连起来；
+ * 每个证物的明细点线索号或“查看”，在右侧线索信息的“取证信息”里逐条叠加显示（同旧系统）。没有证物的线索也显示一行（501294）。 */
+export const clueEvidenceRows = (clues: CaseRow[]): ClueEvidenceRow[] => clues.map((clue) => {
   const evidences = ((clue as CaseRow & { evidences?: ClueEvidence[] }).evidences || []);
-  return evidences.length
-    ? evidences.map((evidence) => ({ row_key: `${clue.id}-${evidence.id}`, clue, evidence }))
-    : [{ row_key: `${clue.id}`, clue }];
+  if (!evidences.length) return { row_key: `${clue.id}`, clue, evidence_count: 0 };
+  const merged: ClueEvidence = { id: evidences[0].id };
+  for (const field of EVIDENCE_FIELDS) {
+    const values = [...new Set(evidences.map((item) => String(item[field] ?? "").trim()).filter(Boolean))];
+    if (values.length) merged[field] = values.join("、");
+  }
+  return { row_key: `${clue.id}`, clue, evidence: merged, evidence_count: evidences.length };
 });
 
 export const CaseCluesPanel = ({
@@ -87,14 +94,14 @@ export const CaseCluesPanel = ({
       <Button icon={<ReloadOutlined />} loading={loading} onClick={() => viewingCase && void onRefresh(viewingCase, cluePage, cluePageSize)
         .catch((error: any) => message.error(error?.response?.data?.detail || "关联线索加载失败"))}>刷新</Button>
     </Space>
-    <Table rowKey="row_key" rowSelection={{ selectedRowKeys: rows.filter(row => selectedClues.some(item => item.id === row.clue.id)).map(row => row.row_key), preserveSelectedRowKeys: true, onChange: (_, picked) => setSelectedClues([...new Map(picked.map(row => [row.clue.id, row.clue])).values()]) }} size="small" tableLayout="fixed" loading={loading} pagination={pagination} scroll={{x:1800}} dataSource={rows} locale={{ emptyText: "没有查询到关联线索" }} columns={[
+    <Table rowKey="row_key" rowSelection={{ selectedRowKeys: rows.filter(row => selectedClues.some(item => item.id === row.clue.id)).map(row => row.row_key), preserveSelectedRowKeys: true, onChange: (_, picked) => setSelectedClues(picked.filter(Boolean).map(row => row.clue)) }} size="small" tableLayout="fixed" loading={loading} pagination={pagination} scroll={{x:1800}} dataSource={rows} locale={{ emptyText: "没有查询到关联线索" }} columns={[
       {title:"序号",width:65,align:"center",render:(_:unknown,_row:ClueEvidenceRow,index:number)=>(cluePage-1)*cluePageSize+index+1},
       {title:"线索号",width:155,render:(_:unknown,row:ClueEvidenceRow)=><Button type="link" className="case-cell-link" onClick={()=>onOpenClue(row.clue)}>{row.clue.serial_no||"—"}</Button>},
       {title:"调查时间",width:150,render:(_:unknown,{clue}:ClueEvidenceRow)=>String(clue.data.investigated_at||clue.data.collected_at||clue.data.investigation_time||clue.data.investigation_date||"").replace("T"," ").slice(0,19)||"—"},
       {title:"店铺名称",width:180,ellipsis:true,render:(_:unknown,{clue}:ClueEvidenceRow)=>clue.data.shop_name||clue.data.store_name||clue.title||"—"},
       // 与旧系统一致：没有地址的线上店铺显示店铺链接
       {title:"店铺地址",width:250,ellipsis:true,render:(_:unknown,{clue}:ClueEvidenceRow)=><LinkifiedText value={clue.data.shop_address||clue.data.address||clue.data.location_address||clue.data.store_url||clue.data.legacy_record?.StoreUrl} />},
-      {title:"公证书号",width:180,render:(_:unknown,{clue,evidence}:ClueEvidenceRow)=>evidence?.certificate_no||clue.data.certificate_no||clue.data.notary_no||"—"},
+      {title:"公证书号",width:180,render:(_:unknown,{clue,evidence,evidence_count}:ClueEvidenceRow)=><>{evidence?.certificate_no||clue.data.certificate_no||clue.data.notary_no||"—"}{evidence_count>1&&<div className="case-clue-evidence-count">共 {evidence_count} 个证物，点“查看”看明细</div>}</>},
       {title:"公证书状态",width:120,render:(_:unknown,{clue,evidence}:ClueEvidenceRow)=>evidence?.certificate_status||clue.data.certificate_status||clue.data.notary_status||"—"},
       {title:"公证书入库时间",width:150,render:(_:unknown,{clue,evidence}:ClueEvidenceRow)=>String(evidence?.certificate_stored_at||clue.data.certificate_stored_at||clue.data.notary_stored_at||clue.data.storage_date||"").replace("T"," ").slice(0,19)||"—"},
       {title:"件数",width:80,align:"right",render:(_:unknown,{clue,evidence}:ClueEvidenceRow)=>evidence?.item_count||clue.data.item_count||clue.data.evidence_count||clue.data.quantity||"—"},

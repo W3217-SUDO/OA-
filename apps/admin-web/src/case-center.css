@@ -320,6 +320,7 @@
 
 .case-legacy-tab-panel{min-height:330px;padding:8px 0 0}
 .case-legacy-tab-panel .ant-table-thead>tr>th{height:32px;padding:5px 9px!important;text-align:center}
+.case-clue-evidence-count{color:#8c8c8c;font-size:12px;line-height:1.4}
 .case-legacy-tab-panel .ant-table-tbody>tr>td{height:32px;padding:4px 9px!important}
 .case-legacy-tab-panel .ant-pagination{margin:8px 8px 0}
 .case-firm-fees-table,.case-firm-fees-table .ant-table,.case-firm-fees-table .ant-table-container{min-width:0;max-width:100%}
