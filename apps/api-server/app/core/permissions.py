@@ -559,7 +559,7 @@ async def _permission_payload_for_identity(identity: dict, db: AsyncSession) -> 
             **payload,
             "action_keys": ["*"],
             "field_keys": list(FIELD_KEYS),
-            "data_scope": "全所数据",
+            "data_scope": payload.get("data_scope") if identity.get("_page_scope_actual") else "全所数据",
         }
     return payload
 
@@ -849,7 +849,7 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     if "_dashboard_record_ids" in identity:
         # 控制台授权编号共用一个参数，保留完整范围且不随记录数量突破参数上限。
         return [*protected_scope, scalar_in_values(BusinessRecord.id, identity["_dashboard_record_ids"])]
-    if identity.get("role") == "admin" or identity.get("_page_menu_capability"):
+    if (identity.get("role") == "admin" or identity.get("_page_menu_capability")) and not identity.get("_page_scope_actual"):
         return protected_scope
     user = await db.scalar(select(User).where(User.username == identity["username"]))
     if not user:
@@ -1269,6 +1269,8 @@ def _require_dingtalk_access(user: User) -> None:
 
 
 def _require_admin(identity: dict) -> None:
+    if identity.get("_page_scope_actual") and "admin" not in (identity.get("_actual_role_ids") or []):
+        raise HTTPException(status_code=403, detail="当前账号没有该菜单的操作权限")
     if "admin" not in _identity_role_ids(identity) and not identity.get("_page_menu_capability"):
         raise HTTPException(status_code=403, detail="当前账号没有该菜单的操作权限")
 
@@ -1525,7 +1527,7 @@ async def _ensure_contract_approval_access(contract_id: int, identity: dict, db:
         ContractApprovalStep.contract_record_id == contract_id,
         ContractApprovalStep.approver == identity["username"],
     ))
-    if assigned or identity.get("role") == "admin":
+    if assigned or (identity.get("role") == "admin" and not identity.get("_page_scope_actual")):
         return contract
     return await _ensure_record_module(contract_id, "contract", identity, db)
 

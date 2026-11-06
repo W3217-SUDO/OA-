@@ -269,6 +269,54 @@ async def _page_menu_authorized(request: Request, db: AsyncSession, menu_keys: l
     return any(_menu_candidate_granted(granted, candidate) for candidate in candidates)
 
 
+async def _page_access_decision(request: Request, db: AsyncSession, menu_keys: list[str]) -> tuple[bool, bool]:
+    """决定本次请求的页面能力：(是否有页面能力, 数据是否按账号真实范围)。
+
+    页面能力只回答“能不能进这个中心的页面、用它的功能”，不等于能看全所数据：
+    - 页面头只放行页面所属中心的读取；跨中心只留参数和下拉，下拉里的业务数据按真实范围。
+    - 在该中心只持有个人页面（我的、新建等）的账号：导出整体按真实身份，写接口的记录可见性按真实范围。
+    开关关掉时完全退回旧判断（见 app/core/data_scope_gate.py）。权限数据有问题也只影响能看到什么，不挡登录。
+    """
+    from app.core.data_scope_gate import (
+        center_has_work_page, gate_enabled, header_read_kind, is_export_path,
+    )
+    if not await gate_enabled(db):
+        return await _page_menu_authorized(request, db, menu_keys), False
+    path = _relative_api_path(request.url.path)
+    path_candidates = await _page_menu_candidates(request, db)
+    header_candidates = _page_header_candidates(request)
+    granted = {str(key).strip() for key in menu_keys if str(key).strip()}
+    if any(_menu_candidate_granted(granted, candidate) for candidate in path_candidates):
+        if center_has_work_page(granted, path_candidates):
+            return True, False
+        if request.method in _PAGE_READ_METHODS and not is_export_path(path):
+            return True, False  # 本中心页面的读取，第 1 步不变；范围表定了再收
+        return not is_export_path(path), True
+    if not any(_menu_candidate_granted(granted, candidate) for candidate in header_candidates):
+        return False, False
+    kind = header_read_kind(path, header_candidates, path_candidates)
+    if is_export_path(path):
+        kind = "deny"
+    return kind != "deny", kind == "scoped"
+
+
+def _actual_role_only_path(path: str) -> bool:
+    from app.core.data_scope_gate import is_actual_role_path
+    return is_actual_role_path(path)
+
+
+def _note_page_scope_shadow(request: Request, username: str, role: str, menu_keys: list[str]) -> None:
+    from app.core.data_scope_gate import center_has_work_page, is_personal_page, note_shadow_elevation, page_center
+    page = str(request.headers.get(PAGE_HEADER) or "").strip()[:96]
+    route = getattr(request.scope.get("route"), "path", "") or request.url.path
+    center = page_center(page) if page else ""
+    note_shadow_elevation(
+        username, role, page, request.method, route,
+        personal_page=bool(page) and is_personal_page(page),
+        work_center=bool(center) and center_has_work_page({str(key) for key in menu_keys}, (f"@root:{center}",)),
+    )
+
+
 async def current_identity(request: Request, token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)) -> dict:
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=["HS256"])
@@ -296,12 +344,18 @@ async def current_identity(request: Request, token: str = Depends(oauth2_scheme)
     from .main import _user_permission_payload
 
     permission = await _user_permission_payload(user, db)
-    page_capability = await _page_menu_authorized(request, db, permission.get("menu_keys") or [])
-    effective_role_ids = ["admin", *role_ids] if page_capability and "admin" not in role_ids else role_ids
+    page_capability, page_scope_actual = await _page_access_decision(request, db, permission.get("menu_keys") or [])
+    if page_capability and not page_scope_actual and "admin" not in role_ids:
+        _note_page_scope_shadow(request, user.username, role_ids[0], permission.get("menu_keys") or [])
+    # 个人页面账号写自己范围内的记录时功能照旧（给页面=功能全有），只有记录可见性按真实范围；
+    # 跨中心读取和任务这类本来就按参与人判断的接口，不提升成管理员。
+    elevated = page_capability and not (page_scope_actual and (
+        request.method in _PAGE_READ_METHODS or _actual_role_only_path(_relative_api_path(request.url.path))))
+    effective_role_ids = ["admin", *role_ids] if elevated and "admin" not in role_ids else role_ids
     effective_action_keys = ["*"] if page_capability else permission.get("action_keys") or []
     return {
         "username": user.username,
-        "role": "admin" if page_capability else role_ids[0],
+        "role": "admin" if elevated else role_ids[0],
         "role_ids": effective_role_ids,
         "display_name": user.display_name,
         "department": user.department,
@@ -316,6 +370,8 @@ async def current_identity(request: Request, token: str = Depends(oauth2_scheme)
         "_actual_role": role_ids[0],
         "_actual_role_ids": role_ids,
         "_page_menu_capability": page_capability,
+        # 页面能力照常（菜单、动作门槛），但数据范围按账号真实范围，见 _record_scope_conditions。
+        "_page_scope_actual": page_scope_actual,
         # 发起请求的页面（前端 X-OA-Page），详情读取按“从哪个有权页面点进来”判断时用。
         "_request_page": next((page for page in _page_header_candidates(request) if not page.startswith("@")), ""),
         "_request_path": request.url.path,

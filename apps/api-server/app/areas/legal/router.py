@@ -4259,6 +4259,9 @@ async def delete_record(record_id: int, identity: dict = Depends(current_identit
     )
     if identity["role"] != "admin":
         raise HTTPException(status_code=403, detail="仅管理员可删除")
+    if identity.get("_page_scope_actual"):
+        from app.core.permissions import _ensure_record_visible
+        await _ensure_record_visible(record_id, identity, db)
     record = await db.get(BusinessRecord, record_id)
     if not record:
         raise HTTPException(status_code=404, detail="记录不存在")
