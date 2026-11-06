@@ -20,6 +20,28 @@ def _case_task_links(ids, numbers):
 _LINK_FIELDS = ("case_id", "case_record_id", "case_no", "case_nos", "case_ids")
 
 
+_open_links = {}
+
+
+async def _open_task_links(db):
+    """未完成任务的关联字段按业务修订号复用（没有任何写入时不用重读）；读不到修订号时按原样现读。
+
+    这份数据不分账号，只用于粗筛候选任务，最后仍按权限和原条件精确判断。
+    """
+    from app.core.dashboard_revision import dashboard_snapshot
+
+    snapshot = await dashboard_snapshot(db, "cases.tasks.revision") if db.get_bind().dialect.name == "postgresql" else None
+    if snapshot is not None and _open_links.get("snapshot") == snapshot:
+        return _open_links["rows"]
+    rows = (await db.execute(select(
+        BusinessRecord.id, *(BusinessRecord.data[key].cast(String) for key in _LINK_FIELDS),
+        BusinessRecord.data["case_no"].as_string(),  # 原条件对 case_no 按解析后的文本比，这里也带上
+    ).where(BusinessRecord.module == "task", BusinessRecord.status.in_(OPEN_TASK_STATUSES)))).all()
+    if snapshot is not None:
+        _open_links.update(snapshot=snapshot, rows=rows)
+    return rows
+
+
 async def _linked_task_ids(db, ids, numbers) -> list[int]:
     """501629：先只读未完成任务的几个关联字段，在内存里粗筛出可能关联这些案件的任务 id。
 
@@ -29,10 +51,7 @@ async def _linked_task_ids(db, ids, numbers) -> list[int]:
     tokens = {str(value) for value in ids} | {str(value) for value in numbers if value}
     if not tokens:
         return []
-    rows = (await db.execute(select(
-        BusinessRecord.id, *(BusinessRecord.data[key].cast(String) for key in _LINK_FIELDS),
-        BusinessRecord.data["case_no"].as_string(),  # 原条件对 case_no 按解析后的文本比，这里也带上
-    ).where(BusinessRecord.module == "task", BusinessRecord.status.in_(OPEN_TASK_STATUSES)))).all()
+    rows = await _open_task_links(db)
     return [row[0] for row in rows if any(text and any(token in text for token in tokens) for text in row[1:])]
 
 

@@ -335,29 +335,34 @@ async def bind_system_user_dingtalk(user_id: int, body: DingTalkBindingInput, id
 @router.get(f"{settings.api_prefix}/people/options")
 async def list_active_people_options(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Expose only active personnel names for authenticated internal selectors."""
-    users = list((await db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.display_name, User.username))).all())
-    employees = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "hr", BusinessRecord.status.not_in({"离职", "停用"}),
-    ))).all())
-    employee_names = {
-        str((employee.data or {}).get("username") or employee.owner or "").strip().lower(): str(employee.title or "").strip()
-        for employee in employees
-        if str((employee.data or {}).get("username") or employee.owner or "").strip()
-    }
-    items = []
-    for user in users:
-        name = employee_names.get(user.username.strip().lower()) or str(user.display_name or "").strip()
-        if name:
-            system_display_name = str(user.display_name or "").strip()
-            items.append({
-                "value": name,
-                "label": name,
-                "username": user.username,
-                "search_text": " ".join(
-                    value for value in (name, system_display_name, user.username) if value
-                ),
-            })
-    return {"items": items}
+    from app.core.shared_options_cache import cached_options
+
+    async def compute():
+        users = list((await db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.display_name, User.username))).all())
+        employees = list((await db.scalars(select(BusinessRecord).where(
+            BusinessRecord.module == "hr", BusinessRecord.status.not_in({"离职", "停用"}),
+        ))).all())
+        employee_names = {
+            str((employee.data or {}).get("username") or employee.owner or "").strip().lower(): str(employee.title or "").strip()
+            for employee in employees
+            if str((employee.data or {}).get("username") or employee.owner or "").strip()
+        }
+        items = []
+        for user in users:
+            name = employee_names.get(user.username.strip().lower()) or str(user.display_name or "").strip()
+            if name:
+                system_display_name = str(user.display_name or "").strip()
+                items.append({
+                    "value": name,
+                    "label": name,
+                    "username": user.username,
+                    "search_text": " ".join(
+                        value for value in (name, system_display_name, user.username) if value
+                    ),
+                })
+        return {"items": items}
+
+    return await cached_options(("people_options", id(db.get_bind())), 60, compute)
 
 
 @router.post(f"{settings.api_prefix}/system/users", status_code=status.HTTP_201_CREATED)
