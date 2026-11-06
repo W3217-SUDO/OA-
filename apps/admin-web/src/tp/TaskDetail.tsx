@@ -171,6 +171,9 @@ export default function TaskDetail(props: TaskDetailProps) {
           {props.canMaintainTask(communication) && (
             <Button style={{ minHeight: 44, minWidth: 44 }} loading={actionSubmitting} onClick={() => props.onMaintainTask(communication)}>维护任务</Button>
           )}
+          {props.canWithdrawTask(communication) && (
+            <Button danger style={{ minHeight: 44, minWidth: 44 }} loading={actionSubmitting} onClick={() => props.onWithdraw(communication)}>撤回任务</Button>
+          )}
           {communication.exception_request?.status === "待审批" && props.canReviewTaskException(communication) && (
             <>
               <Button style={{ minHeight: 44, minWidth: 44 }} loading={actionSubmitting} onClick={() => props.onReviewException(communication, true)}>通过特殊处理</Button>

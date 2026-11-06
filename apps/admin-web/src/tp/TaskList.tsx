@@ -315,12 +315,8 @@ export default function TaskList(props: TaskListProps) {
                 验收任务
               </Button>
             )}
-            {canManageInitiatedTask && statusTab !== "finished" && (
-              roleActionAllowed("task.withdraw") && <Button
-                danger
-                disabled={!canWithdrawTask(selected)}
-                onClick={() => selected && onWithdrawTask(selected)}
-              >
+            {selected && selectedRows.length <= 1 && canWithdrawTask(selected) && (
+              roleActionAllowed("task.withdraw") && <Button danger onClick={() => onWithdrawTask(selected)}>
                 撤回任务
               </Button>
             )}

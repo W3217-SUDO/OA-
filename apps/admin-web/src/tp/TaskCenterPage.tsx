@@ -198,8 +198,8 @@ export default function TaskCenterPage({
 
   const canWithdrawTask = (row?: TaskRow | null) =>
     Boolean(
+      // 501635（tgn 11-06）：自己发出的任务在任何页签、任务处理窗口都能直接撤回，不用切到“我发起的”
       row &&
-        isInitiatedTaskContext &&
         row.initiator === profile.username &&
         ["待接收", "待处理", "处理中", "进行中", "已逾期"].includes(row.workflow_status || row.status),
     );
@@ -214,7 +214,8 @@ export default function TaskCenterPage({
     );
 
   const canRequestTaskException = (row?: TaskRow | null) => Boolean(
-    row && (profile.role === "admin" || row.owner === profile.username) &&
+    // 501635（tgn 11-06）：自己发出的任务直接撤回，不再显示“申请取消任务”
+    row && row.initiator !== profile.username && (profile.role === "admin" || row.owner === profile.username) &&
     ["待接收", "待处理", "处理中"].includes(row.workflow_status || row.status) &&
     row.exception_request?.status !== "待审批",
   );
