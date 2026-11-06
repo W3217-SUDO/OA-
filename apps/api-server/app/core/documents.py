@@ -868,7 +868,7 @@ async def _seal_authorization_context(identity: dict, db: AsyncSession) -> dict:
     )
     permission = await _permission_payload_for_identity(identity, db)
     action_keys = set(permission.get("action_keys") or [])
-    if identity.get("_page_menu_capability"):
+    if identity.get("_page_menu_capability") and not identity.get("_external_account"):
         action_keys.add("*")
     granted = {name: ("*" in action_keys or code in action_keys) for name, code in SEAL_ACTION_CODES.items()}
     username = str(identity.get("username") or "").strip()

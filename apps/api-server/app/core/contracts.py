@@ -452,7 +452,7 @@ async def _has_explicit_contract_approval_action(identity: dict, action_key: str
     )
     if action_key != CONTRACT_APPROVAL_ACTION_CODE:
         return False
-    if identity.get("_page_menu_capability"):
+    if identity.get("_page_menu_capability") and not identity.get("_external_account"):
         return True
     permission = await _permission_payload_for_identity(identity, db)
     action_keys = set(permission.get("action_keys") or [])

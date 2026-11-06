@@ -1697,7 +1697,8 @@ async def list_customers(
         "public": "customer-public", "shared": "customer-shared",
         "recent_contact": "customer-recent-contact", "recent_update": "customer-recent-update",
     }
-    if not identity.get("_page_menu_capability") and scope_menu_keys[scope] not in set(permission.get("menu_keys") or []):
+    page_bypass = identity.get("_page_menu_capability") and not identity.get("_external_account")
+    if not page_bypass and scope_menu_keys[scope] not in set(permission.get("menu_keys") or []):
         raise HTTPException(status_code=403, detail="当前账号未开通该客户页面权限")
     active_customer_types = set((await db.scalars(select(SystemParameter.name).where(
         SystemParameter.category == "customer_type", SystemParameter.is_active.is_(True),
@@ -2075,7 +2076,7 @@ async def list_party_library(
     permission = await _permission_payload_for_identity(identity, db)
     granted = set(permission.get("menu_keys") or [])
     allowed = f"party-{scope_short}" in granted or (category_suffix is not None and f"party-{scope_short}-{category_suffix}" in granted)
-    if not identity.get("_page_menu_capability") and not allowed:
+    if (not identity.get("_page_menu_capability") or identity.get("_external_account")) and not allowed:
         raise HTTPException(status_code=403, detail="当前账号未开通该当事人页面权限")
     current_user = await db.scalar(select(User).where(User.username == identity["username"], User.is_active.is_(True)))
     if not current_user:
@@ -2166,7 +2167,7 @@ async def get_party(
     from app.data_models.parties import PartyRecord
     from app.data_models.party_library import PartyLibraryEntry as Entry
     permission = await _permission_payload_for_identity(identity, db)
-    if not identity.get("_page_menu_capability") and not any(
+    if (not identity.get("_page_menu_capability") or identity.get("_external_account")) and not any(
             str(key).startswith("party") for key in (permission.get("menu_keys") or [])):
         raise HTTPException(status_code=403, detail="当前账号未开通当事人中心权限")
     party = await db.get(PartyRecord, party_id)

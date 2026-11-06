@@ -557,7 +557,7 @@ async def _permission_payload_for_identity(identity: dict, db: AsyncSession) -> 
         # field, and data-scope gates behind the same visible page.
         return {
             **payload,
-            "action_keys": ["*"],
+            "action_keys": payload.get("action_keys", []) if identity.get("_external_account") else ["*"],
             "field_keys": list(FIELD_KEYS),
             "data_scope": payload.get("data_scope") if identity.get("_page_scope_actual") else "全所数据",
         }
@@ -576,6 +576,7 @@ async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
         _is_contract_approver,
     )
     from app.agent_permissions import AGENT_GLOBAL_MANAGE_ACTION, personal_action_keys
+    from app.core.data_scope_gate import external_action_keys, is_external_role
     role_ids = _system_user_role_ids(user)
     permission = await _permission_payload_for_roles(role_ids, db)
     explicit_role_name = _configured_user_job_role_name(user)
@@ -609,11 +610,14 @@ async def _user_permission_payload(user: User, db: AsyncSession) -> dict:
         if can_approve_contract and "contract-audit" not in menu_keys:
             menu_keys.append("contract-audit")
     menu_keys = _expand_menu_permission_keys(menu_keys)
+    action_keys = expand_role_action_codes(permission.get("action_keys", []), menu_keys)
+    if "admin" not in role_ids and is_external_role((user.profile or {}).get("permission_role")):
+        action_keys = external_action_keys(str((user.profile or {}).get("permission_role")).strip(), action_keys, user_actions)
     return {
         **permission,
         "menu_keys": menu_keys,
         # BUG20261028012：案件三块展开成块内功能；客户、合同、知产、任务、调查及案件其余功能给了页面就有。
-        "action_keys": expand_role_action_codes(permission.get("action_keys", []), menu_keys),
+        "action_keys": action_keys,
         "user_action_keys": user_actions,
         # 员工管理里按人取消勾选的财务动作，优先于页面可见带来的授权。
         "user_action_denies": [] if "admin" in role_ids else [
@@ -1599,7 +1603,7 @@ async def _ensure_contract_object_not_reserved(item: ContractObject, db: AsyncSe
 
 async def _require_company_task_read_scope(identity: dict, db: AsyncSession, relation: str) -> None:
     """Authorize company task views from configured menu and data-range grants."""
-    if identity.get("_page_menu_capability"):
+    if identity.get("_page_menu_capability") and not identity.get("_external_account"):
         return
     permission = await _permission_payload_for_identity(identity, db)
     required_menu = {

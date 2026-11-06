@@ -269,7 +269,7 @@ async def _page_menu_authorized(request: Request, db: AsyncSession, menu_keys: l
     return any(_menu_candidate_granted(granted, candidate) for candidate in candidates)
 
 
-async def _page_access_decision(request: Request, db: AsyncSession, menu_keys: list[str]) -> tuple[bool, bool]:
+async def _page_access_decision(request: Request, db: AsyncSession, menu_keys: list[str], *, external: bool = False) -> tuple[bool, bool]:
     """决定本次请求的页面能力：(是否有页面能力, 数据是否按账号真实范围)。
 
     页面能力只回答“能不能进这个中心的页面、用它的功能”，不等于能看全所数据：
@@ -278,7 +278,7 @@ async def _page_access_decision(request: Request, db: AsyncSession, menu_keys: l
     开关关掉时完全退回旧判断（见 app/core/data_scope_gate.py）。权限数据有问题也只影响能看到什么，不挡登录。
     """
     from app.core.data_scope_gate import (
-        center_has_work_page, gate_enabled, header_read_kind, is_export_path,
+        center_has_work_page, external_read_pending, gate_enabled, header_read_kind, is_export_path,
     )
     if not await gate_enabled(db):
         return await _page_menu_authorized(request, db, menu_keys), False
@@ -286,7 +286,10 @@ async def _page_access_decision(request: Request, db: AsyncSession, menu_keys: l
     path_candidates = await _page_menu_candidates(request, db)
     header_candidates = _page_header_candidates(request)
     granted = {str(key).strip() for key in menu_keys if str(key).strip()}
+    external_actual = external and not external_read_pending(path, path_candidates)
     if any(_menu_candidate_granted(granted, candidate) for candidate in path_candidates):
+        if external_actual:  # 外部账号在本中心也只有真实范围，和老系统“我的”页面一致
+            return not is_export_path(path), True
         if center_has_work_page(granted, path_candidates):
             return True, False
         if request.method in _PAGE_READ_METHODS and not is_export_path(path):
@@ -297,7 +300,14 @@ async def _page_access_decision(request: Request, db: AsyncSession, menu_keys: l
     kind = header_read_kind(path, header_candidates, path_candidates)
     if is_export_path(path):
         kind = "deny"
+    if external_actual and kind == "allow" and path_candidates and not _is_cross_center_option(path):
+        kind = "scoped"
     return kind != "deny", kind == "scoped"
+
+
+def _is_cross_center_option(path: str) -> bool:
+    from app.core.data_scope_gate import is_cross_center_option
+    return is_cross_center_option(path)
 
 
 def _actual_role_only_path(path: str) -> bool:
@@ -344,15 +354,19 @@ async def current_identity(request: Request, token: str = Depends(oauth2_scheme)
     from .main import _user_permission_payload
 
     permission = await _user_permission_payload(user, db)
-    page_capability, page_scope_actual = await _page_access_decision(request, db, permission.get("menu_keys") or [])
+    from app.core.data_scope_gate import is_external_customer_export, is_external_role
+    external = "admin" not in role_ids and is_external_role(profile.get("permission_role"))
+    if external and is_external_customer_export(_relative_api_path(request.url.path), request.query_params.get("module")):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="当前账号不能导出客户")
+    page_capability, page_scope_actual = await _page_access_decision(request, db, permission.get("menu_keys") or [], external=external)
     if page_capability and not page_scope_actual and "admin" not in role_ids:
         _note_page_scope_shadow(request, user.username, role_ids[0], permission.get("menu_keys") or [])
     # 个人页面账号写自己范围内的记录时功能照旧（给页面=功能全有），只有记录可见性按真实范围；
     # 跨中心读取和任务这类本来就按参与人判断的接口，不提升成管理员。
     elevated = page_capability and not (page_scope_actual and (
-        request.method in _PAGE_READ_METHODS or _actual_role_only_path(_relative_api_path(request.url.path))))
+        external or request.method in _PAGE_READ_METHODS or _actual_role_only_path(_relative_api_path(request.url.path))))
     effective_role_ids = ["admin", *role_ids] if elevated and "admin" not in role_ids else role_ids
-    effective_action_keys = ["*"] if page_capability else permission.get("action_keys") or []
+    effective_action_keys = ["*"] if page_capability and not external else permission.get("action_keys") or []
     return {
         "username": user.username,
         "role": "admin" if elevated else role_ids[0],
@@ -372,6 +386,7 @@ async def current_identity(request: Request, token: str = Depends(oauth2_scheme)
         "_page_menu_capability": page_capability,
         # 页面能力照常（菜单、动作门槛），但数据范围按账号真实范围，见 _record_scope_conditions。
         "_page_scope_actual": page_scope_actual,
+        "_external_account": external,
         # 发起请求的页面（前端 X-OA-Page），详情读取按“从哪个有权页面点进来”判断时用。
         "_request_page": next((page for page in _page_header_candidates(request) if not page.startswith("@")), ""),
         "_request_path": request.url.path,

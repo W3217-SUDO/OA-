@@ -7,11 +7,11 @@ from sqlalchemy.pool import StaticPool
 
 from app.config import settings
 from app.core.data_scope_gate import (
-    GATE_CONFIG_KEY, center_has_work_page, header_read_kind, is_export_path, is_personal_page, reset_gate_cache,
+    GATE_CONFIG_KEY, center_has_work_page, external_action_keys, header_read_kind, is_export_path, is_personal_page, reset_gate_cache,
 )
 from app.database import Base, get_db
 from app.main import app
-from app.models import BusinessRecord, RolePermission, SystemConfig, User
+from app.models import BusinessRecord, JobRole, RolePermission, SystemConfig, User
 from app.security import create_token
 from tests.personnel_role_fixture import bind_system_role_pages
 
@@ -160,6 +160,87 @@ class DataScopeGateApiTest(unittest.IsolatedAsyncioTestCase):
     async def test_login_identity_never_blocked(self):
         me = await self.personal.get(f"{API}/auth/me", headers={"X-OA-Page": "not-a-real-page"})
         self.assertEqual(me.status_code, 200)
+
+
+class ExternalAccountTest(unittest.IsolatedAsyncioTestCase):
+    """外部账号按老系统：本中心也只看本人，客户不能导出，动作只给老系统有的。"""
+
+    async def asyncSetUp(self):
+        reset_gate_cache()
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:", poolclass=StaticPool)
+        async with self.engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        self.sessions = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
+        async with self.sessions() as db:
+            db.add_all([
+                User(username="EXTSOURCE", display_name="外部案源", password_hash="x", department="D", role="user",
+                     profile={"permission_role": "外部案源人"}),
+                User(username="EXTLAWYER", display_name="合作律师", password_hash="x", department="D", role="user",
+                     profile={"permission_role": "合作律师"}),
+                JobRole(code="LEGACY-EXT-SOURCE", name="外部案源人", permissions=["customer-mine", "case-mine-civil", "finance-receipts-claim"], field_keys=[]),
+                JobRole(code="LEGACY-COOP-LAWYER", name="合作律师", permissions=["customer-mine", "case-mine-civil"], field_keys=[]),
+                RolePermission(role="user", display_name="普通员工", data_scope="本人及共享数据", menu_keys=[], field_keys=[]),
+                BusinessRecord(module="customer", serial_no="EXT-C1", title="别人的客户", owner="SOMEONE", status="正常", customer="别人的客户", data={}),
+                BusinessRecord(module="customer", serial_no="EXT-C2", title="自己的客户", owner="EXTSOURCE", status="正常", customer="自己的客户", data={}),
+            ])
+            await db.commit()
+
+        async def override_db():
+            async with self.sessions() as db:
+                yield db
+
+        app.dependency_overrides[get_db] = override_db
+        await bind_system_role_pages(self.sessions)
+        token = create_token("EXTSOURCE", "user", 30)
+        self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test",
+                                        headers={"Authorization": f"Bearer {token}"})
+        token = create_token("EXTLAWYER", "user", 30)
+        self.lawyer = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test",
+                                        headers={"Authorization": f"Bearer {token}"})
+
+    async def asyncTearDown(self):
+        await self.client.aclose()
+        await self.lawyer.aclose()
+        app.dependency_overrides.pop(get_db, None)
+        await self.engine.dispose()
+        reset_gate_cache()
+
+    async def test_same_center_read_is_own_scope(self):
+        for headers in ({}, {"X-OA-Page": "customer-mine"}):
+            rows = (await self.client.get(f"{API}/records", params={"module": "customer", "page_size": 50}, headers=headers)).json()["items"]
+            self.assertEqual([row["serial_no"] for row in rows], ["EXT-C2"])
+
+    async def test_customer_export_refused(self):
+        response = await self.client.get(f"{API}/records/export", params={"module": "customer"})
+        self.assertEqual(response.status_code, 403)
+
+    async def test_login_and_me_not_blocked(self):
+        me = await self.client.get(f"{API}/auth/me")
+        self.assertEqual(me.status_code, 200)
+
+    async def test_actions_follow_legacy_role(self):
+        codes = ["case.fee.update", "case.team.assign", "case.internal_fee.create", "case.merge", "task.confirm",
+                 "contract.payment.writeoff", "conflict.review.approve", "case.log.create"]
+        source = external_action_keys("外部案源人", codes)
+        self.assertEqual(source, ["case.log.create"])
+        lawyer = external_action_keys("合作律师", codes)
+        self.assertEqual(set(lawyer), {"case.fee.update", "case.team.assign", "case.internal_fee.create", "case.log.create"})
+        self.assertIn("task.confirm", external_action_keys("外部合作调查员", codes))
+        self.assertIn("case.merge", external_action_keys("外部案源人", codes, ["case.merge"]))  # 员工管理按人给的优先
+        me = (await self.client.get(f"{API}/auth/me")).json()["configured_action_keys"]
+        self.assertNotIn("case.merge", me)
+
+    async def test_customer_list_scope_needs_that_page(self):
+        response = await self.client.get(f"{API}/customers", params={"scope": "company"})
+        self.assertEqual(response.status_code, 403)
+
+    async def test_switch_off_restores(self):
+        async with self.sessions() as db:
+            db.add(SystemConfig(key=GATE_CONFIG_KEY, label="数据范围闸门", group="权限", value="off"))
+            await db.commit()
+        reset_gate_cache()
+        rows = (await self.client.get(f"{API}/records", params={"module": "customer", "page_size": 50})).json()["items"]
+        self.assertEqual(len(rows), 2)
 
 
 if __name__ == "__main__":

@@ -423,6 +423,9 @@ async def list_tasks(
     if scope not in {"default", "mine", "department", "company"}: raise HTTPException(status_code=422, detail="无效的任务范围")
     if scope == "company":
         await _require_company_task_read_scope(identity, db, relation)
+    if scope == "department" and identity.get("_external_account") and not any(
+            str(key).startswith("task-dept") for key in identity.get("menu_keys") or []):
+        raise HTTPException(status_code=403, detail="当前角色没有查看部门任务的菜单权限")
     if created_from and created_to and created_from > created_to: raise HTTPException(status_code=422, detail="发起开始日期不能晚于结束日期")
     if deadline_from and deadline_to and deadline_from > deadline_to: raise HTTPException(status_code=422, detail="截止开始日期不能晚于结束日期")
     # Apply participant visibility in SQL before any Python filtering/pagination.

@@ -101,7 +101,8 @@ def page_center(page: str) -> str:
     for center in ("platform-finance", "agent-center", "user-center"):
         if base == center or base.startswith(f"{center}-"):
             return center
-    return base.split("-", 1)[0]
+    root = base.split("-", 1)[0]
+    return "investigation" if root in {"clue", "notary"} else root  # 线索、公证页面属于调查大厅
 
 
 def center_has_work_page(menu_keys: set[str], candidates: tuple[str, ...]) -> bool:
@@ -130,10 +131,14 @@ def _prefix_match(path: str, prefix: str) -> bool:
     return path == prefix or path.startswith(f"{prefix}/")
 
 
+def is_cross_center_option(path: str) -> bool:
+    return any(_prefix_match(path, prefix) for prefix in _CROSS_CENTER_OPTIONS) or any(rule.match(path) for rule in _CROSS_CENTER_OPTION_PATTERNS)
+
+
 def header_read_kind(path: str, header_candidates: tuple[str, ...], path_candidates: tuple[str, ...]) -> str:
     """页面头发起的读取怎么处理：allow 不变、scoped 能读但按真实范围、deny 不放行。"""
     centers = {page_center(page) for page in header_candidates}
-    if any(_prefix_match(path, prefix) for prefix in _CROSS_CENTER_OPTIONS) or any(rule.match(path) for rule in _CROSS_CENTER_OPTION_PATTERNS):
+    if is_cross_center_option(path):
         return "allow"
     if any(_prefix_match(path, prefix) for prefix in _CROSS_CENTER_SCOPED) or path in _CROSS_CENTER_SCOPED_EXACT:
         return "scoped"
@@ -170,3 +175,67 @@ def note_shadow_elevation(username: str, role: str, page: str, method: str, rout
                     username, role, page, personal_page, work_center, method, route)
     except Exception:  # noqa: BLE001 - 记录失败不影响业务
         logger.debug("page-scope-shadow skipped", exc_info=True)
+
+
+# 外部账号（陶威 2026-11-06“外部账号的权限 跟老系统一样”）：范围和动作都按老系统，不再“给页面=功能全有”。
+EXTERNAL_ROLE_NAMES = frozenset({"外部案源人", "客户联系人", "合作律师", "外部合作调查员"})
+
+# 老系统按角色单独授权的动作（HR_Role_Permissions 类型 A），外部账号默认没有；括号是老系统动作。
+_EXTERNAL_DENIED_ACTIONS = frozenset({
+    "case.internal_fee.create",  # 新建内部费用
+    "case.fee.delete",  # 删除案件费用
+    "case.fee.update",  # 修改案件费用
+    "case.fee.mark_unpaid",  # 标记不缴费
+    "case.fee.refund",  # 不再办理退费
+    "case.fee.move",  # 转移案件费用
+    "case.archive.review",  # 案件归档
+    "case.notary.update",  # 修改公证书
+    "case.merge",  # 案件合并
+    "case.team.assign",  # 修改律师
+    "contract.payment.pay", "contract.payment.writeoff",  # 付款核销
+    "task.confirm",  # 后台确认任务完成
+    # 老系统没有的管理动作
+    "case.delete", "case.duplicate", "conflict.review.approve", "crm.customer.portal",
+    "task.restart", "task.batch.update",
+})
+_EXTERNAL_ROLE_ACTIONS = {
+    "合作律师": frozenset({"case.internal_fee.create", "case.fee.update", "case.team.assign"}),
+    "外部合作调查员": frozenset({"task.confirm"}),
+}
+
+# 这些页面老系统实际范围查不清，等陶国南答复：外部账号的读取和第 1 步保持一致，不先收也不放宽。
+_EXTERNAL_PENDING_PREFIXES = (
+    "/finance", "/platform-finance", "/contract-payment-applications", "/receivables", "/contracts/receivables",
+    "/investigations/clues", "/clues", "/documents", "/official-outgoing", "/cases/archive",
+)
+_EXTERNAL_PENDING_RECORD_ROOTS = frozenset({"finance", "platform-finance", "documents", "investigation"})
+_CUSTOMER_EXPORT_PATHS = frozenset({"/records/export", "/records/export-excel"})
+
+
+def is_external_role(role_name: object) -> bool:
+    return str(role_name or "").strip() in EXTERNAL_ROLE_NAMES
+
+
+def external_action_keys(role_name: str, action_keys: list[str], personal_keys: list[str] | None = None) -> list[str]:
+    """去掉老系统没给这个角色的动作；员工管理里按人给的仍优先。开关关掉时不改。"""
+    if not _enabled:
+        return action_keys
+    if "*" in action_keys:
+        from app.core.constants import SYSTEM_ACTION_DEFINITIONS
+        action_keys = [item["code"] for item in SYSTEM_ACTION_DEFINITIONS]
+    keep = _EXTERNAL_ROLE_ACTIONS.get(role_name, frozenset()) | set(personal_keys or [])
+    denied = _EXTERNAL_DENIED_ACTIONS - keep
+    return [code for code in action_keys if code not in denied and code.split("@", 1)[0] not in denied]
+
+
+def external_read_pending(path: str, candidates: tuple[str, ...]) -> bool:
+    if any(_prefix_match(path, prefix) for prefix in _EXTERNAL_PENDING_PREFIXES):
+        return True
+    if path == "/records" or path.startswith("/records/"):
+        return bool({page_center(item) for item in candidates} & _EXTERNAL_PENDING_RECORD_ROOTS)
+    return False
+
+
+def is_external_customer_export(path: str, module: object) -> bool:
+    """老系统客户页面没有导出，外部账号不给。"""
+    return _enabled and path in _CUSTOMER_EXPORT_PATHS and str(module or "").strip() == "customer"
