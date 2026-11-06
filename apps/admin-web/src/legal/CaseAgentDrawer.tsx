@@ -19,7 +19,10 @@ import "../agentPending.css";
 import "../composerSingleBox.css";
 import { actionResultLine, mergeByTime } from "../agentActionResult";
 import { useEffect, useState } from "react";
-import { CaseAgentConfirmFloat } from "./CaseAgentConfirmFloat";
+import { CaseAgentConfirmCard, confirmTitle } from "./CaseAgentConfirmCard";
+import { CaseAgentQuestionBar } from "./CaseAgentQuestionBar";
+import { formatAgentAnswers, parseAgentAsk } from "./caseAgentAsk";
+import { hasAgentOperationPreview } from "../AgentOperationPreview";
 import { AgentToolResult } from "../AgentToolResult";
 import { NO_AGENT_SKILL_OPTION } from "../agentSkillRouting";
 import { api } from "../api";
@@ -145,12 +148,12 @@ export const CaseAgentDrawer = ({
   stopCaseAgentResponse,
   agentMessagesEndRef,
 }: CaseAgentDrawerProps) => {
-  // 501634：浮动确认窗口。currentId 是正在看的那项；minimizedIds 是点了“缩小”的（不算处理，仍待确认）。
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmId, setConfirmId] = useState<string | null>(null);
-  const [minimizedIds, setMinimizedIds] = useState<string[]>([]);
-  // 换案件或重新打开智能体：缩小记录清空，还有待确认的会再弹出来。
-  useEffect(() => { setConfirmOpen(false); setConfirmId(null); setMinimizedIds([]); }, [agentCase?.id, agentOpen]);
+  // 501634（tgn 11-06 15:31 确认）：确认和追问都在输入框上方的问题条里。closedIds 是点了“关闭”的待确认项（稍后处理，仍待确认）；
+  // dismissedAsk 是关掉的追问（按消息记，不算回答）。换案件或重新打开智能体时清空，还没处理的会再出现。
+  const [closedIds, setClosedIds] = useState<string[]>([]);
+  const [dismissedAsk, setDismissedAsk] = useState<string[]>([]);
+  const [deciding, setDeciding] = useState(false);
+  useEffect(() => { setClosedIds([]); setDismissedAsk([]); }, [agentCase?.id, agentOpen]);
   // 按固定模板生成文书（陶国南 11-03）：说“生成撤诉申请书”或点按钮，打开模板填字段，不让智能体改写正文。
   const [wordTemplates, setWordTemplates] = useState<WordTemplate[]>([]);
   const [wordTemplate, setWordTemplate] = useState<{ open: boolean; id?: string }>({ open: false });
@@ -190,19 +193,43 @@ export const CaseAgentDrawer = ({
     return line && { ...line, text: line.text + via };
   };
   const decidedActions = (agentState?.pending_actions || []).filter((action) => caseResultLine(action));
-  // 501634：有新的待确认（没点过缩小的）就弹出浮动确认窗口；都处理完就关掉。
-  const waitingKey = waitingActions.map((action) => action.id).join(",");
-  useEffect(() => {
-    if (!waitingActions.length) { setConfirmOpen(false); return; }
-    const fresh = waitingActions.find((action) => !minimizedIds.includes(action.id));
-    if (fresh && !confirmOpen) { setConfirmId(fresh.id); setConfirmOpen(true); }
-  }, [waitingKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  const minimizeConfirm = () => { setMinimizedIds((current) => Array.from(new Set([...current, ...waitingActions.map((action) => action.id)]))); setConfirmOpen(false); };
-  const openConfirm = () => { setConfirmId((current) => waitingActions.some((action) => action.id === current) ? current : waitingActions[0]?.id || null); setConfirmOpen(true); };
+  // 501634：有没关掉的待确认项就显示确认问题条；全部关掉时顶部显示“待确认 N”，点一下重新出现。
+  const confirmBarOpen = waitingActions.some((action) => !closedIds.includes(action.id));
+  const closeConfirm = () => setClosedIds((current) => Array.from(new Set([...current, ...waitingActions.map((action) => action.id)])));
+  const openConfirm = () => setClosedIds([]);
   const shownMessages = (agentHistoryExpanded ? agentState?.messages : agentState?.messages?.slice(-8)) || [];
   const firstShownAt = !agentHistoryExpanded && (agentState?.messages?.length || 0) > 8 ? shownMessages[0]?.created_at : undefined;
   const timeline = mergeByTime(shownMessages, decidedActions.filter((action) => !firstShownAt || !action.decided_at || Date.parse(action.decided_at) >= Date.parse(firstShownAt)),
     (item) => item.created_at, (action) => action.decided_at || action.requested_at);
+  // 全部批准/全部驳回按卡片里从上到下的顺序逐项办；有一项没执行成功就停下，后面的仍待确认。
+  const orderedWaiting = [...waitingActions].reverse();
+  const decideAll = async (decision: "approved" | "rejected") => {
+    setDeciding(true);
+    try {
+      const open = orderedWaiting.filter((action) => !actionDisabled(action));
+      for (const action of decision === "approved" ? open.filter((action) => hasAgentOperationPreview(action)) : open) {
+        if (await decideAction(action, decision)) return false;
+      }
+      return true;
+    } finally {
+      setDeciding(false);
+    }
+  };
+  const single = orderedWaiting.length === 1;
+  const confirmQuestion = { question: confirmTitle(orderedWaiting), options: single ? ["批准并执行", "驳回，不修改"] : ["全部批准并执行", "全部驳回"] };
+  // 选了选项就批准/驳回；在“其他补充…”里写了要怎么改：先驳回这一版（不执行），再把补充发给智能体，按补充重新出卡片。
+  const answerConfirm = async (answers: string[], typed: boolean[]) => {
+    if (typed[0]) {
+      if (await decideAll("rejected")) void sendOrGenerate(`对刚才的修改补充：${answers[0]}`);
+      return;
+    }
+    await decideAll(answers[0] === confirmQuestion.options[0] ? "approved" : "rejected");
+  };
+  // 拿不准时的追问：只看最后一条智能体回复，答完一起发回；有待确认项时先处理确认。
+  const lastMessage = agentState?.messages?.[agentState.messages.length - 1];
+  const lastAskKey = lastMessage ? String(lastMessage.id || lastMessage.created_at || "") : "";
+  const lastAsk = lastMessage?.role === "assistant" ? parseAgentAsk(lastMessage.content || "").questions : [];
+  const askOpen = Boolean(lastAsk.length) && !waitingActions.length && !agentSending && !dismissedAsk.includes(lastAskKey);
   const actionDisabled = (action: CaseAgentAction) => Boolean(agentDecisionLoading) || Boolean((action as { preparing?: boolean }).preparing) || action.status === "executing" || (action.type !== "mcp.call" && !counselDetailCapabilities.can_write);
   const selectedSkill = (agentStatus?.skills || []).find((item) => item.id === agentSkillId);
   const quickPrompts = selectedSkill?.quick_prompts?.length
@@ -254,14 +281,11 @@ export const CaseAgentDrawer = ({
           </Popover>
         </div>
         {!agentLoading && !agentStatus?.ready && <Alert type="warning" showIcon title="案件智能体暂未就绪" description="请检查模型与 DPH 运行环境后重试。" />}
-        {/* 501634：待确认的卡片不再夹在对话里，缩小后这里显示入口，点开浮动确认窗口。 */}
-        {waitingActions.length && !confirmOpen ? <button type="button" className="case-agent-pending-pill" onClick={openConfirm}>
+        {/* 501634：确认问题条关掉后这里显示入口，点一下重新出现（关掉不算批准也不算驳回）。 */}
+        {waitingActions.length && !confirmBarOpen ? <button type="button" className="case-agent-pending-pill" onClick={openConfirm}>
           <span className="agent-pending-tag">待确认 {waitingActions.length}</span>
           <span>有 {waitingActions.length} 项操作等你确认，点击处理</span>
         </button> : null}
-        {confirmOpen && <CaseAgentConfirmFloat actions={[...waitingActions].reverse()} currentId={confirmId} target={agentCase?.serial_no}
-          failures={decisionFailures} decisionLoading={agentDecisionLoading} disabled={actionDisabled}
-          onSelect={setConfirmId} onDecide={decideAction} onMinimize={minimizeConfirm} />}
         <div className="case-agent-messages" aria-live="polite">
           {!agentLoading && !agentState?.messages?.length && <div className="case-agent-empty">
             <AgentMascot pose="wave" height={110} blink className="case-agent-empty-mascot" />
@@ -280,9 +304,11 @@ export const CaseAgentDrawer = ({
             const item = row.item, index = row.index;
             return <div className={`case-agent-message case-agent-message-${item.role}`} key={item.id || `${item.role}-${index}`}>
             <div className="case-agent-message-meta">{item.role === "user" ? "我" : "案件智能体"}{item.created_at ? ` · ${item.created_at.replace("T", " ").slice(0, 16)}` : ""}</div>
-            <div className="case-agent-bubble">{item.attachments?.length ? <div className="case-agent-message-attachments">{item.attachments.map((attachment) => attachment.preview_url ? <figure key={attachment.id}><Image src={attachment.preview_url} alt={attachment.name} preview /><figcaption>{attachment.name}</figcaption></figure> : <Tag key={attachment.id}>{attachment.name}</Tag>)}</div> : null}{item.content}</div>
+            <div className="case-agent-bubble">{item.attachments?.length ? <div className="case-agent-message-attachments">{item.attachments.map((attachment) => attachment.preview_url ? <figure key={attachment.id}><Image src={attachment.preview_url} alt={attachment.name} preview /><figcaption>{attachment.name}</figcaption></figure> : <Tag key={attachment.id}>{attachment.name}</Tag>)}</div> : null}{item.role === "assistant" ? parseAgentAsk(item.content || "").text : item.content}</div>
           </div>;
           })}
+          <CaseAgentConfirmCard actions={orderedWaiting} failures={decisionFailures} decisionLoading={agentDecisionLoading}
+            disabled={actionDisabled} onDecide={decideAction} />
           {(agentLoading || agentSending) && <div className="case-agent-thinking"><AgentMascot pose="think" height={30} bob /> {agentSending ? (agentProgress || "正在理解您的问题…") : "正在载入会话..."}</div>}
           <AgentToolResult result={[agentState?.structured_results, ...(agentState?.pending_actions || []).filter((item) => item.status === "approved").map((item) => item.execution_result)]} />
           <div ref={agentMessagesEndRef} />
@@ -290,6 +316,13 @@ export const CaseAgentDrawer = ({
         {!agentLoading && !agentState?.messages?.length && agentStatus?.ready && <div className="case-agent-suggestions">
           {quickPrompts.map((text) => <Button key={text} size="small" onClick={() => void sendOrGenerate(text)}>{text}</Button>)}
         </div>}
+        {waitingActions.length && confirmBarOpen ? <CaseAgentQuestionBar testId="case-agent-confirm-bar" questions={[confirmQuestion]}
+          busy={deciding || Boolean(agentDecisionLoading)} disabled={orderedWaiting.every((action) => actionDisabled(action))}
+          note={(orderedWaiting.some((action) => (action as { preparing?: boolean }).preparing)) ? "回复写完即可确认" : undefined}
+          onSubmit={(answers, typed) => void answerConfirm(answers, typed)} onClose={closeConfirm} />
+          : askOpen ? <CaseAgentQuestionBar questions={lastAsk} busy={agentSending}
+            onSubmit={(answers) => { setDismissedAsk((current) => [...current, lastAskKey]); void sendOrGenerate(formatAgentAnswers(lastAsk, answers)); }}
+            onClose={() => setDismissedAsk((current) => [...current, lastAskKey])} /> : null}
         <div className="case-agent-composer">
           {agentMaterialPickerOpen && <div className="case-agent-material-tree" aria-label="从案件文件夹选择本轮材料">
             <div className="case-agent-material-tree-header">

@@ -8,16 +8,16 @@ const read = (path) => fs.readFileSync(new URL(path, import.meta.url), "utf8");
 test("待确认卡片有边框、左侧色条、浅色底和“待确认”标签", () => {
   const css = read("../src/agentPending.css");
   assert.match(css, /\.agent-pending-card \{[^}]*border-left: 5px solid #d46b08;[^}]*background: #fff7e6;/);
-  // 501634：案件智能体的待确认卡片改成浮动确认窗口。
-  const drawer = read("../src/legal/CaseAgentConfirmFloat.tsx");
+  // 501634（11-06）：案件智能体的待确认卡片在对话里（CaseAgentConfirmCard）。
+  const drawer = read("../src/legal/CaseAgentConfirmCard.tsx");
   assert.match(drawer, /<Tag className="agent-pending-tag">待确认<\/Tag>/);
   assert.match(read("../src/personal-agent/AssistantPanel.tsx"), /<Tag className="agent-pending-tag">待确认<\/Tag>/);
 });
 
 test("确认按钮淡色底块加文字和图标，主次靠底色深浅，不用红色 danger", () => {
-  const drawer = read("../src/legal/CaseAgentConfirmFloat.tsx");
-  assert.match(drawer, /className="agent-btn-cancel" icon=\{<CloseOutlined \/>\}[^\n]*"驳回，不修改"/);
-  assert.match(drawer, /className="agent-btn-confirm" icon=\{<CheckOutlined \/>\}/);
+  // 501634（11-06）：案件智能体的批准/驳回改成问题条选项，不再是按钮。
+  const drawer = read("../src/legal/CaseAgentDrawer.tsx");
+  assert.match(drawer, /\["批准并执行", "驳回，不修改"\]/);
   assert.doesNotMatch(drawer, /key="reject" danger/);
   const confirmation = read("../src/personal-agent/ActionConfirmation.tsx");
   assert.match(confirmation, /className="agent-btn-cancel"[^\n]*>取消操作</);

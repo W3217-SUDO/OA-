@@ -43,3 +43,18 @@ class CaseInfoEditRulesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CaseAskRules501634Test(__import__("unittest").TestCase):
+    """501634（tgn 11-06 15:31 确认）：拿不准时用【追问】选项问题条，不写文字反问；确认在对话框下方点选。"""
+
+    def test_case_agent_prompt_asks_with_options(self):
+        from app import case_agent
+        rules = case_agent.CASE_ASK_RULES
+        self.assertIn("【追问】", rules)
+        self.assertIn('{"questions":[{"question":"问题","options":["选项1","选项2"]}]}', rules)
+        self.assertIn("信息齐全、对象唯一时不要追问，直接生成确认卡片", rules)
+        self.assertIn("不要写“其他”选项", rules)
+        self.assertNotIn("确认窗口", case_agent.CASE_INFO_EDIT_RULES)
+        import inspect
+        self.assertIn("{CASE_INFO_EDIT_RULES}{CASE_ASK_RULES}", inspect.getsource(case_agent))
