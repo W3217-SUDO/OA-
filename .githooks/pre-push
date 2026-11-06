@@ -36,11 +36,18 @@ fi
 root=$(git rev-parse --show-toplevel)
 report=$(mktemp -d "${TMPDIR:-/tmp}/oa-pre-push-XXXXXX")
 echo "OA pre-push: checking $commit; evidence: $report" >&2
+started=$(date +%s)
 PYTHONDONTWRITEBYTECODE=1 PYTHONIOENCODING=utf-8 "$OA_QUALITY_PYTHON" "$root/scripts/quality_gate.py" \
     --profile source --push-commit "$commit" --node "$OA_QUALITY_NODE" ${jobs:+--jobs "$jobs"} --report-dir "$report"
-# 代码审查报告第一阶段只提示：门禁通过后才跑，最多 3 分钟，结果和出错都不影响推送（docs/代码审查流程.md）。
-if [ -f "$root/scripts/review/report.py" ]; then
+# 代码审查报告第一阶段只提示：门禁通过后才跑，结果和出错都不影响推送（docs/代码审查流程.md）。
+# Git 在钩子前就连上了远端，空闲约 6 分钟会被 GitHub 断开，所以门禁加报告不超过 5 分钟，报告本身最多 3 分钟。
+push_budget=300
+review_limit=$((push_budget - $(date +%s) + started))
+[ "$review_limit" -le 180 ] || review_limit=180
+if [ "$review_limit" -lt 20 ]; then
+    echo 'OA pre-push: 门禁用时太长，这次跳过代码审查报告，不影响推送。' >&2
+elif [ -f "$root/scripts/review/report.py" ]; then
     PYTHONDONTWRITEBYTECODE=1 PYTHONIOENCODING=utf-8 "$OA_QUALITY_PYTHON" "$root/scripts/review/report.py" \
-        --head "$commit" --base "$base" --node "$OA_QUALITY_NODE" --report-dir "$report/review" --reuse >&2 \
+        --head "$commit" --base "$base" --node "$OA_QUALITY_NODE" --report-dir "$report/review" --reuse --deadline "$review_limit" >&2 \
         || echo 'OA pre-push: 代码审查报告没产出，不影响推送。' >&2
 fi

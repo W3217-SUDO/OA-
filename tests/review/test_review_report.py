@@ -348,12 +348,16 @@ class CoverageSafetyTest(unittest.TestCase):
 
 
 class NeverBlocksTest(unittest.TestCase):
-    def hook_run(self, gate_code: int, report_source: str | None):
+    def hook_run(self, gate_code: int, report_source: str | None, budget: int | None = None):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
             subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
             hook = root / ".git/hooks/pre-push"
-            hook.write_bytes((REPO / ".githooks/pre-push").read_bytes().replace(b"\r\n", b"\n"))
+            content = (REPO / ".githooks/pre-push").read_bytes().replace(b"\r\n", b"\n")
+            if budget is not None:
+                self.assertIn(b"push_budget=300", content)
+                content = content.replace(b"push_budget=300", f"push_budget={budget}".encode())
+            hook.write_bytes(content)
             hook.chmod(0o755)
             (root / "scripts/review").mkdir(parents=True)
             (root / "scripts/quality_gate.py").write_text(f"raise SystemExit({gate_code})\n", encoding="utf-8")
@@ -374,6 +378,19 @@ class NeverBlocksTest(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertIn("a" * 40, done.stderr)
         self.assertIn("b" * 40, done.stderr)
+
+    def test_report_limit_includes_gate_time(self):
+        arguments = "import sys\nprint('ARGS', sys.argv[1:])\n"
+        done = self.hook_run(0, arguments)
+        self.assertRegex(done.stderr, r"'--deadline', '180'")
+        # 门禁已用去大半：只给剩下的时间
+        done = self.hook_run(0, arguments, budget=60)
+        self.assertRegex(done.stderr, r"'--deadline', '(59|60)'")
+        # 剩下的不够：跳过报告，照样放行
+        done = self.hook_run(0, "print('REPORT_RAN')\n", budget=10)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn("REPORT_RAN", done.stdout + done.stderr)
+        self.assertIn("跳过代码审查报告", done.stderr)
 
     def test_gate_failure_still_blocks_and_skips_report(self):
         done = self.hook_run(1, "print('REPORT_RAN')\n")
