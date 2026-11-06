@@ -671,13 +671,14 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
             setPaymentPackageLoading(false);
         }
     };
-    const submitInternalPaymentPackage = async () => {
+    // 501666：“提交”只提交并回到待付款列表；“提交并打印”提交后直接打印。成功返回 true。
+    const submitInternalPaymentPackage = async (mode: "print" | "submit" = "print"): Promise<boolean> => {
         const { paymentPackagePreview, financeActionGates, setPaymentPackageLoading, setPaymentPackagePreview, setSelectedOriginalRows, load } = context;
         if (!paymentPackagePreview || paymentPackagePreview.submitted)
-            return;
+            return false;
         if (!financeActionGates.paymentPackage.tryEnter()) {
             message.info("操作正在提交，请勿重复点击");
-            return;
+            return false;
         }
         setPaymentPackageLoading(true);
         try {
@@ -686,13 +687,15 @@ export function createFinancePaymentsActions(context: FinancePaymentsDependencie
                 package_no: paymentPackagePreview.package_no,
                 comment: "待付款列表打包付款",
             });
-            setPaymentPackagePreview({ ...paymentPackagePreview, submitted: true });
+            setPaymentPackagePreview(mode === "submit" ? null : { ...paymentPackagePreview, submitted: true });
             setSelectedOriginalRows([]);
-            message.success("付款包已提交，可点“打印”导出付款申请单");
+            message.success(mode === "submit" ? "付款单已提交，可在待核销列表查看" : "付款包已提交");
             await load();
+            return true;
         }
         catch (error: any) {
             message.error(error?.response?.data?.detail || "付款包提交失败");
+            return false;
         }
         finally {
             financeActionGates.paymentPackage.leave();

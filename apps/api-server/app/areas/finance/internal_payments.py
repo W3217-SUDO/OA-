@@ -169,6 +169,40 @@ async def _package_list_fields(rows: list[BusinessRecord], db: AsyncSession) -> 
     return fields
 
 
+async def _packages_matching_fee_types(rows: list[BusinessRecord], selected: set[str], db: AsyncSession) -> list[BusinessRecord]:
+    """501666：包里任一笔费用属于所选费用类型（目录代码，选上级含下级）就保留；判定和费用列表的费用类型筛选一致。
+    只取费用的类型字段，不取整条费用。"""
+    from app.core.finance import _fee_type_filter_values
+    codes, descendant_codes, ids, names, base_types = await _fee_type_filter_values(selected, db)
+    if not codes:
+        # 选的不是目录代码（旧链接里的名称），按名称比。
+        codes, descendant_codes, ids, names, base_types = set(), set(), set(), set(selected), set(selected)
+    ids_by_package = {
+        row.id: [int(item) for item in ((row.data or {}).get("fee_ids") or []) if str(item).isdigit()]
+        for row in rows
+    }
+    fee_ids = sorted({fee_id for package_ids in ids_by_package.values() for fee_id in package_ids})
+    matched_fees: set[int] = set()
+    data = BusinessRecord.data
+    for start in range(0, len(fee_ids), 5000):
+        chunk = fee_ids[start:start + 5000]
+        for fee_id, type_id, type_code, legacy_code, type_name, subtype, commission, base in (await db.execute(select(
+            BusinessRecord.id, data["fee_type_id"].as_string(), data["fee_type_code"].as_string(),
+            data["legacy_fee_type_code"].as_string(), data["fee_type_name"].as_string(),
+            data["expense_subtype"].as_string(), data["commission_type"].as_string(), data["fee_type"].as_string(),
+        ).where(BusinessRecord.id.in_(chunk)))).all():
+            code = str(type_code or legacy_code or "")
+            type_id = str(type_id or "")
+            if code or type_id.isdigit():
+                hit = code in descendant_codes or (type_id.isdigit() and int(type_id) in ids)
+            else:
+                detailed = [str(value) for value in (type_name, subtype, commission) if value]
+                hit = any(value in names for value in detailed) if detailed else str(base or "") in base_types | names
+            if hit:
+                matched_fees.add(fee_id)
+    return [row for row in rows if any(fee_id in matched_fees for fee_id in ids_by_package.get(row.id, ()))]
+
+
 def _package_payee_matches(row: BusinessRecord, extra: dict, text: str, names: set[str]) -> bool:
     payee = str((row.data or {}).get("payee") or extra.get("payee") or "")
     return text.lower() in payee.lower() or payee.lower() in names
@@ -185,12 +219,15 @@ async def list_internal_payment_packages(
     payee: str = Query(""),
     payment_date_from: date | None = Query(None),
     payment_date_to: date | None = Query(None),
+    fee_types: str = Query("", max_length=2000),
     identity: dict = Depends(optional_finance_center_identity),
     db: AsyncSession = Depends(get_db),
 ):
     from app.core.permissions import (
         _record_dicts_for_identity, _record_scope_conditions,
     )
+    # 501666（shenhe 11-06）：待核销/已核销列表按费用类型筛选——包里任一笔费用是所选类型就列出。
+    wanted_fee_types = {item.strip() for item in fee_types.split(",") if item.strip() and item.strip() not in {"请选择", "全部"}}
     legacy_status_by_page_id = {
         "5001003006": "待核销",
         "50001003006": "待核销",
@@ -216,6 +253,7 @@ async def list_internal_payment_packages(
         conditions.append(BusinessRecord.serial_no.ilike(f"%{package_no.strip()}%"))
     # 内部付款包的收款人是员工账号，导入的还要按付款明细推出来，收款人筛选改在取出后按姓名/账号过滤。
     filter_payee_later = bool(payee.strip()) and package_scope == "internal"
+    filter_later = filter_payee_later or bool(wanted_fee_types)
     if payee.strip() and not filter_payee_later:
         conditions.append(BusinessRecord.data["payee"].as_string().ilike(f"%{payee.strip()}%"))
     if payment_date_from:
@@ -225,14 +263,16 @@ async def list_internal_payment_packages(
     query = select(BusinessRecord).where(*conditions).order_by(
         BusinessRecord.created_at.desc(), BusinessRecord.id.desc()
     )
-    if filter_payee_later:
+    if filter_later:
         candidates = (await db.scalars(query)).all()
+        if wanted_fee_types:
+            candidates = await _packages_matching_fee_types(list(candidates), wanted_fee_types, db)
         extra_fields = await _package_list_fields(candidates, db)
         text = payee.strip()
         names = {item.lower() for item in (await db.scalars(select(User.username).where(
             or_(User.username.ilike(f"%{text}%"), User.display_name.ilike(f"%{text}%"))
-        ))).all()}
-        matched = [row for row in candidates if _package_payee_matches(row, extra_fields[row.id], text, names)]
+        ))).all()} if filter_payee_later else set()
+        matched = [row for row in candidates if not filter_payee_later or _package_payee_matches(row, extra_fields[row.id], text, names)]
         total = len(matched)
         items = matched[(page - 1) * page_size:page * page_size] if page_size is not None else matched
     else:

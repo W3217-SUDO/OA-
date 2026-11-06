@@ -3577,6 +3577,8 @@ function FinanceCenterContent({
         const raw = rawCellValue(row, spec.label);
         if (spec.label === "费用类型") {
           const selected = Array.isArray(value) ? value : String(value).split(",");
+          // 501666：付款包（待核销/已核销）的费用类型由后端按包里各笔费用筛好，页面上不再按包本身的字段比。
+          if (activeRouteConfig.source === "paymentPackages") return true;
           return !selected.length || selected.some(type => [raw, row.data?.fee_type, row.data?.fee_type_name, row.data?.expense_subtype, row.data?.commission_type].includes(type));
         }
         if (spec.control === "date") {
@@ -4704,14 +4706,27 @@ function FinanceCenterContent({
           <h5>付款单打印</h5>
           <Space size={8}>
             {paymentPackagePreview ? (
-              <Button
-                type="link"
-                loading={paymentPackageLoading}
-                disabled={paymentPackagePreview.submitted}
-                onClick={() => void submitInternalPaymentPackage()}
-              >
-                {paymentPackagePreview.submitted ? "已提交" : "提交并打印"}
-              </Button>
+              <>
+                {/* 501666（shenhe 11-06）：单独“提交”，只提交不打印，回到待付款列表 */}
+                {!paymentPackagePreview.submitted && (
+                  <Button type="link" loading={paymentPackageLoading} onClick={() => void submitInternalPaymentPackage("submit")}>
+                    提交
+                  </Button>
+                )}
+                <Button
+                  type="link"
+                  loading={paymentPackageLoading}
+                  disabled={paymentPackagePreview.submitted}
+                  onClick={() => {
+                    const packageNo = paymentPackagePrintData.package_no;
+                    void submitInternalPaymentPackage("print").then((ok) => {
+                      if (ok) confirmPaymentWordPrint(() => downloadPaymentPrintWord(packageNo));
+                    });
+                  }}
+                >
+                  {paymentPackagePreview.submitted ? "已提交" : "提交并打印"}
+                </Button>
+              </>
             ) : (
               <Button
                 type="link"

@@ -226,8 +226,15 @@ export const paymentPackageRequestParams = (
     ...(text(query.routeField0) ? { package_no: text(query.routeField0) } : {}),
     ...(paymentDate ? { payment_date_from: paymentDate, payment_date_to: paymentDate } : {}),
     ...(text(query.routeField2) ? { payee: text(query.routeField2) } : {}),
+    // 501666：费用类型（第 5 个筛选项）交给后端按包里各笔费用筛，分页后的数量才对。
+    ...(packageFeeTypes(query.routeField4).length ? { fee_types: packageFeeTypes(query.routeField4).join(",") } : {}),
   };
 };
+
+const packageFeeTypes = (value: unknown) =>
+  (Array.isArray(value) ? value : String(value ?? "").split(","))
+    .map((item) => String(item).trim())
+    .filter((item) => item && item !== "请选择" && item !== "全部");
 
 export const normalizePaymentPackageResponse = (
   data: Record<string, any> | undefined,
