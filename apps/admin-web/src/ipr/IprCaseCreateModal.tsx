@@ -13,6 +13,7 @@ Select,
 Space,
 } from "antd";
 import type { Customer,IprRecord } from "./types";
+import { IprApplicantSelect } from "./IprApplicantSelect";
 import { IprApplicationTypeSelect, IprPhaseSelect } from "./IprApplicationTypeSelect";
 
 interface IprCaseCreateModalProps {
@@ -129,8 +130,12 @@ export function IprCaseCreateModal({ open, editing, form, customers, deadlineOff
             <Form.Item name="application_no" label="申请号/注册号">
               <Input />
             </Form.Item>
-            <Form.Item name="application_type" label="申请类型">
-              <IprApplicationTypeSelect />
+            <Form.Item noStyle shouldUpdate={(previous, current) => previous.case_kind !== current.case_kind}>
+              {({ getFieldValue }) => (
+                <Form.Item name="application_type" label="申请类型" rules={[{ required: true, message: "请选择申请类型" }]}>
+                  <IprApplicationTypeSelect caseKind={getFieldValue("case_kind")} />
+                </Form.Item>
+              )}
             </Form.Item>
             {/* 501612：案件阶段照旧系统，跟着申请类型给选项，默认“申请立案”。 */}
             <Form.Item noStyle shouldUpdate={(previous, current) => previous.application_type !== current.application_type}>
@@ -150,7 +155,7 @@ export function IprCaseCreateModal({ open, editing, form, customers, deadlineOff
                     <Input placeholder="不允许有空格及特殊字符" />
                   </Form.Item>
                   <Form.Item name="applicant" label="申请人" rules={[{ required: true, message: "请填写申请人" }]}>
-                    <Select mode="tags" tokenSeparators={[",", "，", "、"]} placeholder="可加多个，回车确认" open={false} />
+                    <IprApplicantSelect />
                   </Form.Item>
                   <Form.Item name="inventor" label="发明人" rules={[{ required: true, message: "请填写发明人" }]}>
                     <Input />
@@ -183,9 +188,9 @@ export function IprCaseCreateModal({ open, editing, form, customers, deadlineOff
               ) : (
                 <>
                   <Form.Item name="applicant" label="申请人/权利人">
-                    <Input />
+                    <IprApplicantSelect asText />
                   </Form.Item>
-                  <Form.Item name="case_manager" label="案件负责人">
+                  <Form.Item name="case_manager" label="案件管理人">
                     <Input />
                   </Form.Item>
                 </>
@@ -239,14 +244,6 @@ export function IprCaseCreateModal({ open, editing, form, customers, deadlineOff
                   </Form.Item>
                   <Button type="link" onClick={onOpenDeadlineOffset}>按基准日计算截止日期</Button>
                 </div>
-                {!patent && <div className="form-grid">
-                  <Form.Item name="annual_fee_year" label="年费年度">
-                    <InputNumber min={1} max={100} style={{ width: "100%" }} />
-                  </Form.Item>
-                  <Form.Item name="rate" label="费率">
-                    <InputNumber min={0} max={1} step={0.01} style={{ width: "100%" }} />
-                  </Form.Item>
-                </div>}
                 <Form.Item name="description" label="说明">
                   <Input.TextArea rows={3} />
                 </Form.Item>

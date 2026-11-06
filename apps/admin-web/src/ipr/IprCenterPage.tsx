@@ -829,6 +829,7 @@ export default function IprCenterPage({
       has_private_inventor: flag(data.has_private_inventor), has_iu: flag(data.has_iu),
     };
   };
+  const [draftEditRequest, setDraftEditRequest] = useState(0);
   const openEdit = (record: IprRecord) => {
     setEditing(record);
     form.resetFields();
@@ -1953,6 +1954,7 @@ export default function IprCenterPage({
             <div className="ipr-case-page-main">
               <IprCaseDetailHeader
                 detail={detail}
+                editRequest={draftEditRequest}
                 onOpenRebootCase={openRebootCase}
                 onSaved={(saved) => {
                   setDetail((current) => current && current.id === saved.id ? { ...current, ...saved, data: { ...current.data, ...saved.data } } : current);
@@ -1964,6 +1966,11 @@ export default function IprCenterPage({
                 {["草稿", "已驳回"].includes(detail.status) && (
                   <Button
                     onClick={() => {
+                      // 501187：非诉个案留在当前页直接改；诉讼类仍打开原来的编辑窗口。
+                      if (detail.data.case_category !== "litigation") {
+                        setDraftEditRequest((current) => current + 1);
+                        return;
+                      }
                       openEdit(detail);
                       setDetail(null);
                     }}

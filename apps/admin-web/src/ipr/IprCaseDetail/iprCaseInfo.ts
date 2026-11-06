@@ -131,7 +131,7 @@ export function iprCaseFlags(record: IprCaseLike): IprCaseFlag[] {
 }
 
 // “修改”时各格的输入方式和保存字段（后端 /ipr/cases/{id}/info）；案件编号、案件类型、客户不在这里改。
-export type IprCaseEditField = { field: string; type: "text" | "textarea" | "date" | "phase" | "annual-year" | "relief-rate" | "trade-type"; sources: string[] };
+export type IprCaseEditField = { field: string; type: "applicant" | "application-type" | "text" | "textarea" | "date" | "phase" | "annual-year" | "relief-rate" | "trade-type"; sources: string[] };
 export const IPR_CASE_EDIT_FIELDS: Record<string, IprCaseEditField> = {
   phase: { field: "case_phase", type: "phase", sources: ["case_phase"] },
   "register-date": { field: "case_register_date", type: "date", sources: ["case_register_date", "accepted_at"] },
@@ -147,7 +147,8 @@ export const IPR_CASE_EDIT_FIELDS: Record<string, IprCaseEditField> = {
   "ref-case-no": { field: "ref_case_no", type: "text", sources: ["ref_case_no"] },
   "card-no": { field: "card_no", type: "text", sources: ["card_no"] },
   "relief-rate": { field: "cost_slow_rate", type: "relief-rate", sources: ["cost_slow_rate", "relief_rate"] },
-  applicant: { field: "applicant_name", type: "text", sources: ["applicant_name", "applicant", "applicants"] },
+  type: { field: "application_type", type: "application-type", sources: ["application_type", "case_type_name", "case_type"] },
+  applicant: { field: "applicant_name", type: "applicant", sources: ["applicant_name", "applicant", "applicants"] },
   inventor: { field: "inventor", type: "text", sources: ["inventor", "case_inventor", "inventors"] },
   manager: { field: "case_manager", type: "text", sources: ["case_manager", "case_officer_name"] },
   "first-instance-date": { field: "first_instance_date", type: "date", sources: ["first_instance_date"] },

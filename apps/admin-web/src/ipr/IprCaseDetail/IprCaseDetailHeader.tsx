@@ -1,5 +1,7 @@
 import { roleActionAllowed } from "../../roleActions";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { IprApplicantSelect } from "../IprApplicantSelect";
+import { IprApplicationTypeSelect } from "../IprApplicationTypeSelect";
 import { Alert,Button,Card,Checkbox,DatePicker,Descriptions,Input,Select,Space,Tag,message } from "antd";
 import { api } from "../../api";
 import Table from "../../components/ResizableTable";
@@ -12,10 +14,12 @@ interface IprCaseDetailHeaderProps {
   detail: IprRecord;
   onOpenRebootCase: (caseId: number) => void;
   onSaved?: (record: IprRecord) => void;
+  /** 501187：点“编辑草稿”时加一，非诉案件直接进入本页的修改状态。 */
+  editRequest?: number;
 }
 
-export function IprCaseDetailHeader({ detail, onOpenRebootCase, onSaved }: IprCaseDetailHeaderProps) {
-  if (!isIprLawsuit(detail)) return <IprCaseInfoGrid detail={detail} onOpenRebootCase={onOpenRebootCase} onSaved={onSaved} />;
+export function IprCaseDetailHeader({ detail, onOpenRebootCase, onSaved, editRequest }: IprCaseDetailHeaderProps) {
+  if (!isIprLawsuit(detail)) return <IprCaseInfoGrid detail={detail} editRequest={editRequest} onOpenRebootCase={onOpenRebootCase} onSaved={onSaved} />;
   return (
     <>
       {isLegacyIprRecord(detail) ? (
@@ -104,7 +108,7 @@ export function IprCaseDetailHeader({ detail, onOpenRebootCase, onSaved }: IprCa
           },
           {
             key: "manager",
-            label: "案件负责人",
+            label: "案件管理人",
             children: detail.data.case_manager || "—",
           },
           {
@@ -309,7 +313,7 @@ export function IprCpcPanel({ detail, cpcApplications, cpcApplicationsLoading, c
 }
 
 /** 非诉案件：按原系统案件页排成四列信息格，右侧一列是优先权等勾选项；右上角“修改/保存”（迁移案件也能改）。 */
-function IprCaseInfoGrid({ detail, onOpenRebootCase, onSaved }: Pick<IprCaseDetailHeaderProps, "detail" | "onOpenRebootCase" | "onSaved">) {
+function IprCaseInfoGrid({ detail, onOpenRebootCase, onSaved, editRequest }: Pick<IprCaseDetailHeaderProps, "detail" | "onOpenRebootCase" | "onSaved" | "editRequest">) {
   const rebootIds: number[] = Array.isArray(detail.data.reboot_case_ids) ? detail.data.reboot_case_ids : [];
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -325,6 +329,13 @@ function IprCaseInfoGrid({ detail, onOpenRebootCase, onSaved }: Pick<IprCaseDeta
       .then(({ data }) => setPhaseOptions(data.items || []))
       .catch(() => setPhaseOptions([]));
   };
+  const handledEditRequest = useRef(editRequest || 0);
+  useEffect(() => {
+    if ((editRequest || 0) > handledEditRequest.current) {
+      handledEditRequest.current = editRequest || 0;
+      startEdit();
+    }
+  }, [editRequest]);  // eslint-disable-line react-hooks/exhaustive-deps
   const save = async () => {
     const before = iprCaseEditValues(detail);
     const payload: Record<string, unknown> = {};
@@ -355,6 +366,8 @@ function IprCaseInfoGrid({ detail, onOpenRebootCase, onSaved }: Pick<IprCaseDeta
     if (!editing || !config) return shown;
     const value = values[key] || "";
     const set = (next: string) => setValues((current) => ({ ...current, [key]: next }));
+    if (config.type === "applicant") return <IprApplicantSelect size="small" asText value={value} onChange={set} />;
+    if (config.type === "application-type") return <IprApplicationTypeSelect size="small" caseKind={detail.data.case_kind} value={value} onChange={(next) => set(next || "")} />;
     if (config.type === "date") {
       return <DatePicker size="small" style={{ width: "100%" }} value={value ? dayjs(value) : null}
         onChange={(next) => set(next ? next.format("YYYY-MM-DD") : "")} />;

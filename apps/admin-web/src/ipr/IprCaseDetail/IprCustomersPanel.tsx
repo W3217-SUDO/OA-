@@ -2,6 +2,14 @@ import { iprCaseIgnoresStatus } from "../constants";
 import { POPUP_WIDTH } from "../../components/common/popupSize";
 import { Button,Card,Checkbox,Modal,Space,Tag } from "antd";
 import Table from "../../components/ResizableTable";
+
+const isActualAdmin = () => {
+  try {
+    return (JSON.parse(localStorage.getItem("user") || "{}").actual_role_ids || []).includes("admin");
+  } catch {
+    return false;
+  }
+};
 import type { IprCaseCustomer,IprCaseCustomerCandidate,IprRecord } from "../types";
 
 interface IprCustomersPanelProps {
@@ -44,10 +52,11 @@ export function IprCustomersPanel({
         title="案件客户与联系人"
         style={{ marginTop: 16 }}
         extra={
-          detail.status === "草稿" ||
+          // 501187 第 10 条：案件上的客户只有系统管理员能改。
+          isActualAdmin() && (detail.status === "草稿" ||
           detail.status === "已驳回" ||
           detail.status === "在办" ||
-          iprCaseIgnoresStatus(detail) ? (
+          iprCaseIgnoresStatus(detail)) ? (
             <Button size="small" onClick={onOpenCustomerSelector}>
               维护案件客户
             </Button>

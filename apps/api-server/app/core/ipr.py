@@ -16,12 +16,27 @@ from app.models_shared import (
 )
 
 
-async def _next_ipr_case_serial(case_kind: str, db: AsyncSession) -> str:
-    prefix = "ZL" if case_kind == "专利" else "SB"
-    # The legacy system distinguishes patent and trademark case ledgers.  Keep
-    # that distinction in the visible serial rather than reusing lawsuit IDs.
-    for _ in range(20):
-        serial = f"{prefix}{datetime.now():%y%m%d%H%M%S}{uuid4().hex[:4].upper()}"
+async def _ipr_type_short_code(case_kind: str, application_type: str, db: AsyncSession) -> str:
+    """类型简码沿用老系统（系统参数 ipr_case_type 的 short_code）；对不上时按专利/商标取默认。"""
+    name = application_type.strip()
+    if name:
+        row = await db.scalar(select(SystemParameter).where(SystemParameter.category == "ipr_case_type", SystemParameter.name == name))
+        code = str(((row.extra or {}).get("short_code") if row else "") or "").strip()
+        if code:
+            return code
+    return "PI" if case_kind == "专利" else "TM"
+
+
+async def _next_ipr_case_serial(case_kind: str, db: AsyncSession, application_type: str = "") -> str:
+    """501187：所简码 HZ + 类型简码 + 年份两位 + 当年流水五位，流水每年从 00001 起、所有类型共用。"""
+    code = await _ipr_type_short_code(case_kind, application_type, db)
+    year = f"{datetime.now():%y}"
+    pattern = re.compile(rf"^HZ[A-Za-z0-9]*?{year}(\d{{5}})$")
+    existing = await db.scalars(select(BusinessRecord.serial_no).where(
+        BusinessRecord.module == "ipr_case", BusinessRecord.serial_no.like("HZ%")))
+    current = max((int(match.group(1)) for match in map(pattern.match, existing) if match), default=0)
+    for sequence in range(current + 1, current + 21):
+        serial = f"HZ{code}{year}{sequence:05d}"
         if not await db.scalar(select(BusinessRecord.id).where(BusinessRecord.serial_no == serial)):
             return serial
     raise HTTPException(status_code=503, detail="知识产权案件编号生成失败，请稍后重试")
@@ -243,7 +258,7 @@ async def _ipr_case_list_conditions(
 
 
 def _ipr_case_export_headers() -> list[str]:
-    return ["案件编号", "案件类型", "案件名称", "客户", "申请号", "申请类型", "申请人/权利人", "案件阶段", "案件负责人", "代理人", "撰稿人", "案源人", "申请日", "受理日", "案源日", "提交人", "提交日", "发明人", "办理期限", "年费年度", "年费监控", "费率", "状态"]
+    return ["案件编号", "案件类型", "案件名称", "客户", "申请号", "申请类型", "申请人/权利人", "案件阶段", "案件管理人", "代理人", "撰稿人", "案源人", "申请日", "受理日", "案源日", "提交人", "提交日", "发明人", "办理期限", "年费年度", "年费监控", "费率", "状态"]
 
 
 def _ipr_case_export_values(row: BusinessRecord) -> list[object]:
@@ -612,7 +627,7 @@ def _ipr_case_document_bytes(record: BusinessRecord, document_type: str) -> tupl
         ("申请号/注册号", data.get("application_no") or "【待补充】"),
         ("申请类型", data.get("application_type") or data.get("case_type_name") or "【待补充】"),
         ("申请人/权利人", data.get("applicant") or "【待补充】"),
-        ("案件负责人", data.get("case_manager") or "【待补充】"),
+        ("案件管理人", data.get("case_manager") or "【待补充】"),
         ("申请日期", data.get("application_date") or "【待补充】"),
         ("办理期限", data.get("deadline") or "【待补充】"),
         ("年费年度", data.get("annual_fee_year") or "【待补充】"),

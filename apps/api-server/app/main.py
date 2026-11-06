@@ -511,6 +511,8 @@ app.include_router(change_logs_router)
 app.include_router(personal_agent_router)
 from app.areas.crm.company_lookup import router as company_lookup_router  # 501106 企查查
 app.include_router(company_lookup_router)
+from app.areas.ipr.applicants import router as ipr_applicants_router  # 501187 非诉申请人库
+app.include_router(ipr_applicants_router)
 from app.areas.legal.case_parties import router as case_parties_router  # 501226 案件当事人信息
 app.include_router(case_parties_router)
 from app.areas.legal.case_clue_move import router as case_clue_move_router  # 501337 线索整条移到其他案子

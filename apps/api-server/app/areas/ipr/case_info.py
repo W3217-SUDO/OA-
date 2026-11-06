@@ -37,6 +37,7 @@ INFO_FIELD_KEYS = {
     "card_no": ("card_no",),
     "cost_slow_rate": ("cost_slow_rate", "rate"),
     "applicant_name": ("applicant_name", "applicant"),
+    "application_type": ("application_type", "case_type_name"),
     "inventor": ("inventor", "case_inventor"),
     "case_manager": ("case_manager",),
     "trademark_ids": ("trademark_ids",),
@@ -50,7 +51,7 @@ INFO_LABELS = {
     "case_phase": "案件阶段", "case_register_date": "立案日", "case_request_no": "申请号", "case_name": "名称",
     "case_request_date": "申请日", "authorization_date": "授权日", "case_origin_people_name": "案源人", "agent": "代理人",
     "writer": "撰稿人", "first_annual_year": "首年年费年度", "case_origin_date": "案源日", "ref_case_no": "关联案号",
-    "card_no": "证件号码", "cost_slow_rate": "费用减缓比例", "applicant_name": "申请人", "inventor": "发明人",
+    "card_no": "证件号码", "cost_slow_rate": "费用减缓比例", "applicant_name": "申请人", "application_type": "案件类型", "inventor": "发明人",
     "case_manager": "案件管理人", "has_priority": "优先权", "has_foreign": "涉外案件", "has_relief": "费用减缓",
     "has_private_inventor": "不公发明人", "has_iu": "一发一实",
     "trademark_ids": "商标类别", "trade_product_service": "商品服务", "first_instance_date": "初审公告", "trade_type_name": "商标类型",
@@ -80,6 +81,7 @@ class IprCaseInfoInput(BaseModel):
     card_no: str | None = Field(default=None, max_length=64)
     cost_slow_rate: str | None = Field(default=None, max_length=8)
     applicant_name: str | None = Field(default=None, max_length=500)
+    application_type: str | None = Field(default=None, max_length=128)
     inventor: str | None = Field(default=None, max_length=500)
     case_manager: str | None = Field(default=None, max_length=128)
     has_priority: bool | None = None
@@ -142,10 +144,17 @@ async def update_ipr_case_info(case_id: int, body: IprCaseInfoInput, identity: d
         record.title = values["case_name"].strip()
     if not changed:
         return _record_dict(record, await _allowed_field_keys(identity, db))
+    # 501187 第 10 条：申请人改动在案件日志里写明原值和新值。
+    applicant_before = str((record.data or {}).get("applicant_name") or (record.data or {}).get("applicant") or "")
+    comment = "修改：" + "、".join(changed)
+    if "applicant_name" in values and applicant_before != str(data.get("applicant_name") or ""):
+        comment += f"（申请人：{applicant_before or '空'} → {data.get('applicant_name') or '空'}）"
     record.data = data
     record.updated_at = func.now()
+    from app.areas.ipr.applicants import sync_case_applicants
+    await sync_case_applicants(record, identity["username"], db)
     db.add(WorkflowEvent(record_id=record.id, action="修改案件信息", from_status=record.status, to_status=record.status,
-                         operator=identity["username"], comment="修改：" + "、".join(changed)))
+                         operator=identity["username"], comment=comment))
     await db.commit()
     await db.refresh(record)
     return _record_dict(record, await _allowed_field_keys(identity, db))

@@ -559,7 +559,7 @@ async def create_ipr_case(body: IprCaseCreateInput, identity: dict = Depends(cur
     if not customer: raise HTTPException(status_code=422, detail="客户不存在或当前账号无权选择")
     contract = await _ensure_record_module(body.contract_record_id, "contract", identity, db) if body.contract_record_id else None
     if contract and contract.customer != customer.title: raise HTTPException(status_code=422, detail="合同的客户与所选客户不一致")
-    serial_no = await _next_ipr_case_serial(case_kind, db)
+    serial_no = await _next_ipr_case_serial(case_kind, db, body.application_type)
     data = {
         "case_kind": case_kind, "case_category": body.case_category,
         "application_no": body.application_no.strip(), "application_type": body.application_type.strip(),
@@ -570,6 +570,8 @@ async def create_ipr_case(body: IprCaseCreateInput, identity: dict = Depends(cur
         "annual_fee_year": body.annual_fee_year, "annual_fee_monitoring": (body.case_phase.strip() == "年费监控"), "rate": body.rate,
         "created_from": "ipr_case_center",
     }
+    if body.application_type.strip():
+        data["case_type_name"] = body.application_type.strip()  # 501187：选的申请类型同时是案件类型
     if contract:
         data.update({"contract_record_id": contract.id, "contract_no": contract.serial_no, "created_from": "contract_center"})
     if body.case_category == "litigation":
@@ -591,6 +593,8 @@ async def create_ipr_case(body: IprCaseCreateInput, identity: dict = Depends(cur
     record = BusinessRecord(module="ipr_case", serial_no=serial_no, title=body.title.strip(), customer=customer.title, status="草稿", owner=identity["username"], department=customer.department, description=body.description.strip(), data=data)
     db.add(record); await db.flush()
     db.add(IprCaseCustomer(case_record_id=record.id, customer_record_id=customer.id, is_primary=True, created_by=identity["username"]))
+    from app.areas.ipr.applicants import sync_case_applicants
+    await sync_case_applicants(record, identity["username"], db)
     db.add(WorkflowEvent(record_id=record.id, action="新建知识产权案件草稿", to_status=record.status, operator=identity["username"], comment=f"{case_kind}{'诉讼' if body.case_category == 'litigation' else '非诉讼'}案件"))
     await assess_conflict_review(record, identity, db, trigger="case_save")
     await db.commit(); await db.refresh(record)
@@ -675,7 +679,7 @@ async def batch_create_ipr_cases(body: IprCaseBatchCreateInput, identity: dict =
         db.add(batch)
         await db.flush()
         for row_no, row, register_date, deadline in valid_rows:
-            serial_no = await _next_ipr_case_serial(case_kind, db)
+            serial_no = await _next_ipr_case_serial(case_kind, db, row.application_type)
             title = row.title.strip() or f"{row.case_type.strip()}案件"
             row_data = {
                 "case_kind": case_kind,
@@ -711,6 +715,8 @@ async def batch_create_ipr_cases(body: IprCaseBatchCreateInput, identity: dict =
             )
             db.add(record)
             await db.flush()
+            from app.areas.ipr.applicants import sync_case_applicants
+            await sync_case_applicants(record, identity["username"], db)
             db.add(IprCaseCustomer(case_record_id=record.id, customer_record_id=customer.id, is_primary=True, created_by=identity["username"]))
             db.add(IprCaseBatchItem(
                 batch_id=batch.id,
@@ -950,6 +956,8 @@ async def update_ipr_case(case_id: int, body: IprCaseUpdateInput, identity: dict
     for key in {"application_no", "application_type", "case_phase", "submitter"}:
         if key in values:
             data[key] = str(values.pop(key) or "").strip()
+    if data.get("application_type") and "application_type" in body.model_fields_set:
+        data["case_type_name"] = data["application_type"]  # 501187：选的申请类型同时是案件类型
     await apply_patent_form(data, form_values, db)
     for key in {"application_date", "deadline", "acceptance_date", "source_date"}:
         if key in values:
@@ -983,6 +991,8 @@ async def update_ipr_case(case_id: int, body: IprCaseUpdateInput, identity: dict
         else:
             restored_data["case_phase"] = previous_phase
         record.data = restored_data
+    from app.areas.ipr.applicants import sync_case_applicants
+    await sync_case_applicants(record, identity["username"], db)
     db.add(WorkflowEvent(record_id=record.id, action="修改知识产权案件基本信息", from_status=before, to_status=record.status, operator=identity["username"], comment="更新案件基本信息"))
     await db.commit(); await db.refresh(record)
     return _record_dict(record, await _allowed_field_keys(identity, db))
@@ -1153,6 +1163,8 @@ async def list_ipr_case_customer_candidates(case_id: int, keyword: str = "", ide
 @router.put(f"{settings.api_prefix}/ipr/cases/{{case_id}}/customers")
 async def replace_ipr_case_customers(case_id: int, body: IprCaseCustomerReplaceInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Atomically replace an IPR case's customers and keep its shared primary customer field in sync."""
+    if "admin" not in (identity.get("_actual_role_ids") or []):
+        raise HTTPException(status_code=403, detail="客户仅管理员可修改")  # 501187 第 10 条
     from app.core.permissions import _require_role_action
     await _require_role_action(identity, db, "ipr.case.update")
     from app.core.permissions import (

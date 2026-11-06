@@ -199,6 +199,12 @@ def _apply_bank_statement_lines(connection: Connection, _upgrade_schema: Callabl
     BankStatementLine.__table__.create(connection, checkfirst=True)
 
 
+def _apply_ipr_applicants(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    from app.data_models.ipr_applicant import IprApplicant, IprApplicantCase
+    IprApplicant.__table__.create(connection, checkfirst=True)
+    IprApplicantCase.__table__.create(connection, checkfirst=True)
+
+
 def _apply_soft_delete(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
     upgrade_soft_delete(connection)
 
@@ -289,6 +295,9 @@ def _run_versioned_schema_migrations(
         ("case_phase_expected_days_v1", _apply_case_phase_expected_days),
         # 改案件保存时查关联线索慢（陶威 11-06 同意加索引）。
         ("business_record_linked_case_no_index_v1", _apply_clue_linked_case_no_index),
+        # 501187 非诉申请人库；新表要补财务缓存触发器。
+        ("ipr_applicants_v1", _apply_ipr_applicants),
+        ("finance_query_revision_ipr_applicants_v1", _apply_finance_query_revision),
     )
     for revision, migration in revisions:
         if connection.execute(

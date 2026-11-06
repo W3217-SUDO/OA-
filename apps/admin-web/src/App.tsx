@@ -209,6 +209,7 @@ const WarehousePage = lazyWithVersionRecovery("warehouse", () => import("./Wareh
 const ReportCenterPage = lazyWithVersionRecovery("report", () => import("./ReportCenterPage"));
 const CustomerCenterPage = lazyWithVersionRecovery("customer", () => import("./crm"));
 const PartyLibraryPage = lazyWithVersionRecovery("party-library", () => import("./crm/PartyLibraryPage"));
+const IprApplicantLibraryPage = lazyWithVersionRecovery("ipr-applicant-library", () => import("./crm/IprApplicantLibraryPage"));
 const CompanyLibraryPage = lazyWithVersionRecovery("company-library", () => import("./crm/CompanyLibraryPage"));
 const ContractCenterPage = lazyWithVersionRecovery("contract", () => import("./contract"));
 const AuditLogPage = lazyWithVersionRecovery("audit-log", () => import("./AuditLogPage"));
@@ -374,6 +375,7 @@ const menuItems: NavItem[] = [
       },
       { key: "party-recycle", label: "当事人回收站" },
       { key: "party-company-info", label: "企业信息查询" },
+      { key: "party-ipr-applicants", label: "非诉申请人库" },
     ],
   },
   {
@@ -2007,6 +2009,8 @@ export default function App() {
         }))} />
     ) : route.startsWith("seal-") ? (
       <SealCenterPage initialView={active} onNavigate={navigate} />
+    ) : route === "party-ipr-applicants" ? (
+      <IprApplicantLibraryPage />
     ) : route === "party-company-info" ? (
       <CompanyLibraryPage onCreateCustomer={() => navigate("customer-new")} />
     ) : route.startsWith("party-") ? (

@@ -18,6 +18,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 
 # 不做逻辑删除的表：技术数据、派生/重建数据、访问令牌、通知投递等；它们仍可物理清理。
 EXCLUDED_TABLES = frozenset({
+    "ipr_applicant_cases",  # 501187 派生关联，按案件当前申请人刷新
     "mcp_access_tokens", "mcp_call_logs", "notification_deliveries", "notification_sync_schedules", "notifications",
     "security_policies", "system_configs", "role_permissions", "party_library", "data_change_logs",
 })

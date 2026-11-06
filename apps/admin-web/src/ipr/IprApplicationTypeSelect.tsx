@@ -12,12 +12,19 @@ const loadOptions = () => {
   return cache;
 };
 
-export function IprApplicationTypeSelect({ value, onChange }: { value?: string; onChange?: (value: string | undefined) => void }) {
+// 501187：按专利或商标列类型；软著、高新认定等不属于两边的两边都列。
+const belongsToOtherKind = (name: string, kind?: string) => {
+  const trademark = name.includes("商标");
+  const patent = /专利|PCT|外观设计/.test(name);
+  return kind === "专利" ? trademark : kind === "商标" ? patent : false;
+};
+
+export function IprApplicationTypeSelect({ value, onChange, caseKind, size }: { caseKind?: string; size?: "small" | "middle"; value?: string; onChange?: (value: string | undefined) => void }) {
   const [names, setNames] = useState<string[]>([]);
   useEffect(() => { let alive = true; void loadOptions().then((items) => { if (alive) setNames(items); }); return () => { alive = false; }; }, []);
-  const options = names.map((name) => ({ value: name, label: name }));
+  const options = names.filter((name) => !belongsToOtherKind(name, caseKind)).map((name) => ({ value: name, label: name }));
   if (value && !names.includes(value)) options.unshift({ value, label: `${value}（原值，不在选项里）` });
-  return <Select showSearch allowClear placeholder="请选择申请类型" optionFilterProp="label" value={value || undefined}
+  return <Select size={size} showSearch allowClear placeholder="请选择申请类型" optionFilterProp="label" value={value || undefined}
     onChange={(next) => onChange?.(next ?? undefined)} options={options} />;
 }
 
