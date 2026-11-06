@@ -1,6 +1,7 @@
 """浏览器钉钉扫码授权与首次员工账号绑定。"""
 
 import hmac
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode, urlsplit
@@ -15,9 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.dingtalk import DingTalkError, DingTalkMembershipError, dingtalk_client
+from app.dingtalk import DingTalkError, DingTalkMembershipError, DingTalkOutOfScopeError, dingtalk_client
 from .dingtalk_auth import bind_verified_employee, login_verified_employee
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix=f"{settings.api_prefix}/auth/dingtalk/web")
 STATE_COOKIE = "oa_dingtalk_web_state"
 BIND_COOKIE = "oa_dingtalk_web_binding"
@@ -92,8 +94,14 @@ async def web_login(body: WebLoginInput, request: Request, db: AsyncSession = De
     try:
         ding_user = await dingtalk_client.user_by_web_auth_code(body.auth_code)
     except DingTalkMembershipError as exc:
+        logger.warning("钉钉扫码登录被拒：扫码账号不是企业内部员工")
         raise HTTPException(status_code=403, detail="扫码账号不是当前公司的内部员工，无法登录") from exc
+    except DingTalkOutOfScopeError as exc:
+        logger.warning("钉钉扫码登录被拒：步骤=%s 错误码=%s", exc.step, exc.code)
+        raise HTTPException(status_code=403, detail="账号不在应用授权范围，请联系管理员处理") from exc
     except (DingTalkError, httpx.HTTPError, ValueError) as exc:
+        # 只记步骤和错误码，不记授权码、凭证和异常文字。
+        logger.warning("钉钉扫码登录失败：步骤=%s 错误码=%s", getattr(exc, "step", "未知"), getattr(exc, "code", type(exc).__name__))
         raise HTTPException(status_code=502, detail="钉钉扫码身份校验失败，请重新扫码或联系管理员检查登录配置") from exc
     data = await login_verified_employee(ding_user, db)
     if data is None:

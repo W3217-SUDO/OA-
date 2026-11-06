@@ -17,6 +17,39 @@ class DingTalkMembershipError(DingTalkError):
     """扫码身份不是应用所属企业的内部员工。"""
 
 
+class DingTalkLoginStepError(DingTalkError):
+    """扫码登录某一步失败。只带步骤和错误码，日志可以放心记：不含授权码、凭证和带凭证的地址。"""
+
+    def __init__(self, step: str, code: str | int, message: str = "钉钉扫码身份校验失败") -> None:
+        super().__init__(message)
+        self.step = step
+        self.code = code
+
+
+class DingTalkOutOfScopeError(DingTalkLoginStepError):
+    """钉钉明确答复：这个员工不在应用的通讯录授权范围内，重新扫码也没用。"""
+
+
+# 50002：员工不在授权范围；50004：部门不在授权范围。
+LOGIN_OUT_OF_SCOPE_CODES = frozenset({50002, 50004})
+
+
+def _login_http_error(response: httpx.Response, step: str) -> DingTalkLoginStepError:
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    detail = payload.get("code") if isinstance(payload, dict) else ""
+    return DingTalkLoginStepError(step, f"http-{response.status_code}{f'/{detail}' if detail else ''}")
+
+
+def _login_errcode_error(payload: dict, step: str) -> DingTalkLoginStepError:
+    code = payload.get("errcode")
+    if code in LOGIN_OUT_OF_SCOPE_CODES or "授权范围" in str(payload.get("errmsg") or ""):
+        return DingTalkOutOfScopeError(step, code, "账号不在应用授权范围")
+    return DingTalkLoginStepError(step, code)
+
+
 class DingTalkRejectedError(DingTalkError):
     """钉钉接口明确拒绝了本次工作通知。"""
 
@@ -93,41 +126,62 @@ class DingTalkClient:
 
     async def user_by_web_auth_code(self, auth_code: str) -> dict:
         """网页授权码与端内免登码不同，先换用户凭证再核验企业员工身份。"""
-        async with httpx.AsyncClient(timeout=10) as client:
-            token_response = await client.post("https://api.dingtalk.com/v1.0/oauth2/userAccessToken", json={
-                "clientId": settings.dingtalk_app_key, "clientSecret": settings.dingtalk_app_secret,
-                "code": auth_code, "grantType": "authorization_code",
-            })
-            token_response.raise_for_status()
-            token_data = token_response.json()
-            if not isinstance(token_data, dict) or not isinstance(token_data.get("accessToken"), str) or not token_data["accessToken"]:
-                raise DingTalkError("钉钉扫码未返回用户访问凭证")
-            user_response = await client.get("https://api.dingtalk.com/v1.0/contact/users/me",
-                                             headers={"x-acs-dingtalk-access-token": token_data["accessToken"]})
-            user_response.raise_for_status()
-            user_data = user_response.json()
-            if not isinstance(user_data, dict) or not isinstance(user_data.get("unionId"), str) or not user_data["unionId"]:
-                raise DingTalkError("钉钉扫码未返回用户身份")
-            app_token = await self.access_token()
-            member_response = await client.post("https://oapi.dingtalk.com/topapi/user/getbyunionid",
-                                                params={"access_token": app_token}, json={"unionid": user_data["unionId"]})
-            member_response.raise_for_status()
-            member_data = member_response.json()
-            if not isinstance(member_data, dict) or type(member_data.get("errcode")) is not int or member_data["errcode"] != 0:
-                raise DingTalkError("钉钉企业通讯录身份查询失败")
-            member = member_data.get("result")
-            if not isinstance(member, dict) or type(member.get("contact_type")) is not int or member["contact_type"] != 0 or not isinstance(member.get("userid"), str) or not member["userid"]:
-                raise DingTalkMembershipError("钉钉扫码账号不是企业内部员工")
-            detail_response = await client.post("https://oapi.dingtalk.com/topapi/v2/user/get",
-                                                params={"access_token": app_token}, json={"userid": member["userid"], "language": "zh_CN"})
-            detail_response.raise_for_status()
-            detail_data = detail_response.json()
-            if not isinstance(detail_data, dict) or type(detail_data.get("errcode")) is not int or detail_data["errcode"] != 0:
-                raise DingTalkError("无法读取扫码员工的企业通讯录信息")
-            detail = detail_data.get("result")
-            if not isinstance(detail, dict) or detail.get("userid") != member["userid"]:
-                raise DingTalkError("钉钉企业员工身份返回不完整")
-            return {"user_id": member["userid"], "name": str(detail.get("name") or "").strip(), "mobile": str(detail.get("mobile") or "").strip()}
+        step = "换用户凭证"
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                token_response = await client.post("https://api.dingtalk.com/v1.0/oauth2/userAccessToken", json={
+                    "clientId": settings.dingtalk_app_key, "clientSecret": settings.dingtalk_app_secret,
+                    "code": auth_code, "grantType": "authorization_code",
+                })
+                if not token_response.is_success:
+                    raise _login_http_error(token_response, step)
+                token_data = token_response.json()
+                if not isinstance(token_data, dict) or not isinstance(token_data.get("accessToken"), str) or not token_data["accessToken"]:
+                    raise DingTalkLoginStepError(step, "invalid-response", "钉钉扫码未返回用户访问凭证")
+                step = "读取扫码用户"
+                user_response = await client.get("https://api.dingtalk.com/v1.0/contact/users/me",
+                                                 headers={"x-acs-dingtalk-access-token": token_data["accessToken"]})
+                if not user_response.is_success:
+                    raise _login_http_error(user_response, step)
+                user_data = user_response.json()
+                if not isinstance(user_data, dict) or not isinstance(user_data.get("unionId"), str) or not user_data["unionId"]:
+                    raise DingTalkLoginStepError(step, "invalid-response", "钉钉扫码未返回用户身份")
+                step = "获取应用凭证"
+                app_token = await self.access_token()
+                step = "按 unionId 查员工"
+                member_response = await client.post("https://oapi.dingtalk.com/topapi/user/getbyunionid",
+                                                    params={"access_token": app_token}, json={"unionid": user_data["unionId"]})
+                if not member_response.is_success:
+                    raise _login_http_error(member_response, step)
+                member_data = member_response.json()
+                if not isinstance(member_data, dict) or type(member_data.get("errcode")) is not int:
+                    raise DingTalkLoginStepError(step, "invalid-response", "钉钉企业通讯录身份查询失败")
+                if member_data["errcode"] != 0:
+                    raise _login_errcode_error(member_data, step)
+                member = member_data.get("result")
+                if not isinstance(member, dict) or type(member.get("contact_type")) is not int or member["contact_type"] != 0 or not isinstance(member.get("userid"), str) or not member["userid"]:
+                    raise DingTalkMembershipError("钉钉扫码账号不是企业内部员工")
+                step = "读取员工详情"
+                detail_response = await client.post("https://oapi.dingtalk.com/topapi/v2/user/get",
+                                                    params={"access_token": app_token}, json={"userid": member["userid"], "language": "zh_CN"})
+                if not detail_response.is_success:
+                    raise _login_http_error(detail_response, step)
+                detail_data = detail_response.json()
+                if not isinstance(detail_data, dict) or type(detail_data.get("errcode")) is not int:
+                    raise DingTalkLoginStepError(step, "invalid-response", "无法读取扫码员工的企业通讯录信息")
+                if detail_data["errcode"] != 0:
+                    raise _login_errcode_error(detail_data, step)
+                detail = detail_data.get("result")
+                if not isinstance(detail, dict) or detail.get("userid") != member["userid"]:
+                    raise DingTalkLoginStepError(step, "invalid-response", "钉钉企业员工身份返回不完整")
+                return {"user_id": member["userid"], "name": str(detail.get("name") or "").strip(), "mobile": str(detail.get("mobile") or "").strip()}
+        except DingTalkError as exc:
+            if isinstance(exc, (DingTalkLoginStepError, DingTalkMembershipError)):
+                raise
+            raise DingTalkLoginStepError(step, type(exc).__name__, str(exc)) from exc
+        except (httpx.HTTPError, ValueError) as exc:
+            # 只留异常类型：httpx 的报错文字里有请求地址，地址可能带 access_token。
+            raise DingTalkLoginStepError(step, type(exc).__name__) from exc
 
     async def send_work_notification(self, user_id: str, title: str, content: str) -> str:
         token = await self.access_token()
