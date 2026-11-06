@@ -81,6 +81,7 @@ type Props = {
   onNavigate: (route: string) => void;
   onOpenCase: (caseNo: string) => void;
   onRefresh: () => void;
+  updatedLabel?: string;
   // 首页分端待办：有多个端时（系统管理员固定全部端）按端分页签，一次只显示一个端；
   // 没有端（角色未归属）时显示原来的“我的待办”。
   portals?: DashboardPortal[];
@@ -89,7 +90,7 @@ type Props = {
   onOpenMetric?: (metric: DashboardData["metrics"][number]) => void;
 };
 
-export default function DashboardOverview({ showHead = true, greeting, name, briefing, todos, cases, todoStatus, caseStatus, todosLoading, casesLoading, todosError, casesError, canNavigate, canOpenCase, onNavigate, onOpenCase, onRefresh, portals = [], portalData, portalsLoading = false, onOpenMetric }: Props) {
+export default function DashboardOverview({ updatedLabel, showHead = true, greeting, name, briefing, todos, cases, todoStatus, caseStatus, todosLoading, casesLoading, todosError, casesError, canNavigate, canOpenCase, onNavigate, onOpenCase, onRefresh, portals = [], portalData, portalsLoading = false, onOpenMetric }: Props) {
   const showPeople = usePeopleNames();
   const [portalKey, setPortalKey] = useState(rememberedPortal);
   const [gridRef, gridWidth] = useElementWidth<HTMLDivElement>();
@@ -130,6 +131,7 @@ export default function DashboardOverview({ showHead = true, greeting, name, bri
       {showHead && <header className="wb-overview-head">
         <DashboardGreeting greeting={greeting} name={name} briefing={briefing} />
         <Tooltip title="刷新工作概况">
+          {showHead && updatedLabel ? <span className="wb-hero-updated" role="status">{updatedLabel}</span> : null}
           <Button type="text" icon={<ReloadOutlined />} aria-label="刷新工作概况" onClick={onRefresh} />
         </Tooltip>
       </header>}

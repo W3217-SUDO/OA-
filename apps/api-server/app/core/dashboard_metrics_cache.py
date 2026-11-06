@@ -7,7 +7,7 @@ from collections import OrderedDict, deque
 from contextlib import asynccontextmanager
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timezone
 from time import monotonic, time
 from types import SimpleNamespace
 from uuid import uuid4
@@ -254,6 +254,16 @@ def compute_gate():
     return gate
 
 
+async def _priority_refresh_allowed(key):
+    """用户自己操作后或点刷新：跳过冷却，同一块 30 秒内只算一次。Redis 不可用时按允许。"""
+    try:
+        return bool(await shared.client().set(
+            f"{_REFRESH_COOLDOWN_PREFIX}:priority:{hashlib.sha256(key.encode()).hexdigest()}", "1", nx=True,
+            ex=settings.dashboard_priority_refresh_seconds))
+    except (RedisError, HTTPException):
+        return True
+
+
 async def _refresh_state(key):
     """started：本次由我发起；recent：刚有人发起，新结果快好了；cooling：冷却中，先用旧结果。"""
     cooldown = settings.dashboard_stale_refresh_cooldown_seconds
@@ -355,10 +365,11 @@ def _shared_refresh(key, identity, section, compute_in, parameters=None, *, urge
 
 
 async def cached_dashboard_query(db, identity, section, compute, *, compute_in=None, parameters=None,
-                                 remember_last=False):
+                                 remember_last=False, priority=False, allow_pending=False):
     """compute_in(session) 给出时：有旧结果先返回并后台重算，否则等独立任务算完（离开页面不中断）。
 
     parameters 只放影响结果、但不在业务修订集合里的配置摘要（如分端待办配置），参与缓存键。
+    priority：用户自己操作后或点刷新，跳过冷却并优先计算。allow_pending：从没算过时不等太久，先告诉前端“正在计算”。
     """
     if section not in SECTIONS:
         raise ValueError("无效的控制台缓存分区")
@@ -374,14 +385,20 @@ async def cached_dashboard_query(db, identity, section, compute, *, compute_in=N
             tag_request("cache", "shared")
             return deepcopy(cached)
         if state == "stale":
-            refresh = "started" if key in _refreshing else await _refresh_state(key)
+            urgent = priority and await _priority_refresh_allowed(key)
+            refresh = "started" if urgent or key in _refreshing else await _refresh_state(key)
             if refresh == "started":
-                _shared_refresh(key, deepcopy(identity), section, compute_in, parameters, urgent=False)
+                _shared_refresh(key, deepcopy(identity), section, compute_in, parameters, urgent=urgent)
             tag_request("cache", "stale" if refresh != "cooling" else "cooldown")
             # 冷却中不带 stale 标记：前端不用再短轮询，等下一次定时刷新。
             return {**cached, "stale": True} if refresh != "cooling" else cached
         task = _shared_refresh(key, deepcopy(identity), section, compute_in, parameters)
         tag_request("cache", "shared")
+        if allow_pending:
+            done, _ = await asyncio.wait({task}, timeout=settings.dashboard_foreground_wait_seconds)
+            if not done:
+                tag_request("cache", "pending")
+                return {"pending": True, "stale": True}
         return deepcopy(await asyncio.shield(task))
     # 留存期只控制清理；每次命中仍由共享流程核对当前业务修订号。
     store = SimpleNamespace(
@@ -393,3 +410,8 @@ async def cached_dashboard_query(db, identity, section, compute, *, compute_in=N
     if remember_last:
         await _remember_last(db, identity, section, result)
     return result
+
+
+def with_computed_at(result):
+    """结果里带上计算时间，页面显示“更新于 X 分钟前”。只加这一个键，业务字段不变。"""
+    return {**result, "computed_at": datetime.now(timezone.utc).isoformat()} if isinstance(result, dict) else result

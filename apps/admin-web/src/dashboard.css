@@ -261,6 +261,7 @@ button.wb-todo-entry:active{background:var(--oa-fill)}
 .wb-hero .wb-greeting-mark{width:40px;height:40px}
 .wb-hero .wb-greeting-text h2{font-size:20px}
 .wb-hero-refresh.ant-btn{flex:none}
+.wb-hero-updated{flex:none;margin-left:auto;margin-right:8px;font-size:12px;color:var(--oa-text-tertiary,#8c8c8c)}
 @media(min-width:1101px){
   .workbench{min-height:0;padding-top:8px}
   .wb-shell{gap:12px}

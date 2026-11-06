@@ -949,6 +949,17 @@ export default function CaseCenterPage({
   const activeFeeContractScope = editingFeeRow ? feeExpenseScope : String(feeItems[0]?.expense_scope || "");
   // 501662：平台费用 → 新增代理费的窗口（“新增平台代理费”）不显示所属线索。
   const platformAgencyFeeDraft = activeFeeContractScope === "平台" && feeSubtypePreset === "agency";
+  // 费用窗口才用全部可见合同：第一次打开时取，已通过 fee-contracts 取到的合并保留。
+  const eligibleContractsLoaded = useRef(false);
+  useEffect(() => {
+    if (!(feeCase || editingFeeRow) || isCreateView || eligibleContractsLoaded.current) return;
+    eligibleContractsLoaded.current = true;
+    void api.get("/cases/eligible-contracts")
+      .then(({ data }) => setContracts((previous) => Array.from(new Map(
+        [...previous, ...(data.items || [])].map((contract: ContractRow) => [contract.id, contract]),
+      ).values())))
+      .catch(() => { eligibleContractsLoaded.current = false; });
+  }, [feeCase, editingFeeRow, isCreateView]);
   const feeContractOptions = useMemo(
     () => buildCaseFeeContractOptions(contracts, feeCase || viewingCounselCase, editingFeeRow, activeFeeContractScope),
     [activeFeeContractScope, contracts, editingFeeRow, feeCase, viewingCounselCase],
