@@ -24,11 +24,14 @@ HIGH_RULES = (
         API + r"areas/system/dingtalk_auth\.py$",
         API + r"core/[^/]*(permission|data_scope|department_visibility|_scope|_access)[^/]*\.py$",
         API + r"areas/capability_market/mcp_access\.py$", API + r"core/system\.py$",
+        API + r"areas/system/router\.py$", API + r"areas/hr/router\.py$", API + r"core/constants\.py$",
         API + r"data_models/identity\.py$", WEB + ANY_DIR + r"[^/]*([Pp]ermission|roleAction|[Aa]ccessGuard)[^/]*$",
     )),
     ("财务", (
         API + r"areas/finance/", API + ANY_DIR + r"fees\.py$", API + r"areas/contract/router\.py$",
         API + ANY_DIR + PY_MONEY, WEB + r"finance/", WEB + ANY_DIR + WEB_MONEY,
+        API + r"areas/legal/router\.py$", API + r"areas/legal/case_space\.py$", API + r"core/(cases|internal_requests|crm|projections)\.py$",
+        WEB + r"legal/CaseCenterPage\.tsx$", WEB + r"contract/services/queriesActions\.tsx$",
     )),
     ("数据写入", (
         API + r"core/soft_delete[^/]*\.py$", API + r"database\.py$", API + r"models[^/]*\.py$", API + r"data_models/",
@@ -52,6 +55,8 @@ HIGH_RULES = (
         r"deploy/", r"compose[^/]*\.yml$", r"docker-compose[^/]*\.yml$", r"docs/skills/oa-fast-deploy/scripts/",
     )),
 )
+# aws 下的 receipt 是收文回执，不是财务收据。
+NOT_MONEY = re.compile(r"(?:apps/api-server/app/areas/aws|apps/admin-web/src/aws)/[^/]*[Rr]eceipt")
 LOW_PATTERNS = (r"docs/", r".*\.md$", r".*\.css$", r"tests/", r"apps/[^/]+/tests/", r".*\.(png|jpe?g|gif|svg|ico|docx|xlsx)$")
 # 路径判不出来时靠改动行兜底：直接写库的 SQL，以及 ORM 的新增、删除、批量写。
 # 局限：改已查出对象的字段（record.status = ...）是普通赋值，这里抓不到。
@@ -67,6 +72,8 @@ def _matches(path: str, patterns: tuple[str, ...]) -> bool:
 def classify_file(path: str) -> tuple[str, str]:
     """返回 (档位, 原因)。"""
     for category, patterns in HIGH_RULES:
+        if category == "财务" and NOT_MONEY.match(path):
+            continue
         if _matches(path, patterns):
             return "high", category
     if _matches(path, LOW_PATTERNS):

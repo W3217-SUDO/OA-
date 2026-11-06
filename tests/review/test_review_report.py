@@ -60,12 +60,28 @@ class RiskTierTest(unittest.TestCase):
             ("apps/admin-web/src/PlatformFinancePage.tsx", "财务"),
             ("apps/admin-web/src/roleActions.ts", "权限"),
             ("apps/admin-web/src/legal/CaseDetail/CaseFeesPanel.tsx", "财务"),
+            ("apps/api-server/app/areas/system/router.py", "权限"),
+            ("apps/api-server/app/areas/hr/router.py", "权限"),
+            ("apps/api-server/app/core/constants.py", "权限"),
+            ("apps/api-server/app/areas/legal/router.py", "财务"),
+            ("apps/api-server/app/core/cases.py", "财务"),
+            ("apps/api-server/app/core/internal_requests.py", "财务"),
+            ("apps/api-server/app/core/crm.py", "财务"),
+            ("apps/api-server/app/core/projections.py", "财务"),
+            ("apps/api-server/app/areas/legal/case_space.py", "财务"),
+            ("apps/admin-web/src/legal/CaseCenterPage.tsx", "财务"),
+            ("apps/admin-web/src/contract/services/queriesActions.tsx", "财务"),
         ):
             self.assertEqual(risk.classify_file(path), ("high", reason), path)
 
     def test_other_files(self):
         self.assertEqual(risk.classify_file("apps/api-server/app/areas/ipr/router.py")[0], "medium")
         self.assertEqual(risk.classify_file("apps/admin-web/src/ipr/IprCaseList.tsx")[0], "medium")
+        # 收文回执不是财务收据。
+        self.assertEqual(risk.classify_file("apps/admin-web/src/aws/DocumentReceiptPanel.tsx")[0], "medium")
+        self.assertEqual(risk.classify_file("apps/api-server/app/areas/aws/receipt_sources.py")[0], "medium")
+        self.assertEqual(risk.classify_file("apps/api-server/app/areas/aws/my_today_receipts.py")[0], "medium")
+        self.assertEqual(risk.classify_file("apps/admin-web/src/legal/ReceiptBatchUploadModal.tsx")[0], "high")
         # “feedback”里有 fee，不能算财务。
         self.assertEqual(risk.classify_file("apps/api-server/app/areas/system/feedback_forward.py")[0], "medium")
         self.assertEqual(risk.classify_file("apps/admin-web/src/feedback/FeedbackForm.tsx")[0], "medium")
