@@ -50,7 +50,8 @@ export default function NotificationCenter({ onNavigate, grantedMenuKeys }: { on
   useEffect(() => {
     const notificationsUpdated = () => { void load(); };
     void load();
-    const timer = window.setInterval(load, 30000);
+    // 11-06 压测：页面藏在后台时不轮询，前台 1 分钟取一次。
+    const timer = window.setInterval(() => { if (!document.hidden) void load(); }, 60000);
     window.addEventListener('sunhold:notifications-updated',notificationsUpdated);
     return () => {
       window.clearInterval(timer);

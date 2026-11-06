@@ -1803,7 +1803,8 @@ export default function App() {
       if (event.storageArea === localStorage && event.key === PERMISSIONS_UPDATED_STORAGE_KEY) refreshProfile();
     };
     void loadProfile();
-    const timer = window.setInterval(refreshVisibleProfile, 30000);
+    // 11-06 压测：每人每 30 秒四个轮询，人一多就占不少 CPU。权限由后端每次请求判断，界面菜单 2 分钟同步一次即可。
+    const timer = window.setInterval(refreshVisibleProfile, 120000);
     document.addEventListener("visibilitychange", refreshVisibleProfile);
     window.addEventListener("storage", synchronizePermissions);
     window.addEventListener("focus", refreshProfile);
@@ -1831,7 +1832,8 @@ export default function App() {
         )
         .catch(() => undefined);
     loadTaskUnread();
-    const timer = window.setInterval(loadTaskUnread, 30000);
+    // 页面藏在后台时不轮询；回到前台由下一次定时取。
+    const timer = window.setInterval(() => { if (!document.hidden) loadTaskUnread(); }, 60000);
     window.addEventListener("sunhold:notifications-updated", loadTaskUnread);
     return () => {
       window.clearInterval(timer);
