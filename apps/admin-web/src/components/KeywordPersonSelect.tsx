@@ -70,9 +70,12 @@ export function personKeywordMatches(keyword: string, ...values: unknown[]): boo
  * 姓名、账号模糊匹配，也可输入姓名拼音首字母（如 cyd，501629）。
  * listAll：后台固定配置的少量人员（如合同/用印审批人）直接列出，仍可输入关键词过滤（10.26 第6行）。
  */
-export function KeywordPersonSelect({ listAll = false, ...props }: SelectProps<any, DefaultOptionType> & { listAll?: boolean }) {
+export function KeywordPersonSelect({ listAll = false, pinnedValues = [], ...props }: SelectProps<any, DefaultOptionType> & { listAll?: boolean; pinnedValues?: string[] }) {
   const [keyword, setKeyword] = useState("");
-  const { options = [], onSearch, onOpenChange, onSelect, labelRender, notFoundContent, ...rest } = props;
+  const { options: allOptions = [], onSearch, onOpenChange, onSelect, labelRender, notFoundContent, ...rest } = props;
+  // 501659：常用的固定选项（如调档费的“外部合作律师”）不用输入就列出，搜索时也排在最前面。
+  const pinned = pinnedValues.length ? allOptions.filter(option => pinnedValues.includes(option.value as string)) : [];
+  const options = pinned.length ? [...pinned, ...allOptions.filter(option => !pinnedValues.includes(option.value as string))] : allOptions;
   const searching = listAll || Boolean(keyword.trim());
   return <Select
     {...rest}
@@ -80,7 +83,7 @@ export function KeywordPersonSelect({ listAll = false, ...props }: SelectProps<a
     optionFilterProp="label"
     filterOption={props.filterOption ?? ((input, option) => personKeywordMatches(input, option?.label, option?.value))}
     searchValue={keyword}
-    options={searching ? options : []}
+    options={searching ? options : pinned}
     className={["keyword-person-select", props.className].filter(Boolean).join(" ")}
     classNames={info => {
       const names = typeof props.classNames === "function" ? props.classNames(info) : props.classNames;

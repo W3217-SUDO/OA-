@@ -943,6 +943,8 @@ export default function CaseCenterPage({
     && feeItems.length > 0
     && feeItems.every((item: any) => item?.fee_type === "代理费");
   const feeEmployeeOptions = caseAssistantOptions;
+  // 501659：调档费固定可选的“外部合作律师”按姓名找系统里的同名账号，不写死账号。
+  const externalCounselPayeeValues = useMemo(() => feeEmployeeOptions.filter((item) => String(item.label || "").split("（")[0].trim() === "外部合作律师").map((item) => item.value), [feeEmployeeOptions]);
   const casePaymentTypeSelectOptions = buildCasePaymentTypeSelectOptions(casePaymentTypes);
   const selectedCasePaymentType = casePaymentTypes.find((item) => item.id === selectedPaymentTypeId);
   const activeFeeContractScope = editingFeeRow ? feeExpenseScope : String(feeItems[0]?.expense_scope || "");
@@ -3784,7 +3786,10 @@ export default function CaseCenterPage({
               {fields.map((field) => <div className="case-fee-entry-row" key={field.key}>
                 <span className="case-fee-static-value">{feeCase?.serial_no || "—"}</span>
                 <Form.Item name={[field.name, "fee_type_id"]} rules={[{ required: true, message: "请选择末级费用类型" }]}><Select showSearch optionFilterProp="label" placeholder="请选择" popupMatchSelectWidth={180} options={feeTypeSelectOptions} onChange={(value) => { const option = feeTypeSelection(feeTypeCatalog, value); feeForm.setFieldValue(["items",field.name,"expense_subtype"],option?.name); feeForm.setFieldValue(["items",field.name,"fee_type"],option?.base_fee_type); feeForm.setFieldValue(["items",field.name,"title"],`${feeCase?.title || ""}${option?.name || ""}`); }} /></Form.Item>
-                <Form.Item name={[field.name, "payee"]} rules={[{ required: true, message: "请选择收款人" }]}><KeywordPersonSelect showSearch optionFilterProp="label" placeholder="收款人" options={feeEmployeeOptions} /></Form.Item>
+                {/* 501659（shenhe 11-06）：调档费的支付对象直接列出“外部合作律师”（系统里同名账号），其它类型不变 */}
+                <Form.Item noStyle shouldUpdate={(prev, next) => prev.items?.[field.name]?.expense_subtype !== next.items?.[field.name]?.expense_subtype}>
+                  {() => <Form.Item name={[field.name, "payee"]} rules={[{ required: true, message: "请选择收款人" }]}><KeywordPersonSelect showSearch optionFilterProp="label" placeholder="收款人" options={feeEmployeeOptions} pinnedValues={feeForm.getFieldValue(["items", field.name, "expense_subtype"]) === "调档费" ? externalCounselPayeeValues : undefined} /></Form.Item>}
+                </Form.Item>
                 <Form.Item name={[field.name, "base_amount"]}><InputNumber min={0} precision={2} className="case-fee-amount-input" /></Form.Item>
                 <Form.Item name={[field.name, "reference_commission"]}><InputNumber min={0} precision={2} className="case-fee-amount-input" /></Form.Item>
                 <Form.Item name={[field.name, "amount"]} rules={[{ required: true, message: "请输入实际金额" }]}><InputNumber precision={2} className="case-fee-amount-input" /></Form.Item>
