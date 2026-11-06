@@ -41,7 +41,8 @@ class GateRulesTest(unittest.TestCase):
         self.assertEqual(header_read_kind("/system/parameters/options", ("case-mine-civil",), ("@root:system",)), "allow")
         self.assertEqual(header_read_kind("/records", ("case-mine-civil",), ("@root:investigation",)), "scoped")
         self.assertEqual(header_read_kind("/agent-admin/overview", ("case-mine-civil",), ()), "deny")
-        self.assertEqual(header_read_kind("/dashboard", ("case-mine-civil",), ()), "allow")
+        self.assertEqual(header_read_kind("/dashboard", ("case-mine-civil",), ()), "deny")
+        self.assertEqual(header_read_kind("/dashboard", ("dashboard",), ()), "deny")
 
 
 class DataScopeGateApiTest(unittest.IsolatedAsyncioTestCase):
@@ -156,6 +157,13 @@ class DataScopeGateApiTest(unittest.IsolatedAsyncioTestCase):
             response = await self._records(self.work, "customer", "customer-company")
         self.assertEqual(response.status_code, 200)
         self.assertIn("page-scope-shadow user=GATEWORK", logs.output[0])
+
+    async def test_dashboard_same_with_or_without_page_header(self):
+        for section in ("cases", "portals", "todos"):
+            plain = await self.personal.get(f"{API}/dashboard", params={"section": section})
+            with_page = await self.personal.get(f"{API}/dashboard", params={"section": section}, headers={"X-OA-Page": "customer-mine"})
+            self.assertEqual(plain.status_code, 200, plain.text)
+            self.assertEqual(plain.json(), with_page.json(), section)
 
     async def test_login_identity_never_blocked(self):
         me = await self.personal.get(f"{API}/auth/me", headers={"X-OA-Page": "not-a-real-page"})

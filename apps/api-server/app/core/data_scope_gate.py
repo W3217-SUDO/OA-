@@ -72,6 +72,8 @@ _UNLISTED_ROUTE_CENTERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("/agent-admin", ("agent-center",)),
     ("/external-credentials", ("system",)),
     ("/data-query", ("reports", "system")),
+    # 工作台没有所属中心：数字和门户一律按账号本人，不随所在页面提升（陶威 2026-11-07“堵”）。
+    ("/dashboard", ()),
 )
 
 
