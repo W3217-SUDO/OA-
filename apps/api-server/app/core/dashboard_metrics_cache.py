@@ -181,10 +181,15 @@ async def _global_slot(urgent):
         return None
 
 
-async def _release_global_slot(lease):
+async def _release_global_slot(lease, *, urgent=False, seconds=0.0):
     if lease is None:
         return
     try:
+        # 后台刷新算完后名额再占一段时间（算的时长 × 倍数），把它占用的 CPU 限制在一定比例内，用户请求不被挤掉。
+        rest = 0 if urgent else min(_GLOBAL_SLOT_SECONDS, int(seconds * settings.dashboard_background_rest_ratio))
+        if rest >= 1:
+            await asyncio.shield(shared.client().expire(lease[0], rest))
+            return
         await asyncio.shield(shared.client().eval(_RELEASE_SLOT, 1, lease[0], lease[1]))
     except (RedisError, HTTPException) as exc:
         logger.warning("控制台计算名额释放失败：%s", type(exc).__name__)  # 到期自动释放
@@ -227,11 +232,13 @@ class ComputeGate:
                 self._wake()
             raise
         lease = None
+        started = monotonic()
         try:
             lease = await _global_slot(urgent)
+            started = monotonic()
             yield
         finally:
-            await _release_global_slot(lease)
+            await _release_global_slot(lease, urgent=urgent, seconds=monotonic() - started)
             self.running -= 1
             self._wake()
 
