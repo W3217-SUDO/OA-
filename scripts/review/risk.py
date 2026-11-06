@@ -14,21 +14,28 @@ TIER_REQUIREMENTS = {
 
 API = r"apps/api-server/app/"
 WEB = r"apps/admin-web/src/"
+# 按文件名判，不靠目录：财务逻辑散在 core、ipr、legal、contract 和前端各处。
+ANY_DIR = r"(?:.*/)?"
+PY_MONEY = r"[^/]*(?:financ|invoice|payment|receipt|refund|settlement|bank_|incoming_|commission|allocation|(?:^|_)fees?(?:_|\.))[^/]*$"
+WEB_MONEY = r"[^/]*(?:[Ff]inanc|[Ii]nvoice|[Pp]ayment|[Rr]eceipt|[Rr]efund|[Ss]ettlement|[Cc]ommission|[Ff]ees?(?=[A-Z._]))[^/]*$"
 HIGH_RULES = (
     ("权限", (
         API + r"security\.py$", API + r"agent_permissions\.py$", API + r"agent_mcp/auth\.py$",
         API + r"areas/system/dingtalk_auth\.py$",
-        API + r"core/[^/]*(permission|data_scope|department_visibility|_scope)[^/]*\.py$",
-        API + r"data_models/identity\.py$", WEB + r".*[Pp]ermission[^/]*$",
+        API + r"core/[^/]*(permission|data_scope|department_visibility|_scope|_access)[^/]*\.py$",
+        API + r"areas/capability_market/mcp_access\.py$", API + r"core/system\.py$",
+        API + r"data_models/identity\.py$", WEB + ANY_DIR + r"[^/]*([Pp]ermission|roleAction|[Aa]ccessGuard)[^/]*$",
     )),
     ("财务", (
-        API + r"areas/finance/", API + r"core/[^/]*(finance|invoice|payment|receipt|refund|settlement|bank_|_fee|fee_)[^/]*\.py$",
-        WEB + r"finance/",
+        API + r"areas/finance/", API + ANY_DIR + r"fees\.py$", API + r"areas/contract/router\.py$",
+        API + ANY_DIR + PY_MONEY, WEB + r"finance/", WEB + ANY_DIR + WEB_MONEY,
     )),
     ("数据写入", (
         API + r"core/soft_delete[^/]*\.py$", API + r"database\.py$", API + r"models[^/]*\.py$", API + r"data_models/",
         API + r"core/attachment_deletion\.py$", API + r"areas/system/recycle_bin\.py$",
-        r"scripts/(import|migrate|fix|repair|restore|align)[^/]*$", r"scripts/hz_snapshot_alignment/",
+        API + ANY_DIR + r"[^/]*(_delete|_deletions?|_merge|backfill|_repair|_import|record_import)[^/]*\.py$",
+        r"scripts/(import|migrate|fix|repair|restore|align|promote|backfill|recover|reconcile|rebuild)[^/]*$", r"scripts/hz_snapshot_alignment/",
+        r"apps/api-server/scripts/",  # 一次性数据脚本，大多直接写生产数据
     )),
     ("数据库结构", (
         API + r"core/startup_migrations\.py$", API + r"core/schema_alignment\.py$", API + r"core/[^/]*_migration\.py$",
@@ -40,14 +47,16 @@ HIGH_RULES = (
     )),
     ("发布和质量门", (
         r"\.github/", r"\.githooks/", r"scripts/quality_gate\.py$", r"scripts/install-(quality-hook|review-tools)\.sh$",
-        r"scripts/(native|runtime|verify_)[^/]*$", r"scripts/review/(?!baseline\.json$)", r"requirements[^/]*$", r"pyproject\.toml$",
+        r"scripts/(native|runtime|verify_)[^/]*$", r"scripts/review/", r"requirements[^/]*$", r"pyproject\.toml$",
         r"apps/api-server/requirements", r"apps/api-server/tests/suite_manifest\.json$", r"apps/api-server/tests/run_regression\.py$",
         r"deploy/", r"compose[^/]*\.yml$", r"docker-compose[^/]*\.yml$", r"docs/skills/oa-fast-deploy/scripts/",
     )),
 )
-LOW_PATTERNS = (r"scripts/review/baseline\.json$", r"docs/", r".*\.md$", r".*\.css$", r"tests/", r"apps/[^/]+/tests/", r".*\.(png|jpe?g|gif|svg|ico|docx|xlsx)$")
-# 改动行里出现这些写法视为批量写数据或改结构，路径判不出来时靠它兜底。
+LOW_PATTERNS = (r"docs/", r".*\.md$", r".*\.css$", r"tests/", r"apps/[^/]+/tests/", r".*\.(png|jpe?g|gif|svg|ico|docx|xlsx)$")
+# 路径判不出来时靠改动行兜底：直接写库的 SQL，以及 ORM 的新增、删除、批量写。
+# 局限：改已查出对象的字段（record.status = ...）是普通赋值，这里抓不到。
 RAW_WRITE = re.compile(r"\b(INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM|ALTER\s+TABLE|DROP\s+(TABLE|INDEX|COLUMN)|TRUNCATE)\b", re.I)
+ORM_WRITE = re.compile(r"\b(?:db|session)\.(?:add|add_all|delete|merge|bulk_\w+)\(|\bexecute\(\s*(?:update|insert|delete)\(|\b(?:update|insert|delete)\([A-Z]\w+\)")
 MANUAL_TRAILER = re.compile(r"^Review-Tier:\s*(low|medium|high)\s*$", re.I | re.M)
 
 
@@ -77,9 +86,10 @@ def classify(files: list[str], added_lines: dict[str, list[str]] | None = None, 
     for path in files:
         tier, reason = classify_file(path)
         if tier != "high" and not _matches(path, LOW_PATTERNS):
-            hit = next((line.strip() for line in (added_lines or {}).get(path, []) if RAW_WRITE.search(line)), None)
+            hit = next((line.strip() for line in (added_lines or {}).get(path, [])
+                        if RAW_WRITE.search(line) or (path.endswith(".py") and ORM_WRITE.search(line))), None)
             if hit:
-                tier, reason = "high", "改动里有直接写库语句"
+                tier, reason = "high", "改动里有写库语句"
                 raw_writes.append({"file": path, "line": hit[:120]})
         items.append({"file": path, "tier": tier, "reason": reason})
     computed = max((item["tier"] for item in items), key=TIERS.index, default="low")

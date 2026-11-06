@@ -46,6 +46,8 @@ jobs:
           python -m venv "$RUNNER_TEMP/review-tools"
           "$RUNNER_TEMP/review-tools/bin/python" -m pip install --require-hashes -r requirements-review.lock
           npm ci --prefix apps/admin-web
+      - name: Test report tooling
+        run: python -m unittest discover -s tests/review -p 'test_*.py'
       - name: Build report
         env:
           PUSH_BASE: ${{ github.event.before }}
@@ -54,7 +56,7 @@ jobs:
           base="${PR_BASE:-$PUSH_BASE}"
           [ -n "$base" ] || base=$(git rev-list -1 --before='24 hours ago' HEAD)
           python scripts/review/report.py --base "$base" --tools-python "$RUNNER_TEMP/review-tools/bin/python" \
-            --audit --coverage all --coverage-timeout 1800 --jobs 2 --report-dir "$RUNNER_TEMP/review-report"
+            --audit --coverage all --coverage-timeout 1800 --deadline 2100 --jobs 2 --report-dir "$RUNNER_TEMP/review-report"
           cat "$RUNNER_TEMP/review-report/report.md" >> "$GITHUB_STEP_SUMMARY"
       - name: Preserve report
         if: always()

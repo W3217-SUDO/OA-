@@ -1,13 +1,13 @@
 {
 "format": 1,
-"commit": "f3387e7b78244bb8ddcd7c35e0ddb1537614aacd",
-"total": 3417,
+"commit": "a26a52514619db81a6336077d50393a27fd482ee",
+"total": 3420,
 "by_tool": {
 "duplicate": 211,
 "mypy": 1173,
 "npm-audit": 2,
 "pip-audit": 42,
-"ruff": 1262,
+"ruff": 1265,
 "ts-metrics": 561,
 "vulture": 166
 },
@@ -3868,10 +3868,13 @@
 "T201|cd9698e2b1": 1
 },
 "scripts/review/report.py": {
-"PLW1510|12ac909c64": 1,
+"PLR0915|c0b3c9abd1": 1,
+"T201|05c017ff1c": 1,
 "T201|292fb77f84": 1,
 "T201|99b7452f35": 1,
+"T201|a699c3de68": 1,
 "T201|a904ef414e": 1,
+"T201|ad75978c87": 1,
 "T201|c80438a6f6": 1,
 "T201|d96ae968cb": 1,
 "T201|dd8142f8cc": 1

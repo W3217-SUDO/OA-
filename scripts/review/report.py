@@ -14,8 +14,10 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import signal
 import sys
 import tempfile
+import threading
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -30,6 +32,8 @@ KNOWN_ISSUES = HERE / "known_issues.json"
 DEFAULT_TOOLS_PYTHON = Path.home() / ".local/share/oa/review-tools/bin/python"
 SCAN_PY = ("apps/api-server/app", "scripts")
 SECTION_LIMIT = 40
+SECRET_ENV = re.compile(r"TOKEN|SECRET|PASSWORD|API_?KEY|ACCESS_?KEY|DINGTALK|DEEPSEEK|VOLC|^OSS_|^ALIBABA", re.I)
+RUN: dict = {"deadline": None, "process": None}
 DUPLICATE_WINDOW = 12
 VULTURE_IGNORE = ("@router.*,@app.*,@*.get,@*.post,@*.put,@*.patch,@*.delete,@*_validator,@validator,"
                   "@*.on_event,@*.middleware,@*.exception_handler,@*.tool,@*.task")
@@ -75,6 +79,13 @@ def parse_diff(diff: str) -> tuple[dict[str, set[int]], dict[str, list[str]], li
     return changed, added, sorted(changed)
 
 
+def changed_paths(base: str, head: str, changed: dict[str, set[int]]) -> list[str]:
+    """判档用的全部路径。--no-renames 让改名的新旧路径都出现，纯改名、二进制没有差异内容也不会漏。"""
+    names = git("-c", "core.quotepath=off", "diff", "--name-only", "--no-renames", base, head).splitlines()
+    version_only = {"apps/admin-web/package.json", "apps/admin-web/package-lock.json"} - set(changed)
+    return sorted(name for name in names if name not in version_only)
+
+
 def resolve_base(head: str, base: str | None) -> str:
     """远端还没有这个分支，或给的基准本地没有时，退回和 origin/dev 的分叉点。"""
     if base and set(base) != {"0"}:
@@ -88,15 +99,55 @@ def resolve_base(head: str, base: str | None) -> str:
 
 # ---------- 各工具 ----------
 
-def run_tool(name: str, command: list[str], cwd: Path, timeout: int, timings: dict, env: dict | None = None) -> subprocess.CompletedProcess | None:
+def kill_active() -> None:
+    process = RUN["process"]
+    if process and process.poll() is None:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except OSError:
+            pass
+
+
+def fail_tool(timings: dict, name: str, reason: str) -> None:
+    timings.setdefault("_errors", {})[name] = reason
+
+
+def run_tool(name: str, command: list[str], cwd: Path, timeout: int, timings: dict, env: dict | None = None, ok_codes: tuple[int, ...] | None = None) -> subprocess.CompletedProcess | None:
+    """崩溃、超时、退出码不对都记入“没跑成”并返回 None，不能当成没问题。超时连子进程一起杀。"""
     started = time.monotonic()
+    limit = timeout
+    if RUN["deadline"] is not None:
+        limit = min(timeout, RUN["deadline"] - started)
+        if limit <= 0:
+            fail_tool(timings, name, "总时限到了，没跑")
+            return None
     try:
-        return subprocess.run(command, cwd=cwd, capture_output=True, encoding="utf-8", errors="replace", timeout=timeout, env=env)
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        timings.setdefault("_errors", {})[name] = "超时" if isinstance(exc, subprocess.TimeoutExpired) else str(exc)
+        process = subprocess.Popen(command, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8", errors="replace", start_new_session=True)
+        RUN["process"] = process
+        try:
+            stdout, stderr = process.communicate(timeout=limit)
+        except subprocess.TimeoutExpired:
+            kill_active()
+            process.communicate()
+            fail_tool(timings, name, f"超时（{int(limit)} 秒）")
+            return None
+        if ok_codes is not None and process.returncode not in ok_codes:
+            fail_tool(timings, name, f"退出码 {process.returncode}：{(stderr or stdout)[-200:].strip()}")
+            return None
+        return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+    except OSError as exc:
+        fail_tool(timings, name, str(exc))
         return None
     finally:
         timings[name] = round(time.monotonic() - started, 1)
+
+
+def load_json_output(name: str, text: str, timings: dict):
+    try:
+        return json.loads(text)
+    except ValueError:
+        fail_tool(timings, name, f"输出不是 JSON：{text[:120].strip()}")
+        return None
 
 
 def issue(tool: str, file: str, line: int, rule: str, message: str, key: str | None = None) -> dict:
@@ -110,29 +161,31 @@ def relative_to_root(path: str, cwd: Path = ROOT) -> str:
 
 def run_ruff(python: str, timings: dict) -> list[dict]:
     command = [python, "-m", "ruff", "check", "--no-cache", "--exit-zero", "--config", str(HERE / "ruff.toml"), "--output-format", "json", *SCAN_PY]
-    done = run_tool("ruff", command, ROOT, 60, timings)
-    if not done:
-        return []
+    done = run_tool("ruff", command, ROOT, 60, timings, ok_codes=(0,))
+    items = load_json_output("ruff", done.stdout, timings) if done else None
     return [issue("ruff", relative_to_root(item["filename"]), item["location"]["row"], item["code"] or "E999", item["message"])
-            for item in json.loads(done.stdout or "[]")]
+            for item in items or []]
 
 
 def run_mypy(tools_python: str, python: str, cache: Path, timings: dict) -> list[dict]:
     command = [tools_python, "-m", "mypy", "--python-executable", python, "--ignore-missing-imports", "--follow-imports=silent", "--check-untyped-defs",
                "--no-error-summary", "--show-error-codes", "--no-pretty", "--cache-dir", str(cache), "app"]
-    done = run_tool("mypy", command, API, 180, timings)
+    done = run_tool("mypy", command, API, 180, timings, ok_codes=(0, 1))
     found = []
     for line in (done.stdout if done else "").splitlines():
         match = re.match(r"^(.+?):(\d+): error: (.+?)(?:\s+\[([\w-]+)\])?$", line)
         if match:
             found.append(issue("mypy", relative_to_root(match[1], API), int(match[2]), f"mypy:{match[4] or 'error'}", match[3]))
+    if done and done.returncode and not found:
+        fail_tool(timings, "mypy", f"报错但没有结果：{(done.stderr or done.stdout)[-200:].strip()}")
     return found
 
 
 def run_vulture(tools_python: str, timings: dict) -> list[dict]:
     command = [tools_python, "-m", "vulture", "apps/api-server/app", "--min-confidence", "60", "--ignore-decorators", VULTURE_IGNORE,
                "--exclude", "*/data_models/*,*/api_schemas/*,*/models.py"]
-    done = run_tool("vulture", command, ROOT, 60, timings)
+    # vulture 退出码：0 没有，3 有无用代码，其他是出错。
+    done = run_tool("vulture", command, ROOT, 60, timings, ok_codes=(0, 3))
     found = []
     for line in (done.stdout if done else "").splitlines():
         match = re.match(r"^(.+?):(\d+): (.+?) \(\d+% confidence", line)
@@ -143,23 +196,22 @@ def run_vulture(tools_python: str, timings: dict) -> list[dict]:
 
 
 def run_tsc(node: str, timings: dict) -> list[dict]:
-    done = run_tool("tsc", [node, "node_modules/typescript/bin/tsc", "--noEmit", "-p", ".", "--pretty", "false"], WEB, 120, timings)
+    done = run_tool("tsc", [node, "node_modules/typescript/bin/tsc", "--noEmit", "-p", ".", "--pretty", "false"], WEB, 120, timings, ok_codes=(0, 1, 2))
     found = []
     for line in (done.stdout if done else "").splitlines():
         match = re.match(r"^(.+?)\((\d+),\d+\): error (TS\d+): (.+)$", line)
         if match:
             found.append(issue("tsc", f"apps/admin-web/{match[1]}", int(match[2]), match[3], match[4]))
+    if done and done.returncode and not found:
+        fail_tool(timings, "tsc", f"报错但没有结果：{(done.stdout or done.stderr)[-200:].strip()}")
     return found
 
 
 def run_ts_metrics(node: str, timings: dict) -> list[dict]:
-    done = run_tool("ts-metrics", [node, str(HERE / "ts_metrics.mjs"), str(WEB)], ROOT, 60, timings)
-    if not done or done.returncode:
-        if done:
-            timings.setdefault("_errors", {})["ts-metrics"] = done.stderr[-300:]
-        return []
+    done = run_tool("ts-metrics", [node, str(HERE / "ts_metrics.mjs"), str(WEB)], ROOT, 60, timings, ok_codes=(0,))
+    items = load_json_output("ts-metrics", done.stdout, timings) if done else None
     return [issue("ts-metrics", f"apps/admin-web/{item['file']}", item["line"], item["rule"], item["message"])
-            for item in json.loads(done.stdout)]
+            for item in items or []]
 
 
 def source_files() -> list[Path]:
@@ -173,6 +225,9 @@ def find_duplicates(timings: dict, window: int = DUPLICATE_WINDOW) -> list[dict]
     started = time.monotonic()
     seen: dict[str, list[tuple[str, int]]] = {}
     for path in source_files():
+        if RUN["deadline"] is not None and time.monotonic() > RUN["deadline"]:
+            fail_tool(timings, "duplicate", "总时限到了，没查完，不算结果")
+            return []
         relative = path.relative_to(ROOT).as_posix()
         lines = [(number, line.strip()) for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1)]
         lines = [item for item in lines if not TRIVIAL_LINE.match(item[1])]
@@ -197,16 +252,19 @@ def find_duplicates(timings: dict, window: int = DUPLICATE_WINDOW) -> list[dict]
 def run_dependency_audit(python: str, timings: dict) -> list[dict]:
     """需要联网，只在依赖文件有改动或 CI 时跑。"""
     found = []
-    done = run_tool("pip-audit", [python, "-m", "pip_audit", "-r", str(API / "requirements.lock"), "--format", "json", "--no-deps", "--disable-pip", "--progress-spinner", "off"], ROOT, 180, timings)
-    if done and done.stdout.strip().startswith("{"):
-        for package in json.loads(done.stdout).get("dependencies", []):
-            for vulnerability in package.get("vulns", []):
-                found.append(issue("pip-audit", "apps/api-server/requirements.lock", 0, vulnerability["id"], f"{package['name']} {package.get('version', '')}", key=f"{package['name']}|{vulnerability['id']}"))
+    # 这两个工具有漏洞时退出码是 1，所以用输出判断是否真的跑成。
+    done = run_tool("pip-audit", [python, "-m", "pip_audit", "-r", str(API / "requirements.lock"), "--format", "json", "--no-deps", "--disable-pip", "--progress-spinner", "off"], ROOT, 180, timings, ok_codes=(0, 1))
+    data = load_json_output("pip-audit", done.stdout, timings) if done else None
+    for package in (data or {}).get("dependencies", []):
+        for vulnerability in package.get("vulns", []):
+            found.append(issue("pip-audit", "apps/api-server/requirements.lock", 0, vulnerability["id"], f"{package['name']} {package.get('version', '')}", key=f"{package['name']}|{vulnerability['id']}"))
     npm = shutil.which("npm") or "npm"
-    done = run_tool("npm-audit", [npm, "audit", "--json"], WEB, 120, timings)
-    if done and done.stdout.strip().startswith("{"):
-        for name, item in json.loads(done.stdout).get("vulnerabilities", {}).items():
-            found.append(issue("npm-audit", "apps/admin-web/package-lock.json", 0, item.get("severity", "unknown"), f"{name} {item.get('range', '')}", key=name))
+    done = run_tool("npm-audit", [npm, "audit", "--json"], WEB, 120, timings, ok_codes=(0, 1))
+    data = load_json_output("npm-audit", done.stdout, timings) if done else None
+    if data and "error" in data:
+        fail_tool(timings, "npm-audit", str(data["error"])[:200])
+    for name, item in (data or {}).get("vulnerabilities", {}).items():
+        found.append(issue("npm-audit", "apps/admin-web/package-lock.json", 0, item.get("severity", "unknown"), f"{name} {item.get('range', '')}", key=name))
     return found
 
 
@@ -217,7 +275,8 @@ def related_tests(targets: list[str], changed_tests: list[str], limit: int = 8) 
     stems = {Path(path).stem for path in targets} - {"__init__", "router", "main", "constants"}
     tests = API / "tests"
     candidates = [*tests.glob("test_*.py"), *(tests / "regression").glob("*.py"), *(tests / "structural").glob("*.py")]
-    candidates = [path for path in candidates if path.name not in {"__init__.py", "environment.py"}]
+    # probe 是手工探测外部服务的脚本，不能在推送时自动跑。
+    candidates = [path for path in candidates if path.name not in {"__init__.py", "environment.py"} and "probe" not in path.name]
     chosen = sorted({Path(path).name for path in changed_tests} & {path.name for path in candidates})
     texts = {path.name: path.read_text(encoding="utf-8", errors="replace") for path in sorted(candidates)}
     hits = {stem: [name for name, text in texts.items() if re.search(rf"\b{re.escape(stem)}\b", text)] for stem in stems}
@@ -251,17 +310,23 @@ def measure_coverage(changed: dict[str, set[int]], python: str, tools_python: st
         data_file = Path(temporary) / ".coverage"
         rc = Path(temporary) / "coveragerc"
         rc.write_text(f"[run]\nparallel = True\ndata_file = {data_file}\nsource = {API / 'app'}\ncore = sysmon\n", encoding="utf-8")
-        env = {**os.environ, "APP_ENV": "testing", "DATABASE_URL": "sqlite+aiosqlite:///:memory:", "UPLOAD_ROOT": temporary, "SEED_DEMO_DATA": "false",
+        # 去掉密钥类变量，测试不可能连到真实外部服务；去掉 GIT_*，pre-push 里 Git 会设置 GIT_DIR，测试里的 git 命令不能碰到真仓库。
+        inherited = {name: value for name, value in os.environ.items() if not SECRET_ENV.search(name) and not name.startswith("GIT_")}
+        env = {**inherited, "APP_ENV": "testing", "DATABASE_URL": "sqlite+aiosqlite:///:memory:", "UPLOAD_ROOT": temporary, "SEED_DEMO_DATA": "false",
                "PYTHONIOENCODING": "utf-8", "PYTHONDONTWRITEBYTECODE": "1", "PYTHONPATH": os.pathsep.join((str(shim), str(API))), "COVERAGE_PROCESS_START": str(rc)}
         for name in tuple(env):
             if "TEST_POSTGRES" in name or name in {"OA_ROUTE_EFFECTS_POSTGRES_URL", "OA_TEST_API_BASE"}:
                 env.pop(name)
         run_report = report_dir / "coverage-tests.json"
-        command = [python, "tests/run_regression.py", "--group", "unit", "--group", "regression", "--group", "structural", "--jobs", str(jobs),
+        report_dir.mkdir(parents=True, exist_ok=True)
+        dirty_before = git("status", "--porcelain=v1", "--untracked-files=all")
+        command = ["nice", "-n", "10", python, "tests/run_regression.py", "--group", "unit", "--group", "regression", "--group", "structural", "--jobs", str(jobs),
                    "--timeout", "120" if not whole_suite else "300", "--report", str(run_report)]
         for name in tests:
             command += ["--file", name]
         done = run_tool("coverage-tests", command, API, timeout, timings, env)
+        if git("status", "--porcelain=v1", "--untracked-files=all") != dirty_before:
+            fail_tool(timings, "coverage-tests", "跑完后工作区多了文件，下次推送门禁会拒绝，请先清理")
         if not done:
             return {**result, "status": "测试没在限定时间内跑完，本次没有覆盖率"}
         if not list(Path(temporary).glob(".coverage.*")):
@@ -318,6 +383,22 @@ def to_baseline(issues: list[dict], commit: str) -> dict:
             "files": {name: dict(sorted(counter.items())) for name, counter in sorted(files.items())}}
 
 
+def load_baseline(base: str, timings: dict) -> tuple[dict, str | None]:
+    """从比较基准读基线：同一次提交既加问题又刷基线时，新增问题照样报出来。"""
+    relative = BASELINE.relative_to(ROOT).as_posix()
+    note = None
+    try:
+        text = git("show", f"{base}:{relative}")
+    except subprocess.CalledProcessError:
+        text = BASELINE.read_text(encoding="utf-8") if BASELINE.exists() else ""
+        note = "比较基准还没有基线，用的是这次提交自带的基线（只有基线首次加入时才该出现）"
+    try:
+        return (json.loads(text) if text else {}), note
+    except ValueError:
+        fail_tool(timings, "基线", "基线文件坏了（可能是合并冲突），下面所有问题都算成新增，数字不可信")
+        return {}, note
+
+
 def split_new(issues: list[dict], baseline: dict, changed: dict[str, set[int]]) -> dict[str, list[dict]]:
     """基线之外的问题分三类：这次改动行上的、这次改到的文件其他位置的、别处的。"""
     remaining = {name: Counter(counts) for name, counts in baseline.get("files", {}).items()}
@@ -364,7 +445,14 @@ def render(report: dict) -> str:
            f"- 这一档要做：{tier['requirement']}",
            f"- 新增问题：改动行上 **{len(buckets['new_on_changed_lines'])}** 个；改动文件其他位置 {len(buckets['same_file'])} 个；基线后别处累计 {len(buckets['elsewhere'])} 个",
            f"- 多花时间：{report['seconds']} 秒", ""]
-    out += ["## 改动行上的新增问题", "", *(issue_lines(buckets["new_on_changed_lines"]) or ["没有。"]), ""]
+    if report["failed"]:
+        out += [f"**本次不完整，“没有”不代表真的没有。没跑成：{'；'.join(f'{name}（{reason}）' for name, reason in report['failed'].items())}**", ""]
+    if report["baseline_changed"]:
+        out += ["**这次改了基线 baseline.json，需要人工确认。新增问题按比较基准提交的基线计算，不受这次改动影响。**", ""]
+    if report["baseline_note"]:
+        out += [f"注意：{report['baseline_note']}。", ""]
+    nothing = ["这几项工具里没发现，但有工具没跑成，见上。"] if report["failed"] else ["没有。"]
+    out += ["## 改动行上的新增问题", "", *(issue_lines(buckets["new_on_changed_lines"]) or nothing), ""]
     if buckets["same_file"]:
         out += ["## 改动文件其他位置（基线之后出现，可能是函数变复杂，也可能是早先带入）", "", *issue_lines(buckets["same_file"]), ""]
     out += ["## 改动行测试覆盖", ""]
@@ -391,7 +479,8 @@ def render(report: dict) -> str:
         out += [f"- {item['title']}：{item['detail']}（核实于 {item['verified']}）" for item in known]
     out += ["", "## 各工具耗时和没跑的项", ""]
     out += [f"- {name}：{value} 秒" for name, value in timings.items() if name != "_errors"]
-    out += [f"- {name} 没跑成：{reason}" for name, reason in report["skipped"].items()]
+    out += [f"- {name} 没跑成：{reason}" for name, reason in report["failed"].items()]
+    out += [f"- {name} 没跑：{reason}" for name, reason in report["skipped"].items()]
     return "\n".join(out) + "\n"
 
 
@@ -414,7 +503,6 @@ def collect_issues(args: argparse.Namespace, timings: dict, skipped: dict, audit
         issues += run_dependency_audit(python, timings)
     else:
         skipped["依赖漏洞"] = "要联网，依赖文件没改时只在 CI 跑"
-    skipped.update(timings.pop("_errors", {}))
     return issues
 
 
@@ -442,7 +530,8 @@ def build(args: argparse.Namespace) -> dict:
     base = resolve_base(head, args.base)
     # quotepath 关掉，否则中文文件名被转义，解析不到。
     diff = git("-c", "core.quotepath=off", "diff", "--unified=0", "--no-color", "--no-ext-diff", base, head)
-    changed, added, files = parse_diff(diff)
+    changed, added, _ = parse_diff(diff)
+    files = changed_paths(base, head, changed)
     messages = git("log", "--format=%B", f"{base}..{head}")
     raise_to = max((args.raise_to or "low", risk.manual_tier(messages) or "low"), key=risk.TIERS.index)
     tier = risk.classify(files, added, raise_to=raise_to)
@@ -450,18 +539,23 @@ def build(args: argparse.Namespace) -> dict:
     skipped: dict = {}
     dependencies_changed = any(re.search(r"requirements|package(-lock)?\.json$", path) for path in files)
     issues = collect_issues(args, timings, skipped, args.audit or dependencies_changed)
-    baseline = json.loads(BASELINE.read_text(encoding="utf-8")) if BASELINE.exists() else {}
-    if not baseline:
-        skipped["基线"] = "没有 baseline.json，所有问题都会算新增"
+    baseline, baseline_note = load_baseline(base, timings)
+    if not baseline and "基线" not in timings.get("_errors", {}):
+        skipped["基线"] = "没有基线，所有问题都会算新增"
     buckets = split_new(issues, baseline, changed)
     if not Path(args.tools_python).exists():
         coverage = {"status": "没装工具环境，本次没有覆盖率", "frontend_note": ""}
     elif args.coverage == "none" or tier["computed"] == "low":
         coverage = {"status": "这次没有需要统计覆盖率的后端代码" if tier["computed"] == "low" else "本次关闭", "frontend_note": ""}
     else:
-        coverage = measure_coverage(changed, args.python, args.tools_python, args.jobs, args.coverage_timeout, args.coverage == "all", timings, args.report_dir)
-    skipped.update(timings.pop("_errors", {}))
-    return {"format": 1, "base": base, "head": head, "tier": tier, "issues": buckets, "coverage": coverage, "timings": timings, "skipped": skipped,
+        try:
+            coverage = measure_coverage(changed, args.python, args.tools_python, args.jobs, args.coverage_timeout, args.coverage == "all", timings, args.report_dir)
+        except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
+            fail_tool(timings, "覆盖率", f"{type(exc).__name__}: {exc}")
+            coverage = {"status": "覆盖率没统计成", "frontend_note": ""}
+    failed = timings.pop("_errors", {})
+    return {"format": 1, "base": base, "head": head, "tier": tier, "issues": buckets, "coverage": coverage, "timings": timings, "skipped": skipped, "failed": failed,
+            "baseline_changed": BASELINE.relative_to(ROOT).as_posix() in files, "baseline_note": baseline_note,
             "total_scanned": len(issues), "baseline_commit": baseline.get("commit"), "known_issues": known_issues(), "seconds": round(time.monotonic() - started, 1)}
 
 
@@ -480,6 +574,23 @@ def save(report: dict, report_dir: Path) -> Path:
     return keep / "report.md"
 
 
+def abort_on_deadline(seconds: int) -> None:
+    kill_active()
+    print(f"OA 代码审查报告超过总时限 {seconds} 秒，已放弃，不影响推送。", file=sys.stderr, flush=True)
+    os._exit(0)
+
+
+def reusable_report(head: str) -> bool:
+    path = state_dir() / git("rev-parse", head).strip()[:12] / "report.json"
+    if not path.exists():
+        return False
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if data.get("failed"):
+        return False
+    print(f"OA 代码审查（只提示）：同一提交的报告已有，不重跑：{path.with_name('report.md')}")
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report-dir", type=Path, help="报告目录，默认放进 Git 目录的 oa-review/")
@@ -494,12 +605,22 @@ def main() -> int:
     parser.add_argument("--coverage-timeout", type=int, default=150)
     parser.add_argument("--jobs", type=int, default=min(4, os.cpu_count() or 2))
     parser.add_argument("--cache-dir", help="mypy 缓存位置，默认放进 Git 目录")
+    parser.add_argument("--deadline", type=int, default=180, help="总时限（秒），到点放弃并以 0 退出")
+    parser.add_argument("--reuse", action="store_true", help="同一提交已有完整报告就不再跑（发布时 dev、main 各推一次）")
     parser.add_argument("--update-baseline", action="store_true", help="把当前全部问题写成基线")
+    parser.add_argument("--allow-partial-baseline", action="store_true", help="允许不跑依赖审计等可选项就写基线")
     parser.add_argument("--trial-summary", action="store_true", help="打印试运行的自动统计")
     args = parser.parse_args()
+    # 主动时限先到，能写出“不完整”的报告；万一卡在别处，再由看门狗强制退出。两者都不影响推送。
+    RUN["deadline"] = time.monotonic() + max(1, args.deadline - 10)
+    watchdog = threading.Timer(args.deadline, abort_on_deadline, args=(args.deadline,))
+    watchdog.daemon = True
+    watchdog.start()
     try:
         if args.trial_summary:
             return trial_summary()
+        if args.reuse and reusable_report(args.head):
+            return 0
         # mypy 缓存和路径绑定，每个 worktree 一份。
         args.cache_dir = args.cache_dir or str(state_dir() / "cache" / hashlib.sha256(str(ROOT).encode()).hexdigest()[:10])
         args.report_dir = args.report_dir or Path(tempfile.mkdtemp(prefix="oa-review-"))
@@ -507,6 +628,9 @@ def main() -> int:
             timings: dict = {}
             skipped: dict = {}
             issues = collect_issues(args, timings, skipped, args.audit)
+            if timings.get("_errors") or (skipped and not args.allow_partial_baseline):
+                print(f"基线没写入，有工具没跑成或没跑：{timings.get('_errors')} {skipped}")
+                return 0
             if skipped:
                 print(f"注意，这些项没进基线：{skipped}")
             BASELINE.write_text(json.dumps(to_baseline(issues, git("rev-parse", "HEAD").strip()), ensure_ascii=False, indent=0) + "\n", encoding="utf-8")
