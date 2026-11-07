@@ -1206,6 +1206,7 @@ export default function DocumentCenterPage({
       loading={loading}
       receiptForm={receiptForm}
       searchedReceipts={searchedReceipts}
+      appliedUploadRange={receiptQuery.upload_range || null}
       selectedReceiptKeys={selectedReceiptKeys}
       selectedFormalReceipts={selectedFormalReceipts}
       receiptAttachment={receiptAttachment}
