@@ -181,13 +181,13 @@ class LegacyArPaymentField(Base):
     __tablename__ = "legacy_ar_payment_fields"
 
     record_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
-    legacy_id: Mapped[str] = mapped_column(String(128), default="")
+    legacy_id: Mapped[str] = mapped_column(Text, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    payment_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    group_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    payment_method: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    settlement_status: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    source_database: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    payment_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    group_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payment_method: Mapped[str | None] = mapped_column(Text, nullable=True)
+    settlement_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_database: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class LegacyFinanceRecord(Base):

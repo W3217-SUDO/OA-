@@ -4,6 +4,7 @@
 - incoming_allocation_items：incoming_payments.allocations 展开的（到账单、费用、金额）明细。
 
 两张表只是派生数据，由来源表上的触发器维护，应用和同步程序都不直接写；原 JSON 不动。
+文本列一律用 text：触发器写旁表失败会让来源表的写入（含同步）一起失败，不能因为长度限制出错。
 """
 from sqlalchemy import text
 
@@ -30,8 +31,8 @@ ALLOCATION_EXPECTED = f"""
 
 POSTGRES_INSTALL = (
     """CREATE TABLE IF NOT EXISTS legacy_ar_payment_fields (
-        record_id integer PRIMARY KEY, legacy_id varchar(128) NOT NULL DEFAULT '', is_active boolean NOT NULL DEFAULT true,
-        payment_id varchar(128), group_id varchar(64), payment_method varchar(128), settlement_status varchar(64), source_database varchar(128))""",
+        record_id integer PRIMARY KEY, legacy_id text NOT NULL DEFAULT '', is_active boolean NOT NULL DEFAULT true,
+        payment_id text, group_id text, payment_method text, settlement_status text, source_database text)""",
     f"""CREATE OR REPLACE FUNCTION oa_legacy_ar_payment_fields_sync() RETURNS trigger LANGUAGE plpgsql AS $f$
     BEGIN
       IF TG_OP <> 'INSERT' THEN DELETE FROM legacy_ar_payment_fields WHERE record_id = OLD.id; END IF;
