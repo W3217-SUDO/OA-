@@ -611,6 +611,130 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(turns, ["lawyer"])
         self.assertIn("回复“确认 ", reply.text)
 
+    def _agent_server(self, first, created, calls, existing=None, fail=False):
+        import json
+
+        def handler(request):
+            body = json.loads(request.content or b"{}")
+            calls.append((request.method, request.url.path.split("/api/v1")[-1], body))
+            if request.method == "GET":
+                listing = dict(first)
+                if existing:
+                    listing["items"] = [*first["items"], existing]
+                return httpx.Response(200, json=listing)
+            if request.method == "PATCH":
+                return httpx.Response(200, json=created)
+            if request.url.path.endswith("/personal-agent/conversations"):
+                return httpx.Response(200, json=created)
+            if request.url.path.endswith("/personal-agent/messages"):
+                if fail:
+                    return httpx.Response(200, text='data: {"type": "error", "detail": "x"}\n\n')
+                state = {"pending_actions": [{"id": "act-1", "status": "pending"}]}
+                return httpx.Response(200, text=f"data: {json.dumps({'type': 'state', 'state': state})}\n\ndata: {json.dumps({'type': 'done'})}\n\n")
+            return httpx.Response(200, json={})
+        return httpx.MockTransport(handler)
+
+    async def _real_snapshots(self):
+        import tempfile
+        from pathlib import Path
+        from app.areas.personal_agent import conversations
+        with tempfile.TemporaryDirectory() as folder:
+            directory = Path(folder)
+            first = await conversations.create_conversation(directory)  # 用户网页上原来选中的对话
+            created = await conversations.create_conversation(directory)  # 真实的新建对话返回结构
+        return first, created
+
+    async def test_first_time_creates_fixed_conversation_and_restores_selection(self):
+        from app import dingtalk_receipt_worker as module
+        first, created = await self._real_snapshots()
+        previous, new_id = first["active_id"], created["active_id"]
+        self.assertNotIn("conversation_id", created)  # 接口返回里没有这个字段，取它会得到空值
+        self.assertEqual(module.conversation_id_of(created), new_id)
+        calls = []
+        with patch.object(module, "_token", AsyncMock(return_value="t")):
+            await module.agent_turn("lawyer", "短信", transport=self._agent_server(first, created, calls))
+        self.assertEqual([(m, p) for m, p, _ in calls], [
+            ("GET", "/personal-agent/conversations"), ("POST", "/personal-agent/conversations"),
+            ("PATCH", f"/personal-agent/conversations/{new_id}"), ("POST", f"/personal-agent/conversations/{previous}/select"),
+            ("POST", "/personal-agent/messages"), ("POST", f"/personal-agent/conversations/{new_id}/actions/dismiss")])
+        self.assertEqual(calls[2][2], {"title": "钉钉收文助手"})
+        self.assertEqual(calls[4][2]["conversation_id"], new_id)
+
+    async def test_later_messages_reuse_fixed_conversation_without_switching(self):
+        from app import dingtalk_receipt_worker as module
+        first, created = await self._real_snapshots()
+        fixed = {"id": "fixed-1", "title": "钉钉收文助手", "skill_id": "court-doc-intake"}
+        calls = []
+        with patch.object(module, "_token", AsyncMock(return_value="t")):
+            await module.agent_turn("lawyer", "短信", transport=self._agent_server(first, created, calls, existing=fixed))
+        paths = [(m, p) for m, p, _ in calls]
+        self.assertNotIn(("POST", "/personal-agent/conversations"), paths)
+        self.assertFalse(any(p.endswith("/select") for _, p in paths))
+        self.assertEqual(calls[1][2]["conversation_id"], "fixed-1")
+
+    def test_fixed_conversation_rule(self):
+        from app import dingtalk_receipt_worker as module
+        items = [{"id": "a", "title": "钉钉收文助手", "skill_id": "general-office"},
+                 {"id": "b", "title": "收文 （2026）沪1号", "skill_id": "court-doc-intake"},
+                 {"id": "c", "title": "钉钉收文助手", "skill_id": ""}]
+        self.assertEqual(module.fixed_conversation_of({"items": items}), "c")
+        self.assertEqual(module.fixed_conversation_of({"items": items[:2]}), "")
+
+    async def test_two_messages_at_once_create_only_one_fixed_conversation(self):
+        from app import dingtalk_receipt_worker as module
+        first, created = await self._real_snapshots()
+        made = []
+        state = {"fixed": None}
+        import json
+
+        async def slow_handler(request):
+            body = json.loads(request.content or b"{}")
+            path = request.url.path.split("/api/v1")[-1]
+            if request.method == "GET":
+                items = list(first["items"]) + ([state["fixed"]] if state["fixed"] else [])
+                return httpx.Response(200, json={**first, "items": items})
+            if request.method == "POST" and path == "/personal-agent/conversations":
+                await asyncio.sleep(0.05)
+                made.append(1)
+                return httpx.Response(200, json=created)
+            if request.method == "PATCH":
+                state["fixed"] = {"id": created["active_id"], "title": body["title"], "skill_id": ""}
+                return httpx.Response(200, json=created)
+            if path == "/personal-agent/messages":
+                return httpx.Response(200, text='data: {"type": "done"}\n\n')
+            return httpx.Response(200, json={})
+
+        class Async(httpx.AsyncBaseTransport):
+            async def handle_async_request(self, request):
+                await request.aread()
+                return await slow_handler(request)
+        with patch.object(module, "_token", AsyncMock(return_value="t")):
+            await asyncio.gather(module.agent_turn("lawyer", "一", transport=Async()), module.agent_turn("lawyer", "二", transport=Async()))
+        self.assertEqual(len(made), 1)
+
+    async def test_agent_turn_failure_after_creation_keeps_selection_restored(self):
+        from app import dingtalk_receipt_worker as module
+        first, created = await self._real_snapshots()
+        calls = []
+        with patch.object(module, "_token", AsyncMock(return_value="t")), self.assertRaises(RuntimeError):
+            await module.agent_turn("lawyer", "短信", transport=self._agent_server(first, created, calls, fail=True))
+        self.assertIn(("POST", f"/personal-agent/conversations/{first['active_id']}/select"), [(m, p) for m, p, _ in calls])
+
+    async def test_preview_lists_everything_that_will_be_written(self):
+        report = preview()
+        report["plan"] = {**report["plan"], "court_case_no": NUMBER, "hearing_existing": "2026-12-20 09:00 第九庭",
+                          "receipts": ["HZMS1_传票.pdf"], "court_staff": {"display": ["一审承办法官 王法官", "一审书记员 李书记"]}}
+        reply = await self._run(sms(), FakeApi(report))
+        for words in ("确认后将：", "存入文书 1 份", f"回填法院案号 {NUMBER}", "系统已登记开庭 2026-12-20 09:00 第九庭", "不覆盖",
+                      "回填一审承办法官 王法官、一审书记员 李书记", "生成费用草稿 500 元"):
+            self.assertIn(words, reply.text)
+        report["plan"] = {**report["plan"], "court_case_no": "已登记 X，不覆盖", "hearing_existing": "", "receipts": ["已收过，跳过：a.pdf"],
+                          "court_staff": {"display": []}, "fees": []}
+        reply = await self._run(sms(message_id="m9", text=SMS.replace("7f184b3f", "9f184b3f")), FakeApi(report))
+        for words in ("1 份此前已收过，不重复存", "回填开庭 2026-12-01 09:30 第一法庭"):
+            self.assertIn(words, reply.text)
+        self.assertNotIn("回填法院案号", reply.text)
+
     def test_parse_message_and_seen(self):
         message = parse_message({"msgId": "a", "conversationType": "2", "conversationTitle": GROUP, "senderStaffId": "s",
                                  "text": {"content": " 确认 "}, "senderNick": "n"})

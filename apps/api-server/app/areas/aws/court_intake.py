@@ -293,6 +293,15 @@ async def _prepare_fee(case: BusinessRecord, document: dict, court_no: str, leve
             "bank": account.get("开户行", "")}
 
 
+def _existing_hearing(data: dict, level: str) -> str:
+    """该审级已登记的开庭时间和法庭，预览时告诉用户入库后会不会被改。"""
+    prefix = HEARING_PREFIX.get(level)
+    if not prefix:
+        return ""
+    when = str(data.get(prefix + "_hearing_date") or "").replace("T", " ")[:16]
+    return " ".join(part for part in (when, str(data.get(prefix + "_courtroom") or "")) if part)
+
+
 def _preview(case: BusinessRecord, documents: list[dict], court_no: str, level: str, court_name: str, received: dict[int, str]) -> dict:
     """列出确认后将写入的内容，不改任何业务数据。"""
     data = case.data or {}
@@ -309,6 +318,7 @@ def _preview(case: BusinessRecord, documents: list[dict], court_no: str, level: 
         "hearing": ([f"{day} {clock} {room}" for day, clock, room in hearings] if hearings else []),
         "hearing_note": "开庭信息不一致，入库后只报告不回填" if len({(day, clock) for day, clock, _ in hearings}) > 1 else "",
         "court_name": court_name, "fees": fees,
+        "hearing_existing": _existing_hearing(data, level),
         # 承办法官、书记员、法官电话（BUG 陶国南 11-01 智能体日常办事第 4 项）：只填空着的字段。
         "court_staff": _staff_plan(case, documents, level, court_name),
     }

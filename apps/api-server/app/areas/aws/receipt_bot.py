@@ -190,6 +190,36 @@ def _facts(report: dict) -> list[str]:
     return lines
 
 
+def _plan_lines(report: dict) -> list[str]:
+    """预览时列出确认后会写的所有内容：文书、法院案号、开庭、承办法官和书记员、费用草稿。"""
+    plan = report.get("plan") or {}
+    receipts = [str(item) for item in plan.get("receipts") or []]
+    skipped = sum(1 for item in receipts if item.startswith("已收过"))
+    actions = []
+    if len(receipts) - skipped:
+        actions.append(f"存入文书 {len(receipts) - skipped} 份")
+    if skipped:
+        actions.append(f"{skipped} 份此前已收过，不重复存")
+    court_no = str(plan.get("court_case_no") or "")
+    if court_no and not court_no.startswith("已登记"):
+        actions.append(f"回填法院案号 {court_no}")
+    planned = [str(item) for item in plan.get("hearing") or []]
+    existing = str(plan.get("hearing_existing") or "")
+    if plan.get("hearing_note"):
+        actions.append(f"开庭：{plan['hearing_note']}")
+    elif planned and not existing:
+        actions.append(f"回填开庭 {planned[0]}")
+    elif planned and existing and not planned[0].startswith(existing):
+        actions.append(f"系统已登记开庭 {existing}，文书为 {planned[0]}，不覆盖，请核对")
+    staff = (plan.get("court_staff") or {}).get("display") or []
+    if staff:
+        actions.append("回填" + "、".join(str(item) for item in staff))
+    for fee in plan.get("fees") or []:
+        if fee.get("amount"):
+            actions.append(f"生成费用草稿 {fee['amount']} 元" + (f"（期限 {fee['deadline']}）" if fee.get("deadline") else "") + "，提交仍需到系统确认")
+    return ["确认后将：" + ("，".join(actions) or "不写入新内容")]
+
+
 def _court_no_filled(report: dict, planned_court_no: str) -> str:
     """真的回填了才算：这次确实存入了文书，且入库后案件的法院案号就是预览计划要填的。文书全部已收过时不算。"""
     from app.agent_skill_packages.court_doc_intake.scripts.normalize_case_no import parse as parse_case_no
@@ -530,7 +560,7 @@ async def _preview_record(record: BusinessRecord, message: BotMessage, link: str
             return reply
     await _set_status(record, WAITING, {**record_data, "case_id": case_id, "expires_at": expires, "not_auto_reason": why_not,
                                                 "prompt_label": f"{report['case'].get('serial_no') or ''} {_documents_text(report)}".strip()}, user.username, db)
-    return Reply("\n".join([f"{me} 找到案件，请核对后回复“确认 {record.id}”存入，或“取消 {record.id}”：", *_facts(report),
+    return Reply("\n".join([f"{me} 找到案件，请核对后回复“确认 {record.id}”存入，或“取消 {record.id}”：", *_facts(report), *_plan_lines(report),
                             *([f"匹配依据：{basis}"] if basis else [])]), [message.sender_id])
 
 
