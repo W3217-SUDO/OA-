@@ -17,6 +17,8 @@ import { EditOutlined, PlusOutlined } from "@ant-design/icons";
 import type { MenuRow } from "./types";
 
 interface SystemMenuManagementProps {
+  /** 只有真实系统管理员显示修改按钮；页面授权的人只能查看（后端同样只认真实管理员，陶威 11-07）。 */
+  actualAdmin: boolean;
   menus: MenuRow[];
   menuPage: number;
   menuPageSize: number;
@@ -64,6 +66,7 @@ export function SystemMenuManagement({
   onNewMenu,
   onResetMenuSearch,
   onSaveVisibility,
+  actualAdmin,
 }: SystemMenuManagementProps) {
   const [visibleKeys, setVisibleKeys] = useState<string[]>([]);
   const [visibilitySaving, setVisibilitySaving] = useState(false);
@@ -108,9 +111,10 @@ export function SystemMenuManagement({
           message="无路由菜单作为目录/权限节点，不会导航到页面；有路由菜单仅允许已实现路由。"
           style={{ marginBottom: 12 }}
         />
-        <Card size="small" title="快速配置模块显示" style={{ marginBottom: 12 }} extra={<Button type="primary" loading={visibilitySaving} onClick={async()=>{setVisibilitySaving(true);try{await onSaveVisibility(visibleKeys)}finally{setVisibilitySaving(false)}}}>保存显示配置</Button>}>
+        <Card size="small" title="快速配置模块显示" style={{ marginBottom: 12 }} extra={actualAdmin && <Button type="primary" loading={visibilitySaving} onClick={async()=>{setVisibilitySaving(true);try{await onSaveVisibility(visibleKeys)}finally{setVisibilitySaving(false)}}}>保存显示配置</Button>}>
           <Tree
             checkable
+            disabled={!actualAdmin}
             selectable={false}
             defaultExpandAll
             treeData={menuTreeData}
@@ -118,13 +122,15 @@ export function SystemMenuManagement({
             onCheck={(keys) => setVisibleKeys((Array.isArray(keys) ? keys : keys.checked).map(String))}
           />
         </Card>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={onNewMenu}
-        >
-          新增菜单
-        </Button>
+        {actualAdmin && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={onNewMenu}
+          >
+            新增菜单
+          </Button>
+        )}
         <Space wrap style={{ margin: "12px 0" }}>
           <Input value={menuSearchInput} placeholder="菜单名称/标识" onChange={(event) => onMenuSearchInputChange(event.target.value)} style={{ width: 220 }} />
           <Button onClick={() => onMenuSearch(menuSearchInput)}>查询</Button>
@@ -164,7 +170,7 @@ export function SystemMenuManagement({
             },
             { title: "菜单名称", dataIndex: "label" },
             { title: "菜单描述", dataIndex: "description" },
-            {
+            ...(actualAdmin ? [{
               title: "操作",
               key: "action",
               width: 100,
@@ -177,7 +183,7 @@ export function SystemMenuManagement({
                   修改
                 </Button>
               ),
-            },
+            }] : []),
           ]}
           dataSource={filteredSystemMenus}
           locale={{ emptyText: "没有查询到符合条件的记录，可以去新增菜单。" }}
@@ -206,7 +212,7 @@ export function SystemMenuManagement({
               { title: "菜单标识", dataIndex: "key" },
               { title: "菜单名称", dataIndex: "label" },
               { title: "菜单描述", dataIndex: "description" },
-              {
+              ...(actualAdmin ? [{
                 title: "操作",
                 key: "action",
                 width: 120,
@@ -220,7 +226,7 @@ export function SystemMenuManagement({
                     </Button>
                   </Popconfirm>
                 ),
-              },
+              }] : []),
             ]}
             dataSource={legacyMenus}
             pagination={false}

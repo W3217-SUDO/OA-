@@ -13,6 +13,8 @@ import type { CacheRow, CacheSummary } from "./types";
 import { formatTime } from "./constants";
 
 interface SystemCacheManagementProps {
+  /** 只有真实系统管理员显示修改按钮；页面授权的人只能查看（后端同样只认真实管理员，陶威 11-07）。 */
+  actualAdmin: boolean;
   caches: CacheRow[];
   cacheSummary: CacheSummary | null;
   cacheActionPending: boolean;
@@ -46,6 +48,7 @@ export function SystemCacheManagement({
   onClearSelectedCaches,
   onClearAllCaches,
   onJumpToCachePage,
+  actualAdmin,
 }: SystemCacheManagementProps) {
   const empty = (
     <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />
@@ -86,18 +89,18 @@ export function SystemCacheManagement({
       <Table
         rowKey="key"
         size="small"
-        rowSelection={{
+        rowSelection={actualAdmin ? {
           selectedRowKeys: selectedCacheKeys,
           onChange: (keys) => onSelectedCacheKeysChange(keys.map(String)),
           getCheckboxProps: (row: CacheRow) => ({ disabled: !row.clearable }),
-        }}
+        } : undefined}
         title={() => (
           <Space>
             <Button disabled={cacheActionPending} onClick={() => onLoadCaches(cachePage, cachePageSize)} icon={<ReloadOutlined />}>刷新列表</Button>
-            <Popconfirm title="确认清除选中的缓存？" onConfirm={onClearSelectedCaches}>
+            {actualAdmin && <Popconfirm title="确认清除选中的缓存？" onConfirm={onClearSelectedCaches}>
               <Button loading={cacheActionPending} disabled={!selectedCacheKeys.length} danger>清除选中缓存</Button>
-            </Popconfirm>
-            <Popconfirm
+            </Popconfirm>}
+            {actualAdmin && <Popconfirm
               title="确认清除全部缓存？"
               description="此操作会清除当前 API 进程的所有内存缓存，之后请求会重新加载数据。"
               okText="确认清除"
@@ -105,7 +108,7 @@ export function SystemCacheManagement({
               onConfirm={onClearAllCaches}
             >
               <Button type="primary" loading={cacheActionPending} danger>清除全部缓存</Button>
-            </Popconfirm>
+            </Popconfirm>}
           </Space>
         )}
         columns={[
@@ -127,11 +130,11 @@ export function SystemCacheManagement({
             key: "action",
             width: 110,
             render: (_v: unknown, row: CacheRow) => (
-              row.clearable ? (
+              row.clearable && actualAdmin ? (
                 <Popconfirm title="确认清空此缓存？" onConfirm={() => onClearCache(row)}>
                   <Button type="link" disabled={cacheActionPending} danger icon={<ClearOutlined />}>清空</Button>
                 </Popconfirm>
-              ) : <span style={{ color: "var(--oa-text-3)" }}>未启用缓存</span>
+              ) : <span style={{ color: "var(--oa-text-3)" }}>{row.clearable ? "仅系统管理员可清理" : "未启用缓存"}</span>
             ),
           },
         ]}

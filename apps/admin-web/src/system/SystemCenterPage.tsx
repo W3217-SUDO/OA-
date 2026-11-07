@@ -40,8 +40,11 @@ import { SystemApiSettings } from "./SystemApiSettings";
 
 export default function SystemCenterPage({
   initialView = "system-parameters",
+  actualAdmin = false,
 }: {
   initialView?: string;
+  /** 登录信息里的真实角色是系统管理员（actual_role_ids），不是页面授权（陶威 11-07）。 */
+  actualAdmin?: boolean;
 }) {
   const category = categoryByRoute[initialView] || "";
   const numericCode = category === "fee_type" || category === "case_phase";
@@ -796,6 +799,7 @@ export default function SystemCenterPage({
         onClearSelectedCaches={clearSelectedCaches}
         onClearAllCaches={clearAllCaches}
         onJumpToCachePage={jumpToCachePage}
+        actualAdmin={actualAdmin}
       />
     );
   } else if (initialView === "system-management-menu") {
@@ -823,6 +827,7 @@ export default function SystemCenterPage({
         onNewMenu={newMenu}
         onResetMenuSearch={() => { setMenuSearchInput(""); setMenuSearch(""); setMenuPage(1); }}
         onSaveVisibility={saveMenuVisibility}
+        actualAdmin={actualAdmin}
       />
     );
   } else if (initialView === "system-management-config") {
@@ -877,6 +882,7 @@ export default function SystemCenterPage({
         loading={loading}
         securityForm={securityForm}
         onSaveSecurity={saveSecurity}
+        actualAdmin={actualAdmin}
       />
     );
   } else {

@@ -2040,7 +2040,7 @@ export default function App() {
     ) : route === "system-parameters-ipr-case-file-type" ? (
       <IprFileTypeSettingsPage />
     ) : route.startsWith("system-") ? (
-      <SystemCenterPage initialView={route} />
+      <SystemCenterPage initialView={route} actualAdmin={permissionAdministrator} />
     ) : route === "contract-receivable" ? (
       <ContractReceivablesPage initialView={active} onNavigate={navigate} />
     ) : route.startsWith("contract-") ? (

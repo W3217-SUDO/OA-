@@ -13,9 +13,12 @@ interface SystemSecurityPolicyProps {
   loading: boolean;
   securityForm: ReturnType<typeof Form.useForm>[0];
   onSaveSecurity: () => void;
+  /** 只有真实系统管理员显示修改按钮；页面授权的人只能查看（后端同样只认真实管理员，陶威 11-07）。 */
+  actualAdmin: boolean;
 }
 
 export function SystemSecurityPolicy({
+  actualAdmin,
   securityPolicy,
   loading,
   securityForm,
@@ -30,6 +33,7 @@ export function SystemSecurityPolicy({
     >
       <Form
         form={securityForm}
+        disabled={!actualAdmin}
         className="system-config-form"
         labelCol={{ flex: "180px" }}
         wrapperCol={{ flex: "260px" }}
@@ -77,11 +81,13 @@ export function SystemSecurityPolicy({
             ? `${showPerson(securityPolicy.updated_by)}｜${formatTime(securityPolicy.updated_at)}`
             : "—"}
         </Form.Item>
-        <Form.Item label=" ">
-          <Button type="primary" onClick={onSaveSecurity}>
-            保存安全策略
-          </Button>
-        </Form.Item>
+        {actualAdmin && (
+          <Form.Item label=" ">
+            <Button type="primary" onClick={onSaveSecurity}>
+              保存安全策略
+            </Button>
+          </Form.Item>
+        )}
       </Form>
     </Card>
   );
