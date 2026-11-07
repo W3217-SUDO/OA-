@@ -5,6 +5,7 @@ from app.core.documents import _seal_authorization_context
 from app.core.investigation import _is_investigation_task
 from app.core.tasks import _task_dict
 from app.core.dashboard import dashboard_scope
+from app.core.permissions import _record_scope_conditions
 
 
 async def dashboard_todos(identity, db, *, record_scope=None):
@@ -17,7 +18,8 @@ async def dashboard_todos(identity, db, *, record_scope=None):
             func.trim(BusinessRecord.data["initiator"].as_string()) == username),
     ))).all()) if "task" in modules else []
     clue_counts = dict((await db.execute(select(BusinessRecord.status, func.count()).where(
-        BusinessRecord.module.in_(modules & {"clue"}), *scope,
+        BusinessRecord.module.in_(modules & {"clue"}),
+        *(scope if record_scope is not None else await _record_scope_conditions(identity, db, module="clue")),
     ).group_by(BusinessRecord.status))).all())
     # 旧系统“待审批线索”= 线索审批列表（PageId 1401004001）里待审批的条数，按线索审批范围（客户管理人/协作人/线索审批岗）计。
     from app.core.clue_audit_scope import clue_audit_condition
