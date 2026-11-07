@@ -14,7 +14,9 @@ from app.data_models.documents import FileAttachment
 _SENSITIVE_KEY = re.compile(
     r"(?:password|passwd|passphrase|secret|credential|^authorization$|access[_-]?token|"
     r"refresh[_-]?token|api[_-]?key|private[_-]?key|signature|signed[_-]?url|"
-    r"ossaccesskeyid|word_editor_lock_token|^token$|^pass$)", re.IGNORECASE,
+    r"ossaccesskeyid|word_editor_lock_token|^token$|^pass$|"
+    # 云端智能体、模型服务商、连接器存的加密 Key 和 Agent Plan Key（陶威 11-07）。
+    r"encrypted[_-]|^plan[_-]?key$)", re.IGNORECASE,
 )
 _SIGNED_VALUE = re.compile(r"(?:[?&](?:Signature|OSSAccessKeyId|X-Amz-Signature|access_token)=|Bearer\s+)", re.IGNORECASE)
 _JWT_VALUE = re.compile(r"\beyJ[\w-]+\.eyJ[\w-]+\.[\w-]+\b")

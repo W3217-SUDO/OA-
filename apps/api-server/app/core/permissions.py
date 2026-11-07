@@ -1186,6 +1186,27 @@ async def _ensure_record_module(record_id: int, module: str, identity: dict, db:
     return record
 
 
+def _require_not_new_self_approver(identity: dict, before, after, label: str) -> None:
+    """审批人不能由自己设成自己（陶威 11-07）：只看这次新加进去的人，原来就是的不挡；真实管理员不限。"""
+    if "admin" in (identity.get("_actual_role_ids") or []):
+        return
+    me = str(identity.get("username") or "").strip().lower()
+    clean = lambda values: {str(value or "").strip().lower() for value in values} - {""}
+    if me and me in clean(after) and me not in clean(before):
+        raise HTTPException(status_code=403, detail=f"不能把自己设为{label}，请让系统管理员设置")
+
+
+async def _require_unlinked_attachment_access(item, identity: dict, db: AsyncSession) -> None:
+    """不挂任何记录的附件：上传人本人或真实管理员能看；页面授权不提升成管理员（分支 4、陶威 11-07）。
+    收文助手下载的送达文书还没入案件时，在“钉钉收文待处理”里且有收文台菜单的人也能看。"""
+    if "admin" in (identity.get("_actual_role_ids") or []) or item.uploader == identity.get("username"):
+        return
+    from app.areas.aws.receipt_bot import pending_receipt_attachment_visible
+    if await pending_receipt_attachment_visible(item, identity, db):
+        return
+    raise HTTPException(status_code=404, detail="附件不存在或无权访问")
+
+
 async def _require_record_owner_or_manager(record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
     if identity.get("_page_menu_capability"):
         return
@@ -1317,7 +1338,7 @@ def _require_admin(identity: dict) -> None:
         raise HTTPException(status_code=403, detail="当前账号没有该菜单的操作权限")
 
 
-def _require_actual_system_admin(identity: dict) -> None:
+def _require_actual_system_admin(identity: dict, detail: str = "仅系统管理员可以管理用户授权") -> None:
     """用户授权管理只能由真实系统管理员执行，页面授权不授予此权限。"""
     actual_role_ids = identity.get("_actual_role_ids")
     if actual_role_ids is not None:
@@ -1327,7 +1348,7 @@ def _require_actual_system_admin(identity: dict) -> None:
     else:
         role_ids = _identity_role_ids(identity)
     if "admin" not in role_ids:
-        raise HTTPException(status_code=403, detail="仅系统管理员可以管理用户授权")
+        raise HTTPException(status_code=403, detail=detail)
 
 
 # ---- 账号安全（陶威 2026-11-07）----
@@ -1341,7 +1362,7 @@ _HIGH_ROLE_APPROVAL_PAGES = 10  # 审批、审核类页面达到这个数算高�
 _ACCOUNT_ROLE_PROFILE_KEYS = ("permission_role", "permission_role_code", "staff_role")
 _ACCOUNT_LOGIN_PROFILE_KEYS = ("dingtalk_user_id", "dingtalk_login_ids")
 _ACCOUNT_APPROVAL_PROFILE_KEYS = ("contract_approval_enabled", "seal_approval_enabled")
-_RESERVED_USERNAMES = frozenset({"admin", "system", "feedback-bot", "hz-sync"})  # 系统内置身份用的登录名
+_RESERVED_USERNAMES = frozenset({"admin", "system", "feedback-bot", "hz-sync", "ops", "legacy-import"})  # 系统内置身份用的登录名（ops、legacy-import 为运维和旧数据导入记的操作人，陶威 11-07）
 
 
 def is_high_privilege_job_role(role: JobRole) -> bool:

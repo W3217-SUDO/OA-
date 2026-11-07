@@ -176,6 +176,12 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
                 raise HTTPException(status_code=409, detail="不能通过员工档案覆盖管理员账号")
             if account_type != "客户账号":
                 raise HTTPException(status_code=409, detail="登录账号已存在")
+            # 只接管原来就是客户账号的普通登录名；员工账号、高权限账号不能被客户账号覆盖（陶威 11-07）。
+            from app.core.permissions import _account_guard_level
+            old_profile = user.profile or {}
+            was_customer = old_profile.get("account_type") == "客户账号" or old_profile.get("staff_role") == "客户联系人"
+            if not was_customer or await _account_guard_level(user, db) > 0:
+                raise HTTPException(status_code=409, detail="该登录名已被员工或高权限账号使用，不能作为客户账号")
             # Legacy customer logins can outlive their customer-account HR row.
             # Re-adopt that login instead of forcing users to create another account.
             user.display_name = display_name
@@ -684,15 +690,20 @@ async def update_department(department_id: int, body: DepartmentUpdate, identity
             if not ancestor: break
     changes = body.model_dump(exclude_unset=True, exclude_none=True)
     seal_reviewer = changes.pop("seal_reviewer", None)
+    from app.core.permissions import _require_not_new_self_approver
     if seal_reviewer is not None:
         from app.core.seal_approval import department_seal_reviewers, set_department_seal_reviewer
-        if seal_reviewer.strip() != (await department_seal_reviewers(db)).get(item.id, ""):
-            await set_department_seal_reviewer(item.id, await _department_person(seal_reviewer, "部门用印审核人", db), identity["username"], db)
+        previous_reviewer = (await department_seal_reviewers(db)).get(item.id, "")
+        if seal_reviewer.strip() != previous_reviewer:
+            reviewer = await _department_person(seal_reviewer, "部门用印审核人", db)
+            _require_not_new_self_approver(identity, [previous_reviewer], [reviewer], "部门用印审核人")
+            await set_department_seal_reviewer(item.id, reviewer, identity["username"], db)
     if "parent_department_id" in body.model_fields_set:
         changes["parent_department_id"] = body.parent_department_id
     # 只校验本次改动的人，旧数据里不规范的负责人不挡其他字段的保存。
     if "manager" in changes and changes["manager"].strip() != (item.manager or "").strip():
         changes["manager"] = await _department_person(changes["manager"], "部门负责人", db)
+        _require_not_new_self_approver(identity, [item.manager], [changes["manager"]], "部门负责人")
     if "owner_username" in changes and changes["owner_username"].strip() != (item.owner_username or "").strip():
         changes["owner_username"] = await _department_person(changes["owner_username"], "挂靠人", db)
     if changes.get("is_active") is False and item.is_active:
@@ -1258,6 +1269,10 @@ async def put_seal_approval_settings(body: SealApprovalSettingsInput, identity: 
     from app.core.seal_approval import save_seal_approval_settings
     from app.core.system import _record_organization_audit
     _require_admin(identity)
+    from app.core.permissions import _require_not_new_self_approver
+    from app.core.seal_approval import load_seal_approval_settings, normalize_settings
+    people = lambda value: [value["firm_approver"], *value["stamp_users"], *(person for steps in value["department_paths"].values() for person in steps)]
+    _require_not_new_self_approver(identity, people(await load_seal_approval_settings(db)), people(normalize_settings(body.model_dump())), "用印审批人或盖章人")
     saved = await save_seal_approval_settings(body.model_dump(), identity["username"], db)
     await _record_organization_audit(db, identity, "修改用印审批设置", "用印审批设置", saved)
     await db.commit()

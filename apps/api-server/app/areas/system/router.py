@@ -618,7 +618,10 @@ async def update_security_policy(body: SecurityPolicyUpdate, identity: dict = De
     from app.core.system import (
         _security_policy, _security_policy_dict,
     )
-    _require_admin(identity); policy = await _security_policy(db)
+    _require_admin(identity)
+    from app.core.permissions import _require_actual_system_admin
+    _require_actual_system_admin(identity, "安全策略只有系统管理员可以修改")  # 页面授权不提升成管理员（陶威 11-07）
+    policy = await _security_policy(db)
     for key, value in body.model_dump().items(): setattr(policy, key, value)
     policy.updated_by = identity["username"]
     await db.commit(); await db.refresh(policy); return _security_policy_dict(policy)
@@ -963,7 +966,9 @@ async def list_system_configs(keyword: str = "", page: int | None = Query(None, 
     from app.areas.capability_market.connector_store import CONNECTOR_CONFIG_PREFIX
     from app.areas.agent_admin.dingtalk_bots import CONFIG_KEY as DINGTALK_BOT_CONFIG_KEY
     from app.harness_agent.model_providers import CONFIG_KEY as MODEL_PROVIDER_CONFIG_KEY
-    items = [item for item in items if not item.key.startswith(CONNECTOR_CONFIG_PREFIX) and item.key not in {MODEL_PROVIDER_CONFIG_KEY, DINGTALK_BOT_CONFIG_KEY, "feedback_review"}]
+    from app.cloud_agent.config import CONFIG_KEY as CLOUD_AGENT_CONFIG_KEY
+    # 云端智能体配置（含加密的 Key）只在“智能体设置 › 云端智能体”看，不进系统配置列表（陶威 11-07）。
+    items = [item for item in items if not item.key.startswith(CONNECTOR_CONFIG_PREFIX) and item.key not in {MODEL_PROVIDER_CONFIG_KEY, DINGTALK_BOT_CONFIG_KEY, CLOUD_AGENT_CONFIG_KEY, "feedback_review"}]
     from app.global_agent_skills import GLOBAL_SKILL_CONFIG_KEY
     from app.agent_permissions import is_actual_system_admin
     from app.user_agent_skills import USER_SKILL_CONFIG_PREFIX
@@ -997,6 +1002,9 @@ async def update_system_config(config_key: str, body: SystemConfigUpdate, identi
         _system_audit, _validate_system_config,
     )
     _require_admin(identity)
+    if config_key == "application_settings":
+        from app.core.permissions import _require_actual_system_admin
+        _require_actual_system_admin(identity, "维护模式、系统名称等系统配置只有系统管理员可以修改")  # 陶威 11-07
     if config_key == CONFIG_KEY and not can_manage_auto_review(identity):
         raise HTTPException(status_code=403, detail="仅实际管理员或获系统配置授权的人员可以管理自动利益冲突审查")
     item = await db.scalar(select(SystemConfig).where(SystemConfig.key == config_key))
@@ -1107,6 +1115,8 @@ async def clear_system_caches(body: CacheBatchClearInput, identity: dict = Depen
         _clear_all_system_parameter_cache, _clear_registered_cache, _registered_cache_is_clearable, _system_audit, _system_cache_entry_count,
     )
     _require_admin(identity)
+    from app.core.permissions import _require_actual_system_admin
+    _require_actual_system_admin(identity, "清理缓存只有系统管理员可以操作")  # 页面授权不提升成管理员（陶威 11-07）
     requested_keys = list(dict.fromkeys(body.cache_keys))
     keys = requested_keys if requested_keys else [key for key, definition in SYSTEM_CACHE_REGISTRY.items() if _registered_cache_is_clearable(definition)]
     unknown = [key for key in keys if key not in SYSTEM_CACHE_REGISTRY]
@@ -1136,6 +1146,8 @@ async def clear_all_system_caches(identity: dict = Depends(current_identity), db
         _clear_all_system_parameter_cache, _system_audit,
     )
     _require_admin(identity)
+    from app.core.permissions import _require_actual_system_admin
+    _require_actual_system_admin(identity, "清理缓存只有系统管理员可以操作")  # 页面授权不提升成管理员（陶威 11-07）
     # Clear every populated category, including categories without a legacy row.
     # This is deliberately limited to this API process's dictionary cache.
     cleared_buckets = _clear_all_system_parameter_cache(identity["username"])
@@ -1155,6 +1167,8 @@ async def clear_system_cache(cache_key: str, identity: dict = Depends(current_id
         _clear_registered_cache, _system_audit, _system_cache_entry_count,
     )
     _require_admin(identity)
+    from app.core.permissions import _require_actual_system_admin
+    _require_actual_system_admin(identity, "清理缓存只有系统管理员可以操作")  # 页面授权不提升成管理员（陶威 11-07）
     if cache_key not in SYSTEM_CACHE_REGISTRY: raise HTTPException(status_code=404, detail="缓存不存在")
     _clear_registered_cache(cache_key, identity["username"])
     await _system_audit(db, identity, "清理系统缓存", f"系统缓存:{cache_key}", {"cache_key": cache_key})
@@ -1220,6 +1234,8 @@ async def create_system_menu(body: SystemMenuInput, identity: dict = Depends(cur
         _system_audit, _system_menu_dict,
     )
     _require_admin(identity)
+    from app.core.permissions import _require_actual_system_admin
+    _require_actual_system_admin(identity, "菜单只有系统管理员可以修改")  # 页面授权不提升成管理员（陶威 11-07）
     requested_key = (body.key or "").strip()
     menu_key = requested_key or f"legacy-menu-{uuid4().hex[:12]}"
     parent_key = body.parent_key.strip()
@@ -1255,6 +1271,8 @@ async def update_system_menu_visibility(body: SystemMenuVisibilityBatchInput, id
     from app.core.permissions import _require_admin
     from app.core.system import _system_audit, _system_menu_dict
     _require_admin(identity)
+    from app.core.permissions import _require_actual_system_admin
+    _require_actual_system_admin(identity, "菜单只有系统管理员可以修改")  # 页面授权不提升成管理员（陶威 11-07）
     items = list((await db.scalars(select(SystemMenu).order_by(SystemMenu.sort_order, SystemMenu.id))).all())
     system_items = [item for item in items if item.key in SYSTEM_MENU_ROUTE_KEYS]
     by_key = {item.key: item for item in system_items}
@@ -1293,6 +1311,8 @@ async def update_system_menu(menu_id: int, body: SystemMenuUpdate, identity: dic
         _system_audit, _system_menu_dict,
     )
     _require_admin(identity)
+    from app.core.permissions import _require_actual_system_admin
+    _require_actual_system_admin(identity, "菜单只有系统管理员可以修改")  # 页面授权不提升成管理员（陶威 11-07）
     item = await db.get(SystemMenu, menu_id)
     if not item: raise HTTPException(status_code=404, detail="菜单不存在")
     changes = body.model_dump(exclude_none=True)
@@ -1316,6 +1336,8 @@ async def delete_system_menu(menu_id: int, identity: dict = Depends(current_iden
         _system_audit,
     )
     _require_admin(identity)
+    from app.core.permissions import _require_actual_system_admin
+    _require_actual_system_admin(identity, "菜单只有系统管理员可以修改")  # 页面授权不提升成管理员（陶威 11-07）
     item = await db.get(SystemMenu, menu_id)
     if not item:
         raise HTTPException(status_code=404, detail="菜单不存在")
@@ -1338,6 +1360,8 @@ async def reset_system_menus(identity: dict = Depends(current_identity), db: Asy
         _system_audit, _system_menu_dict,
     )
     _require_admin(identity)
+    from app.core.permissions import _require_actual_system_admin
+    _require_actual_system_admin(identity, "菜单只有系统管理员可以修改")  # 页面授权不提升成管理员（陶威 11-07）
     defaults = {key: (parent_key, label, icon, sort_order) for key, parent_key, label, icon, sort_order in DEFAULT_SYSTEM_MENUS}
     items = (await db.scalars(select(SystemMenu))).all()
     by_key = {item.key: item for item in items}

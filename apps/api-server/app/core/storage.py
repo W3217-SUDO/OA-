@@ -393,8 +393,9 @@ async def _authorized_pdf_preview_attachment(
             await _ensure_attachment_record_visible(item.record_id, identity, db, allow_clue_audit_read=True)
     elif case_id is not None:
         raise HTTPException(status_code=404, detail="附件不属于该案件")
-    elif identity.get("role") != "admin" and item.uploader != identity["username"]:
-        raise HTTPException(status_code=404, detail="附件不存在或无权访问")
+    else:
+        from app.core.permissions import _require_unlinked_attachment_access
+        await _require_unlinked_attachment_access(item, identity, db)
 
     suffix = Path(item.original_name).suffix.lower()
     content_type = str(item.content_type or "").lower()

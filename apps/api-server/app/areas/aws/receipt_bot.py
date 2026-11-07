@@ -617,6 +617,21 @@ class CloseInput(BaseModel):
     reason: str = Field(default="", max_length=500, description="不入库的原因，可不填")
 
 
+async def pending_receipt_attachment_visible(item, identity: dict, db: AsyncSession) -> bool:
+    """送达文书还在“钉钉收文待处理”里（未入案件）时，收文台的人能打开它（分支 4、陶威 11-07）。"""
+    from app.areas.aws.receipt_sources import _require_receipt_menu
+    if item.record_id:
+        return False
+    try:
+        _require_internal(identity)
+        await _require_receipt_menu("official", identity, db)
+    except HTTPException:
+        return False
+    rows = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == MODULE, BusinessRecord.status == PENDING))).all()
+    return any(str(doc.get("attachment_id") or "") == str(item.id)
+               for row in rows for doc in ((row.data or {}).get("documents") or []) if isinstance(doc, dict))
+
+
 def _require_internal(identity: dict) -> None:
     """外部账号不能用收文助手，收文台的待处理也一样（@ 机器人已拒绝，这里保持一致）。"""
     from app.core.data_scope_gate import is_external_role

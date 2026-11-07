@@ -104,8 +104,9 @@ async def get_attachment(attachment_id: int, case_id: int | None = Query(default
             record = await _ensure_attachment_record_visible(item.record_id, identity, db)
     elif case_id is not None:
         raise HTTPException(status_code=404, detail="附件不属于该案件")
-    elif identity.get("role") != "admin" and item.uploader != identity["username"]:
-        raise HTTPException(status_code=404, detail="附件不存在或无权访问")
+    else:
+        from app.core.permissions import _require_unlinked_attachment_access
+        await _require_unlinked_attachment_access(item, identity, db)
     uploader_users = await _user_display_map({item.uploader}, db)
     uploader_names = {username: _person_display_name(user.display_name, user.username)[0] for username, user in uploader_users.items()}
     return _attachment_dict(item, record, uploader_names)
@@ -395,8 +396,9 @@ async def download_attachment(request: Request, attachment_id: int, case_id: int
             raise HTTPException(status_code=409, detail="JAR交案费文件必须使用交案费专用下载接口")
     elif case_id is not None:
         raise HTTPException(status_code=404, detail="附件不属于该案件")
-    elif identity.get("role") != "admin" and item.uploader != identity["username"]:
-        raise HTTPException(status_code=404, detail="附件不存在或无权访问")
+    else:
+        from app.core.permissions import _require_unlinked_attachment_access
+        await _require_unlinked_attachment_access(item, identity, db)
     from app.core.oss_attachments import oss_attachment_signed_url
     signed_url = oss_attachment_signed_url(item)
     if signed_url:
@@ -434,8 +436,9 @@ async def preview_attachment(attachment_id: int, case_id: int | None = Query(def
             await _ensure_attachment_record_visible(item.record_id, identity, db, allow_clue_audit_read=True)
     elif case_id is not None:
         raise HTTPException(status_code=404, detail="附件不属于该案件")
-    elif identity.get("role") != "admin" and item.uploader != identity["username"]:
-        raise HTTPException(status_code=404, detail="附件不存在或无权访问")
+    else:
+        from app.core.permissions import _require_unlinked_attachment_access
+        await _require_unlinked_attachment_access(item, identity, db)
 
     from app.core.oss_attachments import oss_attachment_preview_kind, oss_attachment_signed_url
     signed_url = oss_attachment_signed_url(item)
@@ -523,8 +526,9 @@ async def create_office_preview_link(
             await _ensure_attachment_record_visible(item.record_id, identity, db, allow_clue_audit_read=True)
     elif case_id is not None:
         raise HTTPException(status_code=404, detail="附件不属于该案件")
-    elif identity.get("role") != "admin" and item.uploader != identity["username"]:
-        raise HTTPException(status_code=404, detail="附件不存在或无权访问")
+    else:
+        from app.core.permissions import _require_unlinked_attachment_access
+        await _require_unlinked_attachment_access(item, identity, db)
     suffix = Path(item.original_name).suffix.lower()
     if suffix not in {".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"}:
         raise HTTPException(status_code=422, detail="该文件不是 Office 文档")

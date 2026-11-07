@@ -59,7 +59,8 @@ _CREDENTIAL_ENDPOINTS = {
     "create_office_preview_link", "stream_office_preview_attachment",
 }
 
-_CREDENTIAL_FIELDS = {"password", "current_password", "new_password", "client_secret", "access_token", "refresh_token", "api_key", "secret_key"}
+_CREDENTIAL_FIELDS = {"password", "current_password", "new_password", "client_secret", "access_token", "refresh_token", "api_key", "secret_key",
+                      "plan_key"}  # 云端智能体的 Agent Plan Key（陶威 11-07）
 
 _VERBS = {
     "batch": "批量", "create": "新建", "add": "新增", "list": "查询列表",
@@ -119,6 +120,8 @@ def exclusion_reasons(route: APIRoute) -> list[str]:
         reasons.append("健康检查或运行时维护，不属于 OA 业务操作")
     if segments.intersection({"debug", "diagnostics", "credential", "credentials", "external-credentials", "secrets", "tokens", "api-keys"}):
         reasons.append("调试或密钥凭据管理，不向模型开放")
+    if "change-logs" in segments:
+        reasons.append("变更留痕会带出改前改后的原值（含配置和密文），读取和还原只在人工页面办理")  # 陶威 11-07
     if "dingtalk-bots" in segments:
         reasons.append("钉钉机器人凭证由系统管理员在页面配置，不向模型开放")
     if "bot-receipts" in segments:

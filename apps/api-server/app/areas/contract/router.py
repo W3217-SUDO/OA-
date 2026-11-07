@@ -95,6 +95,9 @@ async def save_contract_approver_settings(body: ContractApproverSettingsInput, i
     if invalid:
         raise HTTPException(status_code=422, detail=f"所选人员账号不存在或已停用：{', '.join(invalid)}")
     users_by_username = {item.username: item for item in users}
+    from app.core.permissions import _require_not_new_self_approver
+    _require_not_new_self_approver(identity, [item.username for item in users if (item.profile or {}).get("contract_approval_enabled")],
+                                   requested, "合同审批人")
     invalid_names = sorted(username for username in requested if not _valid_contract_person_name(users_by_username[username].display_name, username))
     if invalid_names:
         raise HTTPException(status_code=422, detail="所选员工缺少有效姓名，请先在人事中心维护姓名并取消其合同审批资格")
