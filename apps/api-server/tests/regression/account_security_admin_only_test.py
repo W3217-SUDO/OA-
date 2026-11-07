@@ -61,7 +61,10 @@ class AccountSecurityTest(unittest.IsolatedAsyncioTestCase):
                 person("victim", "目标账号", permission_role="普通甲"),
                 person("boss", "部长账号", permission_role="某部部长"),
                 person("auditor", "审核账号", "auditor", permission_role="普通甲"),
+                person("highuser", "高权限非保护账号", permission_role="审核甲"),
                 employee("victim", "目标账号", "普通甲"), employee("boss", "部长账号", "某部部长"),
+                employee("highuser", "高权限非保护账号", "审核甲"),
+                JobRole(code="LEGACY-SINGLE-PERM", name="单项权限", permissions=["dashboard"], field_keys=[], is_active=True),
                 employee("hrholder", "人事账号", "人事甲"), employee("realadmin", "真实管理员", "普通甲"),
                 SecurityPolicy(min_password_length=8, max_failed_attempts=5, lock_minutes=15, token_minutes=480),
             ])
@@ -312,6 +315,25 @@ class AccountSecurityTest(unittest.IsolatedAsyncioTestCase):
         for name in ("feedback-bot", "system", "hz-sync"):
             self.assertEqual((await self.call("hrholder", "POST", "/system/users", self.new_system_user(name))).status_code, 403, name)
             self.assertEqual((await self.call("hrholder", "PATCH", f"/system/users/{self.uid['victim']}", {"username": name})).status_code, 403, name)
+
+    async def test_two_sets_high_role_account_can_be_reset_but_not_reassigned(self):
+        """陶威 11-07：人事能重置除真实管理员、系统角色、部长和系统类以外的账号；其他高权限账号别的都不能动。"""
+        uid, emp = self.uid["highuser"], self.emp["highuser"]
+        response = await self.call("hrholder", "POST", f"/system/users/{uid}/reset-password", {"new_password": NEW_PASSWORD})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual((await self.call("hrholder", "PATCH", f"/system/users/{uid}", {"username": "highuser2"})).status_code, 200)
+        before = await self.state("highuser2")
+        for name, method, path, body in [
+            ("换角色", "PATCH", f"/system/users/{uid}", {"profile": {"permission_role": "普通甲"}}),
+            ("绑钉钉", "PATCH", f"/system/users/{uid}/dingtalk", {"user_id": "FAKE"}),
+            ("关登录", "PATCH", f"/hr/employees/{emp}/login-status", {"is_active": False}),
+            ("审批资格", "PATCH", f"/hr/employees/{emp}/contract-approval-status", {"contract_approval_enabled": True}),
+            ("办离职", "POST", f"/hr/{emp}/transition", {"to_status": "离职", "effective_date": "2026-11-07", "reason": "测试原因"}),
+            ("删账号", "DELETE", f"/system/users/{uid}", None),
+        ]:
+            self.assertEqual((await self.call("hrholder", method, path, body)).status_code, 403, name)
+        self.assertEqual(await self.state("highuser2"), before)
+        self.assertEqual((await self.call("hrholder", "PATCH", f"/hr/employees/{self.emp['victim']}", self.body(position="单项权限"))).status_code, 403, "单项权限不能由人事分配")
 
     async def test_real_admin_keeps_every_power(self):
         for name, method, path, body in self.forbidden_new():

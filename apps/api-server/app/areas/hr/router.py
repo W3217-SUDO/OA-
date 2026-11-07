@@ -219,7 +219,7 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
 @router.patch(f"{settings.api_prefix}/hr/employees/{{employee_id}}")
 async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _account_security_state, _is_protected_account, _job_role_for_name, _require_actual_system_admin, _require_allowed_account_change, _require_allowed_new_account, _require_hr_employee_action, _require_hr_employee_target_access, _require_unique_hr_display_name,
+        _account_security_state, _account_guard_level, _job_role_for_name, _require_actual_system_admin, _require_allowed_account_change, _require_allowed_new_account, _require_hr_employee_action, _require_hr_employee_target_access, _require_unique_hr_display_name,
         _system_user_role_ids,
     )
     from app.core.system import (
@@ -277,7 +277,7 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     if user and "admin" in _system_user_role_ids(user):
         _require_actual_system_admin(identity)
     account_before = _account_security_state(user) if user else None
-    account_protected = await _is_protected_account(user, db) if user else False
+    account_guard = await _account_guard_level(user, db) if user else 0
     requested_department = body.department.strip()
     current_department = str((user.department if user and user.department else employee.department) or "").strip()
     department_changed = requested_department != current_department
@@ -341,7 +341,7 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     user.role = next_role_ids[0]; user.role_ids = next_role_ids; user.is_active = body.is_active; user.profile = profile
     contract_approval_enabled = bool(profile.get("contract_approval_enabled"))
     employee.title = display_name; employee.data = {**(employee.data or {}), **profile, "contract_approval_enabled": contract_approval_enabled, "username": username, "role": effective_role, "is_active": body.is_active}
-    await _require_allowed_account_change(identity, account_before, account_protected, user, db)
+    await _require_allowed_account_change(identity, account_before, account_guard, user, db)
     db.add(WorkflowEvent(record_id=employee.id, action="修改员工资料", from_status=previous_status, to_status=employee.status, operator=identity["username"], comment=f"部门：{employee.department}；职务：{body.position}；账号：{'启用' if body.is_active else '停用'}"))
     await db.commit(); await db.refresh(employee); await db.refresh(user)
     return {"employee": _record_dict(employee), "user": _system_user_dict(user)}
@@ -505,7 +505,7 @@ async def get_hr_employee_batch_deletion_impact(body: HrEmployeeBatchDeleteInput
 @router.api_route(f"{settings.api_prefix}/hr/employees/batch", methods=["DELETE"])
 async def delete_hr_employees_batch(body: HrEmployeeBatchDeleteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _require_actual_admin_for_protected_account, _require_admin,
+        _require_actual_admin_for_high_account, _require_admin,
     )
     from app.core.system import (
         _load_hr_batch_deletion_impact,
@@ -514,7 +514,7 @@ async def delete_hr_employees_batch(body: HrEmployeeBatchDeleteInput, identity: 
     employees, blockers = await _load_hr_batch_deletion_impact(body, identity, db)
     for _employee, user in employees:
         if user:
-            await _require_actual_admin_for_protected_account(identity, user, db)
+            await _require_actual_admin_for_high_account(identity, user, db)
     if blockers:
         await db.rollback()
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"deletable": False, "blockers": blockers})
@@ -531,7 +531,7 @@ async def delete_hr_employees_batch(body: HrEmployeeBatchDeleteInput, identity: 
 async def delete_hr_employee(employee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Old Staff/Delete parity: delete only an unreferenced employee and linked login atomically."""
     from app.core.permissions import (
-        _require_actual_admin_for_protected_account, _require_admin,
+        _require_actual_admin_for_high_account, _require_admin,
     )
     from app.core.system import (
         _collect_hr_employee_deletion_blockers,
@@ -542,7 +542,7 @@ async def delete_hr_employee(employee_id: int, identity: dict = Depends(current_
         raise HTTPException(status_code=404, detail="员工档案不存在")
     blockers, user = await _collect_hr_employee_deletion_blockers(employee, identity, db)
     if user:
-        await _require_actual_admin_for_protected_account(identity, user, db)
+        await _require_actual_admin_for_high_account(identity, user, db)
     if blockers:
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"deletable": False, "blockers": blockers})
     await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == employee.id))

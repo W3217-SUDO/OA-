@@ -286,13 +286,13 @@ async def list_system_user_dingtalk_bindings(user_id: int, identity: dict = Depe
 
 @router.delete(f"{settings.api_prefix}/system/users/{{user_id}}/dingtalk-bindings/{{ding_user_id}}")
 async def remove_system_user_dingtalk_binding(user_id: int, ding_user_id: str, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    from app.core.permissions import _require_actual_admin_for_protected_account, _require_admin
+    from app.core.permissions import _require_actual_admin_for_high_account, _require_admin
     from .dingtalk_auth import dingtalk_bindings, remove_dingtalk_binding
     _require_admin(identity)
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="系统用户不存在")
-    await _require_actual_admin_for_protected_account(identity, user, db)
+    await _require_actual_admin_for_high_account(identity, user, db)
     remove_dingtalk_binding(user, ding_user_id.strip(), identity["username"])
     await db.commit()
     return {"items": await dingtalk_bindings(user)}
@@ -301,7 +301,7 @@ async def remove_system_user_dingtalk_binding(user_id: int, ding_user_id: str, i
 @router.patch(f"{settings.api_prefix}/system/users/{{user_id}}/dingtalk")
 async def bind_system_user_dingtalk(user_id: int, body: DingTalkBindingInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _profile_dingtalk_login_ids, _require_actual_admin_for_protected_account, _require_admin, _require_dingtalk_access,
+        _profile_dingtalk_login_ids, _require_actual_admin_for_high_account, _require_admin, _require_dingtalk_access,
     )
     from app.core.system import (
         _system_user_dict,
@@ -310,7 +310,7 @@ async def bind_system_user_dingtalk(user_id: int, body: DingTalkBindingInput, id
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="系统用户不存在")
-    await _require_actual_admin_for_protected_account(identity, user, db)
+    await _require_actual_admin_for_high_account(identity, user, db)
     ding_user_id = body.user_id.strip()
     if ding_user_id:
         _require_dingtalk_access(user)
@@ -400,7 +400,7 @@ async def create_system_user(body: SystemUserInput, identity: dict = Depends(cur
 @router.patch(f"{settings.api_prefix}/system/users/{{user_id}}")
 async def update_system_user(user_id: int, body: SystemUserUpdate, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _account_security_state, _ensure_system_user_lifecycle_safe, _ensure_unique_dingtalk_user_id, _is_protected_account, _require_allowed_account_change, _normalize_system_user_role_ids, _require_actual_system_admin, _require_admin, _require_unique_hr_display_name,
+        _account_security_state, _ensure_system_user_lifecycle_safe, _ensure_unique_dingtalk_user_id, _account_guard_level, _require_allowed_account_change, _normalize_system_user_role_ids, _require_actual_system_admin, _require_admin, _require_unique_hr_display_name,
         _system_user_role_ids,
     )
     from app.core.system import (
@@ -412,7 +412,7 @@ async def update_system_user(user_id: int, body: SystemUserUpdate, identity: dic
         raise HTTPException(status_code=404, detail="用户不存在")
     if "admin" in _system_user_role_ids(user):  # 真实管理员的账号资料也不让页面账号改
         _require_actual_system_admin(identity)
-    account_before, account_protected = _account_security_state(user), await _is_protected_account(user, db)
+    account_before, account_guard = _account_security_state(user), await _account_guard_level(user, db)
     if body.username is not None:
         await _rename_system_username(user, body.username, identity, db)
     if body.role is not None or body.role_ids is not None:
@@ -453,7 +453,7 @@ async def update_system_user(user_id: int, body: SystemUserUpdate, identity: dic
         profile = {**profile, **body.profile}
     await _ensure_unique_dingtalk_user_id(profile, db, user.id, user.display_name)
     user.profile = profile
-    await _require_allowed_account_change(identity, account_before, account_protected, user, db)
+    await _require_allowed_account_change(identity, account_before, account_guard, user, db)
     await db.commit(); await db.refresh(user)
     return _system_user_dict(user)
 
@@ -531,7 +531,7 @@ async def update_user_finance_actions(username: str, body: dict, identity: dict 
 @router.delete(f"{settings.api_prefix}/system/users/{{user_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_system_user(user_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _ensure_system_user_lifecycle_safe, _require_actual_admin_for_protected_account, _require_admin, _system_user_role_ids,
+        _ensure_system_user_lifecycle_safe, _require_actual_admin_for_high_account, _require_admin, _system_user_role_ids,
     )
     _require_admin(identity)
     user = await db.get(User, user_id)
@@ -541,7 +541,7 @@ async def delete_system_user(user_id: int, identity: dict = Depends(current_iden
         raise HTTPException(status_code=409, detail="不能删除当前登录账号")
     if "admin" in _system_user_role_ids(user):
         raise HTTPException(status_code=409, detail="不能删除系统管理员账号")
-    await _require_actual_admin_for_protected_account(identity, user, db)
+    await _require_actual_admin_for_high_account(identity, user, db)
     await _ensure_system_user_lifecycle_safe(user, db, action="删除")
     await db.delete(user); await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -1299,6 +1299,9 @@ def _require_actual_system_admin(identity: dict) -> None:
 # 系统管理员、高权限角色和这些账号本身，只有真实系统管理员能动。页面能力会把人临时提升成 admin，这里一律看真实角色。
 # 清单按角色实际能力算，新角色自动适用；要调整只改下面几个常量。
 _HIGH_ROLE_NAME = re.compile("部长|主管|负责人|合伙人|管理员|总经理")
+# 单项权限是老系统按人拼的杂项权限，页面和律师助理（旧系统）接近，按门槛分不开，直接列出来（调度 2026-11-07 定：不能由人事分配）。
+_HIGH_ROLE_CODES = frozenset({"SYSTEM-ADMIN", "LEGACY-SINGLE-PERM"})
+_PROTECTED_ROLE_NAME = re.compile("部长|负责人|总经理")
 _HIGH_ROLE_FIRM_PAGES = 10  # 全所类页面（*-company、*-all）达到这个数算高权限
 _HIGH_ROLE_APPROVAL_PAGES = 10  # 审批、审核类页面达到这个数算高权限
 _ACCOUNT_ROLE_PROFILE_KEYS = ("permission_role", "permission_role_code", "staff_role")
@@ -1308,7 +1311,7 @@ _RESERVED_USERNAMES = frozenset({"admin", "system", "feedback-bot", "hz-sync"}) 
 
 
 def is_high_privilege_job_role(role: JobRole) -> bool:
-    if role.code == "SYSTEM-ADMIN" or _HIGH_ROLE_NAME.search(role.name or "") or role.data_scope == "全所数据":
+    if role.code in _HIGH_ROLE_CODES or _HIGH_ROLE_NAME.search(role.name or "") or role.data_scope == "全所数据":
         return True
     menus = _effective_job_role_menu_keys(role)
     if any(key.split("-", 1)[0] in {"hr", "system"} for key in menus):  # 能管账号或系统
@@ -1320,6 +1323,13 @@ def is_high_privilege_job_role(role: JobRole) -> bool:
     return firm_pages >= _HIGH_ROLE_FIRM_PAGES or approval_pages >= _HIGH_ROLE_APPROVAL_PAGES
 
 
+def is_protected_job_role(role: JobRole) -> bool:
+    """人事不能重置密码、不能改用户名的账号所在的角色：部长和系统类（陶威 2026-11-07）。比“不能分配”窄。"""
+    if role.code == "SYSTEM-ADMIN" or _PROTECTED_ROLE_NAME.search(role.name or ""):
+        return True
+    return any(key.split("-", 1)[0] in {"hr", "system"} for key in _effective_job_role_menu_keys(role))
+
+
 async def _role_not_assignable(name: object, db: AsyncSession) -> bool:
     """高权限角色不能分配。查不到的（停用、不存在）一律不能分配：防止先停用、分配、再启用。"""
     value = str(name or "").strip()
@@ -1329,20 +1339,32 @@ async def _role_not_assignable(name: object, db: AsyncSession) -> bool:
     return role is None or is_high_privilege_job_role(role)
 
 
-async def _is_protected_account(user: User, db: AsyncSession) -> bool:
-    """真实管理员、带管理或审核系统角色的账号、高权限岗位的账号。"""
+async def _account_guard_level(user: User, db: AsyncSession) -> int:
+    """2：真实管理员、带系统角色、部长和系统类，人事什么账号内容都不能动。1：其他高权限角色，人事只能重置密码、改用户名。0：普通。"""
     if _system_user_role_ids(user) != ["user"]:
-        return True
+        return 2
     role = await _job_role_for_name(_configured_user_job_role_name(user), db)
-    return bool(role and is_high_privilege_job_role(role))
+    if not role or not is_high_privilege_job_role(role):
+        return 0
+    return 2 if is_protected_job_role(role) else 1
 
 
-async def _require_actual_admin_for_protected_account(identity: dict, user: User, db: AsyncSession) -> None:
-    if await _is_protected_account(user, db):
+async def _require_actual_admin_for_account(identity: dict, user: User, db: AsyncSession, *, level: int) -> None:
+    if await _account_guard_level(user, db) >= level:
         try:
             _require_actual_system_admin(identity)
         except HTTPException as exc:
             raise HTTPException(status_code=403, detail="管理员和高权限账号只有系统管理员可以操作") from exc
+
+
+async def _require_actual_admin_for_protected_account(identity: dict, user: User, db: AsyncSession) -> None:
+    """重置密码用：只保护真实管理员、带系统角色、部长和系统类。"""
+    await _require_actual_admin_for_account(identity, user, db, level=2)
+
+
+async def _require_actual_admin_for_high_account(identity: dict, user: User, db: AsyncSession) -> None:
+    """钉钉绑定、停用、离职、删除、审批资格：所有高权限账号都只有真实管理员能动。"""
+    await _require_actual_admin_for_account(identity, user, db, level=1)
 
 
 def _account_security_state(user: User) -> dict:
@@ -1356,7 +1378,7 @@ def _account_security_state(user: User) -> dict:
     }
 
 
-async def _require_allowed_account_change(identity: dict, before: dict, was_protected: bool, user: User, db: AsyncSession) -> None:
+async def _require_allowed_account_change(identity: dict, before: dict, guard_level: int, user: User, db: AsyncSession) -> None:
     """提交前调用，拒绝时不落库。普通资料不受影响；只有账号、角色、密码、钉钉、审批资格有变化才判断。"""
     if "admin" in identity.get("_actual_role_ids", []):
         return
@@ -1368,7 +1390,8 @@ async def _require_allowed_account_change(identity: dict, before: dict, was_prot
     denied = None
     if after == before and not any([await _role_not_assignable(name, db) for name in stray_roles]):
         return
-    if was_protected:
+    only_login_name_or_password = all(after[key] == before[key] for key in after if key not in {"username", "password_hash"})
+    if guard_level >= 2 or (guard_level == 1 and not only_login_name_or_password):
         denied = "管理员和高权限账号只有系统管理员可以操作"
     elif after["role_ids"] != before["role_ids"]:
         denied = "只有系统管理员可以调整账号的系统角色"
@@ -1407,7 +1430,7 @@ async def _require_actual_admin_for_self_or_protected(identity: dict, user: User
     """审批资格、停用、离职这类操作：不能对自己做，高权限账号只有真实管理员能做。"""
     if user.username == identity.get("username") and "admin" not in identity.get("_actual_role_ids", []):
         raise HTTPException(status_code=403, detail="不能对自己办理这个操作")
-    await _require_actual_admin_for_protected_account(identity, user, db)
+    await _require_actual_admin_for_high_account(identity, user, db)
 
 
 def _profile_dingtalk_login_ids(profile: dict | None) -> list[str]:
