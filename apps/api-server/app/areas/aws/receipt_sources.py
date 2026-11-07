@@ -130,14 +130,19 @@ async def _fill_case_people(row_cases: list[tuple[dict, BusinessRecord]], db: As
         return
     users_by_username = {user.username.lower(): user for user in (await db.scalars(select(User))).all()}
     cases = {case.id: case for _, case in row_cases}
-    customer_ids = {int((case.data or {}).get("customer_id") or (case.data or {}).get("customer_record_id") or 0) for case in cases.values()} - {0}
+
+    def customer_id_of(case: BusinessRecord) -> int:
+        # 客户编号登记成非数字时只是取不到品牌管理人，不能让整个收文列表报错（分支 2 审查 047dabfd）。
+        value = str((case.data or {}).get("customer_id") or (case.data or {}).get("customer_record_id") or "").strip()
+        return int(value) if value.isdigit() else 0
+    customer_ids = {customer_id_of(case) for case in cases.values()} - {0}
     customers = {item.id: item for item in await _scalars_in_batches(
         db, customer_ids, lambda batch: select(BusinessRecord).where(BusinessRecord.id.in_(batch), BusinessRecord.module == "customer"))}
     people: dict[int, dict] = {}
     for case_id, case in cases.items():
         data = case.data or {}
         legacy = data.get("legacy_record") if isinstance(data.get("legacy_record"), dict) else {}
-        customer = customers.get(int(data.get("customer_id") or data.get("customer_record_id") or 0))
+        customer = customers.get(customer_id_of(case))
         customer_data = (customer.data or {}) if customer else {}
         customer_legacy = customer_data.get("legacy_record") if isinstance(customer_data.get("legacy_record"), dict) else {}
         people[case_id] = {

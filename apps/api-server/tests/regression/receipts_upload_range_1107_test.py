@@ -6,6 +6,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 
 import httpx
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -104,6 +105,16 @@ class ReceiptUploadRangeTest(unittest.IsolatedAsyncioTestCase):
             for row in rows:
                 self.assertEqual((row["data"]["hearing_lawyer_display_name"], row["data"]["assistant_display_name"],
                                   row["data"]["brand_manager_display_name"]), ("王开庭", "李助理", "赵品牌"), f"{scope} {row['title']}")
+
+    async def test_bad_customer_id_does_not_break_listing(self):
+        async with self.sessions() as db:
+            case = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "case"))
+            case.data = {**case.data, "customer_id": "KH-坏编号"}
+            await db.commit()
+        rows = (await self.listing("company"))["items"]
+        self.assertTrue(rows)
+        self.assertEqual({row["data"]["brand_manager_display_name"] for row in rows}, {""})
+        self.assertEqual({row["data"]["hearing_lawyer_display_name"] for row in rows}, {"王开庭"})
 
     async def test_range_needs_both_ends_in_order(self):
         for params in ({"uploaded_from": "2026-11-07"}, {"uploaded_to": "2026-11-07"}, {"uploaded_from": "2026-11-08", "uploaded_to": "2026-11-07"}):
