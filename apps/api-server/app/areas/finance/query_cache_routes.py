@@ -17,6 +17,8 @@ from app.models import BusinessRecord
 
 FINANCE_JSON_QUERIES = {
     "/contracts/{contract_id}/incoming-payments": "list_contract_incoming_payments",
+    # 工作台“未到官费”和应收账款明细：全所范围现算约 10 秒，按全库数据修订缓存（11-07）。
+    "/contracts/receivables/detail": "list_contract_receivable_details",
     "/finance/jar-fees": "list_jar_fees",
     "/finance/jar-fees/{jar_fee_id}": "get_jar_fee",
     "/finance/jar-fees/{jar_fee_id}/files": "list_jar_fee_files",

@@ -124,7 +124,8 @@ async def dashboard_identity(identity, db, *, personal_cases=False):
 
 
 async def load_dashboard_scope(identity, db, *, personal_cases=False, include_summaries=False, include_finance=True,
-                               finance_metrics=False):
+                               finance_metrics=False, light_records=False):
+    """light_records：仍按摘要读合同，但案件和费用只读关联字段（集合不变），给只要记录范围的入口用（未到官费，11-07）。"""
     if finance_metrics and (not include_summaries or not include_finance):
         raise ValueError("财务指标读取必须包含费用摘要")
     user = await db.scalar(select(User).where(User.username == identity["username"]))
@@ -163,7 +164,7 @@ async def load_dashboard_scope(identity, db, *, personal_cases=False, include_su
 
     with measure_phase("dashboard.scope.cases"):
         # 财务统计不消费案件阶段或个人标记，退款范围仍由原权限 SQL 单独确认。
-        case_summaries = include_summaries and not finance_metrics
+        case_summaries = include_summaries and not finance_metrics and not light_records
         cases = await read_record_projections(
             db, conditions, case_fields if case_summaries else relation_fields,
             legacy_fields=("CasePhaseName",) if case_summaries else (),
@@ -202,11 +203,12 @@ async def load_dashboard_scope(identity, db, *, personal_cases=False, include_su
         else:
             fees = await read_record_projections(
                 db, fee_conditions,
-                FEE_SUMMARY_FIELDS if include_summaries else (*relation_fields, "case_id", "case_record_id", "case_no"),
+                FEE_SUMMARY_FIELDS if include_summaries and not light_records
+                else (*relation_fields, "case_id", "case_record_id", "case_no"),
                 where_data=related_fee,
                 filter_fields=("case_id", "case_record_id", "case_no") if finance_metrics else None,
                 record_factory=(DashboardFinanceFeeProjection if finance_metrics else
-                                DashboardFeeProjection if include_summaries else None),
+                                DashboardFeeProjection if include_summaries and not light_records else None),
                 metadata_fields=("id", "module", "serial_no", "title", "status", "updated_at")
                 if finance_metrics else None,
             ) if case_ids else []

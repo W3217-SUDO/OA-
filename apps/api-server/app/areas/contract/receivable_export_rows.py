@@ -1,5 +1,7 @@
 """应收模板按真实费用记录和收款分配生成有符号明细。"""
 from collections import defaultdict
+from types import SimpleNamespace
+
 from sqlalchemy import literal_column, or_, select
 
 from app.models import BusinessRecord, ContractObject
@@ -10,6 +12,20 @@ from app.core.formatters import _case_fee_display_type
 from app.core.json_relation_query import scalar_in_values
 from app.core.invoice_sources import is_external_case_fee
 from app.core.permissions import _record_scope_conditions
+
+
+# 明细只用到案件的编号、状态和这几个字段；整行读案件（含旧系统大字段）在全所范围要近 2 秒（未到官费，11-07）。
+_CASE_FIELDS = ("case_stage", "business_stage", "case_type")
+
+
+async def _case_rows(db, *conditions):
+    rows = (await db.execute(select(
+        BusinessRecord.id, BusinessRecord.serial_no, BusinessRecord.status,
+        *(BusinessRecord.data[key].label(key) for key in _CASE_FIELDS),
+    ).where(BusinessRecord.module == "case", *conditions).order_by(BusinessRecord.id))).all()
+    return [SimpleNamespace(id=row.id, serial_no=row.serial_no, status=row.status,
+                            data={key: getattr(row, key) for key in _CASE_FIELDS if getattr(row, key) is not None})
+            for row in rows]
 
 
 async def receivable_export_rows(contracts, identity, db, *, case_ids=None, fees_by_case=False):
@@ -40,17 +56,17 @@ async def receivable_export_rows(contracts, identity, db, *, case_ids=None, fees
         for condition in linked:
             case_ids_found |= set((await db.scalars(select(BusinessRecord.id).where(
                 BusinessRecord.module == "case", condition))).all())
-        cases = list((await db.scalars(select(BusinessRecord).where(
-            BusinessRecord.module == "case", *scope, scalar_in_values(BusinessRecord.id, case_ids_found),
-        ))).all()) if case_ids_found else []
+        if case_ids is not None:
+            case_ids_found &= set(case_ids)
+        cases = await _case_rows(db, *scope, scalar_in_values(BusinessRecord.id, case_ids_found)) if case_ids_found else []
     else:
-        cases = list((await db.scalars(select(BusinessRecord).where(
-            BusinessRecord.module == "case", *scope,
+        cases = await _case_rows(
+            db, *scope,
             or_(BusinessRecord.id.in_(object_case_ids),
                 scalar_in_values(BusinessRecord.data["contract_id"].as_integer(), by_contract_id),
                 scalar_in_values(BusinessRecord.data["contract_record_id"].as_integer(), by_contract_id),
                 scalar_in_values(BusinessRecord.data["contract_no"].as_string(), by_contract_no)),
-        ))).all())
+        )
     if case_ids is not None:
         cases = [case for case in cases if case.id in case_ids]
     by_case_id = {case.id: case for case in cases}

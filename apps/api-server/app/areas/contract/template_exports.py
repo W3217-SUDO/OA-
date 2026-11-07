@@ -19,7 +19,7 @@ async def _detail_rows(identity, db, *, contracts=None, dashboard_queue=""):
         from app.core.dashboard_scope import load_dashboard_scope
         from app.core.contracts import _contract_customer_record_dicts
         from app.core.system import _allowed_field_keys
-        dashboard = await load_dashboard_scope(identity, db, include_summaries=True)
+        dashboard = await load_dashboard_scope(identity, db, include_summaries=True, light_records=True)
         identity = dashboard.identity
         case_ids = {case.id for case in dashboard.cases}
         contracts = await _contract_customer_record_dicts(dashboard.contracts, await _allowed_field_keys(identity, db), db, identity)
