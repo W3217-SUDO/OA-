@@ -107,18 +107,20 @@ _CASE_LEGACY_PERMISSION_LABELS = {
 _JOB_ROLE_LEGACY_LABELS = (set(JOB_ROLE_LABEL_MENU_GRANTS) | set(JOB_ROLE_ACTION_KEY_GRANTS)) - set(SYSTEM_MENU_ROUTE_KEYS)
 
 
-def _job_role_derived_codes_to_keep(role: JobRole, submitted_menus: list[str]) -> set[str]:
-    """页面带出的功能保存时不单独存（有页面就自动有）。角色没有这个中心的页面时带不出来，原有的要留着，不改东西保存不能变少。"""
+def _job_role_center_changes(role: JobRole, submitted_menus: list[str]) -> tuple[set[str], tuple[str, ...]]:
+    """保存时各中心功能怎么处理，返回（要保留的页面带出功能，要清掉的功能前缀）。
+
+    页面带出的功能不单独存，有页面就自动有。角色本来就没有某中心的页面：带不出来，原有的留着，不改东西保存不能变少。
+    这次取消了某中心最后一个页面：这个中心的功能全部清掉，否则没页面还能写，再加回页面也不能带回旧功能。
+    """
     from app.core.constants import PAGE_GRANTED_ACTION_ROOTS, ROLE_TREE_DERIVED_ACTION_CODES
-    menus = _expand_menu_permission_keys(submitted_menus)
-    keep = set()
-    for code in _effective_job_role_action_keys(role):
-        if code not in ROLE_TREE_DERIVED_ACTION_CODES:
-            continue
-        root = next((value for prefix, value in PAGE_GRANTED_ACTION_ROOTS.items() if code.startswith(prefix)), None)
-        if root and not any(key == root or key.startswith(f"{root}-") for key in menus):
-            keep.add(code)
-    return keep
+    before = _effective_job_role_menu_keys(role)
+    after = _expand_menu_permission_keys(submitted_menus)
+    has = lambda menus, root: any(key == root or key.startswith(f"{root}-") for key in menus)
+    keep_roots = tuple(prefix for prefix, root in PAGE_GRANTED_ACTION_ROOTS.items() if not has(before, root) and not has(after, root))
+    drop_roots = tuple(prefix for prefix, root in PAGE_GRANTED_ACTION_ROOTS.items() if has(before, root) and not has(after, root))
+    keep = {code for code in _effective_job_role_action_keys(role) if code in ROLE_TREE_DERIVED_ACTION_CODES and code.startswith(keep_roots)} if keep_roots else set()
+    return keep, drop_roots
 
 
 def _job_role_tree_checked_permissions(role: JobRole) -> list[str]:

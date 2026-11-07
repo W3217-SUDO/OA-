@@ -815,9 +815,10 @@ async def update_job_role_permissions(
         from app.core.constants import ROLE_TREE_HIDDEN_MENU_KEYS
         permissions.extend(value for value in (role.permissions or []) if value in ROLE_TREE_HIDDEN_MENU_KEYS and value not in permissions)
         # BUG20261028012：页面带出的功能和案件三块里的功能不单独存，只存开关（旧授权保存后即换成开关）。
-        from app.core.permissions import _effective_job_role_action_keys, _job_role_derived_codes_to_keep
-        keep_codes = _job_role_derived_codes_to_keep(role, [str(value) for value in permissions if ":" not in str(value)])
-        permissions = [value for value in permissions if str(value).removeprefix("action:") not in ROLE_TREE_DERIVED_ACTION_CODES]
+        from app.core.permissions import _effective_job_role_action_keys, _job_role_center_changes
+        keep_codes, drop_prefixes = _job_role_center_changes(role, [str(value) for value in permissions if ":" not in str(value)])
+        permissions = [value for value in permissions if str(value).removeprefix("action:") not in ROLE_TREE_DERIVED_ACTION_CODES
+                       and not (drop_prefixes and str(value).startswith("action:") and str(value).removeprefix("action:").startswith(drop_prefixes))]
         still_granted = set(_effective_job_role_action_keys(JobRole(code=role.code, name=role.name, permissions=permissions)))  # 保留的旧岗位名已带出的不重复存
         permissions.extend(f"action:{code}" for code in sorted(keep_codes - still_granted))
     if role.code != "SYSTEM-ADMIN":

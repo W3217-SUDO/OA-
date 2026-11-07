@@ -14,7 +14,7 @@ from app.data_models.identity import JobRole, SystemMenu
 from app.database import Base, get_db
 from app.main import app
 from app.core.constants import DEFAULT_SYSTEM_MENUS
-from app.models import User
+from app.models import BusinessRecord, User
 from app.security import create_token
 
 API = settings.api_prefix
@@ -123,6 +123,28 @@ class RoleSaveKeepsActions(unittest.IsolatedAsyncioTestCase):
         await self.save("R-IN", [value for value in payload if not value.startswith("action:crm.customer.update@")])
         _menus, actions = await self.me("in690")
         self.assertFalse([code for code in actions if code.startswith("crm.customer.update")], "全部取消后这个功能就没了")
+
+    async def test_removing_last_center_page_revokes_its_actions(self):
+        async with self.sessions() as db:
+            customer = BusinessRecord(module="customer", serial_no="C690", title="我的客户", customer="我的客户", owner="in690", department="D", status="正常", data={})
+            db.add(customer)
+            await db.commit()
+            customer_id = customer.id
+        payload, _keys = await self.tree_payload("R-IN")
+        # 取消全部客户页面，功能开关照页面原样留着（页面上取消页面不会自动取消功能）。
+        kept = [value for value in payload if not value.startswith("customer")]
+        await self.save("R-IN", kept)
+        menus, actions = await self.me("in690")
+        self.assertFalse([key for key in menus if key.startswith("customer")])
+        self.assertFalse([code for code in actions if code.startswith("crm.")], "取消最后一个页面，这个中心的功能就没了")
+        for method, path, body in (("PATCH", f"/customers/{customer_id}", {"title": "x"}), ("POST", f"/customers/{customer_id}/notes", {"content": "x"}), ("POST", f"/customers/{customer_id}/recycle", {})):
+            response = await self.client.request(method, API + path, json=body, headers=self.headers("in690"))
+            self.assertEqual(response.status_code, 403, f"{method} {path}: {response.text}")
+        # 再加回一页，只有页面带出的功能，旧功能不回来。
+        payload, _keys = await self.tree_payload("R-IN")
+        await self.save("R-IN", [*payload, "customer-mine"])
+        _menus, actions = await self.me("in690")
+        self.assertFalse([code for code in actions if code.startswith("crm.customer.update")], "加回页面不带回旧功能")
 
     async def test_save_never_adds_power(self):
         for code, username in (("R-IN", "in690"), ("LEGACY-EXT-SOURCE", "ex690")):
