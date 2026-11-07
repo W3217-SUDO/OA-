@@ -14,6 +14,7 @@ import dayjs from "dayjs";
 import type { PeopleOption } from "./types";
 import { TaskCasePicker, TaskCustomerPicker } from "./TaskLinkPickers";
 import { TASK_SUBJECT_PRESETS, TaskSubjectFields, applyTaskSubjectPreset } from "./TaskSubjectFields";
+import { DATETIME_POPUP_PROPS } from "../components/common/dateTimePopup";
 
 export interface TaskCreateModalProps {
   open: boolean;
@@ -93,6 +94,7 @@ export default function TaskCreateModal(props: TaskCreateModalProps) {
             rules={[{ required: true, message: "请选择开始时间" }]}
           >
             <DatePicker
+              {...DATETIME_POPUP_PROPS}
               showTime={{ format: "HH:mm" }}
               format="YYYY-MM-DD HH:mm"
               style={{ width: "100%" }}
@@ -108,6 +110,7 @@ export default function TaskCreateModal(props: TaskCreateModalProps) {
             rules={[{ required: true, message: "请选择结束时间" }]}
           >
             <DatePicker
+              {...DATETIME_POPUP_PROPS}
               showTime={{ format: "HH:mm" }}
               format="YYYY-MM-DD HH:mm"
               style={{ width: "100%" }}

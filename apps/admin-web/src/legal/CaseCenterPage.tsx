@@ -270,6 +270,7 @@ CaseDocumentsPanel,
 CaseFeesPanel,
 CaseSystemLogsPanel,
 } from "./CaseDetail";
+import { DATETIME_POPUP_PROPS } from "../components/common/dateTimePopup";
 // 501384：本案人员能改删还没产生数据的费用；已产生数据时提示原因。
 const CASE_FEE_MEMBER_DENIED = "这笔费用已经有审批、付款、退费、回款、开票或结算记录，只有分配了修改/删除案件费用权限的角色才能修改或删除";
 
@@ -3454,7 +3455,7 @@ export default function CaseCenterPage({
             <Form.Item label="书记员" name="clerk"><Input /></Form.Item>
             <Form.Item label="案号" name="case_no"><Input /></Form.Item>
             <Form.Item label="立案日期" name="filing_date"><DatePicker style={{width:"100%"}} /></Form.Item>
-            <Form.Item label="开庭日期" name="hearing_date"><DatePicker showTime style={{width:"100%"}} /></Form.Item>
+            <Form.Item label="开庭日期" name="hearing_date"><DatePicker {...DATETIME_POPUP_PROPS} showTime style={{width:"100%"}} /></Form.Item>
             <Form.Item label="判决日期" name="judgment_date"><DatePicker style={{width:"100%"}} /></Form.Item>
           </div>
         </Form>
@@ -4036,8 +4037,8 @@ export default function CaseCenterPage({
           <div className="form-grid">
             <Form.Item label="负责人" name="owner" rules={[{ required: true, message: "请选择负责人" }]}><KeywordPersonSelect showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="输入中文姓名检索" /></Form.Item>
             <Form.Item label="协作人" name="collaborators"><KeywordPersonSelect mode="multiple" showSearch optionFilterProp="label" options={caseAssistantOptions} placeholder="输入中文姓名检索" /></Form.Item>
-            <Form.Item label="任务开始时间" name="start_at" rules={[{ required: true, message: "请选择开始时间" }]}><DatePicker showTime={{format:"HH:mm"}} format="YYYY-MM-DD HH:mm" style={{ width: "100%" }} /></Form.Item>
-            <Form.Item label="结束时间" name="end_at" rules={[{ required: true, message: "请选择结束时间" }]}><DatePicker showTime={{format:"HH:mm"}} format="YYYY-MM-DD HH:mm" style={{ width: "100%" }} /></Form.Item>
+            <Form.Item label="任务开始时间" name="start_at" rules={[{ required: true, message: "请选择开始时间" }]}><DatePicker {...DATETIME_POPUP_PROPS} showTime={{format:"HH:mm"}} format="YYYY-MM-DD HH:mm" style={{ width: "100%" }} /></Form.Item>
+            <Form.Item label="结束时间" name="end_at" rules={[{ required: true, message: "请选择结束时间" }]}><DatePicker {...DATETIME_POPUP_PROPS} showTime={{format:"HH:mm"}} format="YYYY-MM-DD HH:mm" style={{ width: "100%" }} /></Form.Item>
           </div>
           <Form.Item label="任务附件（可多选，单个不超过20MB）"><Upload multiple fileList={caseTaskMaterialFiles} beforeUpload={(file) => { setCaseTaskMaterialFiles((items) => [...items, file]); return false; }} onRemove={(file) => setCaseTaskMaterialFiles((items) => items.filter((item) => item.uid !== file.uid))}><Button icon={<UploadOutlined />}>上传附件</Button></Upload></Form.Item>
         </Form>
@@ -4830,14 +4831,14 @@ export default function CaseCenterPage({
                 name="start_at"
                 rules={[{ required: true, message: "请选择开始时间" }]}
               >
-                <DatePicker showTime={{format:"HH:mm"}} format="YYYY-MM-DD HH:mm" style={{ width: "100%" }} />
+                <DatePicker {...DATETIME_POPUP_PROPS} showTime={{format:"HH:mm"}} format="YYYY-MM-DD HH:mm" style={{ width: "100%" }} />
               </Form.Item>
               <Form.Item
                 label="结束时间"
                 name="end_at"
                 rules={[{ required: true, message: "请选择结束时间" }]}
               >
-                <DatePicker showTime={{format:"HH:mm"}} format="YYYY-MM-DD HH:mm" style={{ width: "100%" }} />
+                <DatePicker {...DATETIME_POPUP_PROPS} showTime={{format:"HH:mm"}} format="YYYY-MM-DD HH:mm" style={{ width: "100%" }} />
               </Form.Item>
               <Form.Item label="优先级" name="priority">
                 <Select

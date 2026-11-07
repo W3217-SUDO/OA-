@@ -9,6 +9,7 @@ import {api} from './api'
 import {formatRequiredDate} from './formSafety'
 import {rememberCustomerDetailTarget} from './customerDetailNavigation'
 import './communication-log.css'
+import { DATETIME_POPUP_PROPS } from './components/common/dateTimePopup';
 
 type Communication={id:number;customer_record_id:number;customer_name:string;contact:string;phone:string;content:string;occurred_at:string;operator:string;operator_display_name?:string;updated_at:string}
 type Customer={id:number;serial_no:string;title:string;data:Record<string,unknown>}
@@ -157,7 +158,7 @@ export default function CommunicationLogPage({onNavigate}:{onNavigate?:(route:st
             <Form.Item className="span-2" name="customer_record_id" label="客户" rules={[{required:true,message:'请选择客户'}]}><Select showSearch optionFilterProp="label" disabled={Boolean(editing)} onChange={applyCustomerDefaults} options={customers.map(item=>({value:item.id,label:`${item.title}（${item.serial_no}）`}))}/></Form.Item>
             <Form.Item name="contact" label="联系人" rules={!editing?[{required:true,message:'请输入联系人'}]:undefined}><Input/></Form.Item>
             <Form.Item name="phone" label="联系电话" rules={!editing?[{required:true,message:'请输入联系电话'}]:undefined}><Input/></Form.Item>
-            <Form.Item className="span-2" name="occurred_at" label="记录时间" rules={[{required:true,message:'请选择记录时间'}]}><DatePicker showTime style={{width:'100%'}}/></Form.Item>
+            <Form.Item className="span-2" name="occurred_at" label="记录时间" rules={[{required:true,message:'请选择记录时间'}]}><DatePicker {...DATETIME_POPUP_PROPS} showTime style={{width:'100%'}}/></Form.Item>
             <Form.Item className="span-2" name="content" label="沟通内容" rules={[{required:true,message:'请输入沟通内容'},{max:4000}]}><Input.TextArea rows={5} showCount maxLength={4000}/></Form.Item>
           </div>
         </Form>

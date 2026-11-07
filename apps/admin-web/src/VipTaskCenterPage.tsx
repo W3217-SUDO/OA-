@@ -24,6 +24,7 @@ import { api } from "./api";
 import "./task-center.css";
 import { useFilterToggle } from "./components/common/MobileFilterToggle";
 import { usePersonNames } from "./personNames";
+import { DATETIME_POPUP_PROPS } from "./components/common/dateTimePopup";
 
 type VipNode = {
   id: number;
@@ -236,8 +237,8 @@ export default function VipTaskCenterPage() {
         <Form.Item label="任务标题" name="title" rules={[{ required: true, message: "请填写任务标题" }]}><Input /></Form.Item><Form.Item label="客户" name="customer"><Input /></Form.Item>
         <Form.Item label="负责人" name="owner" rules={[{ required: true, message: "请填写负责人" }]}><Input /></Form.Item><Form.Item label="优先级" name="priority"><Select options={priorityOptions} /></Form.Item>
         {editing && <Form.Item label="状态" name="status"><Select options={statusOptions} /></Form.Item>}<Form.Item label="协作人" name="collaborators"><Input placeholder="用顿号或逗号分隔" /></Form.Item>
-        <Form.Item label="开始时间" name="start_at"><DatePicker showTime style={{ width: "100%" }} /></Form.Item><Form.Item label="截止日期" name="deadline"><DatePicker style={{ width: "100%" }} /></Form.Item>
-        <Form.Item label="结束时间" name="end_at"><DatePicker showTime style={{ width: "100%" }} /></Form.Item>
+        <Form.Item label="开始时间" name="start_at"><DatePicker {...DATETIME_POPUP_PROPS} showTime style={{ width: "100%" }} /></Form.Item><Form.Item label="截止日期" name="deadline"><DatePicker style={{ width: "100%" }} /></Form.Item>
+        <Form.Item label="结束时间" name="end_at"><DatePicker {...DATETIME_POPUP_PROPS} showTime style={{ width: "100%" }} /></Form.Item>
       </div><Form.Item label="任务说明" name="description"><Input.TextArea rows={4} /></Form.Item></Form>
     </Modal>
     <Modal open={Boolean(detail)} title={detail ? `VIP任务详情：${detail.title}` : "VIP任务详情"} onCancel={() => setDetail(null)} footer={<Button onClick={() => setDetail(null)}>关闭</Button>} width={POPUP_WIDTH.lg}>
@@ -257,7 +258,7 @@ export default function VipTaskCenterPage() {
       <List size="small" bordered dataSource={messages} locale={{ emptyText: "暂无消息" }} renderItem={(item) => <List.Item><List.Item.Meta title={<Space>{item.sender ? showPerson(item.sender) : "系统"}<span>{formatDate(item.created_at)}</span>{!item.is_read && <Tag color="red">未读</Tag>}</Space>} description={item.content} /><span>{item.node_id ? `节点 #${item.node_id}` : "任务消息"}</span></List.Item>} />
       <Form form={messageForm} layout="vertical" style={{ marginTop: 16 }}><Form.Item label="关联节点" name="node_id"><Select allowClear placeholder="可选，选择本条通知所属节点" options={nodes.map((node) => ({ value: node.id, label: node.title }))} /></Form.Item><Form.Item label="通知内容" name="content" rules={[{ required: true, message: "请填写通知内容" }]}><Input.TextArea rows={3} /></Form.Item><Form.Item label="接收人" name="recipients"><Input placeholder="可选，用顿号或逗号分隔；留空由后端按参与人通知" /></Form.Item><Button type="primary" onClick={() => void sendMessage()}>发送通知</Button></Form>
       <Modal open={nodeModalOpen} title={nodeEditing ? "编辑VIP任务节点" : "新增VIP任务节点"} onCancel={() => setNodeModalOpen(false)} onOk={() => void saveNode()} destroyOnClose>
-        <Form form={nodeForm} layout="vertical"><Form.Item label="节点名称" name="title" rules={[{ required: true, message: "请填写节点名称" }]}><Input /></Form.Item><Form.Item label="负责人" name="owner" rules={[{ required: true, message: "请填写负责人" }]}><Input /></Form.Item><div className="task-form-grid">{nodeEditing && <Form.Item label="状态" name="status"><Select options={statusOptions} /></Form.Item>}<Form.Item label="优先级" name="priority"><Select options={priorityOptions} /></Form.Item><Form.Item label="开始时间" name="start_at"><DatePicker showTime style={{ width: "100%" }} /></Form.Item><Form.Item label="截止日期" name="deadline"><DatePicker style={{ width: "100%" }} /></Form.Item></div><Form.Item label="参与人" name="participants"><Input placeholder="用顿号或逗号分隔" /></Form.Item><Form.Item label="节点说明" name="description"><Input.TextArea rows={3} /></Form.Item></Form>
+        <Form form={nodeForm} layout="vertical"><Form.Item label="节点名称" name="title" rules={[{ required: true, message: "请填写节点名称" }]}><Input /></Form.Item><Form.Item label="负责人" name="owner" rules={[{ required: true, message: "请填写负责人" }]}><Input /></Form.Item><div className="task-form-grid">{nodeEditing && <Form.Item label="状态" name="status"><Select options={statusOptions} /></Form.Item>}<Form.Item label="优先级" name="priority"><Select options={priorityOptions} /></Form.Item><Form.Item label="开始时间" name="start_at"><DatePicker {...DATETIME_POPUP_PROPS} showTime style={{ width: "100%" }} /></Form.Item><Form.Item label="截止日期" name="deadline"><DatePicker style={{ width: "100%" }} /></Form.Item></div><Form.Item label="参与人" name="participants"><Input placeholder="用顿号或逗号分隔" /></Form.Item><Form.Item label="节点说明" name="description"><Input.TextArea rows={3} /></Form.Item></Form>
       </Modal>
       </>}
     </Modal>

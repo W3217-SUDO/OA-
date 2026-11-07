@@ -1411,7 +1411,7 @@ body {
 .topbar-workspace-tabs .ant-tabs-tab-active .feedback-pinned-tab{color:inherit}
 
 /* 501742：带时间的日期面板默认左右排，约 460px 宽，手机上超出屏幕。窄屏改成上下排，并固定在屏幕内；内容比屏幕高时面板内滚动。
-   Picker 上加 classNames={{ popup: { root: "oa-datetime-popup" } }} 才生效。 */
+   Picker 上加 components/common/dateTimePopup 的 DATETIME_POPUP_PROPS 才生效。 */
 @media (max-width: 520px) {
   .oa-datetime-popup.ant-picker-dropdown {
     position: fixed !important;

@@ -36,12 +36,7 @@ import {
   visiblePersonName,
 } from "./constants";
 import dayjs from "dayjs";
-
-// 501742：手机上带时间的日期面板用 .oa-datetime-popup 固定在屏幕内；挂到 body，页面容器的 transform 才不影响定位。
-const DATETIME_POPUP_PROPS = {
-  classNames: { popup: { root: "oa-datetime-popup" } },
-  getPopupContainer: () => document.body,
-};
+import { DATETIME_POPUP_PROPS } from "../components/common/dateTimePopup";
 
 export function TaskMaintenanceModal({ row, form, peopleOptions, actionSubmitting, onOk, onCancel }: {
   row: TaskRow | null;
@@ -126,7 +121,7 @@ export function HandoffModal(props: HandoffModalProps) {
             />
         </Form.Item>
         <Form.Item label="交接结束时间" name="end_at">
-          <DatePicker showTime {...DATETIME_POPUP_PROPS} style={{ width: "100%" }} placeholder="请选择日期和时间" />
+          <DatePicker {...DATETIME_POPUP_PROPS} showTime style={{ width: "100%" }} placeholder="请选择日期和时间" />
         </Form.Item>
         <Form.Item label="转交说明" name="comment">
           <Input.TextArea rows={3} />
@@ -252,7 +247,7 @@ export function TaskBatchModal(props: TaskBatchModalProps) {
             name="end_at"
             extra="不填保留各任务原期限；填了所有选中任务用同一期限，超过任务类型上限的会自动缩短。"
           >
-            <DatePicker showTime {...DATETIME_POPUP_PROPS} style={{ width: "100%" }} placeholder="请选择日期和时间" />
+            <DatePicker {...DATETIME_POPUP_PROPS} showTime style={{ width: "100%" }} placeholder="请选择日期和时间" />
           </Form.Item>
         )}
         <Form.Item
