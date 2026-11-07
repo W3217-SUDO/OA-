@@ -722,18 +722,54 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_preview_lists_everything_that_will_be_written(self):
         report = preview()
-        report["plan"] = {**report["plan"], "court_case_no": NUMBER, "hearing_existing": "2026-12-20 09:00 第九庭",
-                          "receipts": ["HZMS1_传票.pdf"], "court_staff": {"display": ["一审承办法官 王法官", "一审书记员 李书记"]}}
+        report["plan"] = {**report["plan"], "court_case_no": NUMBER, "receipts": ["HZMS1_传票.pdf"],
+                          "hearing_plan": {"status": "将回填", "hearing": "2026-12-01 09:30 第一法庭", "also_filled": ["一审法院 某院"]},
+                          "court_staff": {"display": ["一审承办法官 王法官", "一审书记员 李书记"]}}
         reply = await self._run(sms(), FakeApi(report))
-        for words in ("确认后将：", "存入文书 1 份", f"回填法院案号 {NUMBER}", "系统已登记开庭 2026-12-20 09:00 第九庭", "不覆盖",
-                      "回填一审承办法官 王法官、一审书记员 李书记", "生成费用草稿 500 元"):
+        for words in ("确认后将：", "存入文书 1 份", f"回填法院案号 {NUMBER}", "回填开庭 2026-12-01 09:30 第一法庭", "回填一审法院 某院",
+                      "回填一审承办法官 王法官、一审书记员 李书记", "缴费通知 500 元", "费用单要到系统里选合同后新建"):
             self.assertIn(words, reply.text)
-        report["plan"] = {**report["plan"], "court_case_no": "已登记 X，不覆盖", "hearing_existing": "", "receipts": ["已收过，跳过：a.pdf"],
-                          "court_staff": {"display": []}, "fees": []}
+        self.assertNotIn("生成费用草稿", reply.text)
+        report["plan"] = {**report["plan"], "court_case_no": "已登记 X，不覆盖", "receipts": ["已收过，跳过：a.pdf"], "fees": [],
+                          "hearing_plan": {"status": "已有开庭未覆盖", "hearing": "2026-12-01 09:30 第一法庭", "previous": "2026-12-20T09:00:00 第九庭"},
+                          "court_staff": {"display": []}}
         reply = await self._run(sms(message_id="m9", text=SMS.replace("7f184b3f", "9f184b3f")), FakeApi(report))
-        for words in ("1 份此前已收过，不重复存", "回填开庭 2026-12-01 09:30 第一法庭"):
+        for words in ("1 份此前已收过，不重复存", "系统已登记开庭 2026-12-20 09:00:00 第九庭", "不覆盖"):
             self.assertIn(words, reply.text)
         self.assertNotIn("回填法院案号", reply.text)
+
+    async def test_preview_hearing_matches_what_backfill_does(self):
+        """预览和入库用同一套判断：分支 4 列出的几种情况，预览说什么，入库就做什么。"""
+        from app.areas.aws import court_intake
+        documents = [{"fields": {"开庭日期": "2026-11-30", "开庭时刻": "09:30", "开庭法庭": "第一庭"}}]
+        cases = [
+            ("再审案号审级不明", {}, "再审", "某院", "（2026）沪民再1号", False),
+            ("执行案号审级不明", {}, "执行", "某院", "（2026）沪0115执1号", False),
+            ("只登记了法庭", {"first_court_courtroom": "第九庭", "first_court_name": "某院"}, "一审", "某院", "案号", True),
+            ("时间相同法庭空", {"first_court_hearing_date": "2026-11-30T09:30:00", "first_court_name": "某院"}, "一审", "某院", "案号", True),
+            ("缺法院名称", {}, "一审", "", "案号", True),
+            ("顺带回填法院和案号", {}, "一审", "某院", "（2026）沪0115民初1号", True),
+            ("已登记不同时间", {"first_court_hearing_date": "2026-12-20T09:00:00", "first_court_name": "某院"}, "一审", "某院", "案号", True),
+        ]
+        for name, data, level, court, number, keep in cases:
+            for keep_existing in ({keep, False} if name.startswith("只登记") else {keep}):
+                plan = court_intake._hearing_plan(data, documents, level, court, number, keep_existing=keep_existing)
+                record = BusinessRecord(id=1, module="case", serial_no="H", data=dict(data))
+                update = AsyncMock()
+                with patch("app.areas.legal.router.update_case_court_info", update):
+                    done = await court_intake._backfill_hearing(record, documents, level, court, number, {"username": "u"}, None,
+                                                                keep_existing=keep_existing)
+                expected = "已回填" if plan["status"] == "将回填" else plan["status"]
+                self.assertEqual(done["status"], expected, name)
+                self.assertEqual(update.await_count, 1 if plan["status"] == "将回填" else 0, name)
+                if plan["status"] == "将回填":
+                    self.assertEqual(done["also_filled"], plan["also_filled"], name)
+        added = court_intake._hearing_plan({}, documents, "一审", "某院", "（2026）沪0115民初1号", keep_existing=True)
+        self.assertEqual(added["also_filled"], ["一审法院 某院", "一审案号 （2026）沪0115民初1号"])
+        only_room = court_intake._hearing_plan({"first_court_courtroom": "第九庭", "first_court_name": "某院"}, documents, "一审", "某院", "案号", keep_existing=True)
+        self.assertEqual(only_room["status"], "已有开庭未覆盖")
+        empty_room = court_intake._hearing_plan({"first_court_hearing_date": "2026-11-30T09:30:00", "first_court_name": "某院"}, documents, "一审", "某院", "案号", keep_existing=True)
+        self.assertEqual(empty_room["status"], "将回填")
 
     def test_parse_message_and_seen(self):
         message = parse_message({"msgId": "a", "conversationType": "2", "conversationTitle": GROUP, "senderStaffId": "s",

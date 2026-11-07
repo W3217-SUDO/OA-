@@ -203,20 +203,23 @@ def _plan_lines(report: dict) -> list[str]:
     court_no = str(plan.get("court_case_no") or "")
     if court_no and not court_no.startswith("已登记"):
         actions.append(f"回填法院案号 {court_no}")
-    planned = [str(item) for item in plan.get("hearing") or []]
-    existing = str(plan.get("hearing_existing") or "")
-    if plan.get("hearing_note"):
-        actions.append(f"开庭：{plan['hearing_note']}")
-    elif planned and not existing:
-        actions.append(f"回填开庭 {planned[0]}")
-    elif planned and existing and not planned[0].startswith(existing):
-        actions.append(f"系统已登记开庭 {existing}，文书为 {planned[0]}，不覆盖，请核对")
+    hearing = plan.get("hearing_plan") or {}
+    status = hearing.get("status")
+    if status == "将回填":
+        actions.append(f"回填开庭 {hearing.get('hearing')}")
+        actions.extend(f"回填{item}" for item in hearing.get("also_filled") or [])
+    elif status == "已有开庭未覆盖":
+        actions.append(f"系统已登记开庭 {str(hearing.get('previous') or '').replace('T', ' ')}，文书为 {hearing.get('hearing')}，不覆盖，请核对")
+    elif status in {"冲突未回填", "审级不明未回填", "缺法院名称未回填"}:
+        actions.append(f"开庭{status}，请核对")
     staff = (plan.get("court_staff") or {}).get("display") or []
     if staff:
         actions.append("回填" + "、".join(str(item) for item in staff))
     for fee in plan.get("fees") or []:
         if fee.get("amount"):
-            actions.append(f"生成费用草稿 {fee['amount']} 元" + (f"（期限 {fee['deadline']}）" if fee.get("deadline") else "") + "，提交仍需到系统确认")
+            # 系统要求律所案件费用明确选择合同，不能按案件推断（core/finance.py），收文建不了费用单，如实说明。
+            actions.append(f"缴费通知 {fee['amount']} 元" + (f"（期限 {fee['deadline']}）" if fee.get("deadline") else "")
+                           + "：费用单要到系统里选合同后新建，收文助手不代建")
     return ["确认后将：" + ("，".join(actions) or "不写入新内容")]
 
 

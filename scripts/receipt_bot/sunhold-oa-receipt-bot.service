@@ -18,6 +18,9 @@ Environment=HOME=/var/lib/sunhold-oa/service-home
 Environment=OA_NATIVE_RUNTIME_CURRENT=/opt/sunhold-oa/runtime/enterprise/current
 ProtectHome=yes
 ProtectSystem=full
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
 ExecStart=/bin/sh -c 'PY=$(systemctl show sunhold-oa-api -p ExecStart | grep -o "OA_NATIVE_PYTHON=[^ ]*" | head -1 | cut -d= -f2); exec "$PY" -B -m app.dingtalk_receipt_worker'
 Restart=always
 RestartSec=10
