@@ -135,7 +135,6 @@ CIVIL_CASE_TYPES = ("民事争议", "民事案件")
 
 async def legacy_rejected_counts(identity, db, *, scope: str | None = None) -> dict[str, int]:
     """待办表橙色列：各类被驳回的数量（旧系统 Views/Dashboard/Index.cshtml 各项的驳回列表条件）。"""
-    import json
     from app.core.json_relation_query import scalar_in_values
     from app.core.permissions import _case_mine_scope_condition, _coordinated_case_condition
     from app.models import LegacyFinanceRecord
@@ -147,7 +146,6 @@ async def legacy_rejected_counts(identity, db, *, scope: str | None = None) -> d
     async def count(*conditions) -> int:
         return int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions)) or 0)
 
-    token = json.dumps(username, ensure_ascii=False)
     from app.core.person_customers import person_customer_rows
     my_customers = await person_customer_rows(db, username)
     customer_ids = {str(row.id) for row in my_customers}
