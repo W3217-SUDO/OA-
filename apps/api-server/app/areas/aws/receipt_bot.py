@@ -190,6 +190,11 @@ def _facts(report: dict) -> list[str]:
     return lines
 
 
+def _minutes(value: Any) -> str:
+    """开庭时间只到分钟：2026-09-22T10:00:00 → 2026-09-22 10:00。"""
+    return re.sub(r"(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}):\d{2}", r"\1 \2", str(value or ""))
+
+
 def _plan_lines(report: dict) -> list[str]:
     """预览时列出确认后会写的所有内容：文书、法院案号、开庭、承办法官和书记员、费用草稿。"""
     plan = report.get("plan") or {}
@@ -209,7 +214,7 @@ def _plan_lines(report: dict) -> list[str]:
         actions.append(f"回填开庭 {hearing.get('hearing')}")
         actions.extend(f"回填{item}" for item in hearing.get("also_filled") or [])
     elif status == "已有开庭未覆盖":
-        actions.append(f"系统已登记开庭 {str(hearing.get('previous') or '').replace('T', ' ')}，文书为 {hearing.get('hearing')}，不覆盖，请核对")
+        actions.append(f"系统已登记开庭 {_minutes(hearing.get('previous'))}，文书为 {hearing.get('hearing')}，不覆盖，请核对")
     elif status in {"冲突未回填", "审级不明未回填", "缺法院名称未回填"}:
         actions.append(f"开庭{status}，请核对")
     staff = (plan.get("court_staff") or {}).get("display") or []
@@ -265,7 +270,7 @@ def _done_lines(report: dict, planned_court_no: str = "") -> list[str]:
         previous = str(hearing.get("previous") or "").replace("T", " ")
         actions.append("已回填开庭" + (f"（原为 {previous}）" if previous else ""))
     elif status == "已有开庭未覆盖":
-        actions.append(f"系统已登记开庭 {str(hearing.get('previous') or '').replace('T', ' ')}，文书为 {hearing.get('hearing')}，未覆盖，请核对")
+        actions.append(f"系统已登记开庭 {_minutes(hearing.get('previous'))}，文书为 {hearing.get('hearing')}，未覆盖，请核对")
     elif status in {"冲突未回填", "审级不明未回填", "缺法院名称未回填"}:
         actions.append(f"开庭{status}，请核对")
     actions.extend(f"已回填{item}" for item in hearing.get("also_filled") or [])

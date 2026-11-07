@@ -238,7 +238,7 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
                       fees=[{"status": "待确认", "fee_id": 31, "serial_no": "FY1", "amount": 500}],
                       received=[{"attachment_id": 10, "receipt_id": 20, "skipped": False}])
         reply = await self._run(sms(), FakeApi(preview(), result), AUTO)
-        for words in ("系统已登记开庭 2026-12-20 09:00:00 第九庭", "未覆盖", "承办法官 王法官", "FY1", "费用草稿到费用单"):
+        for words in ("系统已登记开庭 2026-12-20 09:00 第九庭", "未覆盖", "承办法官 王法官", "FY1", "费用草稿到费用单"):
             self.assertIn(words, reply.text)
         changes = (await self._records())[0].data["changes"]
         self.assertEqual((changes["attachment_ids"], changes["receipt_ids"], changes["fee_ids"]), ([10], [20], [31]))
@@ -734,7 +734,7 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
                           "hearing_plan": {"status": "已有开庭未覆盖", "hearing": "2026-12-01 09:30 第一法庭", "previous": "2026-12-20T09:00:00 第九庭"},
                           "court_staff": {"display": []}}
         reply = await self._run(sms(message_id="m9", text=SMS.replace("7f184b3f", "9f184b3f")), FakeApi(report))
-        for words in ("1 份此前已收过，不重复存", "系统已登记开庭 2026-12-20 09:00:00 第九庭", "不覆盖"):
+        for words in ("1 份此前已收过，不重复存", "系统已登记开庭 2026-12-20 09:00 第九庭", "不覆盖"):
             self.assertIn(words, reply.text)
         self.assertNotIn("回填法院案号", reply.text)
 
