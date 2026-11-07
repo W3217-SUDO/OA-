@@ -1352,6 +1352,8 @@ def is_high_privilege_job_role(role: JobRole) -> bool:
         return True
     if any(key.startswith("finance") and "audit" in key for key in menus):  # 能审财务
         return True
+    if any(key.startswith("ipr-all-") for key in menus):  # 501690：全部案件看全所非诉，不能由人事分配
+        return True
     firm_pages = sum(1 for key in menus if key.endswith(("-company", "-all")) or "-company-" in key)
     approval_pages = sum(1 for key in menus if "audit" in key or "approval" in key or key.endswith("-archive"))
     return firm_pages >= _HIGH_ROLE_FIRM_PAGES or approval_pages >= _HIGH_ROLE_APPROVAL_PAGES

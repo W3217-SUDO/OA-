@@ -65,6 +65,11 @@ class MenuTest(unittest.TestCase):
 
 
 class RoleSaveTest(unittest.TestCase):
+    def test_all_cases_role_is_high_privilege(self):
+        from app.core.permissions import is_high_privilege_job_role
+        self.assertTrue(is_high_privilege_job_role(JobRole(code="R", name="甲", permissions=["ipr-all-cases"], field_keys=[])))
+        self.assertFalse(is_high_privilege_job_role(JobRole(code="R", name="甲", permissions=["ipr-my-cases"], field_keys=[])))
+
     def test_saving_old_role_unchanged_keeps_effective_pages(self):
         for permissions in (FINANCE_STORED, ["ipr-my-cases"], ["ipr-all-cases"], ["ipr-my-cases", "ipr-all-cases", "ipr-case-reboot"]):
             role = JobRole(code="R", name="老角色", permissions=list(permissions), field_keys=[])
