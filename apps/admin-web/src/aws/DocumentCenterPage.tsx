@@ -307,6 +307,8 @@ export default function DocumentCenterPage({
   // ===== Data loading =====
   const load = async (outgoingQueryOverride = outgoingQuery) => {
     setLoading(true);
+    // 被后发的取数顶替的旧请求返回后不关加载状态，免得新请求还没回来时转圈消失、表格空一下（分支 2 审查 898a4307）。
+    let superseded = false;
     try {
       if (["official", "my-receipts", "company-receipts"].includes(first)) {
         setReceiptRecords([]);
@@ -318,7 +320,10 @@ export default function DocumentCenterPage({
         const { data } = await api.get("/documents/receipts", {
           params: { scope, ...(range ? { uploaded_from: range[0].format("YYYY-MM-DD"), uploaded_to: range[1].format("YYYY-MM-DD") } : {}) },
         });
-        if (seq !== receiptLoadSeq.current) return;
+        if (seq !== receiptLoadSeq.current) {
+          superseded = true;
+          return;
+        }
         setReceiptRecords(data.items);
         setReceiptFiles(data.attachments);
         if (first === "official") {
@@ -362,7 +367,7 @@ export default function DocumentCenterPage({
     } catch {
       message.error("收发文数据加载失败");
     } finally {
-      setLoading(false);
+      if (!superseded) setLoading(false);
     }
   };
 
@@ -1201,6 +1206,7 @@ export default function DocumentCenterPage({
       loading={loading}
       receiptForm={receiptForm}
       searchedReceipts={searchedReceipts}
+      appliedUploadRange={receiptQuery.upload_range || null}
       selectedReceiptKeys={selectedReceiptKeys}
       selectedFormalReceipts={selectedFormalReceipts}
       receiptAttachment={receiptAttachment}

@@ -13,3 +13,18 @@ test('上传日期变了（含搜具体字段放开日期、清空条件）就�
   assert.match(page, /const receiptRangeKey = receiptQuery\.upload_range/);
   assert.match(page, /if \(loadedReceiptRange\.current === receiptRangeKey\) return;[\s\S]*?void load\(\);\s*\}, \[receiptRangeKey\]\);/);
 });
+
+test('被顶替的旧取数不关加载状态', () => {
+  assert.match(page, /if \(seq !== receiptLoadSeq\.current\) \{\s*superseded = true;\s*return;\s*\}/);
+  assert.match(page, /finally \{\s*if \(!superseded\) setLoading\(false\);\s*\}/);
+});
+
+test('按日期查不到时写明原因，并能一键看最近 7 天或清空日期', () => {
+  const panel = readFileSync(new URL('../src/aws/DocumentReceiptPanel.tsx', import.meta.url), 'utf8');
+  assert.match(page, /appliedUploadRange=\{receiptQuery\.upload_range \|\| null\}/);
+  assert.match(panel, /locale=\{appliedUploadRange \? \{ emptyText: <ReceiptRangeEmpty/);
+  assert.match(panel, /今天没有上传的收文/);
+  assert.match(panel, /可修改上传日期或清空日期查看全部/);
+  assert.match(panel, /search\(\[today\.subtract\(6, "day"\), today\]\)\}>查看最近 7 天/);
+  assert.match(panel, /search\(undefined\)\}>清空日期/);
+});

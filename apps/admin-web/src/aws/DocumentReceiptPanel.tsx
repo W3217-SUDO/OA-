@@ -20,6 +20,8 @@ interface DocumentReceiptPanelProps {
   loading: boolean;
   receiptForm: FormInstance;
   searchedReceipts: ReceiptRow[];
+  /** 当前生效的上传日期（已查询的条件，不是表单里还没提交的值）；没有日期限制时为空。 */
+  appliedUploadRange?: [dayjs.Dayjs, dayjs.Dayjs] | null;
   selectedReceiptKeys: Key[];
   selectedFormalReceipts: ReceiptRow[];
   receiptAttachment: (r: ReceiptRow) => Attachment | undefined;
@@ -68,7 +70,7 @@ const receiptMoreActionItems = [
   { key: "case-logs", label: "案件日志" },
 ];
 
-export function DocumentReceiptPanel({ tab, loading, receiptForm, searchedReceipts, selectedReceiptKeys, selectedFormalReceipts, receiptAttachment, onSelectionChange, onSearch, onShowReceipt, onPreviewReceiptFile, onOpenCaseDetail, onOpenUpload, onDeleteSelected, onOpenReceiptDateEditor, onOpenCaseLinker, onUpdateProcessStatus, onExport, onMoreAction }: DocumentReceiptPanelProps) {
+export function DocumentReceiptPanel({ tab, loading, receiptForm, searchedReceipts, appliedUploadRange, selectedReceiptKeys, selectedFormalReceipts, receiptAttachment, onSelectionChange, onSearch, onShowReceipt, onPreviewReceiptFile, onOpenCaseDetail, onOpenUpload, onDeleteSelected, onOpenReceiptDateEditor, onOpenCaseLinker, onUpdateProcessStatus, onExport, onMoreAction }: DocumentReceiptPanelProps) {
   const isOfficial = tab === "official";
   const mobileFilter = useMobileFilterToggle();
 
@@ -338,6 +340,7 @@ export function DocumentReceiptPanel({ tab, loading, receiptForm, searchedReceip
         loading={loading}
         size="small"
         className="receipt-table"
+        locale={appliedUploadRange ? { emptyText: <ReceiptRangeEmpty range={appliedUploadRange} receiptForm={receiptForm} onSearch={onSearch} /> } : undefined}
         rowSelection={{
           selectedRowKeys: selectedReceiptKeys,
           onChange: onSelectionChange,
@@ -431,5 +434,25 @@ export function DocumentReceiptPanel({ tab, loading, receiptForm, searchedReceip
         )}
       </div>
     </Card>
+  );
+}
+
+
+// 陶威 11-07：默认只看当天，当天没人上传时只显示“暂无数据”，看起来像系统没数据。写明原因并给出放宽日期的按钮。
+function ReceiptRangeEmpty({ range, receiptForm, onSearch }: { range: [dayjs.Dayjs, dayjs.Dayjs]; receiptForm: FormInstance; onSearch: () => void }) {
+  const today = dayjs();
+  const onlyToday = range[0].isSame(today, "day") && range[1].isSame(today, "day");
+  const search = (value: [dayjs.Dayjs, dayjs.Dayjs] | undefined) => {
+    receiptForm.setFieldsValue({ upload_range: value });
+    onSearch();
+  };
+  return (
+    <div className="receipt-range-empty">
+      <div>{onlyToday ? "今天没有上传的收文" : "所选上传日期内没有收文"}，可修改上传日期或清空日期查看全部</div>
+      <Space size={8} wrap style={{ marginTop: 8, justifyContent: "center" }}>
+        <Button size="small" onClick={() => search([today.subtract(6, "day"), today])}>查看最近 7 天</Button>
+        <Button size="small" onClick={() => search(undefined)}>清空日期</Button>
+      </Space>
+    </div>
   );
 }
