@@ -22,6 +22,7 @@ router = APIRouter(prefix=settings.api_prefix + "/agent-admin/dingtalk-bots")
 
 CONFIG_KEY = "dingtalk_receipt_bot"
 TOKEN_URL = "https://api.dingtalk.com/v1.0/oauth2/accessToken"
+MAX_SEEN_GROUPS = 10
 
 
 class BotInput(BaseModel):
@@ -29,7 +30,7 @@ class BotInput(BaseModel):
     app_key: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
     app_secret: str = Field(default="", max_length=256)  # 留空表示不改
     enabled: bool = False
-    group_name: str = Field(default="", max_length=100)
+    group_id: str = Field(default="", max_length=128)  # 收文群的 openConversationId；只认 ID，群名只作显示
     use_cloud_agent: bool = False  # 云端智能体读短信：文书内容会发到模型服务，要陶威拍板后再开
     auto_save_unique: bool = False  # 服务器判断唯一匹配时直接入库：跳过律师确认，要陶威拍板后再开
 
@@ -69,7 +70,8 @@ async def _save(db: AsyncSession, record, value: dict) -> None:
 
 def _public(value: dict) -> dict:
     return {"app_key": value.get("app_key", ""), "secret_set": bool(value.get("encrypted_secret")),
-            "enabled": bool(value.get("enabled")), "group_name": value.get("group_name") or "",
+            "enabled": bool(value.get("enabled")), "group_id": value.get("group_id") or "", "group_title": value.get("group_title") or "",
+            "seen_groups": value.get("seen_groups") or [],
             "use_cloud_agent": bool(value.get("use_cloud_agent")), "auto_save_unique": bool(value.get("auto_save_unique")),
             "updated_by": value.get("updated_by", ""), "updated_at": value.get("updated_at", ""),
             "verified_at": value.get("verified_at", ""), "verify_ok": value.get("verify_ok"),
@@ -81,13 +83,14 @@ class BotConfig:
     enabled: bool
     app_key: str
     app_secret: str
-    group_name: str
+    group_id: str
     use_cloud_agent: bool
     auto_save_unique: bool
 
     @property
     def ready(self) -> bool:
-        return self.enabled and bool(self.app_key and self.app_secret and self.group_name)
+        """没选群也算就绪：要连上钉钉，有人在群里 @ 一次，页面才列得出群；没选群时任何消息都不处理。"""
+        return self.enabled and bool(self.app_key and self.app_secret)
 
 
 async def load_bot(db: AsyncSession) -> BotConfig:
@@ -98,8 +101,23 @@ async def load_bot(db: AsyncSession) -> BotConfig:
     except HTTPException:
         secret = ""
     return BotConfig(enabled=bool(value.get("enabled")), app_key=str(value.get("app_key") or ""), app_secret=secret,
-                     group_name=str(value.get("group_name") or "").strip(),
+                     group_id=str(value.get("group_id") or "").strip(),
                      use_cloud_agent=bool(value.get("use_cloud_agent")), auto_save_unique=bool(value.get("auto_save_unique")))
+
+
+async def note_seen_group(db: AsyncSession, group_id: str, title: str) -> None:
+    """记下 @ 过机器人的群（只存 ID 和群名），给管理员在页面上选收文群。"""
+    if not group_id:
+        return
+    _, value = await _load(db)
+    seen = value.get("seen_groups") or []
+    if any(item.get("id") == group_id and item.get("title") == title for item in seen):
+        return
+    record, value = await _load(db, lock=True)
+    if record is None:
+        return
+    others = [item for item in value.get("seen_groups") or [] if item.get("id") != group_id]
+    await _save(db, record, {**value, "seen_groups": [{"id": group_id, "title": title[:100], "seen_at": _now()}, *others][:MAX_SEEN_GROUPS]})
 
 
 async def probe(app_key: str, app_secret: str, transport=None) -> tuple[bool, str]:
@@ -130,13 +148,13 @@ async def update_dingtalk_bot(body: BotInput, identity: dict = Depends(current_i
     _require_admin(identity)
     record, value = await _load(db, lock=True)
     secret = body.app_secret.strip()
-    changed = {**value, "app_key": body.app_key, "enabled": body.enabled, "group_name": body.group_name.strip(),
+    changed = {**value, "app_key": body.app_key, "enabled": body.enabled, "group_id": body.group_id.strip(),
+               "group_title": next((item["title"] for item in value.get("seen_groups") or [] if item.get("id") == body.group_id.strip()),
+                                   value.get("group_title") if body.group_id.strip() == value.get("group_id") else ""),
                "use_cloud_agent": body.use_cloud_agent, "auto_save_unique": body.auto_save_unique,
                "updated_by": identity["username"], "updated_at": _now()}
     if body.enabled and not (secret or value.get("encrypted_secret")):
         raise HTTPException(422, "启用前请先填写 AppSecret")
-    if body.enabled and not body.group_name.strip():
-        raise HTTPException(422, "启用前请先填写收文群名称")
     if secret:
         changed["encrypted_secret"] = seal_key(secret)
     if secret or body.app_key != value.get("app_key"):

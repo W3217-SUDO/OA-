@@ -121,6 +121,8 @@ def exclusion_reasons(route: APIRoute) -> list[str]:
         reasons.append("调试或密钥凭据管理，不向模型开放")
     if "dingtalk-bots" in segments:
         reasons.append("钉钉机器人凭证由系统管理员在页面配置，不向模型开放")
+    if "bot-receipts" in segments:
+        reasons.append("钉钉收文待处理由收文人员在收文台人工处理，不向模型开放")
     if "approval-gateway" in segments or "tool-requests" in segments or "agent-tools" in segments and "decision" in segments:
         reasons.append("人工确认网关不可由模型发现或自行批准")
     if not _has_oa_identity(route.dependant):

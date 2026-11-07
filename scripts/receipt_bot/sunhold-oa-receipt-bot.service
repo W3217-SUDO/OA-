@@ -1,5 +1,6 @@
 # 钉钉收文助手常驻程序。还没安装到生产：要等陶威拍板、机器人中心填好凭证并启用后，由发布会话安装。
-# 环境路径上线前按 systemctl cat sunhold-oa-api 最后一条 ExecStart 核对。
+# Python 环境跟随 API 服务，依赖变更后不用改这里。发版后程序一分钟内自己退出，由 systemd 按新版本重启。
+# server-monitor 的告警规则按 sunhold-oa-.* 匹配，服务名符合；安装后核对监控确实采集到这个服务。
 [Unit]
 Description=Sunhold OA DingTalk receipt bot
 After=network-online.target sunhold-oa-api.service
@@ -9,7 +10,7 @@ Wants=network-online.target
 User=sunhold-oa
 WorkingDirectory=/opt/sunhold-oa/runtime/enterprise/current/api
 EnvironmentFile=/opt/sunhold-oa/private/production-native.env
-ExecStart=/opt/sunhold-oa/runtime/enterprise/environments/requirements-d544fdf35ade-py3123/bin/python -B -m app.dingtalk_receipt_worker
+ExecStart=/bin/sh -c 'PY=$(systemctl show sunhold-oa-api -p ExecStart | grep -o "OA_NATIVE_PYTHON=[^ ]*" | head -1 | cut -d= -f2); exec "$PY" -B -m app.dingtalk_receipt_worker'
 Restart=always
 RestartSec=10
 
