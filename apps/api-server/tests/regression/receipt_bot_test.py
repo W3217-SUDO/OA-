@@ -390,6 +390,87 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         reply = await self._run(sms(), FakeApi(self._party(case_numbers=[NUMBER]), done()), AUTO)
         self.assertIn("收文完成", reply.text)
 
+    async def test_non_standard_court_code_is_not_a_match(self):
+        """徐知、沪仲、宁知这类非标准代字，即使和案件登记的一样，也不算法院一致（陶威 11-07）。"""
+        for index, code in enumerate(("徐知", "沪仲", "宁知")):
+            number = f"（2026）{code}民初1号"
+            await self._party_case(court=code)
+            reply = await self._run(sms(message_id=f"c{index}"), FakeApi(self._party(case_numbers=[number], court="")), AUTO)
+            await self._assert_not_auto(reply, "受理法院与该案登记的不一致")
+
+    def test_standard_court_code_shape(self):
+        from app.areas.aws.receipt_bot import standard_court_code
+        for code in ("皖1226", "沪0110", "苏0281", "京73", "兵0101"):
+            self.assertEqual(standard_court_code(code), code)
+        for code in ("徐知", "沪仲", "宁知", "0009", "沪01101", "上海"):
+            self.assertEqual(standard_court_code(code), "")
+
+    async def test_closed_or_archived_case_is_not_saved_directly(self):
+        """已结、已归档的案件不直接存，转确认（陶威 11-07）。"""
+        await self._set_case(court_case_no=NUMBER)
+        cases = ((dict(status="已归档"), {}), (dict(status="一审判决结案"), {}), (dict(status="执行终本"), {}),
+                 (dict(status="归档审核"), {}), (dict(status="一审待客户回款"), dict(case_closed_at="2026-10-01")))
+        for index, (column, data) in enumerate(cases):
+            async with self.sessions() as db:
+                case = await db.get(BusinessRecord, 7)
+                case.status = column["status"]
+                case.data = {**case.data, **data}
+                await db.commit()
+            reply = await self._run(sms(message_id=f"e{index}"), FakeApi(preview()), AUTO)
+            await self._assert_not_auto(reply, "案件已结案或已归档")
+
+    async def test_truncation_flag_does_not_block_registered_number_match(self):
+        """法院案号直配不看当事人名称，标了可能截短也照常直接存。"""
+        await self._set_case(court_case_no=NUMBER)
+        docs = [{"attachment_id": 9, "name": "传票", "fields": {"文书类型": "传票", "当事人可能截短": ["某公司"]}}]
+        self.assertIn("收文完成", (await self._run(sms(), FakeApi(preview(documents=docs), done()), AUTO)).text)
+
+    async def test_truncated_party_names_are_not_saved_directly(self):
+        """解析标出“当事人可能截短”的，哪怕截短后的名字和案件对得上，也不直接存。"""
+        await self._party_case(opponent="漳州锦客隆贸易有限公司")
+        docs = [{"attachment_id": 9, "name": "传票", "fields": {"文书类型": "传票", "原告": [P], "被告": ["漳州锦客隆贸易有限公司"],
+                                                                "受理机关": COURT, "当事人可能截短": ["漳州锦客隆贸易有限公司"]}}]
+        reply = await self._run(sms(), FakeApi(self._party(case_numbers=[NUMBER], documents=docs)), AUTO)
+        await self._assert_not_auto(reply, "当事人名称可能识别不全")
+
+    def test_party_names_keep_full_company_and_branch(self):
+        from app.agent_skill_packages.court_doc_intake.scripts.extract_doc_fields import extract
+        # 句式写法取到的名称完整了，但分不清名称在哪结束，仍标为可能不全（不用来直接存）；冒号写法可信。
+        cases = (
+            ("原告青岛万盛联有限公司诉被告广州逸达酒店有限公司侵害商标权纠纷一案", ["青岛万盛联有限公司"], ["广州逸达酒店有限公司"], True),
+            ("原告甲贸易有限公司诉被告漳州锦客隆贸易有限公司霞美分公司侵害商标权纠纷一案", ["甲贸易有限公司"], ["漳州锦客隆贸易有限公司霞美分公司"], True),
+            ("原告甲贸易有限公司诉被告上海某某百货店（个体工商户）侵害商标权纠纷一案", ["甲贸易有限公司"], ["上海某某百货店（个体工商户）"], True),
+            ("原告：某某（上海）有限公司\n被告：乙商行（个体工商户）\n法定代表人：张三", ["某某（上海）有限公司"], ["乙商行（个体工商户）"], False),
+            ("原告：甲有限公司（以下简称甲公司）\n被告：张三，男", ["甲有限公司"], ["张三"], False),
+        )
+        for text, plaintiffs, defendants, sentence in cases:
+            fields = extract(text, "传票.pdf")
+            self.assertEqual((fields["原告"], fields["被告"]), (plaintiffs, defendants), text)
+            self.assertEqual(fields["当事人可能截短"], [*plaintiffs, *defendants] if sentence else [], text)
+
+    def test_sentence_form_still_reads_parties_for_web_intake(self):
+        """网页一键收文要显示当事人：被告带（个人独资）或后面接数字的，也要取到原告和被告（都标为可能不全）。"""
+        from app.agent_skill_packages.court_doc_intake.scripts.extract_doc_fields import extract
+        for text, defendant in (("原告甲贸易有限公司诉被告某某眼镜店（个人独资）侵害商标权纠纷一案", "某某眼镜店（个人独资）"),
+                                ("原告甲贸易有限公司诉被告正品建材店0738侵害商标权纠纷一案", "正品建材店")):
+            fields = extract(text, "传票.pdf")
+            self.assertEqual((fields["原告"], fields["被告"]), (["甲贸易有限公司"], [defendant]), text)
+            self.assertIn(defendant, fields["当事人可能截短"])
+
+    def test_core_names_drop_form_note_in_both_bracket_widths(self):
+        from app.areas.aws.court_intake import _core_names
+        self.assertEqual(_core_names("乙商行（个体工商户）"), ["乙商行"])
+        self.assertEqual(_core_names("乙商行(个体工商户)"), ["乙商行"])
+        self.assertEqual(_core_names("某某眼镜店（个人独资）"), ["某某眼镜店"])
+
+    def test_name_cut_by_line_break_is_flagged(self):
+        from app.agent_skill_packages.court_doc_intake.scripts.extract_doc_fields import extract, truncated_parties
+        self.assertEqual(extract("原告：上海某某贸易有\n限公司\n被告：李四", "传票.pdf")["当事人可能截短"], ["上海某某贸易有"])
+        self.assertEqual(extract("原告甲贸易有限公司诉被告广州颜佳宜生物科技有限公司实力供应商侵害商标权纠纷一案", "传票.pdf")["当事人可能截短"],
+                         ["甲贸易有限公司", "广州颜佳宜生物科技有限公司"])
+        self.assertEqual(truncated_parties("被告漳州锦客隆贸易有限公司霞美分公司", ["漳州锦客隆贸易有限公司"]), ["漳州锦客隆贸易有限公司"])
+        self.assertEqual(truncated_parties("被告广州逸达酒店有限公司", ["广州逸达酒店"]), ["广州逸达酒店"])
+
     def test_case_attachment_date_uses_beijing_time(self):
         from datetime import datetime, timezone
         from app.areas.aws.receipt_sources import _case_attachment_row
@@ -447,7 +528,8 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
     async def test_unmatched_and_failures_go_to_pending(self):
         api = FakeApi({"status": "系统内未登记该案", "documents": DOCS, "match": {"candidates": []}})
         reply = await self._run(sms(), api)
-        self.assertIn("未找到你有权限的案件", reply.text)
+        self.assertIn("系统里没找到这个案号对应的案件（只在你能看到的案件里找）", reply.text)
+        self.assertNotIn("有权限的案件", reply.text)
         self.assertEqual((await self._records())[0].status, "待处理")
         api = FakeApi(ApiError(502, "法院送达接口暂时无法访问"))
         reply = await self._run(sms(message_id="m2"), api)
@@ -812,6 +894,69 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("sdsin", listed.text)
         self.assertIn("[送达链接]", listed.text)
 
+
+    async def test_pending_list_gives_attachment_ids_for_viewing(self):
+        await self._run(sms(), FakeApi({"status": "系统内未登记该案", "documents": DOCS, "match": {"candidates": []}}))
+
+        async def _db():
+            async with self.sessions() as db:
+                yield db
+        app.dependency_overrides[get_db] = _db
+        app.dependency_overrides[current_identity] = lambda: {"username": "admin", "display_name": "管理者", "role": "admin", "role_ids": ["admin"],
+                                                              "_actual_role_ids": ["admin"], "_actual_role": "admin", "department": "", "action_keys": ["*"], "menu_keys": ["documents-official"]}
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://bot.test") as client:
+            listed = await client.get(settings.api_prefix + "/documents/court-service/bot-receipts")
+        self.assertEqual(listed.json()["items"][0]["documents"], [{"attachment_id": 9, "name": "传票", "kind": "传票"}])
+        self.assertEqual(listed.json()["items"][0]["reason"], "系统里没找到这个案号对应的案件")
+
+    async def test_record_shows_processing_while_downloading_and_failure_reason_after(self):
+        from app.areas.aws.receipt_bot import PROCESSING_REASON, ApiError, _reason
+        seen = []
+
+        async def api(username, path, body):
+            seen.append([(r.status, r.data.get("reason")) for r in await self._records()])
+            raise ApiError(422, "法院接口拒绝：校验失败,对路径进行了修改；请确认链接完整且未过期")
+        reply = await self._run(sms(), api)
+        self.assertEqual(seen, [[("待处理", PROCESSING_REASON)]], "处理中就写明在识别")
+        self.assertIn("对路径进行了修改", reply.text)
+        record = (await self._records())[0]
+        self.assertEqual((record.status, record.data["reason"]), ("待处理", "法院接口拒绝：校验失败,对路径进行了修改；请确认链接完整且未过期"))
+        stalled = BusinessRecord(module="court_group_receipt", status="待处理",
+                                 data={"reason": PROCESSING_REASON, "sent_at": "2026-11-07T00:00:00+00:00"})
+        self.assertIn("识别中断", _reason(stalled))
+
+    async def test_result_dropped_when_record_handled_during_processing(self):
+        """识别期间收文台已处理（超时后才允许），机器人结果不写回、不发确认消息，只告诉发送人已处理。"""
+        async def api(username, path, body):
+            async with self.sessions() as db:
+                record = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "court_group_receipt"))).one()
+                record.status, record.data = "不入库", {**record.data, "close_note": "手工处理"}
+                await db.commit()
+            return preview()
+        reply = await self._run(sms(), api)
+        self.assertIn("已在收文台处理", reply.text)
+        self.assertNotIn("确认 ", reply.text)
+        self.assertEqual((await self._records())[0].status, "不入库")
+
+    async def test_assign_and_close_refused_while_processing(self):
+        from app.areas.aws.receipt_bot import PROCESSING_REASON, _now, _pending_record, _reason, STALLED_REASON
+        async with self.sessions() as db:
+            record = BusinessRecord(module="court_group_receipt", serial_no="QSWP1", title="t", customer="", status="待处理",
+                                    owner="lawyer", department="", data={"reason": PROCESSING_REASON, "sent_at": _now()})
+            db.add(record)
+            await db.commit()
+            with self.assertRaises(HTTPException) as caught:
+                await _pending_record(record.id, db)
+            self.assertEqual((caught.exception.status_code, caught.exception.detail), (409, "正在识别，请稍后再处理"))
+            # 没时区的时间不让列表 500，按中断处理。
+            record.data = {**record.data, "sent_at": "2026-11-07T20:00:00"}
+            self.assertEqual(_reason(record), STALLED_REASON)
+            self.assertEqual((await _pending_record(record.id, db)).id, record.id)
+
+    async def test_processing_reason_cleared_when_waiting_for_confirm(self):
+        await self._run(sms(), FakeApi(preview()))
+        self.assertEqual((await self._records())[0].data["reason"], "")
+
     def test_bot_receipts_are_not_agent_tools(self):
         from app.agent_mcp.semantic_metadata import exclusion_reasons
         routes = [route for route in app.routes if "bot-receipts" in getattr(route, "path", "")]
@@ -878,6 +1023,9 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(assign.status_code, 409)
             closed = await client.post(f"{api}/{record.id}/close", json={"reason": "已手工上传"})
             self.assertEqual(closed.json()["status"], "不入库")
+            async with self.sessions() as db:
+                kept = (await db.get(BusinessRecord, record.id)).data
+            self.assertEqual((kept["reason"], kept["close_note"]), ("没有人民法院在线服务送达链接", "已手工上传"), "不入库不覆盖原来的原因")
             self.assertEqual((await client.get(api)).json()["items"], [])
         async with self.sessions() as db:
             events = (await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == record.id))).all()

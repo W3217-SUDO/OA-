@@ -24,6 +24,7 @@ from app.agent_skill_packages.court_doc_intake.scripts import fetch_court_docs a
 from app.areas.aws.court_intake import CourtIntakeInput
 from app.config import settings
 from app.core.dependencies import current_identity, get_db
+from app.core.archived_case_people import ARCHIVE_LOCKED_CASE_STATUSES
 from app.models import BusinessRecord, User, WorkflowEvent
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,10 @@ ASSISTANT_ACCOUNT_FIELDS = ("assistant_usernames", "assistant_username")
 _CASE_LOCKS: dict[int, asyncio.Lock] = {}
 _MAX_LOCKS = 500
 _LINK = re.compile(r"https?://[^\s，,。；;]+")
+PROCESSING_REASON = "正在下载识别文书，约一分钟"
+STALLED_REASON = "识别中断，请查看文书后指定案件入库或手工上传"
+# 最长处理时间：云端智能体 5 分钟 + 收文接口 2 分钟 + 连不上时重试约 1 分钟，再留余量。
+PROCESSING_MINUTES = 10
 _COURT = re.compile(r"人民法院|法院|仲裁委员会|人民检察院")
 _FIRST_LEVEL = "第一级"
 _SECOND_LEVEL = "第二级"
@@ -319,7 +324,7 @@ async def _set_status(record: BusinessRecord, status: str, extra: dict, operator
     record.status = status
     record.data = {**(record.data or {}), **extra}
     db.add(WorkflowEvent(record_id=record.id, action="钉钉收文", from_status=before, to_status=status, operator=operator,
-                         comment=str(extra.get("reason") or extra.get("case_no") or "")[:500]))
+                         comment=str(extra.get("reason") or extra.get("case_no") or extra.get("close_note") or "")[:500]))
     await db.commit()
 
 
@@ -446,6 +451,24 @@ def _party_set(value: Any) -> set[str]:
     return {re.sub(r"\s+", "", str(item)).replace("(", "（").replace(")", "）") for item in values if str(item).strip()}
 
 
+# 已结、已归档的案件不直接存，请律师确认（陶威 11-07）。状态里带“结案”的都算；结案日期有值也算，宁可多确认。
+_ENDED_CASE_STATUSES = frozenset(ARCHIVE_LOCKED_CASE_STATUSES | {"已结案", "执行终本", "终结执行", "已终止", "已解除", "已作废", "已撤回", "已过期"})
+# 标准法院代字：省份简称 + 2~4 位数字（皖1226、沪0110）。徐知、沪仲、宁知这类非标准代字不算法院一致。
+_STANDARD_COURT_CODE = re.compile(r"[京津沪渝冀晋蒙辽吉黑苏浙皖闽赣鲁豫鄂湘粤桂琼川贵云藏陕甘青宁新兵]\d{2,4}")
+
+
+def case_ended(case: BusinessRecord) -> bool:
+    data = case.data or {}
+    status = str(case.status or "")
+    return status in _ENDED_CASE_STATUSES or "结案" in status or data.get("case_closed") is True \
+        or bool(str(data.get("case_closed_at") or "").strip()) or data.get("business_stage") == "结案"
+
+
+def standard_court_code(value: str) -> str:
+    value = str(value or "").strip()
+    return value if _STANDARD_COURT_CODE.fullmatch(value) else ""
+
+
 async def _cases_with_number(normalized: str, db: AsyncSession) -> set[int]:
     """全所登记了这个法院案号的案件，归一化后比较。只读，只用来判断是否唯一。"""
     from app.agent_skill_packages.court_doc_intake.scripts.normalize_case_no import parse as parse_case_no
@@ -463,6 +486,7 @@ async def strict_unique(report: dict, db: AsyncSession) -> tuple[bool, str]:
     4. 当事人反查：文书的原告、被告都要有，每一个都要和该案原告、被告里的某一个整名相同；文书受理法院和该案登记的法院一致；
        文书上还要识别得出案号。识别不出案号的不直接存，请律师确认（调度 11-07，等陶国南答复前按此）。
     5. 不限发送人权限再查一遍全所，也只有这一个案件；发送人看不到的同名案件也算不唯一。
+    6. 案件没有结案、归档；文书上的当事人名称没有被截短；代字比较只认标准代字（陶威 11-07）。
     返回 (是否唯一, 原因)。原因只存记录，不发群。不满足时不存，请律师回“确认”。
     """
     from app.agent_skill_packages.court_doc_intake.scripts.normalize_case_no import parse as parse_case_no
@@ -471,6 +495,8 @@ async def strict_unique(report: dict, db: AsyncSession) -> tuple[bool, str]:
     case = await db.get(BusinessRecord, case_id) if case_id else None
     if case is None or case.module != "case":
         return False, "案件读取失败"
+    if case_ended(case):
+        return False, "案件已结案或已归档"
     data = case.data or {}
     level = str((report.get("match") or {}).get("level") or "")
     numbers = [str(item) for item in report.get("case_numbers") or []]
@@ -490,13 +516,15 @@ async def strict_unique(report: dict, db: AsyncSession) -> tuple[bool, str]:
     if level.startswith(_SECOND_LEVEL):
         if not (plaintiffs and defendants):
             return False, "文书上没有同时识别出原告和被告"
+        if any(item.get("当事人可能截短") for item in fields):
+            return False, "当事人名称可能识别不全"
         if not (_party_set(plaintiffs) <= _party_set(data.get("plaintiff"))
                 and _party_set(defendants) <= _party_set(data.get("opponent") or data.get("defendant"))):
             return False, "原告、被告没有全部对上"
-        # 系统里法院多登记成代字（如 皖1226），文书上是全称：全称相同或案号里的代字相同都算。
+        # 系统里法院多登记成代字（如 皖1226），文书上是全称：全称相同或案号里的标准代字相同都算。
         court = str(report.get("court") or next((item.get("受理机关") for item in fields if item.get("受理机关")), "") or "").strip()
         registered_courts = {str(data.get(key) or "").strip() for key in COURT_NAME_FIELDS} - {""}
-        court_code = str(document_number["受理机关代字"] or "").strip() if document_number is not None else ""
+        court_code = standard_court_code(document_number["受理机关代字"]) if document_number is not None else ""
         if not ((court and court in registered_courts) or (court_code and court_code in registered_courts)):
             return False, "受理法院与该案登记的不一致"
         if document_number is None:
@@ -515,15 +543,17 @@ async def strict_unique(report: dict, db: AsyncSession) -> tuple[bool, str]:
 
 
 async def _preview(message: BotMessage, link: str, user: User, config: BotSettings, api: Api, agent_turn: AgentTurn | None, db: AsyncSession) -> Reply | None:
-    record = await _record(message, user, PENDING, {"kind": "zxfw", "link": link}, db)
+    # 下载识别要一分钟左右（先走云端智能体，再调收文接口）；这期间收文台上要看得出在处理，不是没原因的待处理。
+    record = await _record(message, user, PENDING, {"kind": "zxfw", "link": link, "reason": PROCESSING_REASON}, db)
     if record is None:
         return None
     return await _preview_record(record, message, link, user, config, api, agent_turn, db)
 
 
 async def _preview_record(record: BusinessRecord, message: BotMessage, link: str, user: User, config: BotSettings, api: Api,
-                          agent_turn: AgentTurn | None, db: AsyncSession) -> Reply:
+                          agent_turn: AgentTurn | None, db: AsyncSession) -> Reply | None:
     me = _mention([message.sender_id])
+    handled = Reply(f"{me} 这条短信已在收文台处理，收文助手不再重复处理。\n{_link_line()}", [message.sender_id])
     if config.use_cloud_agent and agent_turn is not None:
         # 云端智能体按收文技能读短信并预览；它只能生成待确认请求，不能写入。结果以下面 OA 接口返回为准，云端失败不影响收文。
         try:
@@ -533,14 +563,18 @@ async def _preview_record(record: BusinessRecord, message: BotMessage, link: str
     try:
         report = await api(user.username, INTAKE_PATH, {"link": link})
     except ApiError as exc:
+        if not await _still_processing(record, db):
+            return handled
         await _set_status(record, PENDING, {"reason": exc.detail}, user.username, db)
         return Reply(f"{me} 文书下载或识别失败：{exc.detail}。已转到收文台待处理。\n{_link_line()}", [message.sender_id])
+    if not await _still_processing(record, db):
+        return handled
     status = report.get("status")
-    record_data = {"documents": [{"attachment_id": item.get("attachment_id"), "name": item.get("name") or "",
-                                  "kind": (item.get("fields") or {}).get("文书类型") or ""} for item in report.get("documents") or []]}
+    record_data = {"reason": "", "documents": [{"attachment_id": item.get("attachment_id"), "name": item.get("name") or "",
+                                                "kind": (item.get("fields") or {}).get("文书类型") or ""} for item in report.get("documents") or []]}
     if status == "系统内未登记该案":
-        await _set_status(record, PENDING, {**record_data, "reason": "未找到有权限的案件"}, user.username, db)
-        return Reply(f"{me} 未找到你有权限的案件，文件没有存入案件，已转到收文台待处理。\n文书类型：{_documents_text(report)}\n{_link_line()}", [message.sender_id])
+        await _set_status(record, PENDING, {**record_data, "reason": "系统里没找到这个案号对应的案件"}, user.username, db)
+        return Reply(f"{me} 系统里没找到这个案号对应的案件（只在你能看到的案件里找），文件没有存入案件，已转到收文台待处理。\n文书类型：{_documents_text(report)}\n{_link_line()}", [message.sender_id])
     expires = (datetime.now(timezone.utc) + timedelta(minutes=CONFIRM_MINUTES)).isoformat(timespec="seconds")
     if status == "需要选择案件":
         candidates = [{"case_id": item["case_id"], "serial_no": item.get("serial_no") or "", "title": item.get("title") or ""}
@@ -647,11 +681,36 @@ async def bot_intake(body: CourtIntakeInput, identity: dict = Depends(current_id
     return await run_intake(body, identity, db, direct_save=True)
 
 
+async def _still_processing(record: BusinessRecord, db: AsyncSession) -> bool:
+    """识别期间如果有人在收文台处理了这条（超时后才允许），结果不再写回、也不发确认消息，免得把已关掉的单又存进去。"""
+    await db.refresh(record)
+    if record.status == PENDING and str((record.data or {}).get("reason") or "") == PROCESSING_REASON:
+        return True
+    logger.info("receipt bot result dropped, record %s handled meanwhile status=%s", record.id, record.status)
+    return False
+
+
+def _reason(record: BusinessRecord) -> str:
+    data = record.data or {}
+    reason = str(data.get("reason") or "")
+    if reason == PROCESSING_REASON:
+        # 超过最长处理时间还没结果，说明处理中断了（程序重启等），别一直显示“正在识别”。
+        try:
+            stalled = datetime.now(timezone.utc) - datetime.fromisoformat(str(data.get("sent_at"))) > timedelta(minutes=PROCESSING_MINUTES)
+        except (TypeError, ValueError):
+            stalled = True
+        if stalled:
+            return STALLED_REASON
+    return reason
+
+
 def _row(record: BusinessRecord) -> dict:
     data = record.data or {}
     return {"id": record.id, "status": record.status, "sent_at": data.get("sent_at") or "", "sender": data.get("sender_nick") or "",
-            "text": _LINK.sub("[送达链接]", data.get("text") or ""), "kind": data.get("kind") or "", "reason": data.get("reason") or "",
-            "documents": [{"name": item.get("name") or "", "kind": item.get("kind") or ""} for item in data.get("documents") or []],
+            "text": _LINK.sub("[送达链接]", data.get("text") or ""), "kind": data.get("kind") or "", "reason": _reason(record),
+            "processing": _reason(record) == PROCESSING_REASON,
+            "documents": [{"attachment_id": item.get("attachment_id"), "name": item.get("name") or "", "kind": item.get("kind") or ""}
+                          for item in data.get("documents") or []],
             "candidates": [item.get("serial_no") or "" for item in data.get("candidates") or []]}
 
 
@@ -661,6 +720,8 @@ async def _pending_record(record_id: int, db: AsyncSession) -> BusinessRecord:
         raise HTTPException(404, "收文记录不存在")
     if record.status != PENDING:
         raise HTTPException(409, f"这条收文状态为“{record.status}”，不用再处理")
+    if _reason(record) == PROCESSING_REASON:
+        raise HTTPException(409, "正在识别，请稍后再处理")
     return record
 
 
@@ -703,5 +764,6 @@ async def close_bot_receipt(record_id: int, body: CloseInput, identity: dict = D
     _require_internal(identity)
     await _require_receipt_menu("official", identity, db)
     record = await _pending_record(record_id, db)
-    await _set_status(record, CLOSED, {"reason": body.reason.strip(), "handled_by": identity["username"]}, identity["username"], db)
+    # 原来的失败原因保留，不入库的说明另记。
+    await _set_status(record, CLOSED, {"close_note": body.reason.strip(), "handled_by": identity["username"]}, identity["username"], db)
     return _row(record)

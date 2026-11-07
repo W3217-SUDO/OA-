@@ -44,8 +44,12 @@ class CourtFeeConfirmInput(BaseModel):
     deadline: date | None = Field(default=None, description="缴费截止日期；通知书没识别到期限时必须由律师补填")
 
 
+# 名称后的组织形式括注（个体工商户、个人独资、合伙）在案件里有全角、半角两种登记，按子串搜索前去掉。
+_FORM_NOTE = re.compile(r"[（(](?:个体工商户|个人独资|普通合伙|有限合伙)[）)]$")
+
+
 def _core_names(name: str) -> list[str]:
-    core = _SUFFIX.sub("", name.strip())
+    core = _SUFFIX.sub("", _FORM_NOTE.sub("", name.strip()))
     return list(dict.fromkeys(item for item in (core, _REGION.sub("", core)) if len(item) >= 2))
 
 
