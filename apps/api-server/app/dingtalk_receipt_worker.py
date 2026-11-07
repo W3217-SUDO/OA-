@@ -263,6 +263,7 @@ async def main() -> None:
             logger.error("receipt bot connection failed type=%s", type(connection.exception()).__name__)
         # 连接断开（包括钉钉正常关闭）都要等一等再连，连续很快断开就逐步拉长，连得久了重新计。
         delay = next_reconnect_delay(delay, time.monotonic() - started)
+        await _sweep()  # 连接一直失败时 _watch 等不到扫描，这里也扫，超时的照样转待处理
         await asyncio.sleep(delay)
     logger.info("package changed, finishing %s messages before restart", len(worker.tasks))
     if worker.tasks:

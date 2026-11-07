@@ -305,6 +305,39 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(api.calls[-1][2]["link"], second_link)
         self.assertEqual([record.status for record in await self._records()], ["已导入", "已导入"])
 
+    async def test_first_level_without_document_number_is_not_unique(self):
+        await self._set_case(court_case_no=NUMBER)
+        reply = await self._run(sms(), FakeApi(preview(case_numbers=[])), AUTO)
+        await self._assert_not_auto(reply, "文书上没有识别出法院案号")
+
+    async def test_pending_assign_success_records_changes_then_refuses_repeat(self):
+        api = FakeApi(ApiError(502, "法院接口失败"))
+        await self._run(sms(), api)
+        record = (await self._records())[0]
+
+        async def _db():
+            async with self.sessions() as db:
+                yield db
+        app.dependency_overrides[get_db] = _db
+        app.dependency_overrides[current_identity] = lambda: {"username": "admin", "display_name": "管理者", "role": "admin", "role_ids": ["admin"],
+                                                              "_actual_role_ids": ["admin"], "_actual_role": "admin", "department": "", "action_keys": ["*"], "menu_keys": ["documents-official"]}
+        result = done()
+        result["fees"] = [{"status": "待确认", "fee_id": 31, "serial_no": "FY1"}]
+        intake = AsyncMock(return_value=result)
+        url = f"{settings.api_prefix}/documents/court-service/bot-receipts/{record.id}/assign"
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://bot.test") as client:
+            with patch("app.areas.aws.court_intake.intake_court_service", intake):
+                first = await client.post(url, json={"case_no": "HZMS1"})
+                again = await client.post(url, json={"case_no": "HZMS1"})
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(first.json()["status"], "已导入")
+        self.assertEqual(again.status_code, 409)
+        self.assertIn("状态为“已导入”", again.text)
+        body = intake.await_args.args[0]
+        self.assertEqual((body.link, body.case_id, body.confirm, body.direct_save), (LINK, 7, True, False))
+        changes = (await self._records())[0].data["changes"]
+        self.assertEqual((changes["attachment_ids"], changes["fee_ids"]), ([10], [31]))
+
     async def test_document_without_number_always_asks(self):
         await self._party_case()
         await self._assert_not_auto(await self._run(sms(), FakeApi(self._party()), AUTO), "文书上没有识别出法院案号")
@@ -433,6 +466,37 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         release.set()
         self.assertIn("收文完成", (await saving).text)
         self.assertEqual((await self._records())[0].status, "已导入")
+
+    async def test_sweep_runs_while_connection_keeps_failing(self):
+        from app import dingtalk_receipt_worker as module
+        from app.areas.agent_admin.dingtalk_bots import BotConfig
+        attempts, sweeps = [0], [0]
+        real_sleep = asyncio.sleep
+
+        class Session:
+            async def __aenter__(self):
+                return None
+
+            async def __aexit__(self, *args):
+                return False
+
+        async def load(db):
+            return BotConfig(True, "k", "s", GROUP_ID, False, False)
+
+        async def fail(self, key, secret):
+            attempts[0] += 1
+            raise RuntimeError("connect failed")
+
+        async def sweep():
+            sweeps[0] += 1
+
+        async def sleep(seconds):
+            await real_sleep(10 if seconds == module.RECHECK_SECONDS else 0)
+        with patch.object(module, "SessionLocal", Session), patch.object(module, "load_bot", load), patch.object(module.Worker, "connect", fail), \
+                patch.object(module, "_sweep", sweep), patch.object(module.asyncio, "sleep", sleep), \
+                patch.object(module, "_package_version", lambda: "v1" if attempts[0] < 5 else "v2"):
+            await asyncio.wait_for(module.main(), 10)
+        self.assertEqual(sweeps[0], attempts[0])
 
     def test_reconnect_backs_off_and_resets(self):
         from app.dingtalk_receipt_worker import RECONNECT_MAX_SECONDS, RECONNECT_MIN_SECONDS, next_reconnect_delay

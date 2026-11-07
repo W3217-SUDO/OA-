@@ -380,7 +380,7 @@ async def _handle_command(command: tuple[str, int | None, int | None], user: Use
     if record is None or record.module != MODULE or record.owner != user.username:
         return Reply(f"{me} 没有等你确认的这条收文（编号 {record_id}），只有发短信的本人能确认。", [message.sender_id])
     if record.status != WAITING:
-        return Reply(f"{me} 编号 {record_id} 这条{record.status}，不用再确认。", [message.sender_id])
+        return Reply(f"{me} 编号 {record_id} 这条状态为“{record.status}”，不用再确认。", [message.sender_id])
     data = record.data or {}
     expires = datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None
     if expires is not None and expires < datetime.now(timezone.utc):
@@ -438,6 +438,8 @@ async def strict_unique(report: dict, db: AsyncSession) -> tuple[bool, str]:
         same_level = [item for item in registered if not document_number["审级"] or not item["审级"] or item["审级"] == document_number["审级"]]
         if level.startswith(_FIRST_LEVEL) or same_level:
             return False, "法院案号与该案登记的不一致"
+    if level.startswith(_FIRST_LEVEL) and document_number is None:
+        return False, "文书上没有识别出法院案号"
     if level.startswith(_SECOND_LEVEL):
         if not (plaintiffs and defendants):
             return False, "文书上没有同时识别出原告和被告"
@@ -574,7 +576,7 @@ async def _pending_record(record_id: int, db: AsyncSession) -> BusinessRecord:
     if record is None or record.module != MODULE:
         raise HTTPException(404, "收文记录不存在")
     if record.status != PENDING:
-        raise HTTPException(409, f"这条收文已{record.status}，不用再处理")
+        raise HTTPException(409, f"这条收文状态为“{record.status}”，不用再处理")
     return record
 
 
