@@ -12,6 +12,7 @@ import { DshPluginCenter } from "./capability-market/DshPluginCenter";
 import { DshModelProviders } from "./capability-market/DshModelProviders";
 import { CloudRuntimeSettings } from "./capability-market/CloudRuntimeSettings";
 import { CloudUsage } from "./capability-market/CloudUsage";
+import { DingtalkBotCenter } from "./capability-market/DingtalkBotCenter";
 import { CaseWordTemplatesAdmin } from "./capability-market/CaseWordTemplatesAdmin";
 import { SystemSkillPanel } from "./SystemSkillPanel";
 import { SkillRuntimeStatus } from "./personal-agent/SkillRuntimeStatus";
@@ -174,6 +175,7 @@ export default function AgentAdminPage({ isSystemAdmin }: { isSystemAdmin: boole
         { key: "plugins", label: "DSH 插件中心", disabled: capabilityBusy },
         ...(isSystemAdmin ? [{ key: "dsh-api", label: "DSH API 配置", disabled: capabilityBusy }] : []),
         ...(isSystemAdmin ? [{ key: "cloud-usage", label: "调用与费用", disabled: capabilityBusy }] : []),
+        ...(isSystemAdmin ? [{ key: "dingtalk-bots", label: "钉钉机器人中心", disabled: capabilityBusy }] : []),
         { key: "word-templates", label: "文书模板", disabled: capabilityBusy },
         ...(overview ? [{ key: "overview", label: canViewUserLibraries ? "运行状态与个人库" : "运行状态", disabled: capabilityBusy }] : []),
       ]} />
@@ -182,6 +184,7 @@ export default function AgentAdminPage({ isSystemAdmin }: { isSystemAdmin: boole
       {tab === "dsh-api" && isSystemAdmin && <CloudRuntimeSettings active canManage={isSystemAdmin} onBusy={setCapabilityBusy} />}
       {tab === "dsh-api" && isSystemAdmin && <DshModelProviders active canManage={isSystemAdmin} onBusy={setCapabilityBusy} />}
       {tab === "cloud-usage" && isSystemAdmin && <CloudUsage active />}
+      {tab === "dingtalk-bots" && isSystemAdmin && <DingtalkBotCenter onBusy={setCapabilityBusy} />}
       {tab === "word-templates" && <CaseWordTemplatesAdmin active />}
       <div hidden={tab !== "global"}>
         <Card title="全局 Skill" loading={loading && !globalSkills.length} extra={<Space wrap>
