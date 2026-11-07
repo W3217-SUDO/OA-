@@ -194,21 +194,6 @@ class IprCaseExtraFilters:
         return {key: value for key, value in self.values.items() if str(value or "").strip()}
 
 
-@router.get(f"{settings.api_prefix}/ipr/cases/my-counts")
-async def ipr_my_case_counts(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    """501613“我的案件”左侧各分组的数量（同列表的可见范围）。"""
-    from app.core.ipr import _ipr_case_list_conditions
-    from app.core.permissions import _require_record_module_menu
-    await _require_record_module_menu("ipr_case", identity, db, action="查看")
-    counts = {}
-    for view in ("business_owner", "source_person", "procurator", "copywriter", "mine"):
-        conditions = await _ipr_case_list_conditions(identity, db, role_view=f"my:{view}")
-        counts[view] = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions)) or 0)
-    conditions = await _ipr_case_list_conditions(identity, db, role_view="invalid")
-    counts["invalid"] = int(await db.scalar(select(func.count()).select_from(BusinessRecord).where(*conditions)) or 0)
-    return counts
-
-
 @router.get(f"{settings.api_prefix}/ipr/cases")
 async def list_ipr_cases(
     case_kind: str = "", record_status: str = "", keyword: str = "", annual_fee_monitoring: bool | None = None,

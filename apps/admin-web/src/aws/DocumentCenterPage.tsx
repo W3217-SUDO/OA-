@@ -48,6 +48,7 @@ import {
 } from "./DocumentTabContent";
 import { DocumentDetail } from "./DocumentDetail";
 import { OfficialOutgoingDetail } from "./OfficialOutgoingDetail";
+import { BotReceiptPending } from "./BotReceiptPending";
 import { DocumentReceiptPanel } from "./DocumentReceiptPanel";
 import {
   ActionModal,
@@ -158,7 +159,8 @@ export default function DocumentCenterPage({
   const [outgoingQuery, setOutgoingQuery] = useState<Record<string, string>>({});
 
   // ===== Receipt states =====
-  const [receiptQuery, setReceiptQuery] = useState<Record<string, any>>({});
+  // 陶国南 11-07：收文台默认看当日收文，晚上写总结时回看。
+  const [receiptQuery, setReceiptQuery] = useState<Record<string, any>>(() => ({ upload_range: [dayjs(), dayjs()] }));
   const [selectedReceiptKeys, setSelectedReceiptKeys] = useState<Key[]>([]);
   const [receiptDateOpen, setReceiptDateOpen] = useState(false);
   const [receiptDate, setReceiptDate] = useState<ReturnType<typeof dayjs> | null>(null);
@@ -958,9 +960,21 @@ export default function DocumentCenterPage({
   const showReceipt = (r: ReceiptRow) => tab === "official" ? openDocument(r) : previewReceiptFile(r);
 
   const isReceiptView = ["official", "my-receipts", "company-receipts"].includes(tab);
-  const receiptSearch = () => setReceiptQuery(receiptForm.getFieldsValue());
+  const receiptSearch = () => {
+    const values = receiptForm.getFieldsValue();
+    const range = values.upload_range;
+    const searchingOne = ["case_no", "court_no", "court_name", "file_name", "document_name", "plaintiff", "defendant",
+      "hearing_lawyer", "case_manager", "handling_lawyer", "assistant"].some((key) => String(values[key] || "").trim()) || Boolean(values.receipt_range);
+    // 搜具体案号、当事人、律师、文件时不受默认“当日”限制，否则查老案件搜不到；手工选了别的日期仍照用。
+    if (searchingOne && range && dayjs().isSame(range[0], "day") && dayjs().isSame(range[1], "day")) {
+      receiptForm.setFieldsValue({ upload_range: undefined });
+      setReceiptQuery({ ...values, upload_range: undefined });
+      return;
+    }
+    setReceiptQuery(values);
+  };
   const clearReceiptSearch = () => {
-    receiptForm.resetFields();
+    receiptForm.setFieldsValue(Object.fromEntries(Object.keys(receiptForm.getFieldsValue()).map((key) => [key, undefined])));
     setReceiptQuery({});
   };
 
@@ -1192,7 +1206,10 @@ export default function DocumentCenterPage({
   return (
     <>
       {isReceiptView ? (
-        receiptPanel
+        <>
+          {tab === "official" && <BotReceiptPending />}
+          {receiptPanel}
+        </>
       ) : (
         <>
           <div className="document-stats">

@@ -1,5 +1,6 @@
 """智能体收文：法院送达文书下载、案号归一化与要素识别、按案件 ID 官方收文并回填案号、技能包与上网工具。"""
 
+from datetime import date
 import json
 import tempfile
 import unittest
@@ -220,6 +221,14 @@ SUMMONS_PDF = ("淮南市大通区人民法院\n传 票\n案 号：（2026）皖
                "应到处所\n淮南市大通区法院第\n二法庭\n二〇二六年十月二十二日")
 
 
+class _DayBeforeDeadline(date):
+    """文书里的缴费期限是固定日期，把“今天”定在期限之前，测试不随真实日期过期。"""
+
+    @classmethod
+    def today(cls):
+        return cls(2026, 10, 23)
+
+
 class CourtIntakeTest(_CourtApiBase):
     async def asyncSetUp(self):
         await super().asyncSetUp()
@@ -302,7 +311,8 @@ class CourtIntakeTest(_CourtApiBase):
 
         with patch("app.areas.finance.fee_workflows.list_finance_fee_payment_types",
                    AsyncMock(return_value={"items": [{"id": 7, "name": "淮南市财政局", "account": "0000 0611", "nature": "官费"}]})), \
-                patch("app.areas.finance.fee_workflows.submit_finance_fee", submit):
+                patch("app.areas.finance.fee_workflows.submit_finance_fee", submit), \
+                patch("app.areas.tp.router.date", _DayBeforeDeadline), patch("app.core.tasks.date", _DayBeforeDeadline):
             confirmed = await self.client.post(f"{API}/documents/court-service/fees/{fee['fee_id']}/confirm", json={})
         self.assertEqual(confirmed.status_code, 200, confirmed.text)
         result = confirmed.json()

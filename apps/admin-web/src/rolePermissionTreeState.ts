@@ -10,8 +10,9 @@ const isMenu = (key: string) => key.startsWith("menu:");
 function leafMenus(node: PermissionTreeNode): string[] {
   const result: string[] = [];
   const visit = (items: PermissionTreeNode[] = []) => items.forEach((child) => {
-    // 不随大类继承的新菜单（parent_grant_excluded）不算大类的“下面页面”，没勾它也不影响大类全勾。
-    if (isMenu(String(child.key)) && !hasMenuBelow(child) && !child.parent_grant_excluded) result.push(String(child.key));
+    // 不随大类继承的新菜单（parent_grant_excluded）和它下面的页面都不算大类的“下面页面”，没勾也不影响大类全勾。
+    if (child.parent_grant_excluded) return;
+    if (isMenu(String(child.key)) && !hasMenuBelow(child)) result.push(String(child.key));
     visit(child.children);
   });
   visit(node.children);

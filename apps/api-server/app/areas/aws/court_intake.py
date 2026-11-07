@@ -146,7 +146,7 @@ async def _receive(case: BusinessRecord, document: dict, court_no: str, received
 
 
 async def _backfill_hearing(case: BusinessRecord, documents: list[dict], level: str, court_name: str, court_no: str,
-                            identity: dict, db: AsyncSession) -> dict:
+                            identity: dict, db: AsyncSession, *, keep_existing: bool = False) -> dict:
     """传票与出庭通知书一致时回填开庭时间和法庭；不一致或审级不明时只报告。"""
     from app.api_schemas.cases import CaseCourtInfoInput
     from app.areas.legal.router import update_case_court_info
@@ -168,6 +168,9 @@ async def _backfill_hearing(case: BusinessRecord, documents: list[dict], level: 
     previous = str(data.get(date_field) or "")
     if previous.replace(" ", "T")[:16] == value[:16] and (data.get(room_field) or "") == room:
         return {"status": "已是最新", "hearing": f"{day} {clock} {room}"}
+    existing_room = str(data.get(room_field) or "")
+    if keep_existing and ((previous and previous.replace(" ", "T")[:16] != value[:16]) or (existing_room and room and existing_room != room)):
+        return {"status": "已有开庭未覆盖", "hearing": f"{day} {clock} {room}", "previous": f"{previous} {existing_room}".strip()}
     payload = {date_field: datetime.fromisoformat(value), "comment": "法院收文：按传票/出庭通知书回填开庭"}
     if room:
         payload[room_field] = room
@@ -318,6 +321,11 @@ async def intake_court_service(body: CourtIntakeInput, identity: dict = Depends(
 
     命中多个案件时返回候选让用户选；匹配不到则停止，不新建案件。
     """
+    return await run_intake(body, identity, db)
+
+
+async def run_intake(body: CourtIntakeInput, identity: dict, db: AsyncSession, *, direct_save: bool = False) -> dict:
+    """direct_save 只给钉钉收文助手的专用入口用：案件已有的开庭不覆盖，回填和费用单失败只写进结果，不让整次失败。"""
     fetched = await fetch_court_service_documents(CourtServiceFetchInput(link=body.link), identity, db)
     documents = fetched["documents"]
     numbers = fetched["case_numbers"]
@@ -360,10 +368,22 @@ async def intake_court_service(body: CourtIntakeInput, identity: dict = Depends(
     received = [await _receive(case, item, court_no, item["fields"].get("落款日期") or date.today().isoformat(), identity, db)
                 for item in documents]
     await db.refresh(case)
-    hearing = await _backfill_hearing(case, documents, level, court_name, court_no, identity, db)
+
+    async def step(name: str, action):
+        """网页和智能体：失败照常报错。钉钉直接存：文书已入库，后面哪步失败只写进结果。"""
+        try:
+            return await action
+        except HTTPException as exc:
+            if not direct_save:
+                raise
+            await db.rollback()
+            await db.refresh(case)
+            return {"status": "失败", "step": name, "detail": str(exc.detail)}
+
+    hearing = await step("开庭回填", _backfill_hearing(case, documents, level, court_name, court_no, identity, db, keep_existing=direct_save))
     await db.refresh(case)
-    staff = await _backfill_staff(case, documents, level, court_name, identity, db)
-    fees = [await _prepare_fee(case, item, court_no, level, documents, identity, db)
+    staff = await step("法官书记员回填", _backfill_staff(case, documents, level, court_name, identity, db))
+    fees = [await step("费用单", _prepare_fee(case, item, court_no, level, documents, identity, db))
             for item in documents if item["fields"].get("文书类型") == "交纳诉讼费用通知书"]
     await db.refresh(case)
     report.update({

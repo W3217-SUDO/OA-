@@ -109,6 +109,22 @@ _CASE_LEGACY_PERMISSION_LABELS = {
 _JOB_ROLE_LEGACY_LABELS = (set(JOB_ROLE_LABEL_MENU_GRANTS) | set(JOB_ROLE_ACTION_KEY_GRANTS)) - set(SYSTEM_MENU_ROUTE_KEYS)
 
 
+def _job_role_center_changes(role: JobRole, submitted_menus: list[str]) -> tuple[set[str], tuple[str, ...]]:
+    """保存时各中心功能怎么处理，返回（要保留的页面带出功能，要清掉的功能前缀）。
+
+    页面带出的功能不单独存，有页面就自动有。角色本来就没有某中心的页面：带不出来，原有的留着，不改东西保存不能变少。
+    这次取消了某中心最后一个页面：这个中心的功能全部清掉，否则没页面还能写，再加回页面也不能带回旧功能。
+    """
+    from app.core.constants import PAGE_GRANTED_ACTION_ROOTS, ROLE_TREE_DERIVED_ACTION_CODES
+    before = _effective_job_role_menu_keys(role)
+    after = _expand_menu_permission_keys(submitted_menus)
+    has = lambda menus, root: any(key == root or key.startswith(f"{root}-") for key in menus)
+    keep_roots = tuple(prefix for prefix, root in PAGE_GRANTED_ACTION_ROOTS.items() if not has(before, root) and not has(after, root))
+    drop_roots = tuple(prefix for prefix, root in PAGE_GRANTED_ACTION_ROOTS.items() if has(before, root) and not has(after, root))
+    keep = {code for code in _effective_job_role_action_keys(role) if code in ROLE_TREE_DERIVED_ACTION_CODES and code.startswith(keep_roots)} if keep_roots else set()
+    return keep, drop_roots
+
+
 def _job_role_tree_checked_permissions(role: JobRole) -> list[str]:
     selected = []
     for value in role.permissions or []:
@@ -118,6 +134,12 @@ def _job_role_tree_checked_permissions(role: JobRole) -> list[str]:
             selected.extend(_expand_menu_permission_keys(list(JOB_ROLE_LABEL_MENU_GRANTS.get(value, ()))))
         elif value not in {CASE_ACTIONS_EXPLICIT_MARKER, MENUS_EXACT_MARKER}:
             selected.append(str(value).removeprefix("menu:"))
+    # 老角色常只存了大类或分组（如 ipr、ipr-my-cases），实际有下面的页面。树上要勾出来，否则不改直接保存，大类被当成“没全勾”去掉，页面就丢了（501690）。
+    menus = _effective_job_role_menu_keys(role)
+    selected.extend(menus)
+    # 老角色的客户功能只存了基础码，实际按各页生效；树上的开关是各页的，要照实际勾上，否则一保存功能就没了。
+    selected.extend(f"action:{code}" for code in expand_role_action_codes(_effective_job_role_action_keys(role), menus)
+                    if code.startswith("crm.") and "@" in code)
     effective = _effective_job_role_action_keys(role)
     selected.extend(f"action:{code}" for code in effective if code in _CASE_ACTION_CODES)
     return list(dict.fromkeys(selected))
@@ -171,7 +193,8 @@ def _drop_partial_parent_menu_keys(permissions: list[str]) -> list[str]:
             if (child in SYSTEM_MENU_ROUTE_KEYS and child not in ROLE_TREE_HIDDEN_MENU_KEYS and child not in PUBLIC_MENU_KEYS
                     and child not in PARENT_GRANT_EXCLUDED_MENU_KEYS):
                 result.add(child)
-            result |= required(child)
+            if child not in PARENT_GRANT_EXCLUDED_MENU_KEYS:  # 不随父菜单继承的分组，下面的页面也不算
+                result |= required(child)
         return result
 
     kept = []
@@ -841,6 +864,17 @@ async def _require_investigation_assignment_access(record: BusinessRecord, ident
     await _require_record_owner_or_manager(record, actual_identity, db)
 
 
+async def _ipr_own_cases_only(identity: dict, db: AsyncSession) -> bool:
+    """501690：知产非诉只持有“我的案件”这类个人页面的账号，非诉案件只看自己相关的；全部案件、流程事务等工作页面才看全所。"""
+    from app.core.data_scope_gate import center_has_work_page, gate_enabled, page_center
+    if "admin" in identity.get("_actual_role_ids", []):
+        return False
+    menu_keys = {str(key) for key in identity.get("menu_keys") or []}
+    if not any(page_center(key) == "ipr" for key in menu_keys) or center_has_work_page(menu_keys, ("@root:ipr",)):
+        return False
+    return await gate_enabled(db)
+
+
 async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     from app.core.conflict_review import can_review_conflicts
     protected_scope = [] if await can_review_conflicts(identity, db) else [or_(
@@ -852,6 +886,8 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
         protected_scope.append(or_(
             BusinessRecord.module != "bug_feedback", BusinessRecord.owner == identity.get("username", ""),
         ))
+    if await _ipr_own_cases_only(identity, db):
+        protected_scope.append(or_(BusinessRecord.module != "ipr_case", *_ipr_case_role_view_conditions("mine", identity)))
     if "_dashboard_record_ids" in identity:
         # 控制台授权编号共用一个参数，保留完整范围且不随记录数量突破参数上限。
         return [*protected_scope, scalar_in_values(BusinessRecord.id, identity["_dashboard_record_ids"])]
@@ -1315,6 +1351,8 @@ def is_high_privilege_job_role(role: JobRole) -> bool:
     if any(key.split("-", 1)[0] in {"hr", "system"} for key in menus):  # 能管账号或系统
         return True
     if any(key.startswith("finance") and "audit" in key for key in menus):  # 能审财务
+        return True
+    if any(key.startswith("ipr-all-") for key in menus):  # 501690：全部案件看全所非诉，不能由人事分配
         return True
     firm_pages = sum(1 for key in menus if key.endswith(("-company", "-all")) or "-company-" in key)
     approval_pages = sum(1 for key in menus if "audit" in key or "approval" in key or key.endswith("-archive"))

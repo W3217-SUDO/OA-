@@ -58,9 +58,9 @@ class IprMenuNoReview501616Test(unittest.IsolatedAsyncioTestCase):
 
     def test_menu_order_and_hidden_pages(self):
         ipr = {key: order for key, parent, _label, _icon, order in DEFAULT_SYSTEM_MENUS if parent == "ipr"}
-        self.assertEqual(sorted(("ipr-my-cases", "ipr-case-reboot", "ipr-patent-annual-fee", "ipr-case-files", "ipr-finance"), key=ipr.get),
-                         ["ipr-my-cases", "ipr-case-reboot", "ipr-patent-annual-fee", "ipr-case-files", "ipr-finance"])
-        for key in ("ipr-patent", "ipr-trademark", "ipr-review", "ipr-business-owner"):
+        self.assertEqual(sorted(("ipr-my-cases", "ipr-all-cases", "ipr-process", "ipr-finance"), key=ipr.get),
+                         ["ipr-my-cases", "ipr-all-cases", "ipr-process", "ipr-finance"])
+        for key in ("ipr-patent", "ipr-trademark", "ipr-review", "ipr-officer"):
             self.assertIn(key, DEFAULT_HIDDEN_MENU_KEYS)
             self.assertIn(key, ROLE_TREE_HIDDEN_MENU_KEYS)
         self.assertNotIn("ipr-office-files", DEFAULT_HIDDEN_MENU_KEYS, "官文等专利/商标转文上线后再收")
