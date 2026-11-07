@@ -269,7 +269,7 @@ from app.core.dependencies import (
     WarehouseLegacyEvidenceMapping as WarehouseLegacyEvidenceMapping, WarehouseStorageLocation as WarehouseStorageLocation, WorkflowEvent as WorkflowEvent, ZoneInfo as ZoneInfo, align_legacy_column_types as align_legacy_column_types,
     align_legacy_constraints as align_legacy_constraints, align_legacy_indexes as align_legacy_indexes, and_ as and_, asynccontextmanager as asynccontextmanager, asyncio as asyncio,
     base64 as base64, build_case_workflow_guide as build_case_workflow_guide, create_case_agent_runtime as create_case_agent_runtime, create_full_legacy_schema as create_full_legacy_schema, create_ipr_cpc_router as create_ipr_cpc_router,
-    create_legacy_contract_history_router as create_legacy_contract_history_router, create_legacy_ipr_history_router as create_legacy_ipr_history_router, create_legacy_ls_history_router as create_legacy_ls_history_router, create_token as create_token, csv as csv,
+    create_legacy_contract_history_router as create_legacy_contract_history_router, create_legacy_ipr_history_router as create_legacy_ipr_history_router, create_token as create_token, csv as csv,
     ctypes as ctypes, current_identity as current_identity, custom_skill_agent as custom_skill_agent, custom_skill_public as custom_skill_public, date as date,
     datetime as datetime, delete as delete, dingtalk_client as dingtalk_client, engine as engine, ensure_legacy_indexes as ensure_legacy_indexes,
     false as false, field_validator as field_validator, func as func, gc as gc, get_db as get_db,
@@ -374,7 +374,7 @@ from app.core.permissions import (
     _scoped_export_records as _scoped_export_records, _seal_application_capabilities as _seal_application_capabilities, _settlement_application_scope as _settlement_application_scope, _split_role_permission_keys as _split_role_permission_keys, _stored_menu_permission_keys as _stored_menu_permission_keys,
     _system_permission_tree as _system_permission_tree, _system_user_role_ids as _system_user_role_ids, _user_can_write_investigation_clue as _user_can_write_investigation_clue, _user_has_job_permission as _user_has_job_permission, _user_permission_overrides as _user_permission_overrides,
     _user_permission_payload as _user_permission_payload, _validate_finance_fee_scope_subtype as _validate_finance_fee_scope_subtype, _visible_ipr_cases as _visible_ipr_cases, _visible_ipr_import_batches as _visible_ipr_import_batches, _visible_legacy_contract_history_parent_keys as _visible_legacy_contract_history_parent_keys,
-    _visible_legacy_ipr_case_ids as _visible_legacy_ipr_case_ids, _visible_legacy_ls_case_ids as _visible_legacy_ls_case_ids, _visible_record_ids as _visible_record_ids,
+    _visible_legacy_ipr_case_ids as _visible_legacy_ipr_case_ids, _visible_record_ids as _visible_record_ids,
 )
 from app.core.projections import (
     _contract_customer_projection_context as _contract_customer_projection_context, _receivable_detail_projection as _receivable_detail_projection,
@@ -538,10 +538,6 @@ app.include_router(ipr_fee_file_router, prefix=settings.api_prefix)
 # 501618：知识产权中心 › 案件文件 的收据、发票导入。
 from app.areas.ipr.fee_file_import import router as ipr_fee_file_import_router  # noqa: E402
 app.include_router(ipr_fee_file_import_router, prefix=settings.api_prefix)
-app.include_router(
-    create_legacy_ls_history_router(visible_legacy_case_ids=_visible_legacy_ls_case_ids),
-    prefix=settings.api_prefix,
-)
 app.include_router(
     create_legacy_contract_history_router(
         visible_history_parent_keys=_visible_legacy_contract_history_parent_keys,

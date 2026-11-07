@@ -133,7 +133,6 @@ type FeeTypeCatalogItem,
 } from "../feeTypeHierarchy.mjs";
 import { readStoredGlobalCaseSearchContext } from "../globalCaseSearchParity.mjs";
 import { incomingPaymentDetailRoute } from "../incomingPaymentDetailNavigation";
-import { LegacyLsHistoryPanel } from "../LegacyLsHistoryPanel";
 import "../task-center.css";
 import { createArchiveColumns } from "./columns/archiveColumns";
 import { useArchiveCases } from "./hooks/useArchiveCases";
@@ -455,7 +454,6 @@ export default function CaseCenterPage({
   const [taskCase, setTaskCase] = useState<CaseRow | null>(null);
   const [viewingCounselCase, setViewingCounselCase] = useState<CaseRow | null>(null);
   const [viewingFeeIncomingPayments, setViewingFeeIncomingPayments] = useState<CaseFeeIncomingPaymentLink[] | null>(null);
-  const [legacyLsHistoryCaseIds, setLegacyLsHistoryCaseIds] = useState<Record<number, number>>({});
   const [activeCounselDetailTab, setActiveCounselDetailTab] = useState("documents");
   const [mergingCase, setMergingCase] = useState<CaseRow | null>(null);
   const [movingFee, setMovingFee] = useState<CaseRow | null>(null);
@@ -827,7 +825,6 @@ export default function CaseCenterPage({
     get setActiveCounselDetailTab() { return setActiveCounselDetailTab; },
     get setViewingCounselCase() { return setViewingCounselCase; },
     get counselDetailCaseIdRef() { return counselDetailCaseIdRef; },
-    get setLegacyLsHistoryCaseIds() { return setLegacyLsHistoryCaseIds; },
     get setSelectedCounselAttachmentKeys() { return setSelectedCounselAttachmentKeys; },
     get setSelectedCounselCaseEventKeys() { return setSelectedCounselCaseEventKeys; },
     get setActiveCounselDocCategory() { return setActiveCounselDocCategory; },
@@ -4206,7 +4203,6 @@ export default function CaseCenterPage({
               }
             }}
             items={[
-              ...(legacyLsHistoryCaseIds[viewingCounselCase.id] ? [{ key: "legacy-ls-history", label: "历史诉讼", children: <LegacyLsHistoryPanel initialCaseId={legacyLsHistoryCaseIds[viewingCounselCase.id]} currentCaseRecordId={viewingCounselCase.id} /> }] : []),
               {key:"documents",label:"文档信息",children:<CaseDocumentsPanel
                 viewingCase={viewingCounselCase}
                 counselDocTree={counselDocTree}

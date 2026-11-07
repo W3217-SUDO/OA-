@@ -59,7 +59,6 @@ _CROSS_CENTER_SCOPED_EXACT = ("/records", "/customers")
 
 # 这些接口不在页面前缀表里，页面头只放行所属中心；未列出的公共接口（工作台、问题反馈等）不变。
 _UNLISTED_ROUTE_CENTERS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("/legacy-ls-history", ("case",)),
     ("/legacy-case-task-history", ("case", "task")),
     ("/legacy-ipr-history", ("ipr",)),
     ("/legacy-contract-history", ("contract",)),

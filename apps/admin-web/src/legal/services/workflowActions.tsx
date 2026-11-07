@@ -90,7 +90,6 @@ export interface CaseWorkflowDependencies {
     readonly setActiveCounselDetailTab: React.Dispatch<React.SetStateAction<string>>;
     readonly setViewingCounselCase: React.Dispatch<React.SetStateAction<CaseRow | null>>;
     readonly counselDetailCaseIdRef: React.RefObject<number | null>;
-    readonly setLegacyLsHistoryCaseIds: React.Dispatch<React.SetStateAction<Record<number, number>>>;
     readonly setSelectedCounselAttachmentKeys: React.Dispatch<React.SetStateAction<React.Key[]>>;
     readonly setSelectedCounselCaseEventKeys: React.Dispatch<React.SetStateAction<React.Key[]>>;
     readonly setActiveCounselDocCategory: React.Dispatch<React.SetStateAction<string>>;
@@ -627,7 +626,7 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
         }
     };
     const openCounselDetail = async (row: CaseRow, preferredTab?: string) => {
-        const { isCaseDetailView, initialView, originalPage, originalPageSize, caseQuery, onNavigate, counselDetailClueRequestRef, setCounselDetailClues, setCounselDetailClueKeyword, setCounselDetailClueSearchInput, setCounselDetailCluePage, setCounselDetailCluePageSize, setCounselDetailClueTotal, setCounselDetailCluePages, setActiveCounselDetailTab, setViewingCounselCase, counselDetailCaseIdRef, setLegacyLsHistoryCaseIds, setSelectedCounselAttachmentKeys, setSelectedCounselCaseEventKeys, setActiveCounselDocCategory, setExpandedCounselDocGroups, setCounselDetailAttachments, setCounselDetailCustomerAttachments, setCounselDetailContractAttachments, setCounselDocumentsLoadError, setCounselDocumentFolderTree, setCounselDetailCapabilities, setCounselDetailFinance, setCounselDetailFinanceLoading, applyCounselDetailCluePageState } = context;
+        const { isCaseDetailView, initialView, originalPage, originalPageSize, caseQuery, onNavigate, counselDetailClueRequestRef, setCounselDetailClues, setCounselDetailClueKeyword, setCounselDetailClueSearchInput, setCounselDetailCluePage, setCounselDetailCluePageSize, setCounselDetailClueTotal, setCounselDetailCluePages, setActiveCounselDetailTab, setViewingCounselCase, counselDetailCaseIdRef, setSelectedCounselAttachmentKeys, setSelectedCounselCaseEventKeys, setActiveCounselDocCategory, setExpandedCounselDocGroups, setCounselDetailAttachments, setCounselDetailCustomerAttachments, setCounselDetailContractAttachments, setCounselDocumentsLoadError, setCounselDocumentFolderTree, setCounselDetailCapabilities, setCounselDetailFinance, setCounselDetailFinanceLoading, applyCounselDetailCluePageState } = context;
         if (!isCaseDetailView) {
             sessionStorage.setItem("sunhold:case-detail-tab", preferredTab || "documents");
             const serialNo = String(row.serial_no || `案件-${row.id}`).trim();
@@ -662,17 +661,6 @@ export function createCaseWorkflowActions(context: CaseWorkflowDependencies) {
                     ? { ...current, ...fullRecord, data: { ...current.data, ...fullRecord.data } }
                     : current);
             }).catch(() => undefined);
-            void api.get<{
-                legacy_case_id: number;
-            }>(`/legacy-ls-history/current-records/${detailRecord.id}`)
-                .then((response) => setLegacyLsHistoryCaseIds((current) => ({ ...current, [detailRecord.id]: response.data.legacy_case_id })))
-                .catch(() => setLegacyLsHistoryCaseIds((current) => {
-                if (!(detailRecord.id in current))
-                    return current;
-                const next = { ...current };
-                delete next[detailRecord.id];
-                return next;
-            }));
             document.querySelector<HTMLElement>(".content")?.scrollTo({ top: 0, left: 0 });
             setSelectedCounselAttachmentKeys([]);
             setSelectedCounselCaseEventKeys([]);

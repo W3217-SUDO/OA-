@@ -1010,43 +1010,6 @@ async def _visible_legacy_ipr_case_ids(identity: dict, db: AsyncSession) -> set[
     return legacy_ids
 
 
-async def _visible_legacy_ls_case_ids(identity: dict, db: AsyncSession) -> set[int]:
-    """Expose LS history only through an explicit current-case legacy identity."""
-
-    await _require_record_module_menu("case", identity, db, action="查看")
-    if "admin" in _identity_role_ids(identity):
-        return set()
-    rows = list((await db.scalars(select(BusinessRecord).where(
-        BusinessRecord.module == "case", *(await _record_scope_conditions(identity, db)),
-    ))).all())
-    visible: set[int] = set()
-    for row in rows:
-        value = (row.data or {}).get("legacy_ls_case_id")
-        try:
-            if value not in (None, ""):
-                visible.add(int(value))
-        except (TypeError, ValueError):
-            continue
-    # New carrier rows retain their own mapping column rather than requiring a
-    # second write into BusinessRecord.data.  The relation remains exact by
-    # current record primary key and stays fail-closed when the carrier is not
-    # present in a database yet.
-    record_ids = [int(row.id) for row in rows]
-    if record_ids:
-        bind_names = {f"record_id_{index}": record_id for index, record_id in enumerate(record_ids)}
-        try:
-            result = await db.execute(text(
-                "SELECT legacy_case_id FROM legacy_ls_cases WHERE current_case_record_id IN ("
-                + ",".join(f":{name}" for name in bind_names) + ")"
-            ), bind_names)
-            visible.update(int(value) for value in result.scalars().all())
-        except SQLAlchemyError:
-            # An unmigrated application database has no LS carrier table.  Do
-            # not broaden visibility or make ordinary case pages unavailable.
-            pass
-    return visible
-
-
 async def _visible_legacy_contract_history_parent_keys(identity: dict, db: AsyncSession) -> set[str]:
     """Restrict historical contract parents to current visible customer/contract/case scope."""
     if "admin" in _identity_role_ids(identity):

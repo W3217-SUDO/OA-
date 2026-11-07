@@ -154,7 +154,6 @@ from app.ipr_fee_file_router import router as ipr_fee_file_router  # noqa: F401 
 from app.ipr_cpc import CPC_APPLICATION_CATEGORY as CPC_APPLICATION_CATEGORY, create_ipr_cpc_router as create_ipr_cpc_router, is_cpc_application_attachment as is_cpc_application_attachment
 
 
-from app.legacy_ls_history_router import create_legacy_ls_history_router as create_legacy_ls_history_router
 
 
 from app.dingtalk import DingTalkError as DingTalkError, dingtalk_client as dingtalk_client
