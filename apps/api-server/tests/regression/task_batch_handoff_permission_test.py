@@ -1,4 +1,4 @@
-"""批量交接和单条转交、前端批量菜单一样，要有“任务转交”功能；只有“批量修改”不够（501742 审查）。真实令牌，不替换 current_identity。"""
+"""批量任务的 5 个动作和单条操作、前端批量菜单一样，各要有对应的功能；只有“批量修改”不够（501742 审查）。真实令牌，不替换 current_identity。"""
 import unittest
 
 import httpx
@@ -61,18 +61,15 @@ class BatchHandoffPermissionTest(unittest.IsolatedAsyncioTestCase):
         return await self.client.post(f"{API}/tasks/batch-lifecycle", headers={"Authorization": "Bearer " + create_token(username, "user", 30)},
                                       json={"task_ids": [self.ids[username]], "action": action, **extra})
 
-    async def test_handoff_needs_handoff_action(self):
-        response = await self.batch("batchonly", "handoff", recipient="receiver")
-        self.assertEqual(response.status_code, 403, response.text)
+    async def test_each_action_needs_its_own_function(self):
+        for action, extra in (("accept", {}), ("complete", {}), ("confirm", {}), ("handoff", {"recipient": "receiver"}), ("withdraw", {"comment": "不需要了"})):
+            response = await self.batch("batchonly", action, **extra)
+            self.assertEqual(response.status_code, 403, f"{action}：{response.text}")
 
-    async def test_task_page_still_hands_off(self):
-        response = await self.batch("taskpage", "handoff", recipient="receiver")
-        self.assertNotEqual(response.status_code, 403, response.text)
-
-    async def test_other_batch_actions_unchanged(self):
-        response = await self.batch("batchonly", "withdraw", comment="不需要了")
-        self.assertNotEqual(response.status_code, 403, "只补交接的检查，其他批量动作不变：" + response.text)
-
+    async def test_task_page_brings_the_functions(self):
+        for action, extra in (("accept", {}), ("complete", {}), ("confirm", {}), ("handoff", {"recipient": "receiver"}), ("withdraw", {"comment": "不需要了"})):
+            response = await self.batch("taskpage", action, **extra)
+            self.assertNotEqual(response.status_code, 403, f"{action}：{response.text}")
 
 if __name__ == "__main__":
     unittest.main()

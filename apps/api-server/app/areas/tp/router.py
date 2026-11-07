@@ -864,6 +864,11 @@ async def batch_update_tasks(body: TaskBatchUpdateInput, identity: dict = Depend
     return {"updated": len(tasks), "items": [_task_dict(task) for task in tasks]}
 
 
+_BATCH_LIFECYCLE_ACTIONS = {
+    "accept": "task.accept", "complete": "task.complete", "handoff": "task.handoff", "confirm": "task.confirm", "withdraw": "task.withdraw",
+}
+
+
 @router.post(f"{settings.api_prefix}/tasks/batch-lifecycle")
 async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Apply one dedicated task lifecycle action atomically to selected tasks.
@@ -874,9 +879,8 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
     """
     from app.core.permissions import _require_role_action
     await _require_role_action(identity, db, "task.batch.update")
-    if body.action == "handoff":
-        # 和单条转交、前端批量菜单一样：批量交接还要有“任务转交”功能（501742 审查）。
-        await _require_role_action(identity, db, "task.handoff")
+    # 和单条操作、前端批量菜单一样：每个批量动作还要有对应的功能（501742 审查）。
+    await _require_role_action(identity, db, _BATCH_LIFECYCLE_ACTIONS[body.action])
     from app.core.task_lifecycle_policy import validate_task_lifecycle
     from app.core.tasks import (
             _active_task_username, _add_task_message_notifications, _record_task_manual_intervention, _task_dict,
