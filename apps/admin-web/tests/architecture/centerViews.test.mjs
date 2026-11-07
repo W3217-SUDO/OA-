@@ -84,7 +84,9 @@ function dashboardDataHarness(localStorage) {
   }, {
     AbortController,
     document: { hidden: false, addEventListener: () => {}, removeEventListener: () => {} },
-    window: { setInterval: () => 1, clearInterval: () => {} },
+    // 工作台 11-07 起监听“数据已改”事件、按过期时间补刷新（延时器）；这里只验证取数合并，不触发这两种刷新。
+    window: { setInterval: () => 1, clearInterval: () => {}, setTimeout: () => 1, clearTimeout: () => {},
+      addEventListener: () => {}, removeEventListener: () => {} },
     ...(localStorage ? { localStorage } : {}),
   });
   const render = () => { cursor = 0; return useDashboardData(); };
@@ -309,8 +311,10 @@ test("dashboard approved entries keep their destinations and unapproved entries 
     "./DashboardRejectionReminder": RejectionReminderStub,
     "./DashboardOverview": OverviewStub,
     "./dashboardPrompts": { hearingPrompt: (item) => `开庭 ${item.case_no}`, rejectionsPrompt: () => "驳回", todayHearingsPrompt: () => "今日开庭" },
-    dayjs: () => ({ format: () => "2026-10-12", day: () => 1, hour: () => 14 }),
-    "./dashboardData": { useDashboardData: () => ({ data, loading: { metrics: false, todos: false, cases: false, rejections: false }, errors: {}, retry: (section) => calls.push(["retry", section]) }) },
+    dayjs: () => ({ format: () => "2026-10-12", day: () => 1, hour: () => 14, diff: () => 0, isValid: () => true }),
+    "./dashboardData": { useDashboardData: () => ({ data, loading: { metrics: false, todos: false, cases: false, rejections: false },
+      calculating: { metrics: false, todos: false, cases: false, rejections: false }, errors: {}, updatedAt: {},
+      retry: (section) => calls.push(["retry", section]), refreshAll: () => calls.push(["refresh-all"]) }) },
     "./dashboardFeeNavigation.mjs": { rememberDashboardFeeQuery: (query) => calls.push(["fee-query", query.scope]) },
     "./caseDetailNavigation": { rememberCaseDetailTarget: (target) => calls.push(["case", target.serial_no]) },
     "./customerDetailNavigation": { rememberCustomerDetailTarget: (target) => calls.push(["customer", target.title]) },
