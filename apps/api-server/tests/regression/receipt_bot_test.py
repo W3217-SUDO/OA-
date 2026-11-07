@@ -193,7 +193,7 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_party_match_saves_when_all_match(self):
         await self._party_case()
-        self.assertIn("收文完成", (await self._run(sms(), FakeApi(self._party(), done()), AUTO)).text)
+        self.assertIn("收文完成", (await self._run(sms(), FakeApi(self._party(case_numbers=[NUMBER]), done()), AUTO)).text)
 
     async def test_party_mismatch_is_not_unique(self):
         for index, (change, reason) in enumerate(((dict(plaintiff="广州甲方科技有限公司"), "原告、被告没有全部对上"),
@@ -226,7 +226,7 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
     async def test_case_invisible_to_sender_blocks_direct_save_without_telling_group(self):
         await self._party_case()
         self.firm_ids = [7, 8]
-        reply = await self._run(sms(), FakeApi(self._party()), AUTO)
+        reply = await self._run(sms(), FakeApi(self._party(case_numbers=[NUMBER])), AUTO)
         await self._assert_not_auto(reply, "全所不止这一个案件符合")
         self.assertNotIn("全所", reply.text)
 
@@ -292,19 +292,22 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("不要重发", reply.text)
         self.assertEqual((await self._records())[0].status, "待处理")
 
-    async def test_new_message_retires_earlier_waiting_one(self):
-        api = FakeApi(preview(), preview(), done())
+    async def test_several_messages_each_confirmed_by_number(self):
+        api = FakeApi(preview(), preview(), done(), done())
         await self._run(sms(), api)
         second_link = LINK.replace("7f184b3f", "8f184b3f")
-        reply = await self._run(sms(message_id="m2", text=f"【某人民法院】 {second_link}"), api)
-        self.assertIn("之前未确认的 1 条", reply.text)
-        records = await self._records()
-        old_reply = await self._run(sms(message_id="m3a", text=f"确认 {records[0].id}"), api)
-        self.assertIn("待处理", old_reply.text)
-        self.assertEqual(len(api.calls), 2)
-        await self._run(sms(message_id="m3", text=f"确认 {records[1].id}"), api)
+        await self._run(sms(message_id="m2", text=f"【某人民法院】 {second_link}"), api)
+        first, second = await self._records()
+        self.assertEqual((first.status, second.status), ("待确认", "待确认"))
+        await self._run(sms(message_id="m3", text=f"确认 {first.id}"), api)
+        self.assertEqual(api.calls[-1][2]["link"], LINK)
+        await self._run(sms(message_id="m4", text=f"确认 {second.id}"), api)
         self.assertEqual(api.calls[-1][2]["link"], second_link)
-        self.assertEqual([record.status for record in await self._records()], ["待处理", "已导入"])
+        self.assertEqual([record.status for record in await self._records()], ["已导入", "已导入"])
+
+    async def test_document_without_number_always_asks(self):
+        await self._party_case()
+        await self._assert_not_auto(await self._run(sms(), FakeApi(self._party()), AUTO), "文书上没有识别出法院案号")
 
     async def test_expired_waiting_moves_to_pending_without_reply(self):
         await self._run(sms(), FakeApi(preview()))

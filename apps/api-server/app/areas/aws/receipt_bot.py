@@ -360,16 +360,6 @@ async def expire_waiting(db: AsyncSession) -> int:
     return changed
 
 
-async def _retire_waiting(user: User, db: AsyncSession) -> int:
-    """律师发了新短信，之前没确认的转待处理，“确认”只对应最新这一条，不会存错到旧的。"""
-    rows = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == MODULE, BusinessRecord.status == WAITING,
-                                                          BusinessRecord.owner == user.username))).all()
-    moved = 0
-    for record in rows:
-        moved += int(await _move_from_waiting(record, PENDING, {"reason": "律师发了新短信，这条未确认"}, user.username, db))
-    return moved
-
-
 async def _waiting_records(user: User, db: AsyncSession) -> list[BusinessRecord]:
     return list((await db.scalars(select(BusinessRecord).where(
         BusinessRecord.module == MODULE, BusinessRecord.status == WAITING, BusinessRecord.owner == user.username,
@@ -423,7 +413,8 @@ async def strict_unique(report: dict, db: AsyncSession) -> tuple[bool, str]:
     1. 收文接口按发送人权限返回“待确认入库”，且只有一个案件；同一批文书不超过一个法院案号。
     2. 文书有案号时，该案同审级已登记的案号必须相同：登记了不同案号，可能是同一批当事人的另一个官司，不算唯一。
     3. 法院案号直配：文书案号归一化后，等于该案已登记的某个法院案号；检索命中别的字段不算。
-    4. 当事人反查：文书的原告、被告都要有，每一个都要和该案原告、被告里的某一个整名相同；文书受理法院和该案登记的法院一致。
+    4. 当事人反查：文书的原告、被告都要有，每一个都要和该案原告、被告里的某一个整名相同；文书受理法院和该案登记的法院一致；
+       文书上还要识别得出案号。识别不出案号的不直接存，请律师确认（调度 11-07，等陶国南答复前按此）。
     5. 不限发送人权限再查一遍全所，也只有这一个案件；发送人看不到的同名案件也算不唯一。
     返回 (是否唯一, 原因)。原因只存记录，不发群。不满足时不存，请律师回“确认”。
     """
@@ -456,6 +447,8 @@ async def strict_unique(report: dict, db: AsyncSession) -> tuple[bool, str]:
         court = str(report.get("court") or next((item.get("受理机关") for item in fields if item.get("受理机关")), "") or "").strip()
         if not court or court not in {str(data.get(key) or "").strip() for key in COURT_NAME_FIELDS}:
             return False, "受理法院与该案登记的不一致"
+        if document_number is None:
+            return False, "文书上没有识别出法院案号"
     elif not level.startswith(_FIRST_LEVEL):
         return False, "匹配方式不明确"
     everyone = await _match_case(numbers, plaintiffs, defendants, _UNIQUE_CHECK_IDENTITY, db)
@@ -469,11 +462,7 @@ async def _preview(message: BotMessage, link: str, user: User, config: BotSettin
     record = await _record(message, user, PENDING, {"kind": "zxfw", "link": link}, db)
     if record is None:
         return None
-    retired = await _retire_waiting(user, db)
-    reply = await _preview_record(record, message, link, user, config, api, agent_turn, db)
-    if retired:
-        reply.text += f"\n你之前未确认的 {retired} 条已转到收文台待处理。"
-    return reply
+    return await _preview_record(record, message, link, user, config, api, agent_turn, db)
 
 
 async def _preview_record(record: BusinessRecord, message: BotMessage, link: str, user: User, config: BotSettings, api: Api,
@@ -611,9 +600,11 @@ async def assign_bot_receipt(record_id: int, body: AssignInput, identity: dict =
     case = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "case", BusinessRecord.serial_no == body.case_no.strip()))
     if case is None:
         raise HTTPException(422, f"未找到系统案号 {body.case_no.strip()}")
-    await intake_court_service(CourtIntakeInput(link=link, case_id=case.id, confirm=True), identity, db)
+    # 人工在收文台指定案件，走网页收文的路径：已有开庭会按文书覆盖。写入清单照记。
+    report = await intake_court_service(CourtIntakeInput(link=link, case_id=case.id, confirm=True), identity, db)
     record = await db.get(BusinessRecord, record_id)
-    await _set_status(record, DONE, {"case_id": case.id, "case_no": case.serial_no, "handled_by": identity["username"]}, identity["username"], db)
+    await _set_status(record, DONE, {"case_id": case.id, "case_no": case.serial_no, "handled_by": identity["username"],
+                                     "changes": _changes(report, str((record.data or {}).get("planned_court_no") or ""))}, identity["username"], db)
     return _row(record)
 
 
