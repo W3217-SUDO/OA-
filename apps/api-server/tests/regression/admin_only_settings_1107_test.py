@@ -74,6 +74,8 @@ class AdminOnlySettingsTest(unittest.IsolatedAsyncioTestCase):
                              value={"all_days": 100, "filed_days": 360, "premium_days": 30, "standard_days": 40, "basic_days": 60, "shared_days": 1000}),
                 SystemConfig(key="agent_cloud_runtime", label="云端智能体", group="智能体", description="",
                              value={"enabled": False, "encrypted_key": "sealed-fake", "encrypted_plan_key": "sealed-fake-plan"}),
+                SystemConfig(key="external_credential_qcc", label="企查查", group="外部凭据", description="",
+                             value={"encrypted": "sealed-fake-qcc"}),
                 attachment("mine", "plain"), attachment("receipt", "lawyer"), attachment("done", "lawyer"),
             ])
             await db.commit()
@@ -142,12 +144,14 @@ class AdminOnlySettingsTest(unittest.IsolatedAsyncioTestCase):
             response = await self.call(username, "GET", "/system/configs")
             self.assertEqual(response.status_code, 200, response.text)
             self.assertNotIn("agent_cloud_runtime", response.text)
+            self.assertNotIn("external_credential_qcc", response.text)
             self.assertNotIn("sealed-fake", response.text)
 
     # ---- 1. 智能体工具 ----
     def test_agent_tool_filters(self):
         from app.agent_mcp.safety import reject_credentials, safe_result
-        cleaned = safe_result({"encrypted_key": "x", "encrypted_plan_key": "y", "encrypted_secret": "z", "plan_key_set": True, "model": "m"})
+        cleaned = safe_result({"encrypted_key": "x", "encrypted_plan_key": "y", "encrypted_secret": "z", "encrypted": "q", "encryptedKey": "k",
+                               "plan_key_set": True, "model": "m"})
         self.assertEqual(cleaned, {"plan_key_set": True, "model": "m"})
         with self.assertRaises(Exception):
             reject_credentials({"plan_key": "fake-plan"})
@@ -181,6 +185,20 @@ class AdminOnlySettingsTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(response.status_code, 404, (username, suffix, response.text))
                 self.assertIn("无权访问", response.text, (username, suffix))
 
+    async def test_unlinked_attachment_list_and_delete(self):
+        async def names(username):
+            response = await self.call(username, "GET", "/attachments?page_size=200")
+            self.assertEqual(response.status_code, 200, response.text)
+            body = response.json()
+            return {item["original_name"] for item in (body["items"] if isinstance(body, dict) else body)}
+        self.assertIn("mine.pdf", await names("plain"), "上传人自己能在列表里看到")
+        self.assertIn("mine.pdf", await names("realadmin"))
+        for username in ("caseworker", "syspage"):
+            self.assertNotIn("mine.pdf", await names(username), username)
+        self.assertEqual((await self.call("syspage", "DELETE", f"/attachments/{self.att['mine']}")).status_code, 404, "页面管理员不能删别人不挂记录的附件")
+        async with self.sessions() as db:
+            self.assertIsNotNone(await db.get(FileAttachment, self.att["mine"]))
+
     async def test_pending_receipt_document_for_desk(self):
         receipt, done = f"/attachments/{self.att['receipt']}", f"/attachments/{self.att['done']}"
         self.assertEqual((await self.call("desk", "GET", receipt)).status_code, 200, "待处理里的送达文书，收文台能看")
@@ -200,6 +218,19 @@ class AdminOnlySettingsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.call("conholder", "PUT", "/contracts/approver-settings", {"usernames": ["conholder"]})).status_code, 403)
         self.assertEqual((await self.call("conholder", "PUT", "/contracts/approver-settings", {"usernames": ["plain"]})).status_code, 200)
         self.assertEqual((await self.call("realadmin", "PATCH", dept, {"manager": "realadmin"})).status_code, 200, "真实管理员不限")
+        new_dept = {"code": "N1", "name": "新部门", "manager": "hrholder", "seal_reviewer": "", "sort_order": 2}
+        self.assertEqual((await self.call("hrholder", "POST", "/hr/departments", new_dept)).status_code, 403, "新建部门也不能设自己")
+        self.assertEqual((await self.call("hrholder", "POST", "/hr/departments", {**new_dept, "manager": "plain", "seal_reviewer": "hrholder"})).status_code, 403)
+        self.assertEqual((await self.call("hrholder", "POST", "/hr/departments", {**new_dept, "manager": "plain"})).status_code, 201)
+
+    async def test_seal_roles_compared_separately(self):
+        base = {"firm_approver": "plain", "stamp_users": ["hrholder"], "department_paths": {}}
+        self.assertEqual((await self.call("realadmin", "PUT", "/hr/seal-approval-settings", base)).status_code, 200)
+        self.assertEqual((await self.call("hrholder", "PUT", "/hr/seal-approval-settings", base)).status_code, 200, "原来就是盖章人，原样保存不挡")
+        moved = {"firm_approver": "hrholder", "stamp_users": [], "department_paths": {}}
+        self.assertEqual((await self.call("hrholder", "PUT", "/hr/seal-approval-settings", moved)).status_code, 403, "盖章人不能改成自己做全所审批人")
+        path = {**base, "department_paths": {str(self.dept): ["hrholder", ""]}}
+        self.assertEqual((await self.call("hrholder", "PUT", "/hr/seal-approval-settings", path)).status_code, 403, "不能把自己放进部门路径")
 
     async def test_reserved_names(self):
         for name in ("ops", "legacy-import"):

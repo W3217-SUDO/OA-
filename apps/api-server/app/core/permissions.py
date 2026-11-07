@@ -1196,15 +1196,18 @@ def _require_not_new_self_approver(identity: dict, before, after, label: str) ->
         raise HTTPException(status_code=403, detail=f"不能把自己设为{label}，请让系统管理员设置")
 
 
-async def _require_unlinked_attachment_access(item, identity: dict, db: AsyncSession) -> None:
+async def _unlinked_attachment_visible(item, identity: dict, db: AsyncSession) -> bool:
     """不挂任何记录的附件：上传人本人或真实管理员能看；页面授权不提升成管理员（分支 4、陶威 11-07）。
     收文助手下载的送达文书还没入案件时，在“钉钉收文待处理”里且有收文台菜单的人也能看。"""
     if "admin" in (identity.get("_actual_role_ids") or []) or item.uploader == identity.get("username"):
-        return
+        return True
     from app.areas.aws.receipt_bot import pending_receipt_attachment_visible
-    if await pending_receipt_attachment_visible(item, identity, db):
-        return
-    raise HTTPException(status_code=404, detail="附件不存在或无权访问")
+    return await pending_receipt_attachment_visible(item, identity, db)
+
+
+async def _require_unlinked_attachment_access(item, identity: dict, db: AsyncSession) -> None:
+    if not await _unlinked_attachment_visible(item, identity, db):
+        raise HTTPException(status_code=404, detail="附件不存在或无权访问")
 
 
 async def _require_record_owner_or_manager(record: BusinessRecord, identity: dict, db: AsyncSession) -> None:
@@ -1316,10 +1319,12 @@ async def _filter_visible_attachments(items: list[FileAttachment], identity: dic
         denied_feedback_ids = {row.id for row in protected_records
                                if row.module == "bug_feedback" and row.owner != identity.get("username")}
         items = [item for item in items if item.record_id not in denied_feedback_ids]
+    # 不挂记录的附件不随页面提升：按上传人、真实管理员或收文台待处理判断（陶威 11-07）。
+    unlinked_ok = {item.id for item in items if not item.record_id and await _unlinked_attachment_visible(item, identity, db)}
     if identity.get("role") == "admin":
-        return items
+        return [item for item in items if item.record_id or item.id in unlinked_ok]
     record_ids = await _visible_record_ids(identity, db)
-    return [item for item in items if (item.record_id and item.record_id in (record_ids | allowed_review_ids)) or (not item.record_id and item.uploader == identity["username"])]
+    return [item for item in items if (item.record_id and item.record_id in (record_ids | allowed_review_ids)) or item.id in unlinked_ok]
 
 
 def _require_dingtalk_access(user: User) -> None:

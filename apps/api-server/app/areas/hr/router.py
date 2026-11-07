@@ -651,6 +651,9 @@ async def create_department(body: DepartmentInput, identity: dict = Depends(curr
         raise HTTPException(status_code=422, detail="请选择部门负责人")
     owner_username = await _department_person(body.owner_username, "挂靠人", db) if parent else ""
     seal_reviewer = await _department_person(body.seal_reviewer, "部门用印审核人", db)
+    from app.core.permissions import _require_not_new_self_approver
+    _require_not_new_self_approver(identity, [], [manager], "部门负责人")
+    _require_not_new_self_approver(identity, [], [seal_reviewer], "部门用印审核人")
     item = Department(**body.model_dump(exclude={"code", "name", "manager", "owner_username", "seal_reviewer"}), code=code, name=name, manager=manager, owner_username=owner_username, created_by=identity["username"], updated_by=identity["username"])
     db.add(item); await db.flush()
     if seal_reviewer:
@@ -1271,8 +1274,12 @@ async def put_seal_approval_settings(body: SealApprovalSettingsInput, identity: 
     _require_admin(identity)
     from app.core.permissions import _require_not_new_self_approver
     from app.core.seal_approval import load_seal_approval_settings, normalize_settings
-    people = lambda value: [value["firm_approver"], *value["stamp_users"], *(person for steps in value["department_paths"].values() for person in steps)]
-    _require_not_new_self_approver(identity, people(await load_seal_approval_settings(db)), people(normalize_settings(body.model_dump())), "用印审批人或盖章人")
+    # 按角色、按部门分别比：已是盖章人的不能借此把自己改成全所审批人或放进别的部门路径（分支 1 审查）。
+    before, after = await load_seal_approval_settings(db), normalize_settings(body.model_dump())
+    _require_not_new_self_approver(identity, [before["firm_approver"]], [after["firm_approver"]], "全所用印审批人")
+    _require_not_new_self_approver(identity, before["stamp_users"], after["stamp_users"], "盖章人")
+    for department_id, steps in after["department_paths"].items():
+        _require_not_new_self_approver(identity, before["department_paths"].get(department_id, []), steps, "部门合同/用印审批人")
     saved = await save_seal_approval_settings(body.model_dump(), identity["username"], db)
     await _record_organization_audit(db, identity, "修改用印审批设置", "用印审批设置", saved)
     await db.commit()

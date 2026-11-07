@@ -666,6 +666,8 @@ async def delete_attachment(attachment_id: int, identity: dict = Depends(current
         raise HTTPException(status_code=404, detail="附件不存在")
     if item.record_id:
         await ensure_investigation_material_access(item.record_id, identity, db, write=True)
+    elif "admin" not in (identity.get("_actual_role_ids") or []) and item.uploader != identity["username"]:
+        raise HTTPException(status_code=404, detail="附件不存在或无权访问")  # 不挂记录的附件不随页面提升（陶威 11-07）
     # 联系人照片的附件 ID 保存在客户 contacts JSON 中。若允许通用附件接口删除，
     # 会留下指向已删除文件的引用；必须从联系人维护入口替换或随联系人删除。
     if item.category == "客户联系人照片":

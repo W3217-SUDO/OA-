@@ -967,8 +967,9 @@ async def list_system_configs(keyword: str = "", page: int | None = Query(None, 
     from app.areas.agent_admin.dingtalk_bots import CONFIG_KEY as DINGTALK_BOT_CONFIG_KEY
     from app.harness_agent.model_providers import CONFIG_KEY as MODEL_PROVIDER_CONFIG_KEY
     from app.cloud_agent.config import CONFIG_KEY as CLOUD_AGENT_CONFIG_KEY
-    # 云端智能体配置（含加密的 Key）只在“智能体设置 › 云端智能体”看，不进系统配置列表（陶威 11-07）。
-    items = [item for item in items if not item.key.startswith(CONNECTOR_CONFIG_PREFIX) and item.key not in {MODEL_PROVIDER_CONFIG_KEY, DINGTALK_BOT_CONFIG_KEY, CLOUD_AGENT_CONFIG_KEY, "feedback_review"}]
+    from app.areas.crm.company_lookup import CREDENTIAL_KEY as QCC_CREDENTIAL_KEY
+    # 云端智能体配置、企查查凭据（含密文）只在各自设置页看，不进系统配置列表；这个列表也是智能体工具（陶威 11-07）。
+    items = [item for item in items if not item.key.startswith(CONNECTOR_CONFIG_PREFIX) and item.key not in {MODEL_PROVIDER_CONFIG_KEY, DINGTALK_BOT_CONFIG_KEY, CLOUD_AGENT_CONFIG_KEY, QCC_CREDENTIAL_KEY, "feedback_review"}]
     from app.global_agent_skills import GLOBAL_SKILL_CONFIG_KEY
     from app.agent_permissions import is_actual_system_admin
     from app.user_agent_skills import USER_SKILL_CONFIG_PREFIX
