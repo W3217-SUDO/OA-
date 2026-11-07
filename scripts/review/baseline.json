@@ -114,12 +114,6 @@
 "TS-UNUSED-EXPORT|701bc08d1e": 1,
 "TS-UNUSED-EXPORT|d2381794ca": 1
 },
-"apps/admin-web/src/LegacyLsHistoryPanel.tsx": {
-"TS-UNUSED-EXPORT|0b67c2e1b5": 1,
-"TS-UNUSED-EXPORT|34ad687710": 1,
-"TS-UNUSED-EXPORT|4594ac87ad": 1,
-"TS-UNUSED-EXPORT|5520b9bc38": 1
-},
 "apps/admin-web/src/NotificationCenter.tsx": {
 "TS-COMPLEXITY|11efbfdeb8": 1
 },
@@ -3621,12 +3615,6 @@
 "apps/api-server/app/legacy_ipr_history_router.py": {
 "B905|3cb57a752a": 1,
 "S608|8b3ddd129c": 1,
-"S608|bc678e8638": 1,
-"S608|f826f50422": 1
-},
-"apps/api-server/app/legacy_ls_history_router.py": {
-"B905|9e02e49251": 1,
-"S608|8b3ddd129c": 2,
 "S608|bc678e8638": 1,
 "S608|f826f50422": 1
 },
