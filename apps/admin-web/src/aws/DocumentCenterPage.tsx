@@ -48,6 +48,7 @@ import {
 } from "./DocumentTabContent";
 import { DocumentDetail } from "./DocumentDetail";
 import { OfficialOutgoingDetail } from "./OfficialOutgoingDetail";
+import { BotReceiptPending } from "./BotReceiptPending";
 import { DocumentReceiptPanel } from "./DocumentReceiptPanel";
 import {
   ActionModal,
@@ -158,7 +159,8 @@ export default function DocumentCenterPage({
   const [outgoingQuery, setOutgoingQuery] = useState<Record<string, string>>({});
 
   // ===== Receipt states =====
-  const [receiptQuery, setReceiptQuery] = useState<Record<string, any>>({});
+  // 陶国南 11-07：收文台默认看当日收文，晚上写总结时回看。
+  const [receiptQuery, setReceiptQuery] = useState<Record<string, any>>(() => ({ upload_range: [dayjs(), dayjs()] }));
   const [selectedReceiptKeys, setSelectedReceiptKeys] = useState<Key[]>([]);
   const [receiptDateOpen, setReceiptDateOpen] = useState(false);
   const [receiptDate, setReceiptDate] = useState<ReturnType<typeof dayjs> | null>(null);
@@ -960,7 +962,7 @@ export default function DocumentCenterPage({
   const isReceiptView = ["official", "my-receipts", "company-receipts"].includes(tab);
   const receiptSearch = () => setReceiptQuery(receiptForm.getFieldsValue());
   const clearReceiptSearch = () => {
-    receiptForm.resetFields();
+    receiptForm.setFieldsValue(Object.fromEntries(Object.keys(receiptForm.getFieldsValue()).map((key) => [key, undefined])));
     setReceiptQuery({});
   };
 
@@ -1192,7 +1194,10 @@ export default function DocumentCenterPage({
   return (
     <>
       {isReceiptView ? (
-        receiptPanel
+        <>
+          {tab === "official" && <BotReceiptPending />}
+          {receiptPanel}
+        </>
       ) : (
         <>
           <div className="document-stats">

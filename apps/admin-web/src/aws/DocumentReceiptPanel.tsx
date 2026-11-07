@@ -12,6 +12,7 @@ import type { FormInstance } from "antd";
 import type { Key } from "react";
 import type { ReceiptRow, Attachment } from "./types";
 import { personDisplayName } from "./constants";
+import dayjs from "dayjs";
 import { useMobileFilterToggle } from "../components/common/MobileFilterToggle";
 
 interface DocumentReceiptPanelProps {
@@ -254,7 +255,7 @@ export function DocumentReceiptPanel({ tab, loading, receiptForm, searchedReceip
   return (
     <Card className="panel receipt-original-panel" title={title}>
       {mobileFilter.toggle}
-      <Form form={receiptForm} className={`receipt-query-form ${mobileFilter.fieldsClassName}`} onFinish={onSearch}>
+      <Form form={receiptForm} initialValues={{ upload_range: [dayjs(), dayjs()] }} className={`receipt-query-form ${mobileFilter.fieldsClassName}`} onFinish={onSearch}>
         {isOfficial ? (
           <div className="receipt-filter-grid official">
             <Form.Item label="案件编号" name="case_no">

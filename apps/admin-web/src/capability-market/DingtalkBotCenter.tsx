@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Button, Form, Input, Space, Tag, message } from "antd";
+import { Alert, Button, Form, Input, Space, Switch, Tag, message } from "antd";
 import { ReloadOutlined, RobotOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { api } from "../api";
 import { errorText } from "../personal-agent/types";
@@ -7,10 +7,11 @@ import "./dsh-plugin-center.css";
 
 // 钉钉机器人中心：系统管理员在这里填收文助手的 AppKey、AppSecret。Secret 加密保存、不回显。
 type BotState = {
-  app_key: string; secret_set: boolean; updated_by: string; updated_at: string;
+  app_key: string; secret_set: boolean; enabled: boolean; group_name: string; use_cloud_agent: boolean; auto_save_court_no: boolean;
+  updated_by: string; updated_at: string;
   verified_at: string; verify_ok: boolean | null; verify_message: string;
 };
-type BotForm = { app_key: string; app_secret?: string };
+type BotForm = { app_key: string; app_secret?: string; enabled: boolean; group_name: string; use_cloud_agent: boolean; auto_save_court_no: boolean };
 
 const BASE = "/agent-admin/dingtalk-bots";
 
@@ -26,7 +27,7 @@ export function DingtalkBotCenter({ onBusy }: { onBusy: (busy: boolean) => void 
     try {
       const { data } = await api.get<BotState>(BASE);
       setState(data);
-      form.setFieldsValue({ app_key: data.app_key, app_secret: "" });
+      form.setFieldsValue({ app_key: data.app_key, app_secret: "", enabled: data.enabled, group_name: data.group_name, use_cloud_agent: data.use_cloud_agent, auto_save_court_no: data.auto_save_court_no });
     } catch (failure) { setError(errorText(failure, "钉钉机器人配置加载失败")); }
     finally { setLoading(false); }
   }, [form]);
@@ -37,7 +38,7 @@ export function DingtalkBotCenter({ onBusy }: { onBusy: (busy: boolean) => void 
     const values = await form.validateFields();
     setBusy("save"); setError(""); onBusy(true);
     try {
-      const { data } = await api.put<BotState>(BASE, { app_key: values.app_key.trim(), app_secret: (values.app_secret || "").trim() });
+      const { data } = await api.put<BotState>(BASE, { ...values, app_key: values.app_key.trim(), app_secret: (values.app_secret || "").trim(), group_name: values.group_name.trim() });
       setState(data);
       form.setFieldsValue({ app_secret: "" });
       message.success("已保存");
@@ -63,7 +64,7 @@ export function DingtalkBotCenter({ onBusy }: { onBusy: (busy: boolean) => void 
   return <section className="dsh-plugin-center" aria-label="钉钉机器人中心">
     <header className="dsh-plugin-heading">
       <div><span className="dsh-plugin-eyebrow">DINGTALK BOTS</span><h2><RobotOutlined />钉钉机器人中心</h2>
-        <p>配置接入 OA 的钉钉机器人。这里只保存凭证，机器人的收发功能上线后才会用到。</p></div>
+        <p>配置接入 OA 的钉钉机器人。</p></div>
       <Space wrap>
         <Button icon={<ReloadOutlined />} loading={loading} disabled={!!busy} onClick={() => void load()}>刷新</Button>
       </Space>
@@ -87,6 +88,18 @@ export function DingtalkBotCenter({ onBusy }: { onBusy: (busy: boolean) => void 
           </Form.Item>
           <Form.Item name="app_secret" label="AppSecret（Client Secret）" extra={state.secret_set ? "已保存的 Secret 不显示；留空表示不修改。" : "保存后加密存放，任何页面都不再显示。"}>
             <Input.Password maxLength={256} autoComplete="new-password" visibilityToggle={false} />
+          </Form.Item>
+          <Form.Item name="group_name" label="收文群名称" extra="只处理这个群里 @收文助手 的消息。" rules={[{ required: true, whitespace: true, message: "请填写收文群名称" }]}>
+            <Input maxLength={100} />
+          </Form.Item>
+          <Form.Item name="use_cloud_agent" label="用云端智能体读短信" valuePropName="checked" extra="开启后短信和文书内容会发送到火山方舟模型服务，并按发短信的人计费。">
+            <Switch />
+          </Form.Item>
+          <Form.Item name="auto_save_court_no" label="法院案号唯一匹配时直接入库" valuePropName="checked" extra="关闭时一律请律师在群里回“确认”后才存入。">
+            <Switch />
+          </Form.Item>
+          <Form.Item name="enabled" label="启用机器人" valuePropName="checked">
+            <Switch />
           </Form.Item>
         </Form>
       </div>
