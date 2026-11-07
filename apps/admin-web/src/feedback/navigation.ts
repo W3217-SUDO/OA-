@@ -135,3 +135,9 @@ export function feedbackPageLabel(key: string, label: string) {
   const prefix = DETAIL_PAGE_PREFIXES.find(([route]) => key.startsWith(route))?.[1];
   return prefix && !label.startsWith(prefix) ? `${prefix} · ${label}` : label;
 }
+
+// 回到反馈页顶部。桌面整页（.page-workbench）滚动；手机上页头固定、只有卡片内容滚动（见 feedback.css），两处都归零。
+export function scrollFeedbackToTop(from: Element | null | undefined) {
+  from?.closest(".page-workbench")?.scrollTo(0, 0);
+  from?.closest(".feedback-page-card")?.querySelector(":scope > .ant-card-body")?.scrollTo(0, 0);
+}

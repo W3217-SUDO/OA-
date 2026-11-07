@@ -3,6 +3,7 @@ import { clearFeedbackReplyDraft, loadFeedbackReplyDraft, saveFeedbackReplyDraft
 import { Alert, Button, Descriptions, Input, message, Popconfirm, Space, Spin, Tag, Tooltip } from "antd";
 import { ArrowUpOutlined, PaperClipOutlined, PictureOutlined } from "@ant-design/icons";
 import { beijingTime } from "./time";
+import { scrollFeedbackToTop } from "./navigation";
 import { api } from "../api";
 import type { FeedbackDetails } from "./types";
 import FeedbackFileDrop from "./FeedbackFileDrop";
@@ -191,7 +192,7 @@ export default function FeedbackDetail({ feedbackId, onBack, onNavigate }: Props
   return <section aria-label="反馈详情">
     {/* 只把“返回列表”吸在页头下面，回到列表顶部；状态、撤回、删除留在这条反馈的内容里（tgn 11-05，BUG20261105023）。 */}
     <div className="feedback-detail-back">
-      <Button onClick={(event) => { event.currentTarget.closest(".page-workbench")?.scrollTo(0, 0); onBack(); }}>返回列表</Button>
+      <Button onClick={(event) => { scrollFeedbackToTop(event.currentTarget); onBack(); }}>返回列表</Button>
     </div>
     {/* 这条反馈的操作排一排（手机上放不下时横向滑动，不换行）。 */}
     <div className="feedback-detail-head" role="toolbar" aria-label="反馈操作">

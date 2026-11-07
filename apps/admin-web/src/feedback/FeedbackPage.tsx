@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Card, Segmented } from "antd";
 import { api } from "../api";
 import FeedbackManager, { FEEDBACK_GROUP_STATUSES, type FeedbackView } from "./FeedbackManager";
-import { FEEDBACK_SOURCE_ROUTE_KEY, feedbackPageLabel, readFeedbackPageControls, type FeedbackPageOption } from "./navigation";
+import { FEEDBACK_SOURCE_ROUTE_KEY, feedbackPageLabel, readFeedbackPageControls, scrollFeedbackToTop, type FeedbackPageOption } from "./navigation";
 import { hasFeedbackDraft } from "./draft";
 import type { FeedbackStatusCounts } from "./types";
 import "./feedback.css";
@@ -28,8 +28,7 @@ export default function FeedbackPage({ onNavigate, openPages, menuPages, resolve
   const switchView = (value: FeedbackView) => {
     setView(value);
     setNavKey((key) => key + 1);
-    const scroller = headRef.current?.closest(".page-workbench");
-    if (scroller) scroller.scrollTop = 0;
+    scrollFeedbackToTop(headRef.current);
   };
   const returnToSource = () => onNavigate(sourceRoute || "dashboard");
   // 来源页可能是详情等非菜单页面，补进快捷选项并带上可读名称。

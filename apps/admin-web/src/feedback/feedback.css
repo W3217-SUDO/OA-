@@ -190,3 +190,35 @@
   box-shadow: 0 6px 8px -8px rgba(15, 23, 42, 0.18);
 }
 .feedback-page-card .feedback-detail-back + .feedback-detail-head { margin-top: 2px; }
+
+/* 手机（≤991px，手机外壳）：页头不靠 sticky 吸顶。钉钉安卓内置浏览器（华为等机型是 UC U4 内核，基于 Chrome 100）
+   对滚动容器里的 sticky 不可靠，往下滚时页头会被内容盖住（陶威 11-07，501632 回归）。
+   改成卡片占满工作区高度、上下排：页头在正常排版里不动，只有卡片内容区滚动；桌面仍是上面的整页滚动 + sticky。
+   选择器要压过手机卡片列表的“整页滚动”规则（resizable-table.css 里 :is(.ant-card, .ant-card-body) 的 !important）。 */
+@media (max-width: 991px) {
+  .page-workbench > .workspace-page:not(.is-cached) > .feedback-page-card.feedback-page-card.feedback-page-card {
+    display: flex !important;
+    flex-direction: column;
+    height: 100% !important;
+    max-height: 100% !important;
+    min-height: 0;
+    overflow: hidden !important;
+  }
+  .page-workbench > .workspace-page:not(.is-cached) > .feedback-page-card.feedback-page-card.feedback-page-card > .ant-card-head {
+    position: relative;
+    top: auto;
+    flex: 0 0 auto;
+  }
+  .page-workbench > .workspace-page:not(.is-cached) > .feedback-page-card.feedback-page-card.feedback-page-card > .ant-card-body {
+    flex: 1 1 auto;
+    height: auto !important;
+    min-height: 0;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* 详情的“返回列表”吸在内容区顶部、输入框贴底；sticky 从内边距里面算，抵掉内容区 14px 内边距，否则缝里会露出滚过的内容。 */
+  .feedback-page-card .feedback-detail-back { top: -14px; }
+  .feedback-page-card .feedback-chat-composer { bottom: -14px; }
+}
