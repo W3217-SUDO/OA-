@@ -107,6 +107,20 @@ _CASE_LEGACY_PERMISSION_LABELS = {
 _JOB_ROLE_LEGACY_LABELS = (set(JOB_ROLE_LABEL_MENU_GRANTS) | set(JOB_ROLE_ACTION_KEY_GRANTS)) - set(SYSTEM_MENU_ROUTE_KEYS)
 
 
+def _job_role_derived_codes_to_keep(role: JobRole, submitted_menus: list[str]) -> set[str]:
+    """页面带出的功能保存时不单独存（有页面就自动有）。角色没有这个中心的页面时带不出来，原有的要留着，不改东西保存不能变少。"""
+    from app.core.constants import PAGE_GRANTED_ACTION_ROOTS, ROLE_TREE_DERIVED_ACTION_CODES
+    menus = _expand_menu_permission_keys(submitted_menus)
+    keep = set()
+    for code in _effective_job_role_action_keys(role):
+        if code not in ROLE_TREE_DERIVED_ACTION_CODES:
+            continue
+        root = next((value for prefix, value in PAGE_GRANTED_ACTION_ROOTS.items() if code.startswith(prefix)), None)
+        if root and not any(key == root or key.startswith(f"{root}-") for key in menus):
+            keep.add(code)
+    return keep
+
+
 def _job_role_tree_checked_permissions(role: JobRole) -> list[str]:
     selected = []
     for value in role.permissions or []:
@@ -117,7 +131,11 @@ def _job_role_tree_checked_permissions(role: JobRole) -> list[str]:
         elif value not in {CASE_ACTIONS_EXPLICIT_MARKER, MENUS_EXACT_MARKER}:
             selected.append(str(value).removeprefix("menu:"))
     # 老角色常只存了大类或分组（如 ipr、ipr-my-cases），实际有下面的页面。树上要勾出来，否则不改直接保存，大类被当成“没全勾”去掉，页面就丢了（501690）。
-    selected.extend(_effective_job_role_menu_keys(role))
+    menus = _effective_job_role_menu_keys(role)
+    selected.extend(menus)
+    # 老角色的客户功能只存了基础码，实际按各页生效；树上的开关是各页的，要照实际勾上，否则一保存功能就没了。
+    selected.extend(f"action:{code}" for code in expand_role_action_codes(_effective_job_role_action_keys(role), menus)
+                    if code.startswith("crm.") and "@" in code)
     effective = _effective_job_role_action_keys(role)
     selected.extend(f"action:{code}" for code in effective if code in _CASE_ACTION_CODES)
     return list(dict.fromkeys(selected))
