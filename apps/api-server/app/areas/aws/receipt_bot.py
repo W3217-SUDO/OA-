@@ -586,7 +586,7 @@ def _require_internal(identity: dict) -> None:
         raise HTTPException(403, "外部账号不能使用钉钉收文")
 
 
-@router.post(f"{settings.api_prefix}{INTAKE_PATH}", status_code=201)
+@router.post(f"{settings.api_prefix}/documents/court-service/bot-receipts/intake", status_code=201)  # 与 INTAKE_PATH 相同；门禁脚本只认字面路径
 async def bot_intake(body: CourtIntakeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """钉钉收文助手专用入口：权限和一键收文相同，不向智能体开放；已有开庭不覆盖，回填失败只写进结果。"""
     from app.areas.aws.court_intake import run_intake
