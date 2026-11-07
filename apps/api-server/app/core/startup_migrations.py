@@ -224,6 +224,8 @@ def _apply_clue_scope_indexes(connection: Connection, _upgrade_schema: Callable[
         return
     connection.execute(text("SET LOCAL lock_timeout = '5s'"))
     connection.execute(text("SET LOCAL statement_timeout = '60s'"))
+    # 生产库原来没有装 pg_trgm（11-07 核对）；它是受信任扩展，库属主（应用账号）能直接装，不依赖前一个修订先装。
+    connection.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
     for name, expression in (
         ("shared_to", "(data ->> 'shared_to')"),
         ("assistant", "lower(COALESCE(CAST(data ->> 'investigation_assistant' AS VARCHAR), ''))"),
