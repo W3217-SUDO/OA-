@@ -19,6 +19,9 @@ test("工作台：允许先显示计算中，提交后带 refresh 重取，连�
   assert.match(hook, /addEventListener\(DATA_CHANGED_EVENT/);
   assert.match(hook, /window\.clearTimeout\(changedTimer\)/);
   assert.match(hook, /if \(result\.pending\) \{/);
+  assert.match(hook, /dataChangedTrailingMs = 35_000/, "超过服务端 30 秒优先刷新限制，连续操作的后一次也能更新");
+  assert.match(hook, /window\.setTimeout\(refreshChanged, dataChangedTrailingMs\)/);
+  assert.match(hook, /window\.clearTimeout\(changedTrailingTimer\);\n      window\.removeEventListener/, "离开页面取消补刷新");
 });
 
 test("页面写明更新时间，手动刷新走优先通道；样式不用旧内核不支持的写法", () => {

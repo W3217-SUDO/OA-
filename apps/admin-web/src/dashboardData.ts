@@ -73,6 +73,7 @@ const staleRetryLimit = 8;
 const pendingRetryLimit = 60;
 // 用户提交后稍等再刷新工作台，连续几个提交只刷新一次。
 const dataChangedDebounceMs = 3_000;
+const dataChangedTrailingMs = 35_000;
 
 // 控制台首屏：先显示本浏览器里该账号上次的结果，后台照常取最新数据后替换。
 // 只存在本机 localStorage，按账号区分，退出登录时清除；超过一天不再使用。
@@ -266,14 +267,20 @@ export function useDashboardData(requestedSections: readonly DashboardSection[] 
     const timer = window.setInterval(refreshStale, refreshIntervalMs);
     document.addEventListener("visibilitychange", refreshStale);
     let changedTimer: number | undefined;
+    let changedTrailingTimer: number | undefined;
     const onDataChanged = () => {
       window.clearTimeout(changedTimer);
-      changedTimer = window.setTimeout(() => requestedSections.forEach((section) => load(section, true, true)), dataChangedDebounceMs);
+      window.clearTimeout(changedTrailingTimer);
+      const refreshChanged = () => requestedSections.forEach((section) => load(section, true, true));
+      changedTimer = window.setTimeout(refreshChanged, dataChangedDebounceMs);
+      // 同一块 30 秒内只优先算一次：连续操作时后一次可能排不上，停在旧结果。最后一次操作后再补一次；数据没变时服务端直接给缓存，不重算。
+      changedTrailingTimer = window.setTimeout(refreshChanged, dataChangedTrailingMs);
     };
     window.addEventListener(DATA_CHANGED_EVENT, onDataChanged);
     return () => {
       active = false;
       window.clearTimeout(changedTimer);
+      window.clearTimeout(changedTrailingTimer);
       window.removeEventListener(DATA_CHANGED_EVENT, onDataChanged);
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", refreshStale);
