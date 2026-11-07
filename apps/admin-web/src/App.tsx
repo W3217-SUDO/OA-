@@ -566,9 +566,8 @@ const menuItems: NavItem[] = [
         label: "公证信息导入",
         icon: <UnorderedListOutlined />,
         children: [
-          // 501692/501694（fwl 11-06）：“取证信息文件导入”改名“公证书号仓库信息导入”放第一位，与旧系统一致。
+          // 501692/501694（fwl 11-06）：只留“公证书号仓库信息导入”（原“取证信息文件导入”），与旧系统一致；原“公证信息导入”子项并进这个页面。
           { key: "notary-import-storage", label: "公证书号仓库信息导入" },
-          { key: "notary-import-info", label: "公证信息导入" },
           { key: "notary-import-files", label: "公证书文件导入" },
           { key: "notary-import-invoices", label: "发票文件导入" },
         ],
@@ -845,9 +844,8 @@ function configuredMenuItems(rows: NavConfig[]): NavItem[] {
       label: "公证信息导入",
       icon: <UnorderedListOutlined />,
       children: [
-        // 501692/501694（fwl 11-06）：“取证信息文件导入”改名“公证书号仓库信息导入”放第一位，与旧系统一致。
+        // 501692/501694（fwl 11-06）：只留“公证书号仓库信息导入”（原“取证信息文件导入”），与旧系统一致；原“公证信息导入”子项并进这个页面。
         { key: "notary-import-storage", label: "公证书号仓库信息导入" },
-        { key: "notary-import-info", label: "公证信息导入" },
         { key: "notary-import-files", label: "公证书文件导入" },
         { key: "notary-import-invoices", label: "发票文件导入" },
       ],
@@ -1162,7 +1160,6 @@ const routePageLabels: Record<string, string> = {
   "documents-agent": "AI 智能文档",
   "agent-center": "智能体设置",
   "case-agent-center": "案件智能体中心",
-  "notary-import-info": "公证信息导入",
   "notary-import-storage": "公证书号仓库信息导入",
   "notary-import-files": "公证书文件导入",
   "notary-import-invoices": "发票文件导入",
