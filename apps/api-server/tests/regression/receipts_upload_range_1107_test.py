@@ -29,8 +29,17 @@ class ReceiptUploadRangeTest(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as db:
             db.add(User(username=IDENTITY["username"], display_name="收文测试", role="admin", role_ids=["admin"],
                         department="测试部", password_hash="unused", is_active=True))
+            for username, name in (("lawyer1107", "王开庭"), ("assist1107", "李助理"), ("brand1107", "赵品牌")):
+                db.add(User(username=username, display_name=name, role="user", role_ids=["user"], department="测试部",
+                            password_hash="unused", is_active=True))
+            customer = BusinessRecord(module="customer", serial_no="KH-1107", title="甲公司", status="正常", owner=IDENTITY["username"],
+                                      department="测试部", customer="甲公司", description="", data={"customer_managers": ["brand1107"]})
+            db.add(customer)
+            await db.flush()
             case = BusinessRecord(module="case", serial_no="HZMS-1107", title="案件", status="提交立案", owner=IDENTITY["username"],
-                                  department="测试部", customer="甲公司", description="", data={"plaintiff": "甲公司", "opponent": "乙公司"})
+                                  department="测试部", customer="甲公司", description="",
+                                  data={"plaintiff": "甲公司", "opponent": "乙公司", "hearing_lawyer": "lawyer1107",
+                                        "assistant_usernames": ["assist1107"], "customer_id": customer.id})
             db.add(case)
             await db.flush()
             # 案件附件：前一天深夜、当天零点后、当天深夜、次日零点（北京时间）
@@ -86,6 +95,15 @@ class ReceiptUploadRangeTest(unittest.IsolatedAsyncioTestCase):
     async def test_today_only_returns_that_day(self):
         names = sorted(row["title"] for row in (await self.listing("company", uploaded_from="2026-11-07", uploaded_to="2026-11-07"))["items"])
         self.assertEqual(names, ["官文当天_通知书.pdf", "当天凌晨_传票.pdf", "当天深夜_判决书.pdf"])
+
+    async def test_rows_show_case_people_names(self):
+        # 陶威 11-07：收文台开庭律师、律师助理、品牌管理人三列一直显示“姓名待维护”，接口要给出姓名。
+        for scope in ("company", "mine", "official"):
+            rows = (await self.listing(scope))["items"]
+            self.assertTrue(rows, scope)
+            for row in rows:
+                self.assertEqual((row["data"]["hearing_lawyer_display_name"], row["data"]["assistant_display_name"],
+                                  row["data"]["brand_manager_display_name"]), ("王开庭", "李助理", "赵品牌"), f"{scope} {row['title']}")
 
     async def test_range_needs_both_ends_in_order(self):
         for params in ({"uploaded_from": "2026-11-07"}, {"uploaded_to": "2026-11-07"}, {"uploaded_from": "2026-11-08", "uploaded_to": "2026-11-07"}):
