@@ -5,8 +5,8 @@ import { api } from "./api";
 import { iprCaseDetailRoute } from "./ipr/iprCaseTabs";
 import { FILTERS, IPR_CREATE_FROM_MY_CASES_KEY, IPR_MY_CASE_GROUPS, dateText, myCaseQueryParams, remainingDays, text, type FilterValues, type GroupKey } from "./ipr/myCases";
 
-// 501613（范文玲 11-05）：知识产权中心“我的案件”，照老系统 案件中心 › 我的案件：
-// 左侧按我在案件里的角色分组（带数量），右侧筛选和案件列表。前五组不含失效案件，失效的在“失效案件”里看。
+// 501613（范文玲 11-05）、501690（思法汇成 11-07）：知产非诉“我的案件”下 6 个菜单共用这个列表，
+// 按我在案件里的角色筛选。前五个不含失效案件，失效的在“失效案件”里看。
 type CaseRow = {
   id: number;
   serial_no: string;
@@ -15,13 +15,10 @@ type CaseRow = {
   status: string;
   data?: Record<string, unknown> | null;
 };
-type Counts = Partial<Record<GroupKey, number>>;
 const errorDetail = (error: any, fallback: string) => error?.response?.data?.detail || fallback;
 
-export default function IprMyCasesPage({ onNavigate }: { onNavigate?: (route: string) => void }) {
+export default function IprMyCasesPage({ group, onNavigate }: { group: GroupKey; onNavigate?: (route: string) => void }) {
   const [form] = Form.useForm<FilterValues>();
-  const [group, setGroup] = useState<GroupKey>("mine");
-  const [counts, setCounts] = useState<Counts>({});
   const [rows, setRows] = useState<CaseRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -29,10 +26,10 @@ export default function IprMyCasesPage({ onNavigate }: { onNavigate?: (route: st
   const [filters, setFilters] = useState<FilterValues>({});
   const [loading, setLoading] = useState(false);
   const [people, setPeople] = useState<Record<string, string>>({});
-  const roleView = IPR_MY_CASE_GROUPS.find((item) => item.key === group)?.roleView || "my:mine";
+  const groupItem = IPR_MY_CASE_GROUPS.find((item) => item.key === group);
+  const roleView = groupItem?.roleView || "my:mine";
 
   useEffect(() => {
-    api.get<Counts>("/ipr/cases/my-counts").then(({ data }) => setCounts(data)).catch(() => undefined);
     // 案件管理人迁移时存的是账号，列表里显示成姓名。
     api.get<{ items: { username: string; display_name: string }[] }>("/users/directory")
       .then(({ data }) => setPeople(Object.fromEntries(data.items.map((item) => [item.username, item.display_name]))))
@@ -64,7 +61,7 @@ export default function IprMyCasesPage({ onNavigate }: { onNavigate?: (route: st
       const url = URL.createObjectURL(response.data as Blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `我的案件-${IPR_MY_CASE_GROUPS.find((item) => item.key === group)?.label || ""}.xls`;
+      anchor.download = `我的案件-${groupItem?.label || ""}.xls`;
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -85,26 +82,8 @@ export default function IprMyCasesPage({ onNavigate }: { onNavigate?: (route: st
   };
 
   return (
-    <div className="page-shell ipr-my-cases-page" style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start" }}>
-      <Card size="small" title="我的案件" style={{ width: 200, flex: "0 0 200px" }} styles={{ body: { padding: "4px 0" } }}>
-        {IPR_MY_CASE_GROUPS.map((item) => (
-          <div
-            key={item.key}
-            role="button"
-            tabIndex={0}
-            onClick={() => { setGroup(item.key); setPage(1); }}
-            onKeyDown={(event) => { if (event.key === "Enter") { setGroup(item.key); setPage(1); } }}
-            style={{
-              padding: "6px 16px", cursor: "pointer",
-              background: item.key === group ? "#e6f4ff" : undefined,
-              color: item.key === group ? "#1677ff" : undefined,
-            }}
-          >
-            {item.label}{counts[item.key] !== undefined ? `(${counts[item.key]})` : ""}
-          </div>
-        ))}
-      </Card>
-      <Card size="small" style={{ flex: "1 1 600px", minWidth: 0 }} title="案件列表"
+    <div className="page-shell ipr-my-cases-page">
+      <Card size="small" title={groupItem?.label || "我的案件"}
         extra={<Button type="primary" onClick={() => {
           try { sessionStorage.setItem(IPR_CREATE_FROM_MY_CASES_KEY, "1"); } catch { /* 存不了就只跳转 */ }
           onNavigate?.("ipr-patent");

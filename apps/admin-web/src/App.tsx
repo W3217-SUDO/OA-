@@ -1,5 +1,6 @@
 import Dashboard, { type DashboardView } from "./Dashboard";
 import { IPR_FEE_FILE_PAGES } from "./ipr/feeFilePages";
+import { IPR_MY_CASE_MENU, IPR_MY_CASE_ROUTES } from "./ipr/myCases";
 import { ConflictReviewHost } from "./conflict-review/ConflictReviewHost";
 import { IPR_CASE_TAB_PREFIX, IPR_WARNINGS_ROUTE, iprCaseTabLabel, parseIprCaseDetailRoute } from "./ipr/iprCaseTabs";
 import { dashboardWorkspace } from "./dashboardWorkspace";
@@ -419,17 +420,23 @@ const menuItems: NavItem[] = [
     key: "ipr",
     label: "知产非诉",
     children: [
-      // 501616：按老系统“案件中心”菜单；监控、转文、转票做好一个加一个。
-      { key: "ipr-my-cases", label: "我的案件" },
-      { key: "ipr-case-reboot", label: "案件重提" },
-      { key: "ipr-patent-transfer", label: "专利转文" },
-      { key: "ipr-patent-annual-fee", label: "专利年费" },
-      { key: "ipr-trademark-transfer", label: "商标转文" },
-      { key: "ipr-case-files", label: "案件文件", children: [
-        { key: "ipr-custom-file-import", label: "案件自定义文件导入" },
-        ...Object.entries(IPR_FEE_FILE_PAGES).map(([key, page]) => ({ key, label: page.label })),
+      // 501690（思法汇成 11-07）：分成 我的案件、全部案件、流程事务，非诉财务中心单独留一块。
+      { key: "ipr-my-cases", label: "我的案件", children: IPR_MY_CASE_MENU },
+      { key: "ipr-all-cases", label: "全部案件", children: [
+        { key: "ipr-all-patent", label: "专利案件" },
+        { key: "ipr-all-trademark", label: "商标案件" },
       ] },
-      { key: "ipr-office-files", label: "知识产权官文" },
+      { key: "ipr-process", label: "流程事务", children: [
+        { key: "ipr-patent-transfer", label: "专利转文" },
+        { key: "ipr-trademark-transfer", label: "商标转文" },
+        { key: "ipr-patent-annual-fee", label: "专利年费" },
+        { key: "ipr-case-reboot", label: "案件重提" },
+        { key: "ipr-case-files", label: "案件文件", children: [
+          { key: "ipr-custom-file-import", label: "案件自定义文件导入" },
+          ...Object.entries(IPR_FEE_FILE_PAGES).map(([key, page]) => ({ key, label: page.label })),
+        ] },
+        { key: "ipr-office-files", label: "知识产权官文" },
+      ] },
       {
         key: "ipr-finance",
         label: "非诉财务中心",
@@ -2065,8 +2072,10 @@ export default function App() {
       <IprCaseRebootPage onNavigate={navigate} />
     ) : route === "ipr-patent-annual-fee" ? (
       <IprAnnualFeePage onNavigate={navigate} />
-    ) : route === "ipr-my-cases" ? (
-      <IprMyCasesPage onNavigate={navigate} />
+    ) : IPR_MY_CASE_ROUTES[route] ? (
+      <IprMyCasesPage key={route} group={IPR_MY_CASE_ROUTES[route]} onNavigate={navigate} />
+    ) : route === "ipr-all-patent" || route === "ipr-all-trademark" ? (
+      <IprCenterPage key={route} initialView={route === "ipr-all-patent" ? "ipr-patent" : "ipr-trademark"} onNavigate={navigate} />
     ) : IPR_FEE_FILE_PAGES[route] ? (
       <IprFeeFileImportPage route={route} />
     ) : route === "ipr-patent-transfer" || route === "ipr-trademark-transfer" ? (

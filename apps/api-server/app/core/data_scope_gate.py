@@ -28,6 +28,7 @@ _PERSONAL_PAGES = frozenset({
     "contract-archive", "contract-recycle",
     "finance-internal-detail",
     "party-company-info", "party-recycle",
+    "ipr-source-person", "ipr-procurator", "ipr-copywriter", "ipr-business-owner", "ipr-officer",
 })
 
 # 名字带 new 但办的是全所事务：财务登记到账。

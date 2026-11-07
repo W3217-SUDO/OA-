@@ -12,12 +12,25 @@ export type FilterValues = {
 };
 
 export const IPR_MY_CASE_GROUPS: { key: GroupKey; label: string; roleView: string }[] = [
-  { key: "business_owner", label: "案件管理人", roleView: "my:business_owner" },
   { key: "source_person", label: "我是案源人", roleView: "my:source_person" },
+  { key: "business_owner", label: "我是管理人", roleView: "my:business_owner" },
   { key: "procurator", label: "我是代理人", roleView: "my:procurator" },
   { key: "copywriter", label: "我是撰稿人", roleView: "my:copywriter" },
   { key: "mine", label: "我的案件", roleView: "my:mine" },
   { key: "invalid", label: "失效案件", roleView: "invalid" },
+];
+
+/** 501690：“我的案件”下 6 个菜单各对应一个分组；ipr-my-cases 是分组本身，旧链接按“我的案件”打开。 */
+export const IPR_MY_CASE_ROUTES: Record<string, GroupKey> = {
+  "ipr-my-cases": "mine", "ipr-my-mine": "mine", "ipr-my-invalid": "invalid",
+  "ipr-source-person": "source_person", "ipr-business-owner": "business_owner",
+  "ipr-procurator": "procurator", "ipr-copywriter": "copywriter",
+};
+
+export const IPR_MY_CASE_MENU = [
+  { key: "ipr-source-person", label: "我是案源人" }, { key: "ipr-business-owner", label: "我是管理人" },
+  { key: "ipr-procurator", label: "我是代理人" }, { key: "ipr-copywriter", label: "我是撰稿人" },
+  { key: "ipr-my-mine", label: "我的案件" }, { key: "ipr-my-invalid", label: "失效案件" },
 ];
 
 export const FILTERS: { name: Exclude<keyof FilterValues, "application_dates">; label: string; placeholder?: string }[] = [

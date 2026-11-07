@@ -169,7 +169,8 @@ def _drop_partial_parent_menu_keys(permissions: list[str]) -> list[str]:
             if (child in SYSTEM_MENU_ROUTE_KEYS and child not in ROLE_TREE_HIDDEN_MENU_KEYS and child not in PUBLIC_MENU_KEYS
                     and child not in PARENT_GRANT_EXCLUDED_MENU_KEYS):
                 result.add(child)
-            result |= required(child)
+            if child not in PARENT_GRANT_EXCLUDED_MENU_KEYS:  # 不随父菜单继承的分组，下面的页面也不算
+                result |= required(child)
         return result
 
     kept = []
@@ -839,6 +840,17 @@ async def _require_investigation_assignment_access(record: BusinessRecord, ident
     await _require_record_owner_or_manager(record, actual_identity, db)
 
 
+async def _ipr_own_cases_only(identity: dict, db: AsyncSession) -> bool:
+    """501690：知产非诉只持有“我的案件”这类个人页面的账号，非诉案件只看自己相关的；全部案件、流程事务等工作页面才看全所。"""
+    from app.core.data_scope_gate import center_has_work_page, gate_enabled, page_center
+    if "admin" in identity.get("_actual_role_ids", []):
+        return False
+    menu_keys = {str(key) for key in identity.get("menu_keys") or []}
+    if not any(page_center(key) == "ipr" for key in menu_keys) or center_has_work_page(menu_keys, ("@root:ipr",)):
+        return False
+    return await gate_enabled(db)
+
+
 async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
     from app.core.conflict_review import can_review_conflicts
     protected_scope = [] if await can_review_conflicts(identity, db) else [or_(
@@ -850,6 +862,8 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession) -> list:
         protected_scope.append(or_(
             BusinessRecord.module != "bug_feedback", BusinessRecord.owner == identity.get("username", ""),
         ))
+    if await _ipr_own_cases_only(identity, db):
+        protected_scope.append(or_(BusinessRecord.module != "ipr_case", *_ipr_case_role_view_conditions("mine", identity)))
     if "_dashboard_record_ids" in identity:
         # 控制台授权编号共用一个参数，保留完整范围且不随记录数量突破参数上限。
         return [*protected_scope, scalar_in_values(BusinessRecord.id, identity["_dashboard_record_ids"])]

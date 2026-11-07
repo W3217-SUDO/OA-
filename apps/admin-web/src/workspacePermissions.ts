@@ -42,8 +42,8 @@ export function isWorkspaceRouteGranted(
   if (route === "case-agent-center") return hasFamily("case");
   if (route.startsWith("customer-detail-")) return hasFamily("customer");
   if (route.startsWith("ipr-case-detail-") || route === "ipr-warnings") return hasFamily("ipr");
-  // 501616：专利/商标案件页已不在菜单里，是“我的案件”新建案件的承载页，有“我的案件”就能进。
-  if ((route === "ipr-patent" || route === "ipr-trademark") && grantedKeys.has("ipr-my-cases")) return true;
+  // 501616、501690：专利/商标案件页已不在菜单里，是新建案件、返回列表的承载页；有“我的案件”或“全部案件”任一页就能进，看到什么由后端按范围定。
+  if ((route === "ipr-patent" || route === "ipr-trademark") && Array.from(grantedKeys).some((key) => /^ipr-(my-|all-|source-person$|business-owner$|procurator$|copywriter$)/.test(key))) return true;
   if (["contract-detail-", "contract-change-", "contract-payment-apply-", "contract-invoice-apply-", "contract-investigation-"].some((prefix) => route.startsWith(prefix))) {
     return hasFamily("contract");
   }

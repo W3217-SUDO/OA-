@@ -72,13 +72,11 @@ class IprMyCases501613Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.serials(role_view="invalid"), ["M4", "X2"], "失效案件：能看的案件里阶段为失效的")
         self.assertEqual(await self.serials(role_view="business_owner"), ["M1", "M4"], "原“我是案件管理人”菜单修好，仍含失效")
 
-    async def test_extra_filters_and_counts(self):
+    async def test_extra_filters(self):
         self.assertEqual(await self.serials(role_view="my:mine", applicant="甲公司"), ["M1"])
         self.assertEqual(await self.serials(role_view="my:mine", trademark_class="35"), ["M1"])
         self.assertEqual(await self.serials(role_view="my:mine", customer="客户乙"), ["M3"])
         self.assertEqual(await self.serials(role_view="my:mine", case_no="M5"), ["M5"])
-        counts = (await self.client.get(f"{API}/ipr/cases/my-counts")).json()
-        self.assertEqual(counts, {"business_owner": 1, "source_person": 1, "procurator": 1, "copywriter": 1, "mine": 5, "invalid": 2})
 
 
 if __name__ == "__main__":

@@ -42,11 +42,7 @@ export const CUSTOMER_IPR_RELATION_STORAGE_KEY =
 export const IPR_WARNING_TARGET_STORAGE_KEY = "sunhold:ipr-warning-target";
 
 export const IPR_ROLE_VIEW_BY_ROUTE: Record<string, { roleView: string; label: string }> = {
-  "ipr-source-person": { roleView: "source_person", label: "我是案源人" },
-  "ipr-procurator": { roleView: "procurator", label: "我是代理人" },
-  "ipr-copywriter": { roleView: "copywriter", label: "我是撰稿人" },
   "ipr-officer": { roleView: "officer", label: "我是处理人" },
-  "ipr-business-owner": { roleView: "business_owner", label: "我是案件管理人" },
 };
 
 export const consumeCustomerIprRelationKeyword = () => {

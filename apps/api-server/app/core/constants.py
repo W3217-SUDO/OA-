@@ -122,14 +122,19 @@ DEFAULT_SYSTEM_MENUS = [
     # BUG20261030004（高勤兰、思法汇成确认）：按老系统顺序 专利监控、专利转文、专利转票、专利年费、商标监控、商标转文、商标转票、案件重提、案件文件，
     # 原有菜单排在后面；1~7 号位留给分批上线的监控、转文、转票、年费。
     # 501613（范文玲 11-05）：“我的案件”放第一项，按我在案件里的角色分组。
-    ("ipr", "", "知产非诉", "file-text", 67), ("ipr-my-cases", "ipr", "我的案件", "", 0), ("ipr-patent-transfer", "ipr", "专利转文", "", 5), ("ipr-patent-annual-fee", "ipr", "专利年费", "", 7), ("ipr-trademark-transfer", "ipr", "商标转文", "", 9), ("ipr-case-reboot", "ipr", "案件重提", "", 3), ("ipr-case-files", "ipr", "案件文件", "", 11),
+    ("ipr", "", "知产非诉", "file-text", 67), ("ipr-my-cases", "ipr", "我的案件", "", 0),
+    # 501690（思法汇成 11-07）：知产非诉分成 我的案件、全部案件、流程事务 三块，非诉财务中心单独留一块。
+    ("ipr-all-cases", "ipr", "全部案件", "", 1), ("ipr-all-patent", "ipr-all-cases", "专利案件", "", 1), ("ipr-all-trademark", "ipr-all-cases", "商标案件", "", 2),
+    ("ipr-process", "ipr", "流程事务", "", 2),
+    ("ipr-patent-transfer", "ipr-process", "专利转文", "", 1), ("ipr-trademark-transfer", "ipr-process", "商标转文", "", 2), ("ipr-patent-annual-fee", "ipr-process", "专利年费", "", 3), ("ipr-case-reboot", "ipr-process", "案件重提", "", 4), ("ipr-case-files", "ipr-process", "案件文件", "", 5),
     ("ipr-custom-file-import", "ipr-case-files", "案件自定义文件导入", "", 1),
     # 501618（高勤兰 11-05）：案件文件下按旧系统补齐收据、发票的导入和上传（“专利收据导入”待技术部确认后再加）。
     ("ipr-receipt-custom-import", "ipr-case-files", "收据自定义文件导入", "", 2), ("ipr-invoice-import-case", "ipr-case-files", "发票文件导入(案件)", "", 3),
     ("ipr-invoice-import-contract", "ipr-case-files", "发票文件导入(合同)", "", 4), ("ipr-patent-invoice-upload", "ipr-case-files", "专利发票上传", "", 5),
     ("ipr-patent-receipt-upload", "ipr-case-files", "专利收据上传", "", 6), ("ipr-other-invoice-upload", "ipr-case-files", "其他案件发票上传", "", 7),
-    ("ipr-patent", "ipr", "专利案件", "", 20), ("ipr-trademark", "ipr", "商标案件", "", 21), ("ipr-review", "ipr", "知识产权立案审核", "", 22), ("ipr-office-files", "ipr", "知识产权官文", "", 12),
-    ("ipr-source-person", "ipr", "我是案源人", "", 23), ("ipr-procurator", "ipr", "我是代理人", "", 24), ("ipr-copywriter", "ipr", "我是撰稿人", "", 25), ("ipr-officer", "ipr", "我是处理人", "", 26), ("ipr-business-owner", "ipr", "我是案件管理人", "", 27),
+    ("ipr-patent", "ipr", "专利案件", "", 20), ("ipr-trademark", "ipr", "商标案件", "", 21), ("ipr-review", "ipr", "知识产权立案审核", "", 22), ("ipr-office-files", "ipr-process", "知识产权官文", "", 6),
+    ("ipr-source-person", "ipr-my-cases", "我是案源人", "", 1), ("ipr-business-owner", "ipr-my-cases", "我是管理人", "", 2), ("ipr-procurator", "ipr-my-cases", "我是代理人", "", 3), ("ipr-copywriter", "ipr-my-cases", "我是撰稿人", "", 4),
+    ("ipr-my-mine", "ipr-my-cases", "我的案件", "", 5), ("ipr-my-invalid", "ipr-my-cases", "失效案件", "", 6), ("ipr-officer", "ipr", "我是处理人", "", 26),
     # 501099（陶国南 11-02 定方案二）：非诉财务中心与财务中心同一套页面，只看非诉（知识产权）；分批上线，先上回款管理。
     ("ipr-finance", "ipr", "非诉财务中心", "", 19), ("ipr-finance-receipts", "ipr-finance", "回款管理", "", 1),
     ("ipr-finance-receipts-new", "ipr-finance-receipts", "新增回款", "", 1), ("ipr-finance-receipts-mine", "ipr-finance-receipts", "我的回款", "", 2),
@@ -227,17 +232,15 @@ DEFAULT_SYSTEM_MENUS += [
 
 # 仅隐藏导航，路由和业务授权继续保留。
 # 付款打包-管理按旧系统 付款管理 › 付款包列表 显示（陶威 2026-10-31 要求新旧系统对齐）。
-# 501616（范文玲 11-05）：知识产权中心按老系统“案件中心”菜单；下面这些页面不在菜单里显示，也不在角色权限树里，
-# 后台照常认原来的授权（专利/商标案件页仍是“我的案件”新建案件、案件详情的承载页）。官文等专利转文、商标转文上线后再收。
-IPR_MENU_KEYS_REMOVED_501616 = frozenset({
-    "ipr-patent", "ipr-trademark", "ipr-review", "ipr-source-person", "ipr-procurator",
-    "ipr-copywriter", "ipr-officer", "ipr-business-owner",
-})
+# 501616（范文玲 11-05）、501690（思法汇成 11-07）：下面这些页面不在菜单里显示，也不在角色权限树里，后台照常认原来的授权。
+# 专利/商标案件页仍是新建案件、案件详情的承载页；菜单上的“全部案件”用 ipr-all-*，财务等角色存的旧授权不会带出新菜单。
+IPR_MENU_KEYS_REMOVED_501616 = frozenset({"ipr-patent", "ipr-trademark", "ipr-review", "ipr-officer"})
 DEFAULT_HIDDEN_MENU_KEYS = {"finance-internal-void", *IPR_MENU_KEYS_REMOVED_501616}
 # 新菜单先只给管理员（陶国南 11-05：新权限一律先给管理员，再由管理员配给别人）：
 # 这些子菜单不随已授权的父菜单（如老角色存的“知识产权中心”ipr）自动继承，只有单独勾了才给。
 PARENT_GRANT_EXCLUDED_MENU_KEYS = frozenset({
     "ipr-my-cases",
+    "ipr-all-cases",  # 501690 全部案件看全所，单独配给角色
     "ipr-patent-transfer", "ipr-trademark-transfer",  # 280146/501616 专利转文、商标转文
     "ipr-receipt-custom-import", "ipr-invoice-import-case", "ipr-invoice-import-contract",
     "ipr-patent-invoice-upload", "ipr-patent-receipt-upload", "ipr-other-invoice-upload",
