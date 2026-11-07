@@ -20,7 +20,7 @@ import yaml
 
 from app.config import settings
 from .bridge import workspace_mcp
-from .skills import CODE_TOOL, RESOURCE_TOOL, SCRIPT_TOOL, WEB_TOOL, WorkspaceTools, definitions, publish
+from .skills import CODE_TOOL, RESOURCE_TOOL, SCRIPT_TOOL, WEB_TOOL, WorkspaceTools, definitions, publish, scoped_schemas
 from .lease import session_lease, wait_for_session_lease
 from .paths import filesystem_path, native_path
 
@@ -338,7 +338,7 @@ async def _run_session(messages, on_delta, *, tools, schema, identity, db, ident
             available = await definitions(identity, db)
             directories = publish(home.parent.parent / "skill-versions", available)
             guarded = WorkspaceTools(tools, identity, db, on_progress)
-            schemas = [*schema, RESOURCE_TOOL, SCRIPT_TOOL, CODE_TOOL, WEB_TOOL]
+            schemas = scoped_schemas(tools, schema, [RESOURCE_TOOL, SCRIPT_TOOL, CODE_TOOL, WEB_TOOL])
             from .memory import configuration as memory_configuration
             memory = memory_configuration(cwd, identity['username'])
             from .plugins import attach

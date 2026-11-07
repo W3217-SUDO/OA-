@@ -150,6 +150,26 @@ async def web_fetch(arguments):
         return {"isError": True, "url": url, "message": "网页读取结果无法解析"}
 
 
+# 限定工具范围的一轮（钉钉收文助手）只留 OA 工具和读技能资料：沙箱代码、技能脚本、上网读取、专业数据集、豆包搜索都关掉，
+# 免得群消息或文书里的提示注入把收文数据带到公网（分支 4 审查 11-07）。
+SCOPED_BLOCKED = frozenset({"harness_run_code", "harness_run_skill_script", "harness_web_fetch", "volc_professional_data", "doubao_search"})
+
+
+def tool_scope_of(tools):
+    """取工具集上的范围限定；外面可能包了一层 Harness 工具。只认真正的 ToolScope。"""
+    from app.agent_mcp.model_tools import ToolScope
+    for item in (tools, getattr(tools, "delegate", None)):
+        scope = getattr(item, "tool_scope", None) if item is not None else None
+        if isinstance(scope, ToolScope):
+            return scope
+    return None
+
+
+def scoped_schemas(tools, schemas, extra):
+    """限定范围时只给 OA 工具和读技能资料，其余工具不出现在模型面前。"""
+    return [*schemas, RESOURCE_TOOL] if tool_scope_of(tools) is not None else [*schemas, *extra]
+
+
 class WorkspaceTools:
     def __init__(self, delegate, identity, db, on_progress=None):
         self.delegate, self.identity, self.db = delegate, identity, db
@@ -171,6 +191,8 @@ class WorkspaceTools:
             tool_trace.record(name, arguments, ok=ok, started=started)
 
     async def _execute(self, name, arguments):
+        if name in SCOPED_BLOCKED and tool_scope_of(self.delegate) is not None:
+            raise HTTPException(403, "这里只能查收文，不能用这个工具")
         if name == "harness_run_code":
             from app.agent_mcp.auth import authenticated_identity
             actual = await authenticated_identity(self.db)

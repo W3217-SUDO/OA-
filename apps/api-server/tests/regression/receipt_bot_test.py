@@ -989,6 +989,20 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         failed = await self._run_ask(sms(message_id="m2", text="今天收了哪些文书"), BotSettings(group_id=GROUP_ID, use_cloud_agent=True, auto_save_unique=False), ask)
         self.assertIn("暂时答不上来", failed.text)
 
+    def test_question_with_case_number_is_not_an_sms(self):
+        from app.areas.aws.receipt_bot import looks_like_court_sms
+        for text in ("（2026）苏0281民初17172号收到传票了吗？", "请问（2025）沪0110民初123号开庭时间是哪天", "今天收了几份文书"):
+            self.assertFalse(looks_like_court_sms(text), text)
+        for text in ("【江阴市人民法院】沈建锋,向您发送了（2026）苏0281民初17172号案件相关文书", "（2026）苏0281民初17172号案件相关文书请到本院领取"):
+            self.assertTrue(looks_like_court_sms(text), text)
+
+    def test_spaced_phone_and_account_numbers_are_hidden(self):
+        from app.areas.aws.receipt_bot import clean_answer
+        text = clean_answer("电话 138 1234 5678 或 138-1234-5678，账号 6222 0000 1111 2222 3333。开庭 2026-11-06 09:30。")
+        for hidden in ("138 1234 5678", "138-1234-5678", "6222 0000 1111 2222 3333"):
+            self.assertNotIn(hidden, text)
+        self.assertIn("2026-11-06 09:30", text)
+
     async def test_court_sms_without_link_still_goes_to_pending(self):
         ask = AsyncMock(return_value="不该调用")
         text = "【江阴市人民法院】沈建锋,江阴市人民法院向您发送了（2026）苏0281民初17172号案件相关文书，请到本院领取。"
@@ -1025,17 +1039,55 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((message["conversation_id"], message["tool_scope"], message["skill_id"]), ("fixed-1", "court_receipt", "court-doc-intake"))
         self.assertTrue(message["content"].endswith("今天收了哪些"))
 
+    async def test_agent_ask_never_returns_previous_answer(self):
+        import json
+        from app import dingtalk_receipt_worker as module
+        fixed = {"id": "fixed-1", "title": "钉钉收文助手", "skill_id": "court-doc-intake"}
+
+        def handler(request):
+            if request.method == "GET":
+                return httpx.Response(200, json={"active_id": "web-1", "items": [fixed]})
+            if request.url.path.endswith("/personal-agent/messages"):
+                state = {"messages": [{"role": "user", "content": "上一题"}, {"role": "assistant", "content": "上一题的答案"},
+                                      {"role": "user", "content": "这一题"}], "pending_actions": []}
+                return httpx.Response(200, text=f"data: {json.dumps({'type': 'state', 'state': state})}\n\n")
+            return httpx.Response(200, json={})
+        with patch.object(module, "_token", AsyncMock(return_value="t")):
+            self.assertEqual(await module.agent_ask("lawyer", "这一题", transport=httpx.MockTransport(handler)), "")
+
     def test_receipt_scope_allows_only_read_receipt_tools(self):
         from app.agent_mcp.catalog import get_catalog
         from app.agent_mcp.model_tools import COURT_RECEIPT_SCOPE
         tools = {(tool.method, tool.path.removeprefix(settings.api_prefix)): tool for tool in get_catalog(app).tools}
-        for key in (("GET", "/documents/receipts"), ("GET", "/documents/receipts/today-mine"), ("GET", "/documents/summary")):
+        for key in (("GET", "/documents/receipts"), ("GET", "/documents/receipts/today-mine")):
             self.assertTrue(COURT_RECEIPT_SCOPE.allows(tools[key]), key)
-        for key in (("POST", "/documents/court-service/intake"), ("POST", "/documents/official/delete"), ("GET", "/seals/applications"),
+        for key in (("GET", "/documents/summary"), ("POST", "/documents/court-service/intake"), ("POST", "/documents/official/delete"), ("GET", "/seals/applications"),
                     ("POST", "/seals/applications"), ("GET", "/official-outgoing")):
             self.assertFalse(COURT_RECEIPT_SCOPE.allows(tools[key]), key)
         others = [tool for tool in tools.values() if tool.group_id != "22"]
         self.assertFalse(any(COURT_RECEIPT_SCOPE.allows(tool) for tool in others))
+        receipts = tools[("GET", "/documents/receipts")]
+        for query, code in (({"scope": "company", "uploaded_from": "2026-11-01", "uploaded_to": "2026-11-07"}, 403),
+                            ({"scope": "mine"}, 422), ({"scope": "mine", "uploaded_from": "2026-09-01", "uploaded_to": "2026-11-07"}, 422)):
+            with self.assertRaises(HTTPException) as caught:
+                COURT_RECEIPT_SCOPE.check_arguments(receipts, {"query": query})
+            self.assertEqual(caught.exception.status_code, code, query)
+        COURT_RECEIPT_SCOPE.check_arguments(receipts, {"query": {"scope": "mine", "uploaded_from": "2026-11-01", "uploaded_to": "2026-11-07"}})
+
+    async def test_scoped_turn_has_no_sandbox_web_or_search_tools(self):
+        from app.agent_mcp.model_tools import COURT_RECEIPT_SCOPE, ModelToolSession
+        from app.harness_agent.skills import CODE_TOOL, RESOURCE_TOOL, SCRIPT_TOOL, WEB_TOOL, WorkspaceTools, scoped_schemas
+        scoped, plain = ModelToolSession(tool_scope=COURT_RECEIPT_SCOPE), ModelToolSession()
+        wrapped = SimpleNamespace(delegate=scoped)  # 云端外面包了一层 Harness 工具
+        extra = [RESOURCE_TOOL, SCRIPT_TOOL, CODE_TOOL, WEB_TOOL]
+        self.assertEqual(scoped_schemas(scoped, [], extra), [RESOURCE_TOOL])
+        self.assertEqual(scoped_schemas(wrapped, [], extra), [RESOURCE_TOOL])
+        self.assertEqual(scoped_schemas(plain, [], extra), extra)
+        guarded = WorkspaceTools(wrapped, {"username": "lawyer"}, None)
+        for name in ("harness_run_code", "harness_run_skill_script", "harness_web_fetch", "volc_professional_data", "doubao_search"):
+            with self.assertRaises(HTTPException) as caught:
+                await guarded._execute(name, {})
+            self.assertEqual(caught.exception.status_code, 403, name)
 
     async def test_scoped_session_refuses_other_tools(self):
         from app.agent_mcp.model_tools import COURT_RECEIPT_SCOPE

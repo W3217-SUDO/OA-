@@ -19,7 +19,7 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from app.harness_agent.lease import session_lease
-from app.harness_agent.skills import CODE_TOOL, RESOURCE_TOOL, SCRIPT_TOOL, WEB_TOOL, WorkspaceTools, definitions, native_name
+from app.harness_agent.skills import CODE_TOOL, RESOURCE_TOOL, SCRIPT_TOOL, WEB_TOOL, WorkspaceTools, definitions, native_name, scoped_schemas
 
 from .client import ArkClient, ArkError
 from .config import CloudSettings
@@ -370,7 +370,8 @@ async def run(messages, on_delta, *, tools, schema, identity, db, workspace, con
     delegate = HarnessTools(tools, cloud.plan_key) if cloud.plan_key else tools
     guarded = WorkspaceTools(delegate, identity, db, on_progress)
     # 工具和 DSH 时一个不少：OA 业务工具、技能资料/脚本、运行代码、读网页，再加 Agent Plan 的 Harness。
-    schemas = [*schema, RESOURCE_TOOL, SCRIPT_TOOL, CODE_TOOL, WEB_TOOL, *harness_schemas(datapro=cloud.datapro, search=cloud.doubao_search)]
+    schemas = scoped_schemas(tools, schema, [RESOURCE_TOOL, SCRIPT_TOOL, CODE_TOOL, WEB_TOOL,
+                                             *harness_schemas(datapro=cloud.datapro, search=cloud.doubao_search)])
     from app.harness_agent.native_plugin_skills import definitions as plugin_definitions
     catalog = skill_catalog([*await definitions(identity, db), *plugin_definitions()])
     try:

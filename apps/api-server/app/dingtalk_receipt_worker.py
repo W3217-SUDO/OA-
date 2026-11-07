@@ -165,8 +165,11 @@ async def _agent_message(client: httpx.AsyncClient, headers: dict, conversation:
     if actions:
         await client.post(f"{API_BASE}/personal-agent/conversations/{conversation}/actions/dismiss",
                           json={"action_ids": actions[:30]}, headers=headers)
-    answers = [item for item in state.get("messages") or [] if item.get("role") == "assistant"]
-    return str(answers[-1].get("content") or "") if answers else ""
+    # 只取这一轮的回答：最后一条用户消息之后的 assistant。这一轮没产生回答时返回空，不把上一题的答案发出去。
+    messages = list(state.get("messages") or [])
+    last_user = max((index for index, item in enumerate(messages) if item.get("role") == "user"), default=-1)
+    answers = [item for item in messages[last_user + 1:] if item.get("role") == "assistant" and not item.get("source")]
+    return str(answers[-1].get("content") or "") if answers and last_user >= 0 else ""
 
 
 def parse_message(data: dict) -> BotMessage:

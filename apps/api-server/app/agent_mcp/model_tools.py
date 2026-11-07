@@ -5,6 +5,7 @@ import json
 import re
 from contextvars import ContextVar
 from dataclasses import dataclass
+from datetime import date, timedelta
 from typing import Any, Awaitable, Callable
 
 import httpx
@@ -95,9 +96,24 @@ class ToolScope:
         return (tool is not None and tool.method == "GET" and not tool.is_write and tool.group_id in self.groups
                 and any(tool.path.startswith(settings.api_prefix + prefix) for prefix in self.path_prefixes))
 
+    def check_arguments(self, tool: ToolDefinition, arguments: dict) -> None:
+        """收文列表只查与本人有关的、最多 31 天：群里的回答全群都看得到，不能查全公司，也不能一次读全量。"""
+        if tool.path != settings.api_prefix + "/documents/receipts":
+            return
+        query = arguments.get("query") if isinstance(arguments.get("query"), dict) else {}
+        if query.get("scope") != "mine":
+            raise HTTPException(403, "群里只能查与你有关案件的收文（scope=mine），全公司收文请到系统收文台查看")
+        try:
+            start, end = (date.fromisoformat(str(query.get(key) or "")[:10]) for key in ("uploaded_from", "uploaded_to"))
+        except ValueError:
+            raise HTTPException(422, "请带上传日期 uploaded_from、uploaded_to（YYYY-MM-DD），最多查 31 天") from None
+        if not timedelta(0) <= end - start <= timedelta(days=31):
+            raise HTTPException(422, "上传日期最多查 31 天，结束日期不能早于开始日期")
 
-# 钉钉收文群里的提问：只能查收文（收文列表、今日收文、文书查询），不能写入、不能碰用印和发文（陶威 11-07）。
-COURT_RECEIPT_SCOPE = ToolScope(groups=frozenset({"22"}), path_prefixes=("/documents/receipts", "/documents/summary"),
+
+# 钉钉收文群里的提问：只能查与本人有关的收文（今日收文、近期收文列表），不能写入、不能碰用印和发文（陶威 11-07；
+# 全公司收文、文书汇总不开放，等陶国南定）。
+COURT_RECEIPT_SCOPE = ToolScope(groups=frozenset({"22"}), path_prefixes=("/documents/receipts",),
                                 business_tools=frozenset({"biz_my_today_receipts"}))
 TOOL_SCOPES = {"court_receipt": COURT_RECEIPT_SCOPE}
 
@@ -198,6 +214,8 @@ class ModelToolSession:
             raise HTTPException(status_code=422, detail="必须先搜索并读取该工具的完整 schema，再调用")
         if self.tool_scope is not None and not self.tool_scope.allows(tool):
             raise HTTPException(403, "这里只能查收文，不能用这个工具")
+        if self.tool_scope is not None:
+            self.tool_scope.check_arguments(tool, arguments["arguments"])
         tool.validate_arguments(arguments["arguments"])
         return {"result": await self._call_catalog(tool.name, arguments["arguments"])}
 

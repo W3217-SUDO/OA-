@@ -49,10 +49,12 @@ STALLED_REASON = "识别中断，请查看文书后指定案件入库或手工�
 # 最长处理时间：云端智能体 5 分钟 + 收文接口 2 分钟 + 连不上时重试约 1 分钟，再留余量。
 PROCESSING_MINUTES = 10
 _COURT = re.compile(r"人民法院|法院|仲裁委员会|人民检察院")
-# 像法院短信：开头是【某法院】这类落款，或带（2026）苏0281民初17172号这样的案号。其余的话当成提问交给智能体。
-_COURT_SMS = re.compile(r"【[^】]{2,40}(?:法院|仲裁委员会|检察院)】|[（(]\d{4}[）)][\u4e00-\u9fff]{1,6}\d{0,6}[\u4e00-\u9fff]{1,6}\d+号")
-# 发到群里前去掉：手机号、座机、12 位以上数字（银行账号、身份证号）。
-_SENSITIVE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)|(?<!\d)0\d{2,3}-?\d{7,8}(?!\d)|\d{12,}[\dXx]?")
+# 像法院短信：有【某法院】这类落款；或带（2026）苏0281民初17172号这样的案号且不是在问问题。其余的话当成提问交给智能体。
+_COURT_HEADER = re.compile(r"【[^】]{2,40}(?:法院|仲裁委员会|检察院)】")
+_CASE_NUMBER = re.compile(r"[（(]\d{4}[）)][\u4e00-\u9fff]{1,6}\d{0,6}[\u4e00-\u9fff]{1,6}\d+号")
+_QUESTION = re.compile(r"[?？]|吗|哪|怎么|什么|是否|有没有|请问|多少|几")
+# 发到群里前去掉：手机号、座机、12 位以上数字（银行账号、身份证号），数字之间带空格或短横也算。
+_SENSITIVE = re.compile(r"(?<!\d)1[3-9]\d(?:[ \-]?\d){8}(?!\d)|(?<!\d)0\d{2,3}[ \-]?\d{7,8}(?!\d)|\d(?:[ \-]?\d){11,}(?:[ \-]?[Xx])?")
 ANSWER_LIMIT = 600
 _FIRST_LEVEL = "第一级"
 _SECOND_LEVEL = "第二级"
@@ -612,6 +614,10 @@ async def _preview_record(record: BusinessRecord, message: BotMessage, link: str
                             *([f"匹配依据：{basis}"] if basis else [])]), [message.sender_id])
 
 
+def looks_like_court_sms(text: str) -> bool:
+    return bool(_COURT_HEADER.search(text) or (_CASE_NUMBER.search(text) and not _QUESTION.search(text)))
+
+
 def clean_answer(text: str) -> str:
     """智能体回答发群前处理：去掉长数字和电话，去掉 Markdown 记号，限制长度。"""
     text = _SENSITIVE.sub("[已隐藏]", str(text or ""))
@@ -657,7 +663,7 @@ async def handle_message(message: BotMessage, config: BotSettings, *, api: Api, 
     link = _service_link(text)
     if link:
         return await _preview(message, link, user, config, api, agent_turn, db)
-    if not _COURT_SMS.search(text):
+    if not looks_like_court_sms(text):
         return await _answer(text, user, message, config, agent_ask)
     record = await _record(message, user, PENDING, {"kind": "other_link" if _LINK.search(text) else "text_only",
                                                      "reason": "没有人民法院在线服务送达链接"}, db)
