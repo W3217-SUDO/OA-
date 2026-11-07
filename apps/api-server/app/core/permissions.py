@@ -1299,8 +1299,6 @@ def _require_actual_system_admin(identity: dict) -> None:
 # 系统管理员、高权限角色和这些账号本身，只有真实系统管理员能动。页面能力会把人临时提升成 admin，这里一律看真实角色。
 # 清单按角色实际能力算，新角色自动适用；要调整只改下面几个常量。
 _HIGH_ROLE_NAME = re.compile("部长|主管|负责人|合伙人|管理员|总经理")
-# 单项权限是老系统按人拼的杂项权限，页面和律师助理（旧系统）接近，按门槛分不开，直接列出来（调度 2026-11-07 定：不能由人事分配）。
-_HIGH_ROLE_CODES = frozenset({"SYSTEM-ADMIN", "LEGACY-SINGLE-PERM"})
 _PROTECTED_ROLE_NAME = re.compile("部长|负责人|总经理")
 _HIGH_ROLE_FIRM_PAGES = 10  # 全所类页面（*-company、*-all）达到这个数算高权限
 _HIGH_ROLE_APPROVAL_PAGES = 10  # 审批、审核类页面达到这个数算高权限
@@ -1311,7 +1309,7 @@ _RESERVED_USERNAMES = frozenset({"admin", "system", "feedback-bot", "hz-sync"}) 
 
 
 def is_high_privilege_job_role(role: JobRole) -> bool:
-    if role.code in _HIGH_ROLE_CODES or _HIGH_ROLE_NAME.search(role.name or "") or role.data_scope == "全所数据":
+    if role.code == "SYSTEM-ADMIN" or _HIGH_ROLE_NAME.search(role.name or "") or role.data_scope == "全所数据":
         return True
     menus = _effective_job_role_menu_keys(role)
     if any(key.split("-", 1)[0] in {"hr", "system"} for key in menus):  # 能管账号或系统

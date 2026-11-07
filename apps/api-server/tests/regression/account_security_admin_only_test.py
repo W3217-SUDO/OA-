@@ -333,7 +333,7 @@ class AccountSecurityTest(unittest.IsolatedAsyncioTestCase):
         ]:
             self.assertEqual((await self.call("hrholder", method, path, body)).status_code, 403, name)
         self.assertEqual(await self.state("highuser2"), before)
-        self.assertEqual((await self.call("hrholder", "PATCH", f"/hr/employees/{self.emp['victim']}", self.body(position="单项权限"))).status_code, 403, "单项权限不能由人事分配")
+        self.assertEqual((await self.call("hrholder", "PATCH", f"/hr/employees/{self.emp['victim']}", self.body(position="单项权限"))).status_code, 200, "单项权限算普通（陶威 11-07 同意不列）")
 
     async def test_real_admin_keeps_every_power(self):
         for name, method, path, body in self.forbidden_new():
