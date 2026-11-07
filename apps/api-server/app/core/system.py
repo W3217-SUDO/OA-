@@ -1,5 +1,4 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
-import json
 import logging
 from datetime import timedelta, timezone
 from app.core.constants import (
