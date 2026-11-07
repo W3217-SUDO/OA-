@@ -422,7 +422,7 @@ def _action_from_model(action: dict[str, Any], identity: dict[str, Any], context
     return {"id": str(uuid4()), "type": action_type, "payload": safe_payload, "summary": summary, "status": "pending", "requested_by": identity["username"], "created_at": _now()}
 
 
-async def generate_response(identity: dict[str, Any], db: AsyncSession, text: str, on_delta: Callable[[str], Awaitable[None]], *, conversation_id: str | None = None, skill_id: str | None = None, attachment_ids: list[int] | None = None, case_id: int | None = None, document_ids: list[int] | None = None, response_mode: ResponseMode = "fast", on_progress: ProgressCallback | None = None, workspace: dict[str, Any] | None = None) -> dict[str, Any]:
+async def generate_response(identity: dict[str, Any], db: AsyncSession, text: str, on_delta: Callable[[str], Awaitable[None]], *, conversation_id: str | None = None, skill_id: str | None = None, attachment_ids: list[int] | None = None, case_id: int | None = None, document_ids: list[int] | None = None, response_mode: ResponseMode = "fast", on_progress: ProgressCallback | None = None, workspace: dict[str, Any] | None = None, tool_scope: str | None = None) -> dict[str, Any]:
     from .mcp_chat_input import extract_chat_connection
 
     submission = extract_chat_connection(text)
@@ -450,7 +450,7 @@ async def generate_response(identity: dict[str, Any], db: AsyncSession, text: st
         try:
             content = await ensure_identity_file(identity)
             await persist_personal_identity(db, identity, content=content, conversation_id=state["conversation_id"])
-            result = await _generate_response(identity, db, text, capture_delta, state=state, skill_id=skill_id, attachment_ids=attachment_ids, case_id=case_id, document_ids=document_ids, response_mode=response_mode, on_progress=on_progress)
+            result = await _generate_response(identity, db, text, capture_delta, state=state, skill_id=skill_id, attachment_ids=attachment_ids, case_id=case_id, document_ids=document_ids, response_mode=response_mode, on_progress=on_progress, tool_scope=tool_scope)
             return {**result, "state": await project_personal_actions(result["state"], identity, db)}
         except asyncio.CancelledError:
             if not state["messages"] or state["messages"][-1] is initial_last:
@@ -471,7 +471,7 @@ async def stop_response(identity: dict[str, Any], conversation_id: str, *, db: A
     return {"state": await project_personal_actions(state, identity, db)}
 
 
-async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: str, on_delta: Callable[[str], Awaitable[None]], *, state: dict[str, Any], skill_id: str | None, attachment_ids: list[int] | None, case_id: int | None, document_ids: list[int] | None, response_mode: ResponseMode, on_progress: ProgressCallback | None) -> dict[str, Any]:
+async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: str, on_delta: Callable[[str], Awaitable[None]], *, state: dict[str, Any], skill_id: str | None, attachment_ids: list[int] | None, case_id: int | None, document_ids: list[int] | None, response_mode: ResponseMode, on_progress: ProgressCallback | None, tool_scope: str | None = None) -> dict[str, Any]:
     reject_mcp_chat_credentials(text)
     username = identity["username"]
     skill, text = await _agent_message_skill_for_identity(skill_id, text, identity, db)
@@ -501,7 +501,9 @@ async def _generate_response(identity: dict[str, Any], db: AsyncSession, text: s
                                  allowed_case_ids=allowed_case_ids,
                                  summary_metadata=state.get("memory_summary_metadata"),
                                  save_explicit=not bool(settings.deepseek_harness_memory_command.strip()))
-    tools = PersonalMcpToolSession(identity, db, conversation_id=state["conversation_id"])
+    from app.agent_mcp.model_tools import TOOL_SCOPES
+    # 钉钉收文助手传 tool_scope=court_receipt：本轮只开放只读收文工具（陶威 11-07）。
+    tools = PersonalMcpToolSession(identity, db, conversation_id=state["conversation_id"], tool_scope=TOOL_SCOPES.get(tool_scope or ""))
     if skill:
         skill = await _agent_skill_for_identity(skill.id, identity, db)
     from .project_workspaces import state_workspace

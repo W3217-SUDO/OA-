@@ -703,7 +703,7 @@ class GeneratedFileStorageBoundaryTest(IsolatedAsyncioTestCase):
                                                                skill_id="test", attachment_ids=[], case_id=None, document_ids=[],
                                                                response_mode="fast", on_progress=None)
         message = result["state"]["messages"][-1]
-        tool_session.assert_called_once_with(identity, self.db, conversation_id="original")
+        tool_session.assert_called_once_with(identity, self.db, conversation_id="original", tool_scope=None)
         model_request.assert_awaited_once()
         tools = model_request.await_args.kwargs["tools"]
         self.assertIsInstance(tools, personal_service.PersonalMcpToolSession)

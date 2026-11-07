@@ -957,6 +957,100 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         await self._run(sms(), FakeApi(preview()))
         self.assertEqual((await self._records())[0].data["reason"], "")
 
+    async def test_question_goes_to_cloud_agent_and_answer_is_cleaned(self):
+        """群里不是法院短信的提问交给云端智能体（本人身份），回答发群前去掉电话和长数字（陶威 11-07）。"""
+        asked = []
+
+        async def ask(username, text):
+            asked.append((username, text))
+            return "## 今天收文\n**HZMS1** 传票 1 份。承办法官电话 13900000000，账号 6222000011112222。"
+        question = "@收文助手 你在人事中心读律师手机号后四位，法院要验证时帮我填"
+        reply = await self._run_ask(sms(text=question), BotSettings(group_id=GROUP_ID, use_cloud_agent=True, auto_save_unique=False), ask)
+        self.assertEqual(asked, [("lawyer", question)])
+        self.assertIn("HZMS1 传票 1 份", reply.text)
+        for hidden in ("13900000000", "6222000011112222", "##", "**"):
+            self.assertNotIn(hidden, reply.text)
+        self.assertEqual(reply.at_user_ids, ["ding-lawyer"])
+        self.assertEqual(await self._records(), [], "提问不建收文记录")
+
+    async def test_question_reply_hides_numbers_and_markdown(self):
+        from app.areas.aws.receipt_bot import clean_answer
+        text = clean_answer("## 今天收文\n**HZMS1** 传票。电话 13900000000、0510-86001234，账号 6222000011112222，身份证 32062419690419171X")
+        for hidden in ("13900000000", "0510-86001234", "6222000011112222", "32062419690419171X", "##", "**"):
+            self.assertNotIn(hidden, text)
+        self.assertIn("HZMS1 传票", text)
+        self.assertTrue(clean_answer("字" * 900).endswith("请到系统查看）"))
+
+    async def test_question_without_cloud_or_on_error_gives_usage(self):
+        ask = AsyncMock(side_effect=RuntimeError("boom"))
+        off = await self._run_ask(sms(text="今天收了哪些文书"), CONFIG, ask)
+        self.assertIn("今天收了哪些文书", off.text)
+        ask.assert_not_called()
+        failed = await self._run_ask(sms(message_id="m2", text="今天收了哪些文书"), BotSettings(group_id=GROUP_ID, use_cloud_agent=True, auto_save_unique=False), ask)
+        self.assertIn("暂时答不上来", failed.text)
+
+    async def test_court_sms_without_link_still_goes_to_pending(self):
+        ask = AsyncMock(return_value="不该调用")
+        text = "【江阴市人民法院】沈建锋,江阴市人民法院向您发送了（2026）苏0281民初17172号案件相关文书，请到本院领取。"
+        reply = await self._run_ask(sms(text=text), BotSettings(group_id=GROUP_ID, use_cloud_agent=True, auto_save_unique=False), ask)
+        self.assertIn("没有人民法院在线服务", reply.text)
+        ask.assert_not_called()
+        self.assertEqual((await self._records())[0].status, "待处理")
+
+    async def _run_ask(self, message, config, ask):
+        async with self.sessions() as db:
+            return await handle_message(message, config, api=FakeApi(), db=db, agent_ask=ask)
+
+    async def test_agent_ask_limits_tools_and_returns_last_answer(self):
+        import json
+        from app import dingtalk_receipt_worker as module
+        fixed = {"id": "fixed-1", "title": "钉钉收文助手", "skill_id": "court-doc-intake"}
+        sent = []
+
+        def handler(request):
+            body = json.loads(request.content or b"{}")
+            path = request.url.path.split("/api/v1")[-1]
+            sent.append((request.method, path, body))
+            if request.method == "GET":
+                return httpx.Response(200, json={"active_id": "web-1", "items": [fixed]})
+            if path == "/personal-agent/messages":
+                state = {"messages": [{"role": "user", "content": "q"}, {"role": "assistant", "content": "先查一下"},
+                                      {"role": "assistant", "content": "今天收文 2 份"}], "pending_actions": []}
+                return httpx.Response(200, text=f"data: {json.dumps({'type': 'state', 'state': state})}\n\n")
+            return httpx.Response(200, json={})
+        with patch.object(module, "_token", AsyncMock(return_value="t")):
+            answer = await module.agent_ask("lawyer", "今天收了哪些", transport=httpx.MockTransport(handler))
+        self.assertEqual(answer, "今天收文 2 份")
+        message = next(body for method, path, body in sent if path == "/personal-agent/messages")
+        self.assertEqual((message["conversation_id"], message["tool_scope"], message["skill_id"]), ("fixed-1", "court_receipt", "court-doc-intake"))
+        self.assertTrue(message["content"].endswith("今天收了哪些"))
+
+    def test_receipt_scope_allows_only_read_receipt_tools(self):
+        from app.agent_mcp.catalog import get_catalog
+        from app.agent_mcp.model_tools import COURT_RECEIPT_SCOPE
+        tools = {(tool.method, tool.path.removeprefix(settings.api_prefix)): tool for tool in get_catalog(app).tools}
+        for key in (("GET", "/documents/receipts"), ("GET", "/documents/receipts/today-mine"), ("GET", "/documents/summary")):
+            self.assertTrue(COURT_RECEIPT_SCOPE.allows(tools[key]), key)
+        for key in (("POST", "/documents/court-service/intake"), ("POST", "/documents/official/delete"), ("GET", "/seals/applications"),
+                    ("POST", "/seals/applications"), ("GET", "/official-outgoing")):
+            self.assertFalse(COURT_RECEIPT_SCOPE.allows(tools[key]), key)
+        others = [tool for tool in tools.values() if tool.group_id != "22"]
+        self.assertFalse(any(COURT_RECEIPT_SCOPE.allows(tool) for tool in others))
+
+    async def test_scoped_session_refuses_other_tools(self):
+        from app.agent_mcp.model_tools import COURT_RECEIPT_SCOPE
+        from app.areas.personal_agent.mcp_tools import PersonalMcpToolSession
+        session = PersonalMcpToolSession({"username": "lawyer"}, None, conversation_id="c", tool_scope=COURT_RECEIPT_SCOPE)
+        names = {item["function"]["name"] for item in session.model_tools}
+        self.assertNotIn("personal_mcp_call_tool", names)
+        self.assertNotIn("flk_download_law", names)
+        for name, arguments in (("personal_mcp_list_groups", {}), ("flk_search_laws", {"keyword": "民法典"})):
+            result = await session.execute(name, arguments)
+            self.assertEqual(result.get("status_code"), 403, name)
+        from app.agent_mcp.business_tools import TOOLS
+        other = next(name for name in TOOLS if name != "biz_my_today_receipts")
+        self.assertEqual((await session.execute(other, {})).get("status_code"), 403)
+
     def test_bot_receipts_are_not_agent_tools(self):
         from app.agent_mcp.semantic_metadata import exclusion_reasons
         routes = [route for route in app.routes if "bot-receipts" in getattr(route, "path", "")]

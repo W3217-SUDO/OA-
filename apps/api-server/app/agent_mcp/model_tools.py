@@ -4,6 +4,7 @@ import asyncio
 import json
 import re
 from contextvars import ContextVar
+from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 import httpx
@@ -83,11 +84,30 @@ MODEL_TOOLS = [
 
 MODEL_TOOLS.extend(tool.to_model_function() for tool in BUSINESS_TOOLS.values())  # 按操作手册业务组合的工具
 
+@dataclass(frozen=True)
+class ToolScope:
+    """本轮只开放的一小组工具（钉钉收文助手用）：只读、按业务组和接口路径限定，搜索和调用两处都按它挡。"""
+    groups: frozenset[str]
+    path_prefixes: tuple[str, ...]
+    business_tools: frozenset[str]
+
+    def allows(self, tool: ToolDefinition | None) -> bool:
+        return (tool is not None and tool.method == "GET" and not tool.is_write and tool.group_id in self.groups
+                and any(tool.path.startswith(settings.api_prefix + prefix) for prefix in self.path_prefixes))
+
+
+# 钉钉收文群里的提问：只能查收文（收文列表、今日收文、文书查询），不能写入、不能碰用印和发文（陶威 11-07）。
+COURT_RECEIPT_SCOPE = ToolScope(groups=frozenset({"22"}), path_prefixes=("/documents/receipts", "/documents/summary"),
+                                business_tools=frozenset({"biz_my_today_receipts"}))
+TOOL_SCOPES = {"court_receipt": COURT_RECEIPT_SCOPE}
+
+
 class ModelToolSession:
     """仅在本轮模型请求内保留发现结果，不保存登录凭据。"""
 
-    def __init__(self, case_id: int | None = None, *, conversation_id: str | None = None) -> None:
+    def __init__(self, case_id: int | None = None, *, conversation_id: str | None = None, tool_scope: ToolScope | None = None) -> None:
         self.case_id = case_id
+        self.tool_scope = tool_scope
         self.conversation_id = conversation_id
         self.discovered: dict[str, ToolDefinition] = {}
         # 案件智能体里改案件信息：案件查询、案件办理、取证公证、费用登记四组预先开放，按字段对照直接组内搜（陶国南 11-05）。
@@ -144,10 +164,15 @@ class ModelToolSession:
                     raise HTTPException(422, "必须先发现第 25 组的对应子组")
             catalog = get_catalog(get_auth_context().application)
             tools = search_tools(query.strip(), limit=limit, group_id=group_id, subgroup_id=subgroup_id)
+            if self.tool_scope is not None:
+                tools = [tool for tool in tools if tool["name"] in self.tool_scope.business_tools
+                         or self.tool_scope.allows(catalog.get(tool["name"]))]
             result = discovered_tools_view(tools)
             result.update({"group_id": group_id, "subgroup_id": subgroup_id})
             self.discovered.update({tool["name"]: catalog.get(tool["name"]) for tool in result["tools"]})
             return result
+        if self.tool_scope is not None and is_business_tool(name) and name not in self.tool_scope.business_tools:
+            raise HTTPException(403, "这里只能查收文，不能用这个工具")
         if is_business_tool(name):
             # 案件智能体里用办事工具时，确认卡片要记下所在案件，否则在案件里点确认会被当成“入口不一致”拒绝（11-05 实测）。
             if self.case_id is None:
@@ -171,6 +196,8 @@ class ModelToolSession:
         tool = self.discovered.get(arguments["name"])
         if tool is None:
             raise HTTPException(status_code=422, detail="必须先搜索并读取该工具的完整 schema，再调用")
+        if self.tool_scope is not None and not self.tool_scope.allows(tool):
+            raise HTTPException(403, "这里只能查收文，不能用这个工具")
         tool.validate_arguments(arguments["arguments"])
         return {"result": await self._call_catalog(tool.name, arguments["arguments"])}
 
@@ -202,6 +229,8 @@ class ModelToolSession:
 
     def _discover_groups(self, query: str | None) -> dict[str, Any]:
         result = list_tool_groups(query)
+        if self.tool_scope is not None:
+            result = {**result, "groups": [group for group in result["groups"] if group["group_id"] in self.tool_scope.groups]}
         for group in result["groups"]:
             self.discovered_groups.add(group["group_id"])
             self.discovered_subgroups.update(item["subgroup_id"] for item in group.get("subgroups", []))

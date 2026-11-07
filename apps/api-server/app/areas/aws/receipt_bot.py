@@ -49,6 +49,11 @@ STALLED_REASON = "识别中断，请查看文书后指定案件入库或手工�
 # 最长处理时间：云端智能体 5 分钟 + 收文接口 2 分钟 + 连不上时重试约 1 分钟，再留余量。
 PROCESSING_MINUTES = 10
 _COURT = re.compile(r"人民法院|法院|仲裁委员会|人民检察院")
+# 像法院短信：开头是【某法院】这类落款，或带（2026）苏0281民初17172号这样的案号。其余的话当成提问交给智能体。
+_COURT_SMS = re.compile(r"【[^】]{2,40}(?:法院|仲裁委员会|检察院)】|[（(]\d{4}[）)][\u4e00-\u9fff]{1,6}\d{0,6}[\u4e00-\u9fff]{1,6}\d+号")
+# 发到群里前去掉：手机号、座机、12 位以上数字（银行账号、身份证号）。
+_SENSITIVE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)|(?<!\d)0\d{2,3}-?\d{7,8}(?!\d)|\d{12,}[\dXx]?")
+ANSWER_LIMIT = 600
 _FIRST_LEVEL = "第一级"
 _SECOND_LEVEL = "第二级"
 COURT_NUMBER_FIELDS = ("court_case_no", "first_court_case_no", "first_instance_case_no", "second_court_case_no",
@@ -60,6 +65,7 @@ _UNIQUE_CHECK_IDENTITY = {"username": "receipt-bot-unique-check", "display_name"
 
 Api = Callable[[str, str, dict], Awaitable[dict]]
 AgentTurn = Callable[[str, str], Awaitable[None]]
+AgentAsk = Callable[[str, str], Awaitable[str]]
 
 
 @dataclass
@@ -606,7 +612,29 @@ async def _preview_record(record: BusinessRecord, message: BotMessage, link: str
                             *([f"匹配依据：{basis}"] if basis else [])]), [message.sender_id])
 
 
-async def handle_message(message: BotMessage, config: BotSettings, *, api: Api, db: AsyncSession, agent_turn: AgentTurn | None = None) -> Reply | None:
+def clean_answer(text: str) -> str:
+    """智能体回答发群前处理：去掉长数字和电话，去掉 Markdown 记号，限制长度。"""
+    text = _SENSITIVE.sub("[已隐藏]", str(text or ""))
+    text = re.sub(r"^\s*#+\s*|\*\*|`", "", text, flags=re.M).strip()
+    return text if len(text) <= ANSWER_LIMIT else text[:ANSWER_LIMIT].rstrip() + "……（内容较多，请到系统查看）"
+
+
+async def _answer(text: str, user: User, message: BotMessage, config: BotSettings, agent_ask: AgentAsk | None) -> Reply:
+    """群里的收文提问：云端智能体按本人权限、只用只读收文工具回答；没开云端或出错就给用法提示。"""
+    me = _mention([message.sender_id])
+    usage = f"{me} 请转发法院送达短信（含送达链接）并 @收文助手；也可以问收文相关的问题，例如“今天收了哪些文书”。"
+    if not (config.use_cloud_agent and agent_ask is not None):
+        return Reply(usage, [message.sender_id])
+    try:
+        answer = clean_answer(await agent_ask(user.username, text[:2000]))
+    except Exception as exc:
+        logger.warning("receipt bot question failed user=%s type=%s", user.username, type(exc).__name__)
+        return Reply(f"{me} 收文助手暂时答不上来，请稍后再问，或到系统收文台查看。", [message.sender_id])
+    return Reply(f"{me} {answer}" if answer else usage, [message.sender_id])
+
+
+async def handle_message(message: BotMessage, config: BotSettings, *, api: Api, db: AsyncSession, agent_turn: AgentTurn | None = None,
+                         agent_ask: AgentAsk | None = None) -> Reply | None:
     """处理一条 @收文助手 的消息，返回要回复的内容；None 表示不回复。"""
     from app.core.data_scope_gate import is_external_role
     me = _mention([message.sender_id]) if message.sender_id else ""
@@ -629,8 +657,8 @@ async def handle_message(message: BotMessage, config: BotSettings, *, api: Api, 
     link = _service_link(text)
     if link:
         return await _preview(message, link, user, config, api, agent_turn, db)
-    if not _COURT.search(text):
-        return Reply(f"{me} 请转发法院送达短信（含送达链接）并 @收文助手。", [message.sender_id])
+    if not _COURT_SMS.search(text):
+        return await _answer(text, user, message, config, agent_ask)
     record = await _record(message, user, PENDING, {"kind": "other_link" if _LINK.search(text) else "text_only",
                                                      "reason": "没有人民法院在线服务送达链接"}, db)
     if record is None:

@@ -47,15 +47,19 @@ REMOTE_MODEL_TOOLS = [
 
 
 class PersonalMcpToolSession(ModelToolSession):
-    def __init__(self, identity, db, *, conversation_id):
-        super().__init__(conversation_id=conversation_id)
+    def __init__(self, identity, db, *, conversation_id, tool_scope=None):
+        super().__init__(conversation_id=conversation_id, tool_scope=tool_scope)
         self.identity = identity
         self.db = db
         self.remote_groups = {}
         self.remote_discovered = {}
-        self.model_tools = [*MODEL_TOOLS, *REMOTE_MODEL_TOOLS]
+        # 限定范围时（钉钉收文助手）不开放外部 MCP 和法规下载，只留 OA 工具和法院网页读取。
+        self.model_tools = [*MODEL_TOOLS, *REMOTE_MODEL_TOOLS] if tool_scope is None else \
+            [*MODEL_TOOLS, *[item for item in REMOTE_MODEL_TOOLS if item['function']['name'] == 'web_fetch_page']]
 
     async def _execute(self, name, arguments):
+        if self.tool_scope is not None and (name.startswith('personal_mcp_') or name.startswith('flk_')):
+            raise HTTPException(403, '这里只能查收文，不能用外部服务')
         if name == 'web_fetch_page':
             from app.agent_mcp.web_fetch import fetch_page
             if set(arguments) != {'url'}:
