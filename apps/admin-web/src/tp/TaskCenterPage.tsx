@@ -1068,9 +1068,18 @@ export default function TaskCenterPage({
         action: taskBatchAction,
         recipient: values.recipient || "",
         comment: values.comment || "",
+        end_at: values.end_at ? values.end_at.format("YYYY-MM-DDTHH:mm:ss") : undefined,
       });
       const skipped: Array<{ serial_no: string; title?: string; reason: string }> = data.skipped || [];
-      if (skipped.length) {
+      // 501742：填的期限超过任务类型上限时已自动缩短，告诉操作人实际期限。
+      const limited: Array<{ serial_no: string; title?: string; end_at: string }> = data.deadline_limited || [];
+      if (limited.length) {
+        Modal.info({
+          title: `已交接 ${data.updated} 条，其中 ${limited.length} 条的期限按任务类型上限缩短`,
+          width: 560,
+          content: <div>{limited.map((item) => <div key={item.serial_no}>{item.serial_no}{item.title ? `（${item.title}）` : ""}：{item.end_at.replace("T", " ")}</div>)}</div>,
+        });
+      } else if (skipped.length) {
         // 批量完成：不符合的几条跳过，列出原因（501579）
         Modal.info({
           title: `已完成 ${data.updated} 条，跳过 ${skipped.length} 条`,

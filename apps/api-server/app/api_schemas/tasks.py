@@ -118,6 +118,7 @@ class TaskBatchLifecycleInput(BaseModel):
     action: str = Field(pattern="^(accept|complete|confirm|handoff|withdraw)$")
     recipient: str = Field(default="", max_length=128)
     comment: str = Field(default="", max_length=1000)
+    end_at: datetime | None = None  # 只有批量交接用（501742）
 
 
 class TaskBatchReadInput(BaseModel):

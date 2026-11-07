@@ -240,6 +240,15 @@ export function TaskBatchModal(props: TaskBatchModalProps) {
             <KeywordPersonSelect allowClear placeholder="输入姓名、拼音首字母或账号查找" options={peopleOptions.map((person) => ({ value: person.username, label: person.label }))} />
           </Form.Item>
         )}
+        {taskBatchAction === "handoff" && (
+          <Form.Item
+            label="任务期限（选填）"
+            name="end_at"
+            extra="不填保留各任务原期限；填了所有选中任务用同一期限，超过任务类型上限的会自动缩短。"
+          >
+            <DatePicker showTime style={{ width: "100%" }} placeholder="请选择日期和时间" />
+          </Form.Item>
+        )}
         <Form.Item
           label={taskBatchAction === "withdraw" ? "撤回原因" : taskBatchAction === "complete" ? "完成说明（选填）" : "操作说明"}
           name="comment"

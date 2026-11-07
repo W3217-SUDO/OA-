@@ -888,6 +888,8 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
     ordered_tasks = [tasks_by_id[task_id] for task_id in task_ids]
     comment = body.comment.strip()
     recipient = ""
+    # 501742：批量交接可填一个期限，所有选中任务同用；不填保留各自原期限。规则同单条转交。
+    handoff_deadlines: dict[int, tuple] = {}
     if body.action == "handoff":
         recipient = await _active_task_username(body.recipient, db, field_name="接收人")
     if body.action == "withdraw" and not comment:
@@ -912,6 +914,7 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
 
     # Validate the full selection before changing any record, so a mixed
     # selection never creates a partial lifecycle result.
+    handoff_parameters = None
     for task in ordered_tasks:
         data = task.data or {}
         if body.action == "handoff":
@@ -936,6 +939,17 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
                 raise HTTPException(status_code=409, detail=f"任务 {task.serial_no} 已结束，不能交接")
             if recipient == task.owner:
                 raise HTTPException(status_code=422, detail=f"任务 {task.serial_no} 不能交接给当前负责人")
+            if body.end_at is not None:
+                from app.core.task_handoff_deadline import resolve_handoff_deadline
+                if handoff_parameters is None:
+                    handoff_parameters = list((await db.scalars(select(SystemParameter).where(
+                        SystemParameter.category == "legacy_task_type",
+                        SystemParameter.is_active.is_(True),
+                    ))).all())
+                try:
+                    handoff_deadlines[task.id] = resolve_handoff_deadline(task, body.end_at, handoff_parameters, datetime.now())
+                except HTTPException as exc:
+                    raise HTTPException(status_code=exc.status_code, detail=f"任务 {task.serial_no}：{exc.detail}") from exc
         else:  # withdraw
             validate_task_lifecycle(task, identity, "withdraw", comment)
 
@@ -953,6 +967,8 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
         "handoff": "任务已批量交接.",
         "withdraw": "任务已批量撤回.",
     }
+    requested_end_at = body.end_at.replace(tzinfo=None) if body.end_at else None
+    deadline_limited: list[dict] = []
     for task in ordered_tasks:
         previous = task.status
         data = dict(task.data or {})
@@ -984,8 +1000,10 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
             previous_owner = task.owner
             task.owner = recipient
             task.status = "待接收"
+            handoff_end_at, deadline_updates = handoff_deadlines.get(task.id, (None, {}))
             task.data = {
                 **data,
+                **deadline_updates,
                 "handoff_from": previous_owner,
                 "handoff_recipient": recipient,
                 "handed_off_at": str(date.today()),
@@ -993,6 +1011,8 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
                 "handoff_restarted": False,
                 "received_by_handoff": True,
             }
+            if handoff_end_at is not None and handoff_end_at < requested_end_at:
+                deadline_limited.append({"serial_no": task.serial_no, "title": task.title, "end_at": handoff_end_at.isoformat(timespec="seconds")})
         else:
             task.status = "已撤回"
             task.data = {
@@ -1008,6 +1028,8 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
         event_comment = comment
         if body.action == "handoff":
             event_comment = f"{previous_owner} 交接给 {recipient}。{'（' + identity['username'] + ' 代办）' if previous_owner != identity['username'] else ''}{comment}"
+            if deadline_updates:
+                event_comment += f"；交接结束时间：{handoff_end_at.isoformat(timespec='seconds')}"
         elif body.action == "complete":
             event_comment = f"发起人应在 {auto_at} 前验收或退回重启。{proxy_note(task, identity)}{comment}"
         await _add_task_message_notifications(
@@ -1027,7 +1049,7 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
     for task in ordered_tasks:
         await db.refresh(task)
     return {"updated": len(ordered_tasks), "action": body.action, "items": [_task_dict(task) for task in ordered_tasks],
-            "skipped": skipped if body.action == "complete" else []}
+            "skipped": skipped if body.action == "complete" else [], "deadline_limited": deadline_limited}
 
 
 @router.post(f"{settings.api_prefix}/tasks/{{task_id}}/accept")
@@ -1450,60 +1472,15 @@ async def handoff_task(task_id: int, body: TaskHandoffInput, identity: dict = De
     data = task.data or {}
     from app.core.case_task_members import require_case_task_members
     await require_case_task_members([recipient], db, task_data=data)
-    now = datetime.now()
-
-    def _task_datetime(value):
-        if not value:
-            return None
-        if isinstance(value, datetime):
-            return value.replace(tzinfo=None)
-        raw_value = str(value).strip().replace("Z", "+00:00")
-        try:
-            return datetime.fromisoformat(raw_value).replace(tzinfo=None)
-        except ValueError:
-            try:
-                return datetime.combine(date.fromisoformat(raw_value), datetime.max.time())
-            except ValueError:
-                return None
-
-    start_at = _task_datetime(data.get("start_at") or data.get("task_begin_time") or data.get("TaskBeginTime")) or _task_datetime(task.created_at)
-    existing_end_at = _task_datetime(data.get("end_at") or data.get("deadline") or data.get("task_end_time") or data.get("TaskEndTime"))
-    requested_end_at = body.end_at.replace(tzinfo=None) if body.end_at else None
-    if requested_end_at is not None:
-        if requested_end_at < now:
-            raise HTTPException(status_code=422, detail="交接结束时间不能早于当前时间")
-        if start_at and requested_end_at <= start_at:
-            raise HTTPException(status_code=422, detail="交接结束时间必须晚于任务开始时间")
-    from app.core.task_type_rules import handoff_skip_days
+    from app.core.task_handoff_deadline import resolve_handoff_deadline
 
     parameters = list((await db.scalars(select(SystemParameter).where(
         SystemParameter.category == "legacy_task_type",
         SystemParameter.is_active.is_(True),
     ))).all())
-    handoff_limit_days = handoff_skip_days(data, parameters)
-    candidate_end_at = requested_end_at or existing_end_at
-    handoff_end_at = candidate_end_at
-    if handoff_end_at is not None and handoff_limit_days is not None:
-        limit_at = now + timedelta(days=handoff_limit_days)
-        # Legacy TaskNodeService uses NodeEndTime.Subtract(limit).Days > 0.
-        # Keep that whole-day threshold instead of a stricter instant-by-instant min.
-        if (handoff_end_at - limit_at).days > 0:
-            handoff_end_at = limit_at
-    if handoff_end_at is not None and start_at and handoff_end_at <= start_at:
-        if requested_end_at is not None:
-            raise HTTPException(status_code=422, detail="交接结束时间必须晚于任务开始时间且不超过任务类型期限")
-        # A historical malformed range cannot be made valid by this handoff.
-        # Preserve it rather than creating a new start/end inversion.
-        handoff_end_at = existing_end_at
+    handoff_end_at, deadline_updates = resolve_handoff_deadline(task, body.end_at, parameters, datetime.now())
     task.owner = recipient
     task.status = "待接收"
-    deadline_updates = {}
-    if handoff_end_at is not None and (requested_end_at is not None or handoff_end_at != existing_end_at):
-        deadline_updates = {
-            "deadline": str(handoff_end_at.date()), "end_at": handoff_end_at.isoformat(timespec="seconds"),
-            "handoff_requested_end_at": body.end_at.isoformat(timespec="seconds") if body.end_at else "",
-            "handoff_limit_days": handoff_limit_days,
-        }
     task.data = {**data, **deadline_updates, "handoff_from": previous_owner, "handoff_recipient": recipient, "handed_off_at": str(date.today()), "handoff_auto_complete_at": "", "handoff_restarted": False, "received_by_handoff": True}
     await _record_task_manual_intervention(task, identity, db, action="任务交接")
     deadline_comment = f"；交接结束时间：{handoff_end_at.isoformat(timespec='seconds')}" if deadline_updates else ""
