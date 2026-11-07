@@ -151,7 +151,7 @@ def classify_tool(route, method: str) -> tuple[str, str | None]:
             if segments.intersection(markers):
                 return group, None
         return "05", None
-    if root in {"cases", "case-spaces", "case-litigant-candidates", "legacy-ls-history"}:
+    if root in {"cases", "case-spaces", "case-litigant-candidates"}:
         for markers, group in (
             ({"attachments", "documents", "document-folders", "ai-space", "invoice-files", "files"}, "11"),
             ({"archive", "archive-readiness", "unarchive", "close"}, "10"),
@@ -163,7 +163,7 @@ def classify_tool(route, method: str) -> tuple[str, str | None]:
             if segments.intersection(markers):
                 return group, None
         query_routes = {"search", "statistics", "stage-statistics", "summary", "export", "pending-execution", "execution-status", "special-records"}
-        if segments.intersection(query_routes) or (method == "GET" and (len(parts) <= 2 or root in {"case-spaces", "legacy-ls-history"})):
+        if segments.intersection(query_routes) or (method == "GET" and (len(parts) <= 2 or root == "case-spaces")):
             return "06", None
         if segments.intersection({"reference-options", "eligible-contracts"}):
             return "02", None

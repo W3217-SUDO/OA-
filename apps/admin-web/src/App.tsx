@@ -71,7 +71,6 @@ import {
   normalizeWorkspaceRoute,
   resolveGrantedMenuRoute,
 } from "./workspacePermissions";
-import { LegacyLsHistoryPanel } from "./LegacyLsHistoryPanel";
 import "dingtalk-jsapi/entry/union";
 import requestDingTalkAuthCode from "dingtalk-jsapi/api/runtime/permission/requestAuthCode";
 import { getENV as getDingTalkEnvironment } from "dingtalk-jsapi/lib/env";
@@ -412,7 +411,6 @@ const menuItems: NavItem[] = [
       { key: "case-company", label: "全所案件" },
       { key: "case-schedule", label: "开庭排期" },
       { key: "case-execution", label: "执行案件" },
-      { key: "case-legacy-ls-history", label: "历史诉讼案件" },
       { key: "case-archive", label: "归档审核" },
     ],
   },
@@ -2089,8 +2087,6 @@ export default function App() {
       <IprCenterPage key={IPR_WARNINGS_ROUTE} initialView="ipr-patent" openWarnings onNavigate={navigate} />
     ) : route.startsWith("ipr-") ? (
       <IprCenterPage initialView={active} onNavigate={navigate} />
-    ) : route === "case-legacy-ls-history" ? (
-      <LegacyLsHistoryPanel />
     ) : route.startsWith("case-") ? (
       <CaseCenterPage initialView={active} onNavigate={navigate} />
     ) : route === "affairs-records" ? (
