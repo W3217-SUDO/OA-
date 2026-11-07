@@ -72,7 +72,7 @@ def _public(value: dict) -> dict:
 async def probe(app_key: str, app_secret: str, transport=None) -> tuple[bool, str]:
     """向钉钉换一次访问令牌，验证 AppKey 和 AppSecret 是否匹配；令牌用完即弃，钉钉的返回内容不外传。"""
     try:
-        async with httpx.AsyncClient(timeout=15, trust_env=False, transport=transport) as client:
+        async with httpx.AsyncClient(timeout=15, transport=transport) as client:
             response = await client.post(TOKEN_URL, json={"appKey": app_key, "appSecret": app_secret})
     except httpx.HTTPError as exc:
         return False, "连接钉钉失败：" + type(exc).__name__
