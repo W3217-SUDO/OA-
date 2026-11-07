@@ -116,6 +116,10 @@ def _job_role_tree_checked_permissions(role: JobRole) -> list[str]:
             selected.extend(_expand_menu_permission_keys(list(JOB_ROLE_LABEL_MENU_GRANTS.get(value, ()))))
         elif value not in {CASE_ACTIONS_EXPLICIT_MARKER, MENUS_EXACT_MARKER}:
             selected.append(str(value).removeprefix("menu:"))
+    # 501690：这两个分组原来是单页，老角色只存了分组；树上要显示成下面全勾，否则一保存分组就被当成“没全勾”去掉。
+    for group in ("ipr-my-cases", "ipr-all-cases"):
+        if group in selected:
+            selected.extend(MENU_CHILDREN_BY_KEY.get(group, []))
     effective = _effective_job_role_action_keys(role)
     selected.extend(f"action:{code}" for code in effective if code in _CASE_ACTION_CODES)
     return list(dict.fromkeys(selected))

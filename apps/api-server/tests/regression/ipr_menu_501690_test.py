@@ -8,11 +8,12 @@ from sqlalchemy.pool import StaticPool
 from app.config import settings
 from app.core.constants import DEFAULT_HIDDEN_MENU_KEYS, DEFAULT_SYSTEM_MENUS, ROLE_TREE_HIDDEN_MENU_KEYS
 from app.core.data_scope_gate import GATE_CONFIG_KEY, is_personal_page, reset_gate_cache
-from app.core.permissions import _expand_menu_permission_keys
+from app.core.permissions import _drop_partial_parent_menu_keys, _effective_job_role_menu_keys, _expand_menu_permission_keys, _job_role_tree_checked_permissions
+from app.data_models.identity import JobRole
 from app.database import Base, get_db
 from app.main import app
 from app.models import BusinessRecord, SystemConfig, User
-from app.security import current_identity
+from app.security import create_token, current_identity
 
 API = settings.api_prefix
 MY_PAGES = ("ipr-source-person", "ipr-business-owner", "ipr-procurator", "ipr-copywriter", "ipr-my-mine", "ipr-my-invalid")
@@ -61,6 +62,58 @@ class MenuTest(unittest.TestCase):
             self.assertTrue(is_personal_page(key), key)
         for key in ("ipr-all-patent", "ipr-all-trademark", "ipr-patent-annual-fee", "ipr-patent"):
             self.assertFalse(is_personal_page(key), key)
+
+
+class RoleSaveTest(unittest.TestCase):
+    def test_saving_old_role_unchanged_keeps_effective_pages(self):
+        for permissions in (FINANCE_STORED, ["ipr-my-cases"], ["ipr-all-cases"], ["ipr-my-cases", "ipr-all-cases", "ipr-case-reboot"]):
+            role = JobRole(code="R", name="老角色", permissions=list(permissions), field_keys=[])
+            saved = _drop_partial_parent_menu_keys(_job_role_tree_checked_permissions(role))
+            after = JobRole(code="R", name="老角色", permissions=saved, field_keys=[])
+            self.assertEqual(set(_effective_job_role_menu_keys(after)), set(_effective_job_role_menu_keys(role)), permissions)
+
+
+class RealTokenScopeTest(unittest.IsolatedAsyncioTestCase):
+    """走真实令牌和页面判断，不替换 current_identity。"""
+
+    async def asyncSetUp(self):
+        reset_gate_cache()
+        self.engine = create_async_engine("sqlite+aiosqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+        self.sessions = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        async with self.sessions() as db:
+            db.add_all([
+                JobRole(code="R-MY", name="我的甲", permissions=["ipr-my-cases"], field_keys=[], is_active=True),
+                JobRole(code="R-ALL", name="全部甲", permissions=["ipr-all-cases"], field_keys=[], is_active=True),
+                User(username="mine690", display_name="我", department="知产部", role="user", password_hash="x", is_active=True, profile={"permission_role": "我的甲"}),
+                User(username="all690", display_name="全", department="知产部", role="user", password_hash="x", is_active=True, profile={"permission_role": "全部甲"}),
+                case("M1", agent="mine690"), case("X1", agent="别人"),
+            ])
+            await db.commit()
+        self.previous = dict(app.dependency_overrides)
+
+        async def session():
+            async with self.sessions() as db:
+                yield db
+        app.dependency_overrides[get_db] = session
+        self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://ipr690.test")
+
+    async def asyncTearDown(self):
+        await self.client.aclose()
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(self.previous)
+        await self.engine.dispose()
+        reset_gate_cache()
+
+    async def serials(self, username, page):
+        response = await self.client.get(f"{API}/ipr/cases", params={"page_size": 100}, headers={"Authorization": "Bearer " + create_token(username, "user", 30), "X-OA-Page": page})
+        self.assertEqual(response.status_code, 200, response.text)
+        return sorted(item["serial_no"] for item in response.json()["items"])
+
+    async def test_pages_decide_scope(self):
+        self.assertEqual(await self.serials("mine690", "ipr-my-mine"), ["M1"])
+        self.assertEqual(await self.serials("all690", "ipr-all-patent"), ["M1", "X1"])
 
 
 class ScopeTest(unittest.IsolatedAsyncioTestCase):
