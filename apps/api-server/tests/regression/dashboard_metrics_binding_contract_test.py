@@ -264,12 +264,18 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_dashboard_sections_reuse_guarded_cache_without_changing_full_metrics_api(self):
         from app.areas.system.router import dashboard_http
+        from app.core.dashboard_metrics_cache import dashboard_cache_identity
 
+        # 缓存键里的身份去掉 _request_page（11-06），其余权限字段原样保留。
+        cache_identity = dashboard_cache_identity(IDENTITY)
         request = Request({"type": "http", "method": "GET", "path": "/api/v1/dashboard", "headers": []})
         db = object()
-        async def cached(session, identity, section, compute, *, compute_in=None, parameters=None):
+        flags = []
+        async def cached(session, identity, section, compute, *, compute_in=None, parameters=None,
+                         remember_last=False, priority=False, allow_pending=False):
+            flags.append((priority, allow_pending, remember_last))
             self.assertIs(session, db)
-            self.assertIs(identity, IDENTITY)
+            self.assertEqual(identity, cache_identity)
             self.assertIn(section, {"metrics_finance", "metrics_cases", "todos", "cases", "rejections"})
             self.assertEqual(parameters, {})
             # 请求入口必须给出可在独立会话里重算的函数（先返回旧结果、后台重算）。
@@ -282,12 +288,19 @@ class DashboardMetricsBindingContractTest(unittest.IsolatedAsyncioTestCase):
              patch("app.areas.system.router.dashboard", new=AsyncMock(return_value={"result": "original"})) as compute, \
              patch("app.core.dashboard_metrics_cache.read_dashboard_metrics", new=AsyncMock(return_value={"metrics": []})) as full:
             for section in ("metrics_finance", "metrics_cases", "todos", "cases", "rejections"):
-                self.assertEqual(await dashboard_http(request, IDENTITY, db, section), {"result": "original"})
+                result = await dashboard_http(request, IDENTITY, db, section, refresh=False, allow_pending=False)
+                # 走缓存的分区加上更新时间（11-06 工作台显示更新时间），其余内容不变。
+                self.assertTrue(result.pop("computed_at"))
+                self.assertEqual(result, {"result": "original"})
                 self.assertEqual(cache.call_args.args[2], section)
-                compute.assert_awaited_with(IDENTITY, db, section)
-            await dashboard_http(request, IDENTITY, db, "metrics")
+                compute.assert_awaited_with(cache_identity, db, section)
+            self.assertEqual(flags, [(False, False, False)] * 5)
+            # 用户操作后的刷新（refresh=true）要走优先重算，allow_pending 原样传给缓存层。
+            await dashboard_http(request, IDENTITY, db, "todos", refresh=True, allow_pending=True)
+            self.assertEqual(flags[-1], (True, True, False))
+            await dashboard_http(request, IDENTITY, db, "metrics", refresh=False, allow_pending=False)
             full.assert_awaited_once_with(IDENTITY, db)
-            self.assertEqual(cache.call_count, 5)
+            self.assertEqual(cache.call_count, 6)
 
     async def test_deleted_fee_supplement_keeps_official_explicit_unknown_and_null_status(self):
         from sqlalchemy import JSON, literal, select
