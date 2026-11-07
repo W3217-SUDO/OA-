@@ -13,6 +13,8 @@ export const PERMISSIONS_UPDATED_STORAGE_KEY = "sunhold:permissions-updated-at";
 
 const legacyRouteAliases: Record<string, string> = {
   "agent-document": "documents-agent",
+  // 11-07 去掉了从未通过的“历史诉讼案件”页面，旧书签和页签回到“我的案件”。
+  "case-legacy-ls-history": "case-mine",
   "system-parameters-notary-office": "system-parameters-notary",
   "system-users": "hr-all",
 };
