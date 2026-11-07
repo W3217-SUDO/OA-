@@ -925,6 +925,32 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
                                  data={"reason": PROCESSING_REASON, "sent_at": "2026-11-07T00:00:00+00:00"})
         self.assertIn("识别中断", _reason(stalled))
 
+    async def test_result_dropped_when_record_handled_during_processing(self):
+        """识别期间收文台已处理（超时后才允许），机器人结果不写回、不发确认消息。"""
+        async def api(username, path, body):
+            async with self.sessions() as db:
+                record = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "court_group_receipt"))).one()
+                record.status, record.data = "不入库", {**record.data, "close_note": "手工处理"}
+                await db.commit()
+            return preview()
+        self.assertIsNone(await self._run(sms(), api))
+        self.assertEqual((await self._records())[0].status, "不入库")
+
+    async def test_assign_and_close_refused_while_processing(self):
+        from app.areas.aws.receipt_bot import PROCESSING_REASON, _now, _pending_record, _reason, STALLED_REASON
+        async with self.sessions() as db:
+            record = BusinessRecord(module="court_group_receipt", serial_no="QSWP1", title="t", customer="", status="待处理",
+                                    owner="lawyer", department="", data={"reason": PROCESSING_REASON, "sent_at": _now()})
+            db.add(record)
+            await db.commit()
+            with self.assertRaises(HTTPException) as caught:
+                await _pending_record(record.id, db)
+            self.assertEqual((caught.exception.status_code, caught.exception.detail), (409, "正在识别，请稍后再处理"))
+            # 没时区的时间不让列表 500，按中断处理。
+            record.data = {**record.data, "sent_at": "2026-11-07T20:00:00"}
+            self.assertEqual(_reason(record), STALLED_REASON)
+            self.assertEqual((await _pending_record(record.id, db)).id, record.id)
+
     async def test_processing_reason_cleared_when_waiting_for_confirm(self):
         await self._run(sms(), FakeApi(preview()))
         self.assertEqual((await self._records())[0].data["reason"], "")

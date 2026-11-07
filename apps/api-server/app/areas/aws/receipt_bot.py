@@ -45,6 +45,9 @@ _CASE_LOCKS: dict[int, asyncio.Lock] = {}
 _MAX_LOCKS = 500
 _LINK = re.compile(r"https?://[^\s，,。；;]+")
 PROCESSING_REASON = "正在下载识别文书，约一分钟"
+STALLED_REASON = "识别中断，请查看文书后指定案件入库或手工上传"
+# 最长处理时间：云端智能体 5 分钟 + 收文接口 2 分钟 + 连不上时重试约 1 分钟，再留余量。
+PROCESSING_MINUTES = 10
 _COURT = re.compile(r"人民法院|法院|仲裁委员会|人民检察院")
 _FIRST_LEVEL = "第一级"
 _SECOND_LEVEL = "第二级"
@@ -559,8 +562,12 @@ async def _preview_record(record: BusinessRecord, message: BotMessage, link: str
     try:
         report = await api(user.username, INTAKE_PATH, {"link": link})
     except ApiError as exc:
+        if not await _still_processing(record, db):
+            return None
         await _set_status(record, PENDING, {"reason": exc.detail}, user.username, db)
         return Reply(f"{me} 文书下载或识别失败：{exc.detail}。已转到收文台待处理。\n{_link_line()}", [message.sender_id])
+    if not await _still_processing(record, db):
+        return None
     status = report.get("status")
     record_data = {"reason": "", "documents": [{"attachment_id": item.get("attachment_id"), "name": item.get("name") or "",
                                                 "kind": (item.get("fields") or {}).get("文书类型") or ""} for item in report.get("documents") or []]}
@@ -658,17 +665,26 @@ async def bot_intake(body: CourtIntakeInput, identity: dict = Depends(current_id
     return await run_intake(body, identity, db, direct_save=True)
 
 
+async def _still_processing(record: BusinessRecord, db: AsyncSession) -> bool:
+    """识别期间如果有人在收文台处理了这条（超时后才允许），结果不再写回、也不发确认消息，免得把已关掉的单又存进去。"""
+    await db.refresh(record)
+    if record.status == PENDING and str((record.data or {}).get("reason") or "") == PROCESSING_REASON:
+        return True
+    logger.info("receipt bot result dropped, record %s handled meanwhile status=%s", record.id, record.status)
+    return False
+
+
 def _reason(record: BusinessRecord) -> str:
     data = record.data or {}
     reason = str(data.get("reason") or "")
     if reason == PROCESSING_REASON:
+        # 超过最长处理时间还没结果，说明处理中断了（程序重启等），别一直显示“正在识别”。
         try:
-            started = datetime.fromisoformat(str(data.get("sent_at")))
-        except ValueError:
-            started = None
-        # 超过 5 分钟还没结果，说明处理中断了（程序重启等），别一直显示“正在识别”。
-        if started is None or datetime.now(timezone.utc) - started > timedelta(minutes=5):
-            return "识别中断，请查看文书后指定案件入库或手工上传"
+            stalled = datetime.now(timezone.utc) - datetime.fromisoformat(str(data.get("sent_at"))) > timedelta(minutes=PROCESSING_MINUTES)
+        except (TypeError, ValueError):
+            stalled = True
+        if stalled:
+            return STALLED_REASON
     return reason
 
 
@@ -676,6 +692,7 @@ def _row(record: BusinessRecord) -> dict:
     data = record.data or {}
     return {"id": record.id, "status": record.status, "sent_at": data.get("sent_at") or "", "sender": data.get("sender_nick") or "",
             "text": _LINK.sub("[送达链接]", data.get("text") or ""), "kind": data.get("kind") or "", "reason": _reason(record),
+            "processing": _reason(record) == PROCESSING_REASON,
             "documents": [{"attachment_id": item.get("attachment_id"), "name": item.get("name") or "", "kind": item.get("kind") or ""}
                           for item in data.get("documents") or []],
             "candidates": [item.get("serial_no") or "" for item in data.get("candidates") or []]}
@@ -687,6 +704,8 @@ async def _pending_record(record_id: int, db: AsyncSession) -> BusinessRecord:
         raise HTTPException(404, "收文记录不存在")
     if record.status != PENDING:
         raise HTTPException(409, f"这条收文状态为“{record.status}”，不用再处理")
+    if _reason(record) == PROCESSING_REASON:
+        raise HTTPException(409, "正在识别，请稍后再处理")
     return record
 
 

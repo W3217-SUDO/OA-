@@ -15,6 +15,7 @@ export type BotReceiptRow = {
   text: string;
   kind: string;
   reason: string;
+  processing?: boolean;
   candidates: string[];
   documents: { attachment_id?: number | null; name: string; kind: string }[];
 };
@@ -64,12 +65,12 @@ function ActionCell({ row, onDone }: { row: BotReceiptRow; onDone: () => void })
       {row.kind === "zxfw" && (
         <>
           <Input size="small" style={{ width: 140 }} placeholder="系统案号" value={caseNo} onChange={(event) => setCaseNo(event.target.value)} />
-          <Button size="small" type="primary" loading={busy} disabled={!caseNo.trim()}
+          <Button size="small" type="primary" loading={busy} disabled={!caseNo.trim() || row.processing}
             onClick={() => void run("assign", { case_no: caseNo.trim() }, "已存入案件")}>入库</Button>
         </>
       )}
-      <Popconfirm title="确定不入库？记录会保留，标记为已处理。" onConfirm={() => void run("close", {}, "已标记不入库")}>
-        <Button size="small" disabled={busy}>不入库</Button>
+      <Popconfirm title="确定不入库？记录会保留，标记为已处理。" disabled={row.processing} onConfirm={() => void run("close", {}, "已标记不入库")}>
+        <Button size="small" disabled={busy || row.processing}>不入库</Button>
       </Popconfirm>
     </Space>
   );
