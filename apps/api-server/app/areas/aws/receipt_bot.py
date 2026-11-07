@@ -33,6 +33,7 @@ MODULE = "court_group_receipt"
 WAITING, SAVING, PENDING, DONE, CLOSED, CANCELLED = "待确认", "入库中", "待处理", "已导入", "不入库", "已取消"
 UNCERTAIN_STATUS = 504  # 请求发出去了但没等到结果，可能已经写入
 CONFIRM_MINUTES = 30
+MAX_RECORD_ID = 2_147_483_647  # 记录 ID 是 int4，更大的数字 PostgreSQL 会报错
 SKILL_ID = "court-doc-intake"
 RECEIPT_PAGE = "/?page=documents-official"
 UNDO_HINT = "存错了：到官文收文删除这条（已处理的要先走撤销），上面列的回填内容到案件里改回，费用草稿到费用单删除。"
@@ -188,6 +189,16 @@ def _facts(report: dict) -> list[str]:
     return lines
 
 
+def _court_no_filled(report: dict, planned_court_no: str) -> str:
+    """真的回填了才算：这次确实存入了文书，且入库后案件的法院案号就是预览计划要填的。文书全部已收过时不算。"""
+    from app.agent_skill_packages.court_doc_intake.scripts.normalize_case_no import parse as parse_case_no
+    saved = any(not item.get("skipped") for item in report.get("received") or [])
+    current = str(report.get("court_case_no") or "").strip()
+    if not (saved and planned_court_no and current):
+        return ""
+    return current if parse_case_no(current)["归一化"] == parse_case_no(planned_court_no)["归一化"] else ""
+
+
 def _changes(report: dict, planned_court_no: str) -> dict:
     """这次写了什么，存进记录，撤回时照单改回。"""
     received = report.get("received") or []
@@ -197,7 +208,7 @@ def _changes(report: dict, planned_court_no: str) -> dict:
     return {"attachment_ids": [item.get("attachment_id") for item in received if not item.get("skipped")],
             "receipt_ids": [item.get("receipt_id") for item in received if item.get("receipt_id")],
             "hearing": {key: hearing.get(key) for key in ("status", "previous", "hearing") if hearing.get(key)},
-            "also_filled": hearing.get("also_filled") or [], "court_no_filled": planned_court_no,
+            "also_filled": hearing.get("also_filled") or [], "court_no_filled": _court_no_filled(report, planned_court_no),
             "staff_filled": staff.get("filled") or [], "fee_ids": [item.get("fee_id") for item in fees if item.get("fee_id")]}
 
 
@@ -211,8 +222,9 @@ def _done_lines(report: dict, planned_court_no: str = "") -> list[str]:
         actions.append(f"已存入案件文档和收文台 {saved} 份")
     if skipped:
         actions.append(f"{skipped} 份此前已收过，未重复存")
-    if planned_court_no:
-        actions.append(f"已回填法院案号 {planned_court_no}")
+    court_no_filled = _court_no_filled(report, planned_court_no)
+    if court_no_filled:
+        actions.append(f"已回填法院案号 {court_no_filled}")
     hearing = report.get("hearing") if isinstance(report.get("hearing"), dict) else {}
     status = hearing.get("status")
     if status == "已回填":
@@ -280,6 +292,21 @@ def _case_lock(case_id: int) -> asyncio.Lock:
     return _CASE_LOCKS.setdefault(case_id, asyncio.Lock())
 
 
+async def _move_from_waiting(record: BusinessRecord, status: str, extra: dict, operator: str, db: AsyncSession) -> bool:
+    """只有还在“待确认”才改，和入库的 _claim 互斥：确认和取消同时发生时只有一个成功。"""
+    data = {**(record.data or {}), **extra}
+    changed = await db.execute(update(BusinessRecord).where(BusinessRecord.id == record.id, BusinessRecord.status == WAITING)
+                               .values(status=status, data=data).execution_options(synchronize_session=False))
+    if changed.rowcount != 1:
+        await db.commit()
+        return False
+    db.add(WorkflowEvent(record_id=record.id, action="钉钉收文", from_status=WAITING, to_status=status, operator=operator,
+                         comment=str(extra.get("reason") or "")[:500]))
+    await db.commit()
+    await db.refresh(record)
+    return True
+
+
 async def _claim(record: BusinessRecord, db: AsyncSession) -> bool:
     """入库前原子改状态，连发两次“确认”也只入库一次。"""
     changed = await db.execute(update(BusinessRecord).where(BusinessRecord.id == record.id, BusinessRecord.status == WAITING)
@@ -325,8 +352,7 @@ async def expire_waiting(db: AsyncSession) -> int:
     for record in rows:
         data = record.data or {}
         if record.status == WAITING and data.get("expires_at") and datetime.fromisoformat(data["expires_at"]) < now:
-            await _set_status(record, PENDING, {"reason": "超时未确认"}, record.owner, db)
-            changed += 1
+            changed += int(await _move_from_waiting(record, PENDING, {"reason": "超时未确认"}, record.owner, db))
         elif record.status == SAVING and data.get("saving_at") \
                 and datetime.fromisoformat(data["saving_at"]) + timedelta(minutes=CONFIRM_MINUTES) < now:
             await _set_status(record, PENDING, {"reason": "入库结果不确定，请到案件文档核对"}, record.owner, db)
@@ -338,9 +364,10 @@ async def _retire_waiting(user: User, db: AsyncSession) -> int:
     """律师发了新短信，之前没确认的转待处理，“确认”只对应最新这一条，不会存错到旧的。"""
     rows = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == MODULE, BusinessRecord.status == WAITING,
                                                           BusinessRecord.owner == user.username))).all()
+    moved = 0
     for record in rows:
-        await _set_status(record, PENDING, {"reason": "律师发了新短信，这条未确认"}, user.username, db)
-    return len(rows)
+        moved += int(await _move_from_waiting(record, PENDING, {"reason": "律师发了新短信，这条未确认"}, user.username, db))
+    return moved
 
 
 async def _waiting_records(user: User, db: AsyncSession) -> list[BusinessRecord]:
@@ -359,7 +386,7 @@ async def _handle_command(command: tuple[str, int | None, int | None], user: Use
             return Reply(f"{me} 没有等你确认的收文。", [message.sender_id])
         lines = [f"{verb} {record.id}（{(record.data or {}).get('prompt_label') or '待确认收文'}）" for record in waiting]
         return Reply("\n".join([f"{me} 请带编号回复，明确是哪一条：", *lines]), [message.sender_id])
-    record = await db.get(BusinessRecord, record_id)
+    record = await db.get(BusinessRecord, record_id) if record_id <= MAX_RECORD_ID else None
     if record is None or record.module != MODULE or record.owner != user.username:
         return Reply(f"{me} 没有等你确认的这条收文（编号 {record_id}），只有发短信的本人能确认。", [message.sender_id])
     if record.status != WAITING:
@@ -367,10 +394,12 @@ async def _handle_command(command: tuple[str, int | None, int | None], user: Use
     data = record.data or {}
     expires = datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None
     if expires is not None and expires < datetime.now(timezone.utc):
-        await _set_status(record, PENDING, {"reason": "超时未确认"}, user.username, db)
+        if not await _move_from_waiting(record, PENDING, {"reason": "超时未确认"}, user.username, db):
+            return Reply(f"{me} 编号 {record_id} 这条收文已在处理或已处理。", [message.sender_id])
         return Reply(f"{me} 这条收文已超过 {CONFIRM_MINUTES} 分钟未确认，已转到收文台待处理。\n{_link_line()}", [message.sender_id])
     if verb == "取消":
-        await _set_status(record, CANCELLED, {"reason": "律师取消"}, user.username, db)
+        if not await _move_from_waiting(record, CANCELLED, {"reason": "律师取消"}, user.username, db):
+            return Reply(f"{me} 编号 {record_id} 这条收文已在处理或已处理，没能取消。", [message.sender_id])
         return Reply(f"{me} 已取消，编号 {record_id} 这条没有存入。", [message.sender_id])
     candidates = data.get("candidates") or []
     if candidates:
@@ -486,7 +515,7 @@ async def _preview_record(record: BusinessRecord, message: BotMessage, link: str
     if config.auto_save_unique:
         unique, why_not = await strict_unique(report, db)
         if unique:
-            await _set_status(record, WAITING, {**record_data, "case_id": case_id, "auto_saved": True,
+            await _set_status(record, WAITING, {**record_data, "case_id": case_id, "auto_saved": True, "expires_at": expires,
                                                 "match_level": str(match.get("level") or ""), "match_basis": basis}, user.username, db)
             reply = await _save(record, case_id, user, message, api, db)
             if record.status == DONE:

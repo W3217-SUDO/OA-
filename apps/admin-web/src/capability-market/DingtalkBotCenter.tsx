@@ -92,7 +92,7 @@ export function DingtalkBotCenter({ onBusy }: { onBusy: (busy: boolean) => void 
           <Form.Item name="group_id" label="收文群" extra="只处理这个群里 @收文助手 的消息，按群 ID 认群，改群名不受影响。启用机器人后在群里 @ 它一次，刷新这里就能选；没选群时任何消息都不处理。">
             <Select allowClear placeholder="请选择收文群" options={[
               ...(state.group_id && !state.seen_groups.some((item) => item.id === state.group_id) ? [{ value: state.group_id, label: state.group_title || state.group_id }] : []),
-              ...state.seen_groups.map((item) => ({ value: item.id, label: item.title || item.id })),
+              ...state.seen_groups.map((item) => ({ value: item.id, label: `${item.title || "未命名群"}（ID 尾号 ${item.id.slice(-6)}，${item.seen_at.slice(0, 16).replace("T", " ")} @ 过）` })),
             ]} />
           </Form.Item>
           <Form.Item name="use_cloud_agent" label="用云端智能体读短信" valuePropName="checked" extra="开启后短信和文书内容会发送到火山方舟模型服务，并按发短信的人计费。">

@@ -963,8 +963,9 @@ export default function DocumentCenterPage({
   const receiptSearch = () => {
     const values = receiptForm.getFieldsValue();
     const range = values.upload_range;
-    const searchingOne = ["case_no", "court_no", "file_name", "document_name"].some((key) => String(values[key] || "").trim());
-    // 搜具体案号、文件时不受默认“当日”限制，否则查老案件搜不到；手工选了别的日期仍照用。
+    const searchingOne = ["case_no", "court_no", "court_name", "file_name", "document_name", "plaintiff", "defendant",
+      "hearing_lawyer", "case_manager", "handling_lawyer", "assistant"].some((key) => String(values[key] || "").trim());
+    // 搜具体案号、当事人、律师、文件时不受默认“当日”限制，否则查老案件搜不到；手工选了别的日期仍照用。
     if (searchingOne && range && dayjs().isSame(range[0], "day") && dayjs().isSame(range[1], "day")) {
       receiptForm.setFieldsValue({ upload_range: undefined });
       setReceiptQuery({ ...values, upload_range: undefined });

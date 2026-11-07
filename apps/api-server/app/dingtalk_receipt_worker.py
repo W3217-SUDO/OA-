@@ -11,6 +11,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import time
 from typing import Any
 from urllib.parse import quote_plus
 
@@ -36,6 +37,9 @@ API_TIMEOUT = 120
 AGENT_TIMEOUT = 300
 CONNECT_RETRIES = 3
 RECHECK_SECONDS = 60
+RECONNECT_MIN_SECONDS = 5
+RECONNECT_MAX_SECONDS = 120
+RECONNECT_STABLE_SECONDS = 60
 DRAIN_SECONDS = 150
 SEEN_LIMIT = 2000
 AGENT_PROMPT = ("这是律师在钉钉收文群转发的法院短信。请按法院收文技能，只调用“一键法院收文”做预览（不要带 confirm），"
@@ -143,10 +147,14 @@ class Worker:
             return
         async with self.slots:
             # 每条消息都重读配置：关了就不处理，不等连接断开。
-            async with SessionLocal() as db:
-                bot = await load_bot(db)
-                if bot.ready and message.conversation_type == "2" and message.conversation_id != bot.group_id:
-                    await note_seen_group(db, message.conversation_id, message.conversation_title)
+            try:
+                async with SessionLocal() as db:
+                    bot = await load_bot(db)
+                    if bot.ready and message.conversation_type == "2" and message.conversation_id != bot.group_id:
+                        await note_seen_group(db, message.conversation_id, message.conversation_title)
+            except Exception:
+                logger.exception("receipt bot could not read settings, message dropped")  # 读不到配置就不知道是不是收文群，不回复
+                return
             if not bot.ready:
                 return
             config = BotSettings(group_id=bot.group_id, use_cloud_agent=bot.use_cloud_agent, auto_save_unique=bot.auto_save_unique)
@@ -218,27 +226,44 @@ async def _watch(bot: BotConfig, version: str) -> None:
             return
 
 
+def next_reconnect_delay(previous: float, lived_seconds: float) -> float:
+    if lived_seconds >= RECONNECT_STABLE_SECONDS:
+        return RECONNECT_MIN_SECONDS
+    return min(previous * 2, RECONNECT_MAX_SECONDS)
+
+
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)  # httpx 的 INFO 日志会写出带 session 的 webhook 地址
     worker = Worker()
     version = _package_version()
+    delay = RECONNECT_MIN_SECONDS
     while _package_version() == version:
-        async with SessionLocal() as db:
-            bot = await load_bot(db)
+        try:
+            async with SessionLocal() as db:
+                bot = await load_bot(db)
+        except Exception:
+            logger.exception("receipt bot could not read settings")
+            await asyncio.sleep(RECHECK_SECONDS)
+            continue
         if not bot.ready:
             await _sweep()
             await asyncio.sleep(RECHECK_SECONDS)
             continue
+        started = time.monotonic()
         connection = asyncio.create_task(worker.connect(bot.app_key, bot.app_secret))
         watcher = asyncio.create_task(_watch(bot, version))
         done, pending = await asyncio.wait({connection, watcher}, return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
             task.cancel()
         await asyncio.gather(*pending, return_exceptions=True)
-        if connection in done and connection.exception() is not None:
+        if connection not in done:
+            continue  # 配置或版本变了，马上按新的来
+        if connection.exception() is not None:
             logger.error("receipt bot connection failed type=%s", type(connection.exception()).__name__)
-            await asyncio.sleep(10)
+        # 连接断开（包括钉钉正常关闭）都要等一等再连，连续很快断开就逐步拉长，连得久了重新计。
+        delay = next_reconnect_delay(delay, time.monotonic() - started)
+        await asyncio.sleep(delay)
     logger.info("package changed, finishing %s messages before restart", len(worker.tasks))
     if worker.tasks:
         await asyncio.wait(worker.tasks, timeout=DRAIN_SECONDS)

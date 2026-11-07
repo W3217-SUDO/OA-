@@ -389,6 +389,71 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("超过", (await self._run(sms(message_id="m4", text=f"确认 {record.id}"), api)).text)
         self.assertEqual((await self._records())[1].status, "待处理")
 
+    async def test_court_number_line_only_when_really_filled(self):
+        planned = preview()
+        planned["plan"] = {**planned["plan"], "court_case_no": NUMBER}
+        result = done()
+        result["court_case_no"] = NUMBER
+        reply = await self._run(sms(), api := FakeApi(planned, result))
+        reply = await self._run(sms(message_id="m2", text=f"确认 {await self._waiting_id()}"), api)
+        self.assertIn(f"已回填法院案号 {NUMBER}", reply.text)
+        self.assertEqual((await self._records())[0].data["changes"]["court_no_filled"], NUMBER)
+        result = done()
+        result.update(court_case_no=NUMBER, received=[{"attachment_id": 10, "skipped": True}])
+        api = FakeApi(planned, result)
+        await self._run(sms(message_id="m3"), api)
+        reply = await self._run(sms(message_id="m4", text=f"确认 {await self._waiting_id()}"), api)
+        self.assertNotIn("已回填法院案号", reply.text)
+        self.assertEqual((await self._records())[1].data["changes"]["court_no_filled"], "")
+
+    async def test_oversized_number_is_refused_not_an_error(self):
+        api = FakeApi(preview())
+        await self._run(sms(), api)
+        reply = await self._run(sms(message_id="m2", text="确认 999999999999"), api)
+        self.assertIn("没有等你确认", reply.text)
+        self.assertEqual(len(api.calls), 1)
+
+    async def test_cancel_and_confirm_race_only_one_wins(self):
+        release = asyncio.Event()
+
+        async def api(username, path, body):
+            if body.get("confirm"):
+                await release.wait()
+                return done()
+            return preview()
+        await self._run(sms(), api)
+        code = await self._waiting_id()
+        saving = asyncio.create_task(self._run(sms(message_id="m2", text=f"确认 {code}"), api))
+        await asyncio.sleep(0.05)
+        cancelled = await self._run(sms(message_id="m3", text=f"取消 {code}"), api)
+        self.assertNotIn("已取消", cancelled.text)
+        release.set()
+        self.assertIn("收文完成", (await saving).text)
+        self.assertEqual((await self._records())[0].status, "已导入")
+
+    def test_reconnect_backs_off_and_resets(self):
+        from app.dingtalk_receipt_worker import RECONNECT_MAX_SECONDS, RECONNECT_MIN_SECONDS, next_reconnect_delay
+        delay = RECONNECT_MIN_SECONDS
+        delays = []
+        for _ in range(8):
+            delay = next_reconnect_delay(delay, 0.1)
+            delays.append(delay)
+        self.assertEqual(delays[0], RECONNECT_MIN_SECONDS * 2)
+        self.assertEqual(delays[-1], RECONNECT_MAX_SECONDS)
+        self.assertEqual(next_reconnect_delay(RECONNECT_MAX_SECONDS, 600), RECONNECT_MIN_SECONDS)
+
+    async def test_auto_save_crash_before_claim_is_swept(self):
+        await self._set_case(court_case_no=NUMBER)
+
+        async def boom(*args, **kwargs):
+            raise RuntimeError("crash")
+        with patch("app.areas.aws.receipt_bot._save", boom):
+            with self.assertRaises(RuntimeError):
+                await self._run(sms(), FakeApi(preview()), AUTO)
+        record = (await self._records())[0]
+        self.assertEqual(record.status, "待确认")
+        self.assertTrue(record.data["expires_at"])
+
     async def test_confirm_without_number_never_saves(self):
         api = FakeApi(preview())
         await self._run(sms(), api)
