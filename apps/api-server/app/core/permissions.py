@@ -1191,7 +1191,10 @@ def _require_not_new_self_approver(identity: dict, before, after, label: str) ->
     if "admin" in (identity.get("_actual_role_ids") or []):
         return
     me = str(identity.get("username") or "").strip().lower()
-    clean = lambda values: {str(value or "").strip().lower() for value in values} - {""}
+
+    def clean(values) -> set[str]:
+        return {str(value or "").strip().lower() for value in values} - {""}
+
     if me and me in clean(after) and me not in clean(before):
         raise HTTPException(status_code=403, detail=f"不能把自己设为{label}，请让系统管理员设置")
 
