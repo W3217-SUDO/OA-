@@ -22,6 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_skill_packages.court_doc_intake.scripts import fetch_court_docs as court_api
+from app.areas.aws.court_intake import CourtIntakeInput
 from app.config import settings
 from app.core.dependencies import current_identity, get_db
 from app.models import BusinessRecord, User, WorkflowEvent
@@ -35,6 +36,7 @@ UNCERTAIN_STATUS = 504  # 请求发出去了但没等到结果，可能已经写
 CONFIRM_MINUTES = 30
 MAX_RECORD_ID = 2_147_483_647  # 记录 ID 是 int4，更大的数字 PostgreSQL 会报错
 SKILL_ID = "court-doc-intake"
+INTAKE_PATH = "/documents/court-service/bot-receipts/intake"
 RECEIPT_PAGE = "/?page=documents-official"
 UNDO_HINT = "存错了：到官文收文删除这条（已处理的要先走撤销），上面列的回填内容到案件里改回，费用草稿到费用单删除。"
 ASSISTANT_NAME_FIELDS = ("assistants", "assistant", "case_assistant")
@@ -326,7 +328,7 @@ async def _save(record: BusinessRecord, case_id: int, user: User, message: BotMe
     planned_court_no = str((record.data or {}).get("planned_court_no") or "")
     try:
         async with _case_lock(case_id):
-            report = await api(user.username, "/documents/court-service/intake", {"link": link, "case_id": case_id, "confirm": True, "direct_save": True})
+            report = await api(user.username, INTAKE_PATH, {"link": link, "case_id": case_id, "confirm": True})
     except ApiError as exc:
         await _set_status(record, PENDING, {"reason": exc.detail}, user.username, db)
         if exc.status == UNCERTAIN_STATUS:
@@ -407,6 +409,14 @@ def _party_set(value: Any) -> set[str]:
     return {re.sub(r"\s+", "", str(item)).replace("(", "（").replace(")", "）") for item in values if str(item).strip()}
 
 
+async def _cases_with_number(normalized: str, db: AsyncSession) -> set[int]:
+    """全所登记了这个法院案号的案件，归一化后比较。只读，只用来判断是否唯一。"""
+    from app.agent_skill_packages.court_doc_intake.scripts.normalize_case_no import parse as parse_case_no
+    columns = [BusinessRecord.data[key].as_string() for key in COURT_NUMBER_FIELDS]
+    rows = (await db.execute(select(BusinessRecord.id, *columns).where(BusinessRecord.module == "case", BusinessRecord.status != "已合并"))).all()
+    return {row[0] for row in rows if any(value and str(value).strip() and parse_case_no(str(value))["归一化"] == normalized for value in row[1:])}
+
+
 async def strict_unique(report: dict, db: AsyncSession) -> tuple[bool, str]:
     """能否不经律师确认直接存（陶国南 11-07 反查唯一也可直接存）。服务器判断，不看模型。全部满足才算唯一：
 
@@ -446,13 +456,21 @@ async def strict_unique(report: dict, db: AsyncSession) -> tuple[bool, str]:
         if not (_party_set(plaintiffs) <= _party_set(data.get("plaintiff"))
                 and _party_set(defendants) <= _party_set(data.get("opponent") or data.get("defendant"))):
             return False, "原告、被告没有全部对上"
+        # 系统里法院多登记成代字（如 皖1226），文书上是全称：全称相同或案号里的代字相同都算。
         court = str(report.get("court") or next((item.get("受理机关") for item in fields if item.get("受理机关")), "") or "").strip()
-        if not court or court not in {str(data.get(key) or "").strip() for key in COURT_NAME_FIELDS}:
+        registered_courts = {str(data.get(key) or "").strip() for key in COURT_NAME_FIELDS} - {""}
+        court_code = str(document_number["受理机关代字"] or "").strip() if document_number is not None else ""
+        if not ((court and court in registered_courts) or (court_code and court_code in registered_courts)):
             return False, "受理法院与该案登记的不一致"
         if document_number is None:
             return False, "文书上没有识别出法院案号"
     elif not level.startswith(_FIRST_LEVEL):
         return False, "匹配方式不明确"
+    # 案号搜索会漏案（已保存的 JSON 中文被转义、登记值带空格），这里直接比全所登记案号，不靠搜索。
+    if document_number is not None:
+        others = await _cases_with_number(document_number["归一化"], db)
+        if others - {case_id}:
+            return False, "全所不止这一个案件符合"
     everyone = await _match_case(numbers, plaintiffs, defendants, _UNIQUE_CHECK_IDENTITY, db)
     if [record.id for record in everyone["records"]] != [case_id]:
         return False, "全所不止这一个案件符合"
@@ -477,7 +495,7 @@ async def _preview_record(record: BusinessRecord, message: BotMessage, link: str
         except Exception as exc:
             logger.warning("receipt bot cloud agent failed record=%s type=%s", record.id, type(exc).__name__)
     try:
-        report = await api(user.username, "/documents/court-service/intake", {"link": link})
+        report = await api(user.username, INTAKE_PATH, {"link": link})
     except ApiError as exc:
         await _set_status(record, PENDING, {"reason": exc.detail}, user.username, db)
         return Reply(f"{me} 文书下载或识别失败：{exc.detail}。已转到收文台待处理。\n{_link_line()}", [message.sender_id])
@@ -563,6 +581,21 @@ class CloseInput(BaseModel):
     reason: str = Field(default="", max_length=500, description="不入库的原因，可不填")
 
 
+def _require_internal(identity: dict) -> None:
+    """外部账号不能用收文助手，收文台的待处理也一样（@ 机器人已拒绝，这里保持一致）。"""
+    from app.core.data_scope_gate import is_external_role
+    if is_external_role(identity.get("permission_role")):
+        raise HTTPException(403, "外部账号不能使用钉钉收文")
+
+
+@router.post(f"{settings.api_prefix}{INTAKE_PATH}", status_code=201)
+async def bot_intake(body: CourtIntakeInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
+    """钉钉收文助手专用入口：权限和一键收文相同，不向智能体开放；已有开庭不覆盖，回填失败只写进结果。"""
+    from app.areas.aws.court_intake import run_intake
+    _require_internal(identity)
+    return await run_intake(body, identity, db, direct_save=True)
+
+
 def _row(record: BusinessRecord) -> dict:
     data = record.data or {}
     return {"id": record.id, "status": record.status, "sent_at": data.get("sent_at") or "", "sender": data.get("sender_nick") or "",
@@ -583,6 +616,7 @@ async def _pending_record(record_id: int, db: AsyncSession) -> BusinessRecord:
 @router.get(f"{settings.api_prefix}/documents/court-service/bot-receipts")
 async def list_bot_receipts(identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.areas.aws.receipt_sources import _require_receipt_menu
+    _require_internal(identity)
     await _require_receipt_menu("official", identity, db)
     rows = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == MODULE, BusinessRecord.status == PENDING)
                              .order_by(BusinessRecord.id.desc()).limit(300))).all()
@@ -592,8 +626,9 @@ async def list_bot_receipts(identity: dict = Depends(current_identity), db: Asyn
 @router.post(f"{settings.api_prefix}/documents/court-service/bot-receipts/{{record_id}}/assign")
 async def assign_bot_receipt(record_id: int, body: AssignInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """指定案件入库：按处理人自己的案件权限，与一键收文确认入库相同。没有送达链接的短信不能在这里入库。"""
-    from app.areas.aws.court_intake import CourtIntakeInput, intake_court_service
+    from app.areas.aws.court_intake import intake_court_service
     from app.areas.aws.receipt_sources import _require_receipt_menu
+    _require_internal(identity)
     await _require_receipt_menu("official", identity, db)
     record = await _pending_record(record_id, db)
     link = (record.data or {}).get("link")
@@ -614,6 +649,7 @@ async def assign_bot_receipt(record_id: int, body: AssignInput, identity: dict =
 async def close_bot_receipt(record_id: int, body: CloseInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """不入库：标记已处理（例如不是本所案件、已手工上传），记录保留。"""
     from app.areas.aws.receipt_sources import _require_receipt_menu
+    _require_internal(identity)
     await _require_receipt_menu("official", identity, db)
     record = await _pending_record(record_id, db)
     await _set_status(record, CLOSED, {"reason": body.reason.strip(), "handled_by": identity["username"]}, identity["username"], db)

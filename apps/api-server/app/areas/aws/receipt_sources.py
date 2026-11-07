@@ -1,5 +1,7 @@
 """按上传来源列出官文收文与案件内收文。"""
 
+from datetime import timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +16,7 @@ from app.models import BusinessRecord, FileAttachment
 
 
 router = APIRouter()
+CHINA = timezone(timedelta(hours=8))
 
 # 按文件名识别案件里的法院收文；“裁定书”和旧系统一致（501385，范文玲 11-04 确认；调解书、决定书等不计入）。
 RECEIPT_KEYWORDS = ("缴费单", "判决书", "裁定书", "通知书", "传票", "告知书")
@@ -78,7 +81,11 @@ async def can_read_receipt_attachment(attachment: FileAttachment, identity: dict
 
 def _case_attachment_row(attachment: FileAttachment, case: BusinessRecord) -> dict:
     case_data = case.data or {}
-    created_at = attachment.created_at.isoformat() if attachment.created_at else ""
+    # 按北京时间算日期：UTC 前 10 位会把 8 点前上传的算到前一天，默认当日就漏了。
+    created = attachment.created_at
+    if created is not None and created.tzinfo is not None:
+        created = created.astimezone(CHINA)
+    created_at = created.isoformat() if created else ""
     return {
         "id": -attachment.id,
         "serial_no": case.serial_no,

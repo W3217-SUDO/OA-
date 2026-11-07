@@ -34,7 +34,6 @@ class CourtIntakeInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     link: str = Field(min_length=20, max_length=2000, description="法院短信里的完整送达链接，可连同短信正文一起粘贴")
     case_id: int | None = Field(default=None, gt=0, description="用户选定或确认的案件 ID；首次预览不要填")
-    direct_save: bool = Field(default=False, description="钉钉收文助手入库用：案件已有的开庭不覆盖，回填和费用单失败只写进结果，不让整次失败；网页和智能体不用填")
     confirm: bool = Field(default=False, description="false 只预览（下载文书、匹配案件、列出将写入的内容），用户确认后带 case_id 和 confirm=true 再调用才入库")
 
 
@@ -322,6 +321,11 @@ async def intake_court_service(body: CourtIntakeInput, identity: dict = Depends(
 
     命中多个案件时返回候选让用户选；匹配不到则停止，不新建案件。
     """
+    return await run_intake(body, identity, db)
+
+
+async def run_intake(body: CourtIntakeInput, identity: dict, db: AsyncSession, *, direct_save: bool = False) -> dict:
+    """direct_save 只给钉钉收文助手的专用入口用：案件已有的开庭不覆盖，回填和费用单失败只写进结果，不让整次失败。"""
     fetched = await fetch_court_service_documents(CourtServiceFetchInput(link=body.link), identity, db)
     documents = fetched["documents"]
     numbers = fetched["case_numbers"]
@@ -370,13 +374,13 @@ async def intake_court_service(body: CourtIntakeInput, identity: dict = Depends(
         try:
             return await action
         except HTTPException as exc:
-            if not body.direct_save:
+            if not direct_save:
                 raise
             await db.rollback()
             await db.refresh(case)
             return {"status": "失败", "step": name, "detail": str(exc.detail)}
 
-    hearing = await step("开庭回填", _backfill_hearing(case, documents, level, court_name, court_no, identity, db, keep_existing=body.direct_save))
+    hearing = await step("开庭回填", _backfill_hearing(case, documents, level, court_name, court_no, identity, db, keep_existing=direct_save))
     await db.refresh(case)
     staff = await step("法官书记员回填", _backfill_staff(case, documents, level, court_name, identity, db))
     fees = [await step("费用单", _prepare_fee(case, item, court_no, level, documents, identity, db))

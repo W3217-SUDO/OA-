@@ -127,12 +127,12 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
     async def test_preview_then_confirm_saves_as_sender_and_tells_assistants(self):
         api = FakeApi(preview(), done())
         first = await self._run(sms(), api)
-        self.assertEqual(api.calls[0], ("lawyer", "/documents/court-service/intake", {"link": LINK}))
+        self.assertEqual(api.calls[0], ("lawyer", "/documents/court-service/bot-receipts/intake", {"link": LINK}))
         self.assertIn("回复“确认 ", first.text)
         self.assertEqual(len(api.calls), 1)
         self.assertEqual((await self._records())[0].status, "待确认")
         second = await self._run(sms(message_id="m2", text=f"确认 {await self._waiting_id()}"), api)
-        self.assertEqual(api.calls[1], ("lawyer", "/documents/court-service/intake", {"link": LINK, "case_id": 7, "confirm": True, "direct_save": True}))
+        self.assertEqual(api.calls[1], ("lawyer", "/documents/court-service/bot-receipts/intake", {"link": LINK, "case_id": 7, "confirm": True}))
         self.assertEqual(second.at_user_ids, ["ding-lawyer", "ding-helper"])
         for words in ("HZMS1", "（2026）沪0115民初1号", "甲公司", "乙公司", "传票", "2026-12-01", "500", "2026-12-10", "已存入", "助理丙", "?page=documents-official"):
             self.assertIn(words, second.text)
@@ -163,7 +163,7 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         reply = await self._run(sms(), api, AUTO)
         for words in ("收文完成", "匹配依据", "存错了"):
             self.assertIn(words, reply.text)
-        self.assertEqual(api.calls[1][2], {"link": LINK, "case_id": 7, "confirm": True, "direct_save": True})
+        self.assertEqual(api.calls[1][2], {"link": LINK, "case_id": 7, "confirm": True})
         record = (await self._records())[0]
         self.assertEqual((record.status, record.data["auto_saved"]), ("已导入", True))
 
@@ -334,9 +334,68 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(again.status_code, 409)
         self.assertIn("状态为“已导入”", again.text)
         body = intake.await_args.args[0]
-        self.assertEqual((body.link, body.case_id, body.confirm, body.direct_save), (LINK, 7, True, False))
+        self.assertEqual((body.link, body.case_id, body.confirm), (LINK, 7, True))
         changes = (await self._records())[0].data["changes"]
         self.assertEqual((changes["attachment_ids"], changes["fee_ids"]), ([10], [31]))
+
+    async def _client_as(self, identity):
+        async def _db():
+            async with self.sessions() as db:
+                yield db
+        app.dependency_overrides[get_db] = _db
+        app.dependency_overrides[current_identity] = lambda: identity
+        return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://bot.test")
+
+    async def test_external_accounts_refused_on_all_bot_routes(self):
+        await self._run(sms(text="【某某人民法院】请到本院领取文书"), FakeApi())
+        record = (await self._records())[0]
+        outer = {"username": "outer", "display_name": "外部", "role": "admin", "role_ids": ["admin"], "_actual_role_ids": ["user"], "_actual_role": "user",
+                 "permission_role": "合作律师", "department": "", "action_keys": ["*"], "menu_keys": ["documents-official"]}
+        base = settings.api_prefix + "/documents/court-service/bot-receipts"
+        async with await self._client_as(outer) as client:
+            self.assertEqual((await client.get(base)).status_code, 403)
+            self.assertEqual((await client.post(f"{base}/{record.id}/assign", json={"case_no": "HZMS1"})).status_code, 403)
+            self.assertEqual((await client.post(f"{base}/{record.id}/close", json={})).status_code, 403)
+            self.assertEqual((await client.post(f"{base}/intake", json={"link": LINK})).status_code, 403)
+        self.assertEqual((await self._records())[0].status, "待处理")
+
+    async def test_bot_route_saves_directly_public_route_does_not(self):
+        admin = {"username": "admin", "display_name": "管理者", "role": "admin", "role_ids": ["admin"], "_actual_role_ids": ["admin"], "_actual_role": "admin",
+                 "department": "", "action_keys": ["*"], "menu_keys": ["documents-official"]}
+        run = AsyncMock(return_value={"status": "待确认入库"})
+        async with await self._client_as(admin) as client:
+            with patch("app.areas.aws.court_intake.run_intake", run):
+                await client.post(settings.api_prefix + "/documents/court-service/bot-receipts/intake", json={"link": LINK})
+                self.assertTrue(run.await_args.kwargs["direct_save"])
+                refused = await client.post(settings.api_prefix + "/documents/court-service/intake", json={"link": LINK, "direct_save": True})
+                self.assertEqual(refused.status_code, 422)
+                await client.post(settings.api_prefix + "/documents/court-service/intake", json={"link": LINK})
+                self.assertFalse(run.await_args.kwargs.get("direct_save", False))
+
+    def test_tool_catalog_has_no_direct_save(self):
+        from app.agent_mcp.catalog import get_catalog
+        for tool in get_catalog(app).tools:
+            self.assertNotIn("direct_save", str(getattr(tool, "input_schema", "")), getattr(tool, "name", ""))
+
+    async def test_firm_check_finds_same_number_stored_with_spaces(self):
+        await self._set_case(court_case_no=NUMBER)
+        async with self.sessions() as db:
+            db.add(BusinessRecord(id=8, module="case", serial_no="HZMS2", title="另案", customer="", status="办理中", owner="other", department="", description="",
+                                  data={"first_court_case_no": "（2026）沪 0115 民初 1 号"}))
+            await db.commit()
+        await self._assert_not_auto(await self._run(sms(), FakeApi(preview()), AUTO), "全所不止这一个案件符合")
+
+    async def test_party_match_accepts_registered_court_code(self):
+        await self._party_case(court="沪0115")
+        reply = await self._run(sms(), FakeApi(self._party(case_numbers=[NUMBER]), done()), AUTO)
+        self.assertIn("收文完成", reply.text)
+
+    def test_case_attachment_date_uses_beijing_time(self):
+        from datetime import datetime, timezone
+        from app.areas.aws.receipt_sources import _case_attachment_row
+        attachment = SimpleNamespace(id=1, created_at=datetime(2026, 11, 6, 23, 30, tzinfo=timezone.utc), original_name="传票", uploader="u", remark="")
+        case = BusinessRecord(id=7, module="case", serial_no="H", customer="", data={})
+        self.assertEqual(_case_attachment_row(attachment, case)["data"]["uploaded_at"], "2026-11-07")
 
     async def test_document_without_number_always_asks(self):
         await self._party_case()
@@ -383,7 +442,7 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(api.calls), 1)
         self.assertIn("序号", (await self._run(sms(message_id="m2", text=f"确认 {code} 9"), api)).text)
         await self._run(sms(message_id="m3", text=f"确认 {code} 1"), api)
-        self.assertEqual(api.calls[-1][2], {"link": LINK, "case_id": 7, "confirm": True, "direct_save": True})
+        self.assertEqual(api.calls[-1][2], {"link": LINK, "case_id": 7, "confirm": True})
 
     async def test_unmatched_and_failures_go_to_pending(self):
         api = FakeApi({"status": "系统内未登记该案", "documents": DOCS, "match": {"candidates": []}})
@@ -596,7 +655,7 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
     def test_bot_receipts_are_not_agent_tools(self):
         from app.agent_mcp.semantic_metadata import exclusion_reasons
         routes = [route for route in app.routes if "bot-receipts" in getattr(route, "path", "")]
-        self.assertEqual(len(routes), 3)
+        self.assertEqual(len(routes), 4)
         for route in routes:
             self.assertTrue(exclusion_reasons(route), route.path)
 
