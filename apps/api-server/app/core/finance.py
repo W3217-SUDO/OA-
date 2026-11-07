@@ -153,7 +153,7 @@ async def _visible_incoming_payment_statement(identity: dict, db: AsyncSession, 
     conditions = list(incoming_center_conditions(identity))
     if identity.get("role") not in {"admin", "auditor"}:
         visible_customer_titles = select(BusinessRecord.title).where(
-            BusinessRecord.module == "customer", *(await _record_scope_conditions(identity, db)),
+            BusinessRecord.module == "customer", *(await _record_scope_conditions(identity, db, module="customer")),
         )
         conditions.append(or_(
             IncomingPayment.operator == identity["username"],

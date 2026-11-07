@@ -218,6 +218,27 @@ def _apply_record_scope_indexes(connection: Connection, _upgrade_schema: Callabl
     connection.execute(text("ANALYZE business_records"))
 
 
+def _apply_clue_scope_indexes(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    """线索范围改写（慢查询 A2）用的索引：线索的 shared_to、调查辅助员三元组索引，审批人 btree。只收线索约 1.2 万行。"""
+    if connection.dialect.name != "postgresql":
+        return
+    connection.execute(text("SET LOCAL lock_timeout = '5s'"))
+    connection.execute(text("SET LOCAL statement_timeout = '60s'"))
+    for name, expression in (
+        ("shared_to", "(data ->> 'shared_to')"),
+        ("assistant", "lower(COALESCE(CAST(data ->> 'investigation_assistant' AS VARCHAR), ''))"),
+    ):
+        connection.execute(text(
+            f"CREATE INDEX IF NOT EXISTS ix_business_records_clue_{name}_trgm ON business_records "
+            f"USING gin (({expression}) gin_trgm_ops) WHERE module = 'clue'"
+        ))
+    connection.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_business_records_clue_reviewer ON business_records "
+        "(lower(COALESCE(CAST(data ->> 'reviewer' AS VARCHAR), ''))) WHERE module = 'clue'"
+    ))
+    connection.execute(text("ANALYZE business_records"))
+
+
 def _apply_refund_candidate_indexes(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
     """只有少数费用登记退费进度或是律师代理费(退费)；部分索引只收这些行，表达式与 dashboard_scope 查询一致。"""
     if connection.dialect.name != "postgresql":
@@ -335,6 +356,7 @@ def _run_versioned_schema_migrations(
         ("ipr_applicants_v1", _apply_ipr_applicants),
         ("finance_query_revision_ipr_applicants_v1", _apply_finance_query_revision),
         ("business_record_scope_trgm_v1", _apply_record_scope_indexes),
+        ("clue_scope_indexes_v1", _apply_clue_scope_indexes),
     )
     for revision, migration in revisions:
         if connection.execute(

@@ -1026,6 +1026,13 @@ async def _record_scope_conditions(identity: dict, db: AsyncSession, *, module: 
         if customer_menu_scope is not None:
             arms.append(customer_menu_scope)
         return [*protected_scope, _module_scope_union("customer", arms)]
+    if module == "clue":
+        assistant_text = func.lower(func.coalesce(BusinessRecord.data["investigation_assistant"].as_string(), ""))
+        # 辅助员：先用索引筛出含账号的，再按分隔符精确比。其他模块的条件对线索恒假，不用算。
+        arms = [base_scope, exact_shared_to,
+                func.lower(func.coalesce(BusinessRecord.data["reviewer"].as_string(), "")) == user.username.lower(),
+                and_(assistant_text.contains(user.username.lower(), autoescape=True), assisted_clue)]
+        return [*protected_scope, _module_scope_union("clue", arms)]
     return [*protected_scope, include_customer_menu_scope(or_(base_scope, public_customer, managed_customer, shared_customer, coordinated_customer, exact_shared_to, personal_case, coordinated_case, published_investigation, supervised_investigation, initiated_task, assigned_clue_review, assisted_clue, pending_contract_approval))]
 
 
