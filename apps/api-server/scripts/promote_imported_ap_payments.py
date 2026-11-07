@@ -26,6 +26,7 @@ STATUS_BY_SOURCE = {
     "7": "已付款",
 }
 ACTIONABLE_STATUSES = {"1", "2", "3", "6"}
+PAYMENT_NATURE = {1: "官费", 3: "其他费用"}
 
 
 def _date(value: object) -> date | None:
@@ -113,15 +114,38 @@ async def promote(*, apply: bool) -> dict[str, int]:
         fees_by_source = defaultdict(list)
         for fee in fees:
             fees_by_source[str((fee.data or {}).get("case_fee_id"))].append(fee)
+        # 陶威 11-07 同意（同步 A1）：旧系统新建的收款方补 LEGACY-PAYMENT 参数，只新建，不改已有的。
+        params_to_create = (await db.execute(sql_text("""
+            SELECT t."PaymentTypeId" AS id, t."CaseFeeTypeId" AS fee_type_id, t."PaymentTypeName" AS type_name,
+                   t."OrganizationName" AS payee, t."Account" AS account, t."AccountBank" AS bank, t."Remark" AS remark,
+                   t."IsActived" AS active, t."CreateUser" AS creator, t."ChangeUser" AS changer
+            FROM "FAM_AP_PaymentType" t
+            WHERE NOT EXISTS (SELECT 1 FROM system_parameters p WHERE p.category = 'payment_type'
+                              AND p.code = 'LEGACY-PAYMENT-' || t."PaymentTypeId")
+            ORDER BY t."PaymentTypeId"
+        """))).mappings().all()
+        if apply:
+            for item in params_to_create:
+                db.add(SystemParameter(
+                    category="payment_type", code=f"LEGACY-PAYMENT-{item['id']}", name=str(item["payee"] or "").strip() or str(item["id"]),
+                    extra={"legacy_id": item["id"], "fee_type_legacy_id": item["fee_type_id"], "nature": PAYMENT_NATURE.get(item["fee_type_id"], ""),
+                           "legacy_payment_type_name": item["type_name"] or "", "payee": str(item["payee"] or "").strip(),
+                           "account": str(item["account"] or "").strip(), "account_bank": str(item["bank"] or "").strip(),
+                           "remark": item["remark"] or "", "legacy_audit_utc": True, "migration_source": "hz_crm_20260930"},
+                    sort_order=item["id"], is_active=str(item["active"] or "").strip().upper() == "T",
+                    created_by=item["creator"] or "hz-sync", updated_by=item["changer"] or "hz-sync",
+                ))
+            await db.flush()
         parameters = {row.code: row for row in (await db.scalars(select(SystemParameter).where(
             SystemParameter.category == "payment_type",
         ))).all()}
+        # 同步改：已逻辑删除的也算“已接入”（10-23 清理过的旧作废单不再重建，也免得编号重复）
         existing = {row.serial_no: row for row in (await db.scalars(select(BusinessRecord).where(
             BusinessRecord.serial_no.in_(serials),
-        ))).all()}
+        ).execution_options(include_deleted=True))).all()}
         existing_packages = {row.serial_no: row for row in (await db.scalars(select(BusinessRecord).where(
             BusinessRecord.serial_no.in_(package_serials),
-        ))).all()}
+        ).execution_options(include_deleted=True))).all()}
         allocation_by_record = defaultdict(list)
         audit_by_record = defaultdict(list)
         for row in allocations:
@@ -130,6 +154,8 @@ async def promote(*, apply: bool) -> dict[str, int]:
             audit_by_record[row.legacy_finance_record_id].append(row)
 
         preflight_errors: list[str] = []
+        incomplete_account: list[str] = []
+        unpromoted_ids = {row.id for row in records if _serial(row, number_counts) not in existing}
         pending = 0
         for source in records:
             payload = source.source_payload or {}
@@ -155,8 +181,9 @@ async def promote(*, apply: bool) -> dict[str, int]:
             lines = allocation_by_record[source.id]
             if not contract or contract.module != "contract" or not customer or customer.module != "customer":
                 preflight_errors.append(f"{serial}: 合同或客户关联缺失")
-            if not account.get("payee") or not account.get("account") or not account.get("account_bank"):
-                preflight_errors.append(f"{serial}: 收款账户资料不完整")
+            # 陶威 11-07 同意（同步 A1）：旧系统扫码缴费等收款方本来就没有账号，不再挡整步，照常转入并列进每轮报告。
+            if source.id in unpromoted_ids and (not account.get("payee") or not account.get("account") or not account.get("account_bank")):
+                incomplete_account.append(serial)
             if not lines or abs(sum(_money(item.amount) for item in lines) - _money(source.primary_amount)) > 0.01:
                 preflight_errors.append(f"{serial}: 费用明细与申请金额不一致")
             for line in lines:
@@ -193,6 +220,8 @@ async def promote(*, apply: bool) -> dict[str, int]:
             "packages_without_members": sum(1 for row in package_rows if not package_members.get(str(row["PackageNo"] or "").strip())),
             "duplicate_package_numbers": sum(1 for number, count in package_counts.items() if number and count > 1),
             "packages_to_promote": len(package_rows) - len(existing_packages),
+            "incomplete_account": incomplete_account,
+            "payment_type_params_created": [f"LEGACY-PAYMENT-{item['id']}" for item in params_to_create],
         }
         if not apply:
             await db.rollback()
