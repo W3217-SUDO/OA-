@@ -243,7 +243,6 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     actual_admin = is_actual_system_admin(identity)
     effective_role = body.role if account_type == "员工账号" else "user"
     requested_staff_role = body.position.strip() if account_type == "员工账号" and position_role else str(body.data.get("permission_role_code") or body.data.get("staff_role") or body.data.get("permission_role") or "").strip()
-    current_staff_role = str((employee.data or {}).get("permission_role_code") or (employee.data or {}).get("staff_role") or (employee.data or {}).get("permission_role") or "").strip()
     if not actual_admin:
         role_keys = ("permission_role_code", "permission_role", "staff_role")
         submitted_roles = {str(body.data.get(key) or "").strip() for key in role_keys} - {""}
