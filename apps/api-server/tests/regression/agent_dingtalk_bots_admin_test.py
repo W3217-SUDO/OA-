@@ -77,6 +77,13 @@ class AgentDingtalkBotsAdminTest(unittest.IsolatedAsyncioTestCase):
         changed = await self.client.put(API, json={"app_key": "dingother"})
         self.assertIsNone(changed.json()["verify_ok"])
 
+    async def test_routes_are_not_agent_tools(self):
+        from app.agent_mcp.semantic_metadata import exclusion_reasons
+        routes = [route for route in app.routes if "dingtalk-bots" in getattr(route, "path", "")]
+        self.assertEqual(len(routes), 3)
+        for route in routes:
+            self.assertTrue(exclusion_reasons(route), route.path)
+
     async def test_probe_does_not_leak_dingtalk_response(self):
         def reply(status, body):
             return httpx.MockTransport(lambda request: httpx.Response(status, json=body))
