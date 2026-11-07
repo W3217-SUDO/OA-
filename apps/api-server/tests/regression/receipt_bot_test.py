@@ -447,7 +447,8 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
     async def test_unmatched_and_failures_go_to_pending(self):
         api = FakeApi({"status": "系统内未登记该案", "documents": DOCS, "match": {"candidates": []}})
         reply = await self._run(sms(), api)
-        self.assertIn("未找到你有权限的案件", reply.text)
+        self.assertIn("系统里没找到这个案号对应的案件（只在你能看到的案件里找）", reply.text)
+        self.assertNotIn("有权限的案件", reply.text)
         self.assertEqual((await self._records())[0].status, "待处理")
         api = FakeApi(ApiError(502, "法院送达接口暂时无法访问"))
         reply = await self._run(sms(message_id="m2"), api)
@@ -811,6 +812,21 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
             listed = await client.get(settings.api_prefix + "/documents/court-service/bot-receipts")
         self.assertNotIn("sdsin", listed.text)
         self.assertIn("[送达链接]", listed.text)
+
+
+    async def test_pending_list_gives_attachment_ids_for_viewing(self):
+        await self._run(sms(), FakeApi({"status": "系统内未登记该案", "documents": DOCS, "match": {"candidates": []}}))
+
+        async def _db():
+            async with self.sessions() as db:
+                yield db
+        app.dependency_overrides[get_db] = _db
+        app.dependency_overrides[current_identity] = lambda: {"username": "admin", "display_name": "管理者", "role": "admin", "role_ids": ["admin"],
+                                                              "_actual_role_ids": ["admin"], "_actual_role": "admin", "department": "", "action_keys": ["*"], "menu_keys": ["documents-official"]}
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://bot.test") as client:
+            listed = await client.get(settings.api_prefix + "/documents/court-service/bot-receipts")
+        self.assertEqual(listed.json()["items"][0]["documents"], [{"attachment_id": 9, "name": "传票", "kind": "传票"}])
+        self.assertEqual(listed.json()["items"][0]["reason"], "系统里没找到这个案号对应的案件")
 
     def test_bot_receipts_are_not_agent_tools(self):
         from app.agent_mcp.semantic_metadata import exclusion_reasons

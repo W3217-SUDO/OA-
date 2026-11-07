@@ -539,8 +539,8 @@ async def _preview_record(record: BusinessRecord, message: BotMessage, link: str
     record_data = {"documents": [{"attachment_id": item.get("attachment_id"), "name": item.get("name") or "",
                                   "kind": (item.get("fields") or {}).get("文书类型") or ""} for item in report.get("documents") or []]}
     if status == "系统内未登记该案":
-        await _set_status(record, PENDING, {**record_data, "reason": "未找到有权限的案件"}, user.username, db)
-        return Reply(f"{me} 未找到你有权限的案件，文件没有存入案件，已转到收文台待处理。\n文书类型：{_documents_text(report)}\n{_link_line()}", [message.sender_id])
+        await _set_status(record, PENDING, {**record_data, "reason": "系统里没找到这个案号对应的案件"}, user.username, db)
+        return Reply(f"{me} 系统里没找到这个案号对应的案件（只在你能看到的案件里找），文件没有存入案件，已转到收文台待处理。\n文书类型：{_documents_text(report)}\n{_link_line()}", [message.sender_id])
     expires = (datetime.now(timezone.utc) + timedelta(minutes=CONFIRM_MINUTES)).isoformat(timespec="seconds")
     if status == "需要选择案件":
         candidates = [{"case_id": item["case_id"], "serial_no": item.get("serial_no") or "", "title": item.get("title") or ""}
@@ -636,7 +636,8 @@ def _row(record: BusinessRecord) -> dict:
     data = record.data or {}
     return {"id": record.id, "status": record.status, "sent_at": data.get("sent_at") or "", "sender": data.get("sender_nick") or "",
             "text": _LINK.sub("[送达链接]", data.get("text") or ""), "kind": data.get("kind") or "", "reason": data.get("reason") or "",
-            "documents": [{"name": item.get("name") or "", "kind": item.get("kind") or ""} for item in data.get("documents") or []],
+            "documents": [{"attachment_id": item.get("attachment_id"), "name": item.get("name") or "", "kind": item.get("kind") or ""}
+                          for item in data.get("documents") or []],
             "candidates": [item.get("serial_no") or "" for item in data.get("candidates") or []]}
 
 
