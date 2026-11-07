@@ -83,6 +83,10 @@ class AccountSecurityTest(unittest.IsolatedAsyncioTestCase):
         await self.engine.dispose()
         reset_gate_cache()
 
+    async def role_row(self, code):
+        async with self.sessions() as db:
+            return await db.scalar(select(JobRole.id).where(JobRole.code == code))
+
     def headers(self, username):
         return {"Authorization": "Bearer " + create_token(username, "admin" if username == "realadmin" else "user", 30)}
 
@@ -223,6 +227,91 @@ class AccountSecurityTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200, "前端原样带回账号和角色: " + response.text)
         self.assertEqual((await self.call("hrholder", "PATCH", f"/system/users/{self.uid['victim']}", {"username": "victim2"})).status_code, 200, "普通账号改用户名")
         self.assertEqual((await self.call("hrholder", "POST", f"/system/users/{self.uid['boss']}/unlock", {})).status_code, 200)
+
+    async def test_roles_cannot_be_used_to_bypass(self):
+        high = await self.role_row("R-HEAD")
+        cases = [
+            ("停用角色", "PATCH", f"/hr/job-roles/{high}", {"is_active": False}),
+            ("改角色名", "PATCH", f"/hr/job-roles/{high}", {"name": "普通丙"}),
+            ("改角色代码", "PATCH", f"/hr/job-roles/{high}", {"code": "R-X"}),
+            ("改数据范围", "PATCH", f"/hr/job-roles/{await self.role_row('R-HR')}", {"data_scope": "全所数据"}),
+            ("改字段", "PATCH", f"/hr/job-roles/{await self.role_row('R-PLAIN')}", {"field_keys": []}),
+            ("删角色", "DELETE", f"/hr/job-roles/{high}", None),
+            ("新建带范围角色", "POST", "/hr/job-roles", {"code": "R-N1", "name": "新一", "data_scope": "全所数据"}),
+        ]
+        for name, method, path, body in cases:
+            response = await self.call("hrholder", method, path, body)
+            self.assertEqual(response.status_code, 403, f"{name}: {response.text}")
+        self.assertEqual((await self.call("hrholder", "PATCH", f"/hr/job-roles/{high}", {"description": "说明", "sort_order": 3})).status_code, 200, "说明和排序照常")
+        self.assertEqual((await self.call("hrholder", "PATCH", f"/hr/job-roles/{high}", {"name": "某部部长", "is_active": True})).status_code, 200, "没变不算改")
+
+    async def test_inactive_or_unknown_role_cannot_be_assigned(self):
+        async with self.sessions() as db:
+            (await db.scalar(select(JobRole).where(JobRole.code == "R-HEAD"))).is_active = False
+            await db.commit()
+        before = await self.state("victim")
+        response = await self.call("hrholder", "PATCH", f"/system/users/{self.uid['victim']}", {"profile": {"permission_role": "某部部长"}})
+        self.assertEqual(response.status_code, 403, response.text)
+        response = await self.call("hrholder", "PATCH", f"/system/users/{self.uid['victim']}", {"profile": {"permission_role_code": "R-HEAD"}})
+        self.assertEqual(response.status_code, 403, response.text)
+        response = await self.call("hrholder", "POST", "/system/users", self.new_system_user("n7", profile={"permission_role": "不存在的角色"}))
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(await self.state("victim"), before)
+
+    async def test_protected_accounts_cannot_be_disabled_deleted_or_offboarded(self):
+        for target in ("boss", "realadmin"):
+            emp = self.emp[target]
+            before = await self.state(target)
+            for name, method, path, body in [
+                ("关登录", "PATCH", f"/hr/employees/{emp}/login-status", {"is_active": False}),
+                ("合同审批", "PATCH", f"/hr/employees/{emp}/contract-approval-status", {"contract_approval_enabled": True}),
+                ("用印审批", "PATCH", f"/hr/employees/{emp}/seal-approval-status", {"seal_approval_enabled": True}),
+                ("办离职", "POST", f"/hr/{emp}/transition", {"to_status": "离职", "effective_date": "2026-11-07", "reason": "测试原因"}),
+                ("删档案", "DELETE", f"/hr/employees/{emp}", None),
+            ]:
+                response = await self.call("hrholder", method, path, body)
+                self.assertIn(response.status_code, {403, 409}, f"{target} {name}: {response.text}")
+                self.assertEqual(await self.state(target), before, f"{target} {name}")
+        for path, body in ((f"/hr/employees/{self.emp['boss']}/login-status", {"is_active": False}),):
+            self.assertEqual((await self.call("hrholder", "PATCH", path, body)).status_code, 403)
+        self.assertEqual((await self.call("hrholder", "DELETE", f"/system/users/{self.uid['boss']}")).status_code, 403)
+
+    async def test_cannot_grant_self_approval_or_write_it_through_profile(self):
+        me = self.emp["hrholder"]
+        for path, body in ((f"/hr/employees/{me}/contract-approval-status", {"contract_approval_enabled": True}), (f"/hr/employees/{me}/seal-approval-status", {"seal_approval_enabled": True})):
+            self.assertEqual((await self.call("hrholder", "PATCH", path, body)).status_code, 403, path)
+        self.assertEqual((await self.call("hrholder", "PATCH", f"/system/users/{self.uid['hrholder']}", {"profile": {"contract_approval_enabled": True}})).status_code, 403)
+        self.assertFalse((await self.state("hrholder"))[3].get("contract_approval_enabled"))
+
+    async def test_ordinary_targets_still_managed(self):
+        emp = self.emp["victim"]
+        self.assertEqual((await self.call("hrholder", "PATCH", f"/hr/employees/{emp}/contract-approval-status", {"contract_approval_enabled": True})).status_code, 200)
+        self.assertEqual((await self.call("hrholder", "PATCH", f"/hr/employees/{emp}/login-status", {"is_active": False})).status_code, 200)
+
+    async def test_page_style_save_of_protected_account_ordinary_fields(self):
+        """页面总带 permission_role_code=角色名：什么都不改保存不能被当成换角色。"""
+        data = {"permission_role_code": "某部部长", "staff_role": "某部部长", "permission_role": "某部部长", "note": "z"}
+        response = await self.call("hrholder", "PATCH", f"/hr/employees/{self.emp['boss']}", self.body("boss", "部长账号", "某部部长", data=data))
+        self.assertEqual(response.status_code, 200, response.text)
+        response = await self.call("hrholder", "PATCH", f"/system/users/{self.uid['boss']}", {"profile": data, "role": "user", "username": "boss"})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual((await self.state("boss"))[3]["permission_role"], "某部部长")
+
+    async def test_dingtalk_ids_and_reserved_names(self):
+        async with self.sessions() as db:
+            admin = await db.scalar(select(User).where(User.username == "realadmin"))
+            admin.profile = {**(admin.profile or {}), "dingtalk_user_id": "ADMINDING", "dingtalk_login_ids": ["ADMINDING2"]}
+            await db.commit()
+        for ding in ("ADMINDING", "ADMINDING2"):
+            response = await self.call("hrholder", "PATCH", f"/system/users/{self.uid['victim']}", {"profile": {"dingtalk_login_ids": [ding]}})
+            self.assertEqual(response.status_code, 409, response.text)
+            response = await self.call("hrholder", "POST", "/hr/employees", self.new_employee("n8" + ding.lower(), data={"joined_at": "2024-01-01", "dingtalk_user_id": ding}))
+            self.assertEqual(response.status_code, 403, response.text)
+            response = await self.call("hrholder", "POST", "/system/users", self.new_system_user("n9" + ding.lower(), profile={"dingtalk_login_ids": [ding]}))
+            self.assertEqual(response.status_code, 403, response.text)
+        for name in ("feedback-bot", "system", "hz-sync"):
+            self.assertEqual((await self.call("hrholder", "POST", "/system/users", self.new_system_user(name))).status_code, 403, name)
+            self.assertEqual((await self.call("hrholder", "PATCH", f"/system/users/{self.uid['victim']}", {"username": name})).status_code, 403, name)
 
     async def test_real_admin_keeps_every_power(self):
         for name, method, path, body in self.forbidden_new():

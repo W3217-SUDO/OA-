@@ -372,7 +372,7 @@ async def create_system_user(body: SystemUserInput, identity: dict = Depends(cur
     if "permission_overrides" in body.profile:
         _require_actual_system_admin(identity)
     role_ids = _normalize_system_user_role_ids(body.role_ids, body.role)
-    await _require_allowed_new_account(identity, role_ids, [body.profile.get(key) for key in ("permission_role", "permission_role_code", "staff_role")], db)
+    await _require_allowed_new_account(identity, role_ids, body.profile, body.username, db)
     username = body.username.strip().lower()
     if await db.scalar(select(User).where(User.username == username)):
         raise HTTPException(status_code=409, detail="登录账号已存在")
@@ -531,7 +531,7 @@ async def update_user_finance_actions(username: str, body: dict, identity: dict 
 @router.delete(f"{settings.api_prefix}/system/users/{{user_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_system_user(user_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _ensure_system_user_lifecycle_safe, _require_admin, _system_user_role_ids,
+        _ensure_system_user_lifecycle_safe, _require_actual_admin_for_protected_account, _require_admin, _system_user_role_ids,
     )
     _require_admin(identity)
     user = await db.get(User, user_id)
@@ -541,6 +541,7 @@ async def delete_system_user(user_id: int, identity: dict = Depends(current_iden
         raise HTTPException(status_code=409, detail="不能删除当前登录账号")
     if "admin" in _system_user_role_ids(user):
         raise HTTPException(status_code=409, detail="不能删除系统管理员账号")
+    await _require_actual_admin_for_protected_account(identity, user, db)
     await _ensure_system_user_lifecycle_safe(user, db, action="删除")
     await db.delete(user); await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
