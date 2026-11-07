@@ -874,6 +874,9 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
     """
     from app.core.permissions import _require_role_action
     await _require_role_action(identity, db, "task.batch.update")
+    if body.action == "handoff":
+        # 和单条转交、前端批量菜单一样：批量交接还要有“任务转交”功能（501742 审查）。
+        await _require_role_action(identity, db, "task.handoff")
     from app.core.task_lifecycle_policy import validate_task_lifecycle
     from app.core.tasks import (
             _active_task_username, _add_task_message_notifications, _record_task_manual_intervention, _task_dict,
