@@ -448,6 +448,21 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((fields["原告"], fields["被告"]), (plaintiffs, defendants), text)
             self.assertEqual(fields["当事人可能截短"], [*plaintiffs, *defendants] if sentence else [], text)
 
+    def test_sentence_form_still_reads_parties_for_web_intake(self):
+        """网页一键收文要显示当事人：被告带（个人独资）或后面接数字的，也要取到原告和被告（都标为可能不全）。"""
+        from app.agent_skill_packages.court_doc_intake.scripts.extract_doc_fields import extract
+        for text, defendant in (("原告甲贸易有限公司诉被告某某眼镜店（个人独资）侵害商标权纠纷一案", "某某眼镜店（个人独资）"),
+                                ("原告甲贸易有限公司诉被告正品建材店0738侵害商标权纠纷一案", "正品建材店")):
+            fields = extract(text, "传票.pdf")
+            self.assertEqual((fields["原告"], fields["被告"]), (["甲贸易有限公司"], [defendant]), text)
+            self.assertIn(defendant, fields["当事人可能截短"])
+
+    def test_core_names_drop_form_note_in_both_bracket_widths(self):
+        from app.areas.aws.court_intake import _core_names
+        self.assertEqual(_core_names("乙商行（个体工商户）"), ["乙商行"])
+        self.assertEqual(_core_names("乙商行(个体工商户)"), ["乙商行"])
+        self.assertEqual(_core_names("某某眼镜店（个人独资）"), ["某某眼镜店"])
+
     def test_name_cut_by_line_break_is_flagged(self):
         from app.agent_skill_packages.court_doc_intake.scripts.extract_doc_fields import extract, truncated_parties
         self.assertEqual(extract("原告：上海某某贸易有\n限公司\n被告：李四", "传票.pdf")["当事人可能截短"], ["上海某某贸易有"])
