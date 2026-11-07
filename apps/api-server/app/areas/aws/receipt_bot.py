@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import asyncio
 import hashlib
-import json
 import logging
 import re
 from typing import Any, Awaitable, Callable
@@ -478,7 +477,6 @@ async def strict_unique(report: dict, db: AsyncSession) -> tuple[bool, str]:
 
 
 async def _preview(message: BotMessage, link: str, user: User, config: BotSettings, api: Api, agent_turn: AgentTurn | None, db: AsyncSession) -> Reply | None:
-    me = _mention([message.sender_id])
     record = await _record(message, user, PENDING, {"kind": "zxfw", "link": link}, db)
     if record is None:
         return None
