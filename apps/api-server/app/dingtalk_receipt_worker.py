@@ -20,7 +20,7 @@ import websockets
 
 from app.areas.agent_admin.dingtalk_bots import BotConfig, load_bot, note_seen_group
 from app.areas.aws.receipt_bot import (
-    COMMANDS, SKILL_ID, UNCERTAIN_STATUS, ApiError, BotMessage, BotSettings, Reply, expire_waiting, handle_message, is_number_reply,
+    SKILL_ID, UNCERTAIN_STATUS, ApiError, BotMessage, BotSettings, Reply, expire_waiting, handle_message, parse_command,
 )
 from app.database import SessionLocal
 from app.models import User
@@ -152,7 +152,7 @@ class Worker:
             config = BotSettings(group_id=bot.group_id, use_cloud_agent=bot.use_cloud_agent, auto_save_unique=bot.auto_save_unique)
             try:
                 if message.conversation_type == "2" and message.conversation_id == config.group_id \
-                        and message.text not in COMMANDS and not is_number_reply(message.text):
+                        and parse_command(message.text) is None:
                     await send_reply(webhook, Reply("收到，正在处理", []))  # 只是提示，发不出去也继续处理
                 async with SessionLocal() as db:
                     reply = await handle_message(message, config, api=call_api, db=db, agent_turn=agent_turn)

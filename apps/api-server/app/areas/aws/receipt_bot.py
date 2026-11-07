@@ -31,7 +31,6 @@ router = APIRouter()
 
 MODULE = "court_group_receipt"
 WAITING, SAVING, PENDING, DONE, CLOSED, CANCELLED = "待确认", "入库中", "待处理", "已导入", "不入库", "已取消"
-COMMANDS = {"确认", "取消"}
 UNCERTAIN_STATUS = 504  # 请求发出去了但没等到结果，可能已经写入
 CONFIRM_MINUTES = 30
 SKILL_ID = "court-doc-intake"
@@ -104,8 +103,17 @@ def _service_link(text: str) -> str:
     return ""
 
 
-def is_number_reply(text: str) -> bool:
-    return text.isascii() and text.isdigit() and len(text) <= 2
+def parse_command(text: str) -> tuple[str, int | None, int | None] | None:
+    """律师的回复必须带编号才算数，明确指向哪一条：“确认 501842”“取消 501842”“确认 501842 2”（第 2 个候选）。
+
+    不带编号的“确认”“取消”“2”也认出来，用来提示带编号重发，不会写入。不是这些内容时返回 None。
+    """
+    match = re.fullmatch(r"(确认|取消)(?:\s*([0-9]{1,12}))?(?:\s+([0-9]{1,2}))?", text)
+    if match:
+        return match.group(1), int(match.group(2)) if match.group(2) else None, int(match.group(3)) if match.group(3) else None
+    if re.fullmatch(r"[0-9]{1,2}", text):
+        return "确认", None, int(text)
+    return None
 
 
 def _people(value: Any) -> list[str]:
@@ -264,12 +272,6 @@ async def _set_status(record: BusinessRecord, status: str, extra: dict, operator
     await db.commit()
 
 
-async def _waiting_record(user: User, db: AsyncSession) -> BusinessRecord | None:
-    return await db.scalar(select(BusinessRecord).where(
-        BusinessRecord.module == MODULE, BusinessRecord.status == WAITING, BusinessRecord.owner == user.username,
-    ).order_by(BusinessRecord.id.desc()).limit(1))
-
-
 def _case_lock(case_id: int) -> asyncio.Lock:
     """同一案件一次只入库一批：两位律师同时转发同一条短信时，后一批能查到前一批，不重复存。"""
     if case_id not in _CASE_LOCKS and len(_CASE_LOCKS) >= _MAX_LOCKS:
@@ -292,7 +294,7 @@ async def _claim(record: BusinessRecord, db: AsyncSession) -> bool:
 async def _save(record: BusinessRecord, case_id: int, user: User, message: BotMessage, api: Api, db: AsyncSession) -> Reply:
     me = _mention([message.sender_id])
     if not await _claim(record, db):
-        return Reply(f"{me} 这条收文已在处理或已处理。", [message.sender_id])
+        return Reply(f"{me} 编号 {record.id} 这条收文已在处理或已处理。", [message.sender_id])
     link = (record.data or {}).get("link") or ""
     planned_court_no = str((record.data or {}).get("planned_court_no") or "")
     try:
@@ -341,30 +343,42 @@ async def _retire_waiting(user: User, db: AsyncSession) -> int:
     return len(rows)
 
 
-async def _handle_command(text: str, user: User, message: BotMessage, api: Api, db: AsyncSession) -> Reply | None:
-    """律师回“确认”“取消”或候选序号。不是这些内容时返回 None。"""
-    number = int(text) if is_number_reply(text) else None
-    if text not in COMMANDS and number is None:
-        return None
+async def _waiting_records(user: User, db: AsyncSession) -> list[BusinessRecord]:
+    return list((await db.scalars(select(BusinessRecord).where(
+        BusinessRecord.module == MODULE, BusinessRecord.status == WAITING, BusinessRecord.owner == user.username,
+    ).order_by(BusinessRecord.id.desc()).limit(10))).all())
+
+
+async def _handle_command(command: tuple[str, int | None, int | None], user: User, message: BotMessage, api: Api, db: AsyncSession) -> Reply:
+    verb, record_id, number = command
     me = _mention([message.sender_id])
-    record = await _waiting_record(user, db)
-    if record is None:
-        return Reply(f"{me} 没有等你确认的收文。", [message.sender_id])
+    if record_id is None:
+        # 没带编号不写入，列出来让律师带编号重发。
+        waiting = await _waiting_records(user, db)
+        if not waiting:
+            return Reply(f"{me} 没有等你确认的收文。", [message.sender_id])
+        lines = [f"{verb} {record.id}（{(record.data or {}).get('prompt_label') or '待确认收文'}）" for record in waiting]
+        return Reply("\n".join([f"{me} 请带编号回复，明确是哪一条：", *lines]), [message.sender_id])
+    record = await db.get(BusinessRecord, record_id)
+    if record is None or record.module != MODULE or record.owner != user.username:
+        return Reply(f"{me} 没有等你确认的这条收文（编号 {record_id}），只有发短信的本人能确认。", [message.sender_id])
+    if record.status != WAITING:
+        return Reply(f"{me} 编号 {record_id} 这条{record.status}，不用再确认。", [message.sender_id])
     data = record.data or {}
     expires = datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None
     if expires is not None and expires < datetime.now(timezone.utc):
         await _set_status(record, PENDING, {"reason": "超时未确认"}, user.username, db)
         return Reply(f"{me} 这条收文已超过 {CONFIRM_MINUTES} 分钟未确认，已转到收文台待处理。\n{_link_line()}", [message.sender_id])
-    if text == "取消":
+    if verb == "取消":
         await _set_status(record, CANCELLED, {"reason": "律师取消"}, user.username, db)
-        return Reply(f"{me} 已取消，这条收文没有存入。", [message.sender_id])
+        return Reply(f"{me} 已取消，编号 {record_id} 这条没有存入。", [message.sender_id])
     candidates = data.get("candidates") or []
     if candidates:
         if number is None or not 1 <= number <= len(candidates):
-            return Reply(f"{me} 请回复候选序号（1～{len(candidates)}），或回复“取消”。", [message.sender_id])
+            return Reply(f"{me} 请回复“确认 {record_id} 序号”（序号 1～{len(candidates)}），或“取消 {record_id}”。", [message.sender_id])
         return await _save(record, int(candidates[number - 1]["case_id"]), user, message, api, db)
-    if text != "确认" or not data.get("case_id"):
-        return Reply(f"{me} 请回复“确认”或“取消”。", [message.sender_id])
+    if not data.get("case_id"):
+        return Reply(f"{me} 这条收文缺少案件信息，请到收文台处理。", [message.sender_id])
     return await _save(record, int(data["case_id"]), user, message, api, db)
 
 
@@ -457,9 +471,9 @@ async def _preview_record(record: BusinessRecord, message: BotMessage, link: str
     if status == "需要选择案件":
         candidates = [{"case_id": item["case_id"], "serial_no": item.get("serial_no") or "", "title": item.get("title") or ""}
                       for item in (report.get("match") or {}).get("candidates") or []][:9]
-        await _set_status(record, WAITING, {**record_data, "candidates": candidates, "expires_at": expires}, user.username, db)
+        await _set_status(record, WAITING, {**record_data, "candidates": candidates, "expires_at": expires, "prompt_label": f"多个候选，{_documents_text(report)}"}, user.username, db)
         lines = [f"{index}. {item['serial_no']} {item['title']}" for index, item in enumerate(candidates, start=1)]
-        return Reply("\n".join([f"{me} 匹配到多个案件，请回复序号选择，或回复“取消”：", *lines, f"文书类型：{_documents_text(report)}"]), [message.sender_id])
+        return Reply("\n".join([f"{me} 匹配到多个案件，请回复“确认 {record.id} 序号”选择，或“取消 {record.id}”：", *lines, f"文书类型：{_documents_text(report)}"]), [message.sender_id])
     if status != "待确认入库":
         await _set_status(record, PENDING, {**record_data, "reason": str(status)}, user.username, db)
         return Reply(f"{me} 这条短信没有自动收文，已转到收文台待处理。\n{_link_line()}", [message.sender_id])
@@ -478,8 +492,9 @@ async def _preview_record(record: BusinessRecord, message: BotMessage, link: str
             if record.status == DONE:
                 reply.text += f"\n匹配依据：{basis}\n{UNDO_HINT}"
             return reply
-    await _set_status(record, WAITING, {**record_data, "case_id": case_id, "expires_at": expires, "not_auto_reason": why_not}, user.username, db)
-    return Reply("\n".join([f"{me} 找到案件，请核对后回复“确认”存入，或回复“取消”：", *_facts(report),
+    await _set_status(record, WAITING, {**record_data, "case_id": case_id, "expires_at": expires, "not_auto_reason": why_not,
+                                                "prompt_label": f"{report['case'].get('serial_no') or ''} {_documents_text(report)}".strip()}, user.username, db)
+    return Reply("\n".join([f"{me} 找到案件，请核对后回复“确认 {record.id}”存入，或“取消 {record.id}”：", *_facts(report),
                             *([f"匹配依据：{basis}"] if basis else [])]), [message.sender_id])
 
 
@@ -500,9 +515,9 @@ async def handle_message(message: BotMessage, config: BotSettings, *, api: Api, 
     if user.must_change_password:
         return Reply(f"{me} 请先登录系统修改初始密码，再重发。", [message.sender_id])
     text = (message.text or "").strip()
-    command = await _handle_command(text, user, message, api, db)
+    command = parse_command(text)
     if command is not None:
-        return command
+        return await _handle_command(command, user, message, api, db)
     link = _service_link(text)
     if link:
         return await _preview(message, link, user, config, api, agent_turn, db)

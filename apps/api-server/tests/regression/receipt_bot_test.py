@@ -96,6 +96,10 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         app.dependency_overrides.clear()
         await self.engine.dispose()
 
+    async def _waiting_id(self, owner="lawyer"):
+        records = [record for record in await self._records() if record.status == "待确认" and record.owner == owner]
+        return records[-1].id
+
     async def _run(self, message, api, config=CONFIG, agent_turn=None):
         async with self.sessions() as db:
             return await handle_message(message, config, api=api, db=db, agent_turn=agent_turn)
@@ -124,10 +128,10 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         api = FakeApi(preview(), done())
         first = await self._run(sms(), api)
         self.assertEqual(api.calls[0], ("lawyer", "/documents/court-service/intake", {"link": LINK}))
-        self.assertIn("回复“确认”", first.text)
+        self.assertIn("回复“确认 ", first.text)
         self.assertEqual(len(api.calls), 1)
         self.assertEqual((await self._records())[0].status, "待确认")
-        second = await self._run(sms(message_id="m2", text="确认"), api)
+        second = await self._run(sms(message_id="m2", text=f"确认 {await self._waiting_id()}"), api)
         self.assertEqual(api.calls[1], ("lawyer", "/documents/court-service/intake", {"link": LINK, "case_id": 7, "confirm": True, "direct_save": True}))
         self.assertEqual(second.at_user_ids, ["ding-lawyer", "ding-helper"])
         for words in ("HZMS1", "（2026）沪0115民初1号", "甲公司", "乙公司", "传票", "2026-12-01", "500", "2026-12-10", "已存入", "助理丙", "?page=documents-official"):
@@ -136,7 +140,8 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_group_text_never_shows_account_phone_or_body(self):
         api = FakeApi(preview(), done())
-        for reply in (await self._run(sms(), api), await self._run(sms(message_id="m2", text="确认"), api)):
+        first = await self._run(sms(), api)
+        for reply in (first, await self._run(sms(message_id="m2", text=f"确认 {await self._waiting_id()}"), api)):
             self.assertNotIn("6222000011112222", reply.text)
             self.assertNotIn("13900000000", reply.text)
 
@@ -149,7 +154,7 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
     async def test_switch_off_always_asks_even_when_unique(self):
         await self._set_case(court_case_no=NUMBER)
         api = FakeApi(preview())
-        self.assertIn("回复“确认”", (await self._run(sms(), api)).text)
+        self.assertIn("回复“确认 ", (await self._run(sms(), api)).text)
         self.assertEqual(len(api.calls), 1)
 
     async def test_unique_court_number_saves_directly_with_undo_hint(self):
@@ -174,7 +179,7 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
 
     async def _assert_not_auto(self, reply, reason):
         """没直接存：群里只说请核对，具体原因只存记录（全所还有别的案件这种话不能进群）。"""
-        self.assertIn("回复“确认”", reply.text)
+        self.assertIn("回复“确认 ", reply.text)
         self.assertNotIn("收文完成", reply.text)
         self.assertNotIn(reason, reply.text)
         records = await self._records()
@@ -258,7 +263,8 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
                 return done()
             return preview()
         await self._run(sms(), api)
-        first, second = await asyncio.gather(self._run(sms(message_id="m2", text="确认"), api), self._run(sms(message_id="m3", text="确认"), api))
+        code = await self._waiting_id()
+        first, second = await asyncio.gather(self._run(sms(message_id="m2", text=f"确认 {code}"), api), self._run(sms(message_id="m3", text=f"确认 {code}"), api))
         self.assertEqual(sum(1 for item in calls if item), 1)
         self.assertEqual(sorted(("收文完成" in first.text, "收文完成" in second.text)), [False, True])
 
@@ -275,13 +281,14 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
             return done()
         await self._run(sms(), api)
         await self._run(sms(message_id="b1", sender="ding-helper"), api)
-        await asyncio.gather(self._run(sms(message_id="m2", text="确认"), api), self._run(sms(message_id="b2", sender="ding-helper", text="确认"), api))
+        lawyer, helper = await self._waiting_id(), await self._waiting_id("helper")
+        await asyncio.gather(self._run(sms(message_id="m2", text=f"确认 {lawyer}"), api), self._run(sms(message_id="b2", sender="ding-helper", text=f"确认 {helper}"), api))
         self.assertEqual(peak[0], 1)
 
     async def test_uncertain_result_says_do_not_resend(self):
         reply_api = FakeApi(preview(), ApiError(504, "系统处理超时，结果不确定"))
         await self._run(sms(), reply_api)
-        reply = await self._run(sms(message_id="m2", text="确认"), reply_api)
+        reply = await self._run(sms(message_id="m2", text=f"确认 {await self._waiting_id()}"), reply_api)
         self.assertIn("不要重发", reply.text)
         self.assertEqual((await self._records())[0].status, "待处理")
 
@@ -291,7 +298,11 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         second_link = LINK.replace("7f184b3f", "8f184b3f")
         reply = await self._run(sms(message_id="m2", text=f"【某人民法院】 {second_link}"), api)
         self.assertIn("之前未确认的 1 条", reply.text)
-        await self._run(sms(message_id="m3", text="确认"), api)
+        records = await self._records()
+        old_reply = await self._run(sms(message_id="m3a", text=f"确认 {records[0].id}"), api)
+        self.assertIn("待处理", old_reply.text)
+        self.assertEqual(len(api.calls), 2)
+        await self._run(sms(message_id="m3", text=f"确认 {records[1].id}"), api)
         self.assertEqual(api.calls[-1][2]["link"], second_link)
         self.assertEqual([record.status for record in await self._records()], ["待处理", "已导入"])
 
@@ -331,8 +342,11 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
             {"case_id": 7, "serial_no": "HZMS1", "title": "某案"}, {"case_id": 8, "serial_no": "HZMS2", "title": "另案"}]}}
         api = FakeApi(report, done())
         self.assertIn("2. HZMS2", (await self._run(sms(), api)).text)
-        self.assertIn("序号", (await self._run(sms(message_id="m2", text="9"), api)).text)
-        await self._run(sms(message_id="m3", text="1"), api)
+        code = await self._waiting_id()
+        self.assertIn(str(code), (await self._run(sms(message_id="m1b", text="1"), api)).text)
+        self.assertEqual(len(api.calls), 1)
+        self.assertIn("序号", (await self._run(sms(message_id="m2", text=f"确认 {code} 9"), api)).text)
+        await self._run(sms(message_id="m3", text=f"确认 {code} 1"), api)
         self.assertEqual(api.calls[-1][2], {"link": LINK, "case_id": 7, "confirm": True, "direct_save": True})
 
     async def test_unmatched_and_failures_go_to_pending(self):
@@ -365,20 +379,30 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         api = FakeApi(preview(), preview())
         self.assertIn("没有等你确认", (await self._run(sms(message_id="m0", text="确认"), api)).text)
         await self._run(sms(), api)
-        self.assertIn("已取消", (await self._run(sms(message_id="m2", text="取消"), api)).text)
+        self.assertIn("已取消", (await self._run(sms(message_id="m2", text=f"取消 {await self._waiting_id()}"), api)).text)
         self.assertEqual((await self._records())[0].status, "已取消")
         await self._run(sms(message_id="m3"), api)
         async with self.sessions() as db:
             record = await db.scalar(select(BusinessRecord).where(BusinessRecord.module == "court_group_receipt", BusinessRecord.status == "待确认"))
             record.data = {**record.data, "expires_at": "2020-01-01T00:00:00+00:00"}
             await db.commit()
-        self.assertIn("超过", (await self._run(sms(message_id="m4", text="确认"), api)).text)
+        self.assertIn("超过", (await self._run(sms(message_id="m4", text=f"确认 {record.id}"), api)).text)
         self.assertEqual((await self._records())[1].status, "待处理")
+
+    async def test_confirm_without_number_never_saves(self):
+        api = FakeApi(preview())
+        await self._run(sms(), api)
+        code = await self._waiting_id()
+        for index, text in enumerate(("确认", "取消", "1")):
+            reply = await self._run(sms(message_id=f"n{index}", text=text), api)
+            self.assertIn(str(code), reply.text)
+        self.assertEqual(len(api.calls), 1)
+        self.assertEqual((await self._records())[0].status, "待确认")
 
     async def test_one_person_cannot_confirm_for_another(self):
         api = FakeApi(preview())
         await self._run(sms(), api)
-        reply = await self._run(sms(message_id="m2", sender="ding-helper", text="确认"), api)
+        reply = await self._run(sms(message_id="m2", sender="ding-helper", text=f"确认 {await self._waiting_id()}"), api)
         self.assertIn("没有等你确认", reply.text)
         self.assertEqual((await self._records())[0].status, "待确认")
         self.assertEqual(len(api.calls), 1)
@@ -394,7 +418,7 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         config = BotSettings(group_id=GROUP_ID, use_cloud_agent=True, auto_save_unique=False)
         reply = await self._run(sms(message_id="m2"), FakeApi(preview()), config, turn)
         self.assertEqual(turns, ["lawyer"])
-        self.assertIn("回复“确认”", reply.text)
+        self.assertIn("回复“确认 ", reply.text)
 
     def test_parse_message_and_seen(self):
         message = parse_message({"msgId": "a", "conversationType": "2", "conversationTitle": GROUP, "senderStaffId": "s",
