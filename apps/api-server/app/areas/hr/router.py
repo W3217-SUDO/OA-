@@ -116,7 +116,7 @@ async def list_hr_employees(
 @router.post(f"{settings.api_prefix}/hr/employees", status_code=status.HTTP_201_CREATED)
 async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _identity_role_ids, _job_role_for_name, _require_actual_system_admin, _require_hr_employee_action, _require_unique_hr_display_name, _system_user_role_ids,
+        _job_role_for_name, _require_actual_system_admin, _require_allowed_new_account, _require_hr_employee_action, _require_unique_hr_display_name, _system_user_role_ids,
     )
     from app.core.system import (
         _record_dict, _security_policy, _system_user_dict,
@@ -127,8 +127,7 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
     account_type = (body.account_type or body.data.get("account_type") or "员工账号").strip()
     if account_type not in {"员工账号", "客户账号", "外部合作账号"}:
         raise HTTPException(status_code=422, detail="账号类型无效")
-    if "admin" not in _identity_role_ids(identity) and body.role != "user":
-        raise HTTPException(status_code=403, detail="非系统管理员不能创建高权限系统账号")
+    await _require_allowed_new_account(identity, [body.role], {**body.data, "staff_role": body.position}, body.username, db)
     username = body.username.strip().lower()
     employee_no = body.employee_no.strip()
     display_name = await _require_unique_hr_display_name(body.display_name, db, linked_username=username)
@@ -148,8 +147,6 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
         assigned_role = await _job_role_for_name(staff_role, db)
         if not assigned_role:
             raise HTTPException(status_code=422, detail="所选人员角色不存在或已停用")
-        if "admin" not in _identity_role_ids(identity) and assigned_role.code == "SYSTEM-ADMIN":
-            raise HTTPException(status_code=403, detail="非系统管理员不能绑定系统管理员岗位")
         staff_role = assigned_role.name
     profile = {
         **body.data,
@@ -222,12 +219,13 @@ async def create_hr_employee(body: HrEmployeeCreateInput, identity: dict = Depen
 @router.patch(f"{settings.api_prefix}/hr/employees/{{employee_id}}")
 async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _identity_role_ids, _job_role_for_name, _require_actual_system_admin, _require_hr_employee_action, _require_hr_employee_target_access, _require_unique_hr_display_name,
+        _account_security_state, _account_guard_level, _job_role_for_name, _require_actual_system_admin, _require_allowed_account_change, _require_allowed_new_account, _require_hr_employee_action, _require_hr_employee_target_access, _require_unique_hr_display_name,
         _system_user_role_ids,
     )
     from app.core.system import (
         _record_dict, _rename_system_username, _system_user_dict,
     )
+    from app.agent_permissions import is_actual_system_admin
     await _require_hr_employee_action(identity, db, "hr.employee.update", "修改")
     employee = await db.get(BusinessRecord, employee_id)
     if not employee or employee.module != "hr": raise HTTPException(status_code=404, detail="员工档案不存在")
@@ -242,13 +240,16 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     account_type = str(body.data.get("account_type") or (employee.data or {}).get("account_type") or "员工账号").strip()
     if account_type not in {"员工账号", "客户账号", "外部合作账号"}:
         raise HTTPException(status_code=422, detail="账号类型无效")
-    if "admin" not in _identity_role_ids(identity) and body.role != "user":
-        raise HTTPException(status_code=403, detail="非系统管理员不能调整系统账号角色")
+    actual_admin = is_actual_system_admin(identity)
     effective_role = body.role if account_type == "员工账号" else "user"
     requested_staff_role = body.position.strip() if account_type == "员工账号" and position_role else str(body.data.get("permission_role_code") or body.data.get("staff_role") or body.data.get("permission_role") or "").strip()
-    current_staff_role = str((employee.data or {}).get("permission_role_code") or (employee.data or {}).get("staff_role") or (employee.data or {}).get("permission_role") or "").strip()
-    if "admin" not in _identity_role_ids(identity) and requested_staff_role and requested_staff_role != current_staff_role:
-        raise HTTPException(status_code=403, detail="非系统管理员不能调整员工的权限角色")
+    if not actual_admin:
+        role_keys = ("permission_role_code", "permission_role", "staff_role")
+        submitted_roles = {str(body.data.get(key) or "").strip() for key in role_keys} - {""}
+        current_roles = {str((employee.data or {}).get(key) or "").strip() for key in role_keys}
+        if not (position_role and body.position != current_position) and not submitted_roles - current_roles:
+            requested_staff_role = ""  # 没提交换角色：改普通资料时不按职务重新绑定角色
+            body.data = {key: value for key, value in body.data.items() if key not in role_keys}  # 页面原样带回的角色写法不算换角色
     staff_role: str | None = requested_staff_role or None
     assigned_role: JobRole | None = None
     if account_type == "员工账号":
@@ -256,8 +257,6 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
             assigned_role = await _job_role_for_name(requested_staff_role, db)
             if not assigned_role:
                 raise HTTPException(status_code=422, detail="所选人员角色不存在或已停用")
-            if "admin" not in _identity_role_ids(identity) and assigned_role.code == "SYSTEM-ADMIN":
-                raise HTTPException(status_code=403, detail="非系统管理员不能绑定系统管理员岗位")
             staff_role = assigned_role.name
     elif account_type == "客户账号":
         staff_role = "客户联系人"
@@ -274,6 +273,10 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
         stored_profile = (user.profile or {}) if user else (employee.data or {})
         if "permission_overrides" not in stored_profile or body.data["permission_overrides"] != stored_profile["permission_overrides"]:
             _require_actual_system_admin(identity)
+    if user and "admin" in _system_user_role_ids(user):
+        _require_actual_system_admin(identity)
+    account_before = _account_security_state(user) if user else None
+    account_guard = await _account_guard_level(user, db) if user else 0
     requested_department = body.department.strip()
     current_department = str((user.department if user and user.department else employee.department) or "").strip()
     department_changed = requested_department != current_department
@@ -287,6 +290,8 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
         )
         if not department:
             raise HTTPException(status_code=422, detail="所选部门不存在或已停用")
+    if creating_customer_login:
+        await _require_allowed_new_account(identity, ["user"], body.data, requested_username, db)
     if account_type == "客户账号" and not stored_username:
         if requested_username == "admin" or not re.fullmatch(r"[a-z0-9._-]{2,64}", requested_username):
             raise HTTPException(status_code=422, detail="客户账号用户名只能包含小写字母、数字、点、下划线或短横线")
@@ -318,7 +323,7 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
         return {"employee": _record_dict(employee), "user": None}
     username = await _rename_system_username(user, body.username, identity, db)
     if user.username == identity["username"] and not body.is_active: raise HTTPException(status_code=409, detail="不能停用当前登录账号")
-    if user.username == identity["username"] and effective_role != "admin": raise HTTPException(status_code=409, detail="不能取消当前登录账号的管理员角色")
+    if user.username == identity["username"] and "admin" in _system_user_role_ids(user) and effective_role != "admin": raise HTTPException(status_code=409, detail="不能取消当前登录账号的管理员角色")
     # Login availability is independent from employment status: an active
     # employee may temporarily have login disabled without being offboarded.
     # Formal resignation/HR suspension still goes through the dedicated
@@ -335,6 +340,7 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
     user.role = next_role_ids[0]; user.role_ids = next_role_ids; user.is_active = body.is_active; user.profile = profile
     contract_approval_enabled = bool(profile.get("contract_approval_enabled"))
     employee.title = display_name; employee.data = {**(employee.data or {}), **profile, "contract_approval_enabled": contract_approval_enabled, "username": username, "role": effective_role, "is_active": body.is_active}
+    await _require_allowed_account_change(identity, account_before, account_guard, user, db)
     db.add(WorkflowEvent(record_id=employee.id, action="修改员工资料", from_status=previous_status, to_status=employee.status, operator=identity["username"], comment=f"部门：{employee.department}；职务：{body.position}；账号：{'启用' if body.is_active else '停用'}"))
     await db.commit(); await db.refresh(employee); await db.refresh(user)
     return {"employee": _record_dict(employee), "user": _system_user_dict(user)}
@@ -343,7 +349,7 @@ async def update_hr_employee(employee_id: int, body: HrEmployeeUpdateInput, iden
 @router.patch(f"{settings.api_prefix}/hr/employees/{{employee_id}}/login-status")
 async def update_hr_employee_login_status(employee_id: int, body: HrEmployeeLoginStatusInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _require_admin,
+        _require_actual_admin_for_self_or_protected, _require_admin,
     )
     from app.core.system import (
         _record_dict, _system_user_dict,
@@ -364,6 +370,7 @@ async def update_hr_employee_login_status(employee_id: int, body: HrEmployeeLogi
         raise HTTPException(status_code=409, detail="管理员账号不能通过员工档案停用")
     if user.username == identity["username"] and not body.is_active:
         raise HTTPException(status_code=409, detail="不能停用当前登录账号")
+    await _require_actual_admin_for_self_or_protected(identity, user, db)
     previous_active = user.is_active
     user.is_active = body.is_active
     data.update({"username": user.username, "role": user.role, "is_active": body.is_active, "system_user_id": user.id})
@@ -385,7 +392,7 @@ async def update_hr_employee_contract_approval_status(employee_id: int, body: Hr
         _is_contract_approver,
     )
     from app.core.permissions import (
-        _require_admin,
+        _require_actual_admin_for_self_or_protected, _require_admin,
     )
     from app.core.system import (
         _record_dict, _system_user_dict,
@@ -399,6 +406,7 @@ async def update_hr_employee_contract_approval_status(employee_id: int, body: Hr
     user = await db.scalar(select(User).where(User.username == username))
     if not user:
         raise HTTPException(status_code=409, detail="员工账号关联的登录用户不存在")
+    await _require_actual_admin_for_self_or_protected(identity, user, db)
     previous_enabled = bool((user.profile or {}).get("contract_approval_enabled"))
     user.profile = {**(user.profile or {}), "contract_approval_enabled": body.contract_approval_enabled}
     data.update({
@@ -427,7 +435,7 @@ async def update_hr_employee_contract_approval_status(employee_id: int, body: Hr
 @router.patch(f"{settings.api_prefix}/hr/employees/{{employee_id}}/seal-approval-status")
 async def update_hr_employee_seal_approval_status(employee_id: int, body: HrEmployeeSealApprovalStatusInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.documents import _user_has_seal_action
-    from app.core.permissions import _require_admin
+    from app.core.permissions import _require_actual_admin_for_self_or_protected, _require_admin
     from app.core.system import _record_dict, _system_user_dict
     _require_admin(identity)
     employee = await db.get(BusinessRecord, employee_id)
@@ -438,6 +446,7 @@ async def update_hr_employee_seal_approval_status(employee_id: int, body: HrEmpl
     user = await db.scalar(select(User).where(User.username == username))
     if not user:
         raise HTTPException(status_code=409, detail="员工账号关联的登录用户不存在")
+    await _require_actual_admin_for_self_or_protected(identity, user, db)
     previous_enabled = bool((user.profile or {}).get("seal_approval_enabled"))
     user.profile = {**(user.profile or {}), "seal_approval_enabled": body.seal_approval_enabled}
     employee.data = {**data, "seal_approval_enabled": body.seal_approval_enabled}
@@ -495,13 +504,16 @@ async def get_hr_employee_batch_deletion_impact(body: HrEmployeeBatchDeleteInput
 @router.api_route(f"{settings.api_prefix}/hr/employees/batch", methods=["DELETE"])
 async def delete_hr_employees_batch(body: HrEmployeeBatchDeleteInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _require_admin,
+        _require_actual_admin_for_high_account, _require_admin,
     )
     from app.core.system import (
         _load_hr_batch_deletion_impact,
     )
     _require_admin(identity)
     employees, blockers = await _load_hr_batch_deletion_impact(body, identity, db)
+    for _employee, user in employees:
+        if user:
+            await _require_actual_admin_for_high_account(identity, user, db)
     if blockers:
         await db.rollback()
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"deletable": False, "blockers": blockers})
@@ -518,7 +530,7 @@ async def delete_hr_employees_batch(body: HrEmployeeBatchDeleteInput, identity: 
 async def delete_hr_employee(employee_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     """Old Staff/Delete parity: delete only an unreferenced employee and linked login atomically."""
     from app.core.permissions import (
-        _require_admin,
+        _require_actual_admin_for_high_account, _require_admin,
     )
     from app.core.system import (
         _collect_hr_employee_deletion_blockers,
@@ -528,6 +540,8 @@ async def delete_hr_employee(employee_id: int, identity: dict = Depends(current_
     if not employee or employee.module != "hr":
         raise HTTPException(status_code=404, detail="员工档案不存在")
     blockers, user = await _collect_hr_employee_deletion_blockers(employee, identity, db)
+    if user:
+        await _require_actual_admin_for_high_account(identity, user, db)
     if blockers:
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"deletable": False, "blockers": blockers})
     await db.execute(delete(WorkflowEvent).where(WorkflowEvent.record_id == employee.id))
@@ -871,8 +885,8 @@ async def create_job_role(body: JobRoleInput, identity: dict = Depends(current_i
         _record_organization_audit,
     )
     _require_admin(identity); code, name = body.code.strip().upper(), body.name.strip()
-    if body.permissions:
-        _require_actual_system_admin(identity)
+    if body.permissions or body.data_scope or body.field_keys or body.field_keys_configured or code in {"SYSTEM-ADMIN"}:
+        _require_actual_system_admin(identity)  # 新建空角色可以，权限内容只有真实管理员能定
     if await db.scalar(select(JobRole.id).where(or_(JobRole.code == code, JobRole.name == name))): raise HTTPException(status_code=409, detail="岗位角色代码或名称已存在")
     permissions = list(dict.fromkeys(value.strip() for value in body.permissions if value.strip()))
     field_keys = _normalize_job_role_field_keys(body.field_keys)
@@ -898,7 +912,12 @@ async def update_job_role(role_id: int, body: JobRoleUpdate, identity: dict = De
     )
     _require_admin(identity); item = await db.get(JobRole, role_id)
     if not item: raise HTTPException(status_code=404, detail="岗位角色不存在")
-    if body.permissions is not None and set(body.permissions) != set(item.permissions or []):
+    # 角色的说明和排序可以改；名称、代码、启用、权限、字段、数据范围只有真实管理员能改（否则能绕过“不能分配高权限角色”）。
+    requested = body.model_dump(exclude_unset=True)
+    if "field_keys" in requested or any(
+        (set(value or []) != set(getattr(item, key) or [])) if key == "permissions" else value != getattr(item, key)
+        for key, value in requested.items() if key not in {"description", "sort_order"}
+    ):
         _require_actual_system_admin(identity)
     if item.code == "SYSTEM-ADMIN":
         requested_permissions = body.permissions if body.permissions is not None else list(SYSTEM_ADMIN_JOB_PERMISSIONS)
@@ -937,12 +956,12 @@ async def update_job_role(role_id: int, body: JobRoleUpdate, identity: dict = De
 @router.delete(f"{settings.api_prefix}/hr/job-roles/{{role_id}}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_job_role(role_id: int, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _require_admin,
+        _require_actual_system_admin,
     )
     from app.core.system import (
         _record_organization_audit,
     )
-    _require_admin(identity); item = await db.get(JobRole, role_id)
+    _require_actual_system_admin(identity); item = await db.get(JobRole, role_id)
     if item and item.code == "SYSTEM-ADMIN":
         raise HTTPException(status_code=422, detail="系统管理员角色不能删除")
     if not item: raise HTTPException(status_code=404, detail="岗位角色不存在")
@@ -1116,13 +1135,16 @@ async def delete_hr_subrecord(employee_id: int, subrecord_id: int, identity: dic
 @router.post(f"{settings.api_prefix}/hr/{{employee_id}}/transition")
 async def transition_employee(employee_id: int, body: HrTransitionInput, identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
     from app.core.permissions import (
-        _ensure_record_module,
+        _ensure_record_module, _require_actual_admin_for_self_or_protected,
     )
     from app.core.system import (
         _allowed_field_keys, _record_dict,
     )
     if identity.get("role") not in {"admin", "manager"}: raise HTTPException(status_code=403, detail="只有管理员或部门负责人可以办理人事状态")
     item = await _ensure_record_module(employee_id, "hr", identity, db)
+    transition_user = await db.scalar(select(User).where(User.username == str((item.data or {}).get("username") or item.owner or "").strip().lower()))
+    if transition_user:
+        await _require_actual_admin_for_self_or_protected(identity, transition_user, db)
     allowed = WORKFLOW_TRANSITIONS["hr"].get(item.status, [])
     if body.to_status not in allowed: raise HTTPException(status_code=409, detail=f"不能从“{item.status}”办理到“{body.to_status}”")
     reason = body.reason.strip()
