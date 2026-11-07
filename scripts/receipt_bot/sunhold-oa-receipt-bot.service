@@ -8,8 +8,16 @@ Wants=network-online.target
 
 [Service]
 User=sunhold-oa
+Group=sunhold-oa
 WorkingDirectory=/opt/sunhold-oa/runtime/enterprise/current/api
+# 和 sunhold-oa-api 用同一份数据库、密钥和缓存配置；环境文件由 systemd 以 root 读入，服务账号不直接读。
 EnvironmentFile=/opt/sunhold-oa/private/production-native.env
+EnvironmentFile=/opt/sunhold-oa/private/cache-redis.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=HOME=/var/lib/sunhold-oa/service-home
+Environment=OA_NATIVE_RUNTIME_CURRENT=/opt/sunhold-oa/runtime/enterprise/current
+ProtectHome=yes
+ProtectSystem=full
 ExecStart=/bin/sh -c 'PY=$(systemctl show sunhold-oa-api -p ExecStart | grep -o "OA_NATIVE_PYTHON=[^ ]*" | head -1 | cut -d= -f2); exec "$PY" -B -m app.dingtalk_receipt_worker'
 Restart=always
 RestartSec=10
