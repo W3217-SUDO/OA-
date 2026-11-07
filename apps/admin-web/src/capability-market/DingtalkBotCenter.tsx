@@ -46,6 +46,11 @@ export function DingtalkBotCenter({ onBusy }: { onBusy: (busy: boolean) => void 
   };
   const test = async () => {
     if (busy) return;
+    const unsaved = form.getFieldsValue();
+    if ((unsaved.app_key || "").trim() !== state?.app_key || (unsaved.app_secret || "").trim()) {
+      message.warning("测试的是已保存的凭证，请先保存改动");
+      return;
+    }
     setBusy("test"); setError("");
     try {
       const { data } = await api.post<{ ok: boolean; message: string }>(`${BASE}/test`, {}, { timeout: 30000 });

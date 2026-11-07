@@ -77,6 +77,25 @@ class AgentDingtalkBotsAdminTest(unittest.IsolatedAsyncioTestCase):
         changed = await self.client.put(API, json={"app_key": "dingother"})
         self.assertIsNone(changed.json()["verify_ok"])
 
+    async def test_generic_config_list_hides_bot_config(self):
+        await self.client.put(API, json={"app_key": "dingabc", "app_secret": FAKE_SECRET})
+        for identity in (PAGE_ADMIN, ADMIN):
+            self.identity = identity
+            listing = await self.client.get(settings.api_prefix + "/system/configs")
+            self.assertEqual(listing.status_code, 200, listing.text)
+            self.assertNotIn("dingtalk_receipt_bot", [item["key"] for item in listing.json()["items"]])
+            self.assertNotIn("dingabc", listing.text)
+
+    async def test_bad_seal_reports_bot_message(self):
+        await self.client.put(API, json={"app_key": "dingabc", "app_secret": FAKE_SECRET})
+        async with self.sessions() as db:
+            record = await db.scalar(select(SystemConfig).where(SystemConfig.key == "dingtalk_receipt_bot"))
+            record.value = {**record.value, "encrypted_secret": "not-valid"}
+            await db.commit()
+        refused = await self.client.post(API + "/test")
+        self.assertEqual(refused.status_code, 409)
+        self.assertIn("AppSecret", refused.text)
+
     async def test_routes_are_not_agent_tools(self):
         from app.agent_mcp.semantic_metadata import exclusion_reasons
         routes = [route for route in app.routes if "dingtalk-bots" in getattr(route, "path", "")]
@@ -89,6 +108,8 @@ class AgentDingtalkBotsAdminTest(unittest.IsolatedAsyncioTestCase):
             return httpx.MockTransport(lambda request: httpx.Response(status, json=body))
         ok, _ = await probe("k", "s", transport=reply(200, {"accessToken": "tok-secret", "expireIn": 7200}))
         self.assertTrue(ok)
+        ok, _ = await probe("k", "s", transport=reply(200, ["unexpected"]))
+        self.assertFalse(ok)
         ok, text = await probe("k", "s", transport=reply(400, {"message": "bad secret s"}))
         self.assertFalse(ok)
         self.assertNotIn("bad secret", text)

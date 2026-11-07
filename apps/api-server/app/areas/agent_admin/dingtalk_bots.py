@@ -77,10 +77,10 @@ async def probe(app_key: str, app_secret: str, transport=None) -> tuple[bool, st
     except httpx.HTTPError as exc:
         return False, "连接钉钉失败：" + type(exc).__name__
     try:
-        token = response.json().get("accessToken") if response.status_code == 200 else ""
+        payload = response.json() if response.status_code == 200 else {}
     except ValueError:
-        token = ""
-    if token:
+        payload = {}
+    if isinstance(payload, dict) and payload.get("accessToken"):
         return True, "连接正常：AppKey 和 AppSecret 有效"
     return False, f"钉钉拒绝（HTTP {response.status_code}），请核对 AppKey 和 AppSecret"
 
@@ -112,7 +112,11 @@ async def test_dingtalk_bot(identity: dict = Depends(current_identity), db: Asyn
     _, value = await _load(db)
     if not (value.get("app_key") and value.get("encrypted_secret")):
         raise HTTPException(422, "请先填写 AppKey 和 AppSecret")
-    ok, message = await probe(value["app_key"], _unseal(value["encrypted_secret"]))
+    try:
+        secret = _unseal(value["encrypted_secret"])
+    except HTTPException as exc:
+        raise HTTPException(409, "AppSecret 解密失败，请重新填写") from exc
+    ok, message = await probe(value["app_key"], secret)
     record, value = await _load(db, lock=True)
     await _save(db, record, {**value, "verified_at": _now(), "verify_ok": ok, "verify_message": message})
     return {"ok": ok, "message": message}

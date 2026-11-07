@@ -954,8 +954,9 @@ async def list_system_configs(keyword: str = "", page: int | None = Query(None, 
     _require_admin(identity)
     items = (await db.scalars(select(SystemConfig).order_by(SystemConfig.id))).all()
     from app.areas.capability_market.connector_store import CONNECTOR_CONFIG_PREFIX
+    from app.areas.agent_admin.dingtalk_bots import CONFIG_KEY as DINGTALK_BOT_CONFIG_KEY
     from app.harness_agent.model_providers import CONFIG_KEY as MODEL_PROVIDER_CONFIG_KEY
-    items = [item for item in items if not item.key.startswith(CONNECTOR_CONFIG_PREFIX) and item.key not in {MODEL_PROVIDER_CONFIG_KEY, "feedback_review"}]
+    items = [item for item in items if not item.key.startswith(CONNECTOR_CONFIG_PREFIX) and item.key not in {MODEL_PROVIDER_CONFIG_KEY, DINGTALK_BOT_CONFIG_KEY, "feedback_review"}]
     from app.global_agent_skills import GLOBAL_SKILL_CONFIG_KEY
     from app.agent_permissions import is_actual_system_admin
     from app.user_agent_skills import USER_SKILL_CONFIG_PREFIX
