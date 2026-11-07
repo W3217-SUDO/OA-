@@ -24,6 +24,7 @@ from app.agent_skill_packages.court_doc_intake.scripts import fetch_court_docs a
 from app.areas.aws.court_intake import CourtIntakeInput
 from app.config import settings
 from app.core.dependencies import current_identity, get_db
+from app.core.archived_case_people import ARCHIVE_LOCKED_CASE_STATUSES
 from app.models import BusinessRecord, User, WorkflowEvent
 
 logger = logging.getLogger(__name__)
@@ -446,6 +447,24 @@ def _party_set(value: Any) -> set[str]:
     return {re.sub(r"\s+", "", str(item)).replace("(", "（").replace(")", "）") for item in values if str(item).strip()}
 
 
+# 已结、已归档的案件不直接存，请律师确认（陶威 11-07）。状态里带“结案”的都算；结案日期有值也算，宁可多确认。
+_ENDED_CASE_STATUSES = frozenset(ARCHIVE_LOCKED_CASE_STATUSES | {"已结案", "执行终本", "终结执行", "已终止", "已解除", "已作废", "已撤回", "已过期"})
+# 标准法院代字：省份简称 + 2~4 位数字（皖1226、沪0110）。徐知、沪仲、宁知这类非标准代字不算法院一致。
+_STANDARD_COURT_CODE = re.compile(r"[京津沪渝冀晋蒙辽吉黑苏浙皖闽赣鲁豫鄂湘粤桂琼川贵云藏陕甘青宁新兵]\d{2,4}")
+
+
+def case_ended(case: BusinessRecord) -> bool:
+    data = case.data or {}
+    status = str(case.status or "")
+    return status in _ENDED_CASE_STATUSES or "结案" in status or data.get("case_closed") is True \
+        or bool(str(data.get("case_closed_at") or "").strip()) or data.get("business_stage") == "结案"
+
+
+def standard_court_code(value: str) -> str:
+    value = str(value or "").strip()
+    return value if _STANDARD_COURT_CODE.fullmatch(value) else ""
+
+
 async def _cases_with_number(normalized: str, db: AsyncSession) -> set[int]:
     """全所登记了这个法院案号的案件，归一化后比较。只读，只用来判断是否唯一。"""
     from app.agent_skill_packages.court_doc_intake.scripts.normalize_case_no import parse as parse_case_no
@@ -463,6 +482,7 @@ async def strict_unique(report: dict, db: AsyncSession) -> tuple[bool, str]:
     4. 当事人反查：文书的原告、被告都要有，每一个都要和该案原告、被告里的某一个整名相同；文书受理法院和该案登记的法院一致；
        文书上还要识别得出案号。识别不出案号的不直接存，请律师确认（调度 11-07，等陶国南答复前按此）。
     5. 不限发送人权限再查一遍全所，也只有这一个案件；发送人看不到的同名案件也算不唯一。
+    6. 案件没有结案、归档；文书上的当事人名称没有被截短；代字比较只认标准代字（陶威 11-07）。
     返回 (是否唯一, 原因)。原因只存记录，不发群。不满足时不存，请律师回“确认”。
     """
     from app.agent_skill_packages.court_doc_intake.scripts.normalize_case_no import parse as parse_case_no
@@ -471,6 +491,8 @@ async def strict_unique(report: dict, db: AsyncSession) -> tuple[bool, str]:
     case = await db.get(BusinessRecord, case_id) if case_id else None
     if case is None or case.module != "case":
         return False, "案件读取失败"
+    if case_ended(case):
+        return False, "案件已结案或已归档"
     data = case.data or {}
     level = str((report.get("match") or {}).get("level") or "")
     numbers = [str(item) for item in report.get("case_numbers") or []]
@@ -490,13 +512,15 @@ async def strict_unique(report: dict, db: AsyncSession) -> tuple[bool, str]:
     if level.startswith(_SECOND_LEVEL):
         if not (plaintiffs and defendants):
             return False, "文书上没有同时识别出原告和被告"
+        if any(item.get("当事人可能截短") for item in fields):
+            return False, "当事人名称可能识别不全"
         if not (_party_set(plaintiffs) <= _party_set(data.get("plaintiff"))
                 and _party_set(defendants) <= _party_set(data.get("opponent") or data.get("defendant"))):
             return False, "原告、被告没有全部对上"
-        # 系统里法院多登记成代字（如 皖1226），文书上是全称：全称相同或案号里的代字相同都算。
+        # 系统里法院多登记成代字（如 皖1226），文书上是全称：全称相同或案号里的标准代字相同都算。
         court = str(report.get("court") or next((item.get("受理机关") for item in fields if item.get("受理机关")), "") or "").strip()
         registered_courts = {str(data.get(key) or "").strip() for key in COURT_NAME_FIELDS} - {""}
-        court_code = str(document_number["受理机关代字"] or "").strip() if document_number is not None else ""
+        court_code = standard_court_code(document_number["受理机关代字"]) if document_number is not None else ""
         if not ((court and court in registered_courts) or (court_code and court_code in registered_courts)):
             return False, "受理法院与该案登记的不一致"
         if document_number is None:

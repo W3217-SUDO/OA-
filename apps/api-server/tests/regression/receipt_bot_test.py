@@ -390,6 +390,72 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         reply = await self._run(sms(), FakeApi(self._party(case_numbers=[NUMBER]), done()), AUTO)
         self.assertIn("收文完成", reply.text)
 
+    async def test_non_standard_court_code_is_not_a_match(self):
+        """徐知、沪仲、宁知这类非标准代字，即使和案件登记的一样，也不算法院一致（陶威 11-07）。"""
+        for index, code in enumerate(("徐知", "沪仲", "宁知")):
+            number = f"（2026）{code}民初1号"
+            await self._party_case(court=code)
+            reply = await self._run(sms(message_id=f"c{index}"), FakeApi(self._party(case_numbers=[number], court="")), AUTO)
+            await self._assert_not_auto(reply, "受理法院与该案登记的不一致")
+
+    def test_standard_court_code_shape(self):
+        from app.areas.aws.receipt_bot import standard_court_code
+        for code in ("皖1226", "沪0110", "苏0281", "京73", "兵0101"):
+            self.assertEqual(standard_court_code(code), code)
+        for code in ("徐知", "沪仲", "宁知", "0009", "沪01101", "上海"):
+            self.assertEqual(standard_court_code(code), "")
+
+    async def test_closed_or_archived_case_is_not_saved_directly(self):
+        """已结、已归档的案件不直接存，转确认（陶威 11-07）。"""
+        await self._set_case(court_case_no=NUMBER)
+        cases = ((dict(status="已归档"), {}), (dict(status="一审判决结案"), {}), (dict(status="执行终本"), {}),
+                 (dict(status="归档审核"), {}), (dict(status="一审待客户回款"), dict(case_closed_at="2026-10-01")))
+        for index, (column, data) in enumerate(cases):
+            async with self.sessions() as db:
+                case = await db.get(BusinessRecord, 7)
+                case.status = column["status"]
+                case.data = {**case.data, **data}
+                await db.commit()
+            reply = await self._run(sms(message_id=f"e{index}"), FakeApi(preview()), AUTO)
+            await self._assert_not_auto(reply, "案件已结案或已归档")
+
+    async def test_truncation_flag_does_not_block_registered_number_match(self):
+        """法院案号直配不看当事人名称，标了可能截短也照常直接存。"""
+        await self._set_case(court_case_no=NUMBER)
+        docs = [{"attachment_id": 9, "name": "传票", "fields": {"文书类型": "传票", "当事人可能截短": ["某公司"]}}]
+        self.assertIn("收文完成", (await self._run(sms(), FakeApi(preview(documents=docs), done()), AUTO)).text)
+
+    async def test_truncated_party_names_are_not_saved_directly(self):
+        """解析标出“当事人可能截短”的，哪怕截短后的名字和案件对得上，也不直接存。"""
+        await self._party_case(opponent="漳州锦客隆贸易有限公司")
+        docs = [{"attachment_id": 9, "name": "传票", "fields": {"文书类型": "传票", "原告": [P], "被告": ["漳州锦客隆贸易有限公司"],
+                                                                "受理机关": COURT, "当事人可能截短": ["漳州锦客隆贸易有限公司"]}}]
+        reply = await self._run(sms(), FakeApi(self._party(case_numbers=[NUMBER], documents=docs)), AUTO)
+        await self._assert_not_auto(reply, "当事人名称可能识别不全")
+
+    def test_party_names_keep_full_company_and_branch(self):
+        from app.agent_skill_packages.court_doc_intake.scripts.extract_doc_fields import extract
+        # 句式写法取到的名称完整了，但分不清名称在哪结束，仍标为可能不全（不用来直接存）；冒号写法可信。
+        cases = (
+            ("原告青岛万盛联有限公司诉被告广州逸达酒店有限公司侵害商标权纠纷一案", ["青岛万盛联有限公司"], ["广州逸达酒店有限公司"], True),
+            ("原告甲贸易有限公司诉被告漳州锦客隆贸易有限公司霞美分公司侵害商标权纠纷一案", ["甲贸易有限公司"], ["漳州锦客隆贸易有限公司霞美分公司"], True),
+            ("原告甲贸易有限公司诉被告上海某某百货店（个体工商户）侵害商标权纠纷一案", ["甲贸易有限公司"], ["上海某某百货店（个体工商户）"], True),
+            ("原告：某某（上海）有限公司\n被告：乙商行（个体工商户）\n法定代表人：张三", ["某某（上海）有限公司"], ["乙商行（个体工商户）"], False),
+            ("原告：甲有限公司（以下简称甲公司）\n被告：张三，男", ["甲有限公司"], ["张三"], False),
+        )
+        for text, plaintiffs, defendants, sentence in cases:
+            fields = extract(text, "传票.pdf")
+            self.assertEqual((fields["原告"], fields["被告"]), (plaintiffs, defendants), text)
+            self.assertEqual(fields["当事人可能截短"], [*plaintiffs, *defendants] if sentence else [], text)
+
+    def test_name_cut_by_line_break_is_flagged(self):
+        from app.agent_skill_packages.court_doc_intake.scripts.extract_doc_fields import extract, truncated_parties
+        self.assertEqual(extract("原告：上海某某贸易有\n限公司\n被告：李四", "传票.pdf")["当事人可能截短"], ["上海某某贸易有"])
+        self.assertEqual(extract("原告甲贸易有限公司诉被告广州颜佳宜生物科技有限公司实力供应商侵害商标权纠纷一案", "传票.pdf")["当事人可能截短"],
+                         ["甲贸易有限公司", "广州颜佳宜生物科技有限公司"])
+        self.assertEqual(truncated_parties("被告漳州锦客隆贸易有限公司霞美分公司", ["漳州锦客隆贸易有限公司"]), ["漳州锦客隆贸易有限公司"])
+        self.assertEqual(truncated_parties("被告广州逸达酒店有限公司", ["广州逸达酒店"]), ["广州逸达酒店"])
+
     def test_case_attachment_date_uses_beijing_time(self):
         from datetime import datetime, timezone
         from app.areas.aws.receipt_sources import _case_attachment_row

@@ -74,8 +74,9 @@ def _first(pattern: str, text: str, flags: int = 0) -> str:
 
 def _parties(text: str, role: str) -> list[str]:
     names = []
-    for match in re.finditer(role + r"(?:人)?(?:（[^）]{0,8}）)?[:：]\s*([^，,。；;\s：:（(]{2,40})", text):
-        name = match.group(1).strip()
+    # 名称里的括号要保留：“某某（上海）有限公司”“××百货店（个体工商户）”；“（以下简称…）”这类注释去掉。
+    for match in re.finditer(role + r"(?:人)?(?:（[^）]{0,8}）)?[:：]\s*((?:[^，,。；;\s：:（()）]|[（(][^，,。；;\s：:（()）]{1,12}[）)]){2,60})", text):
+        name = re.sub(r"[（(](?:以下简称|下称|简称)[^）)]*[）)]$", "", match.group(1).strip())
         if name and name not in names:
             names.append(name)
     return names[:6]
@@ -181,13 +182,29 @@ def signing_date(text: str) -> str:
     return dates[-1] if dates else ""
 
 
-_PARTY = r"([^，,。；;：:\s]{2,40}?(?:有限责任公司|股份有限公司|有限公司|公司|商行|经营部|店|厂))"
+# 单位名称：取到最后一个单位后缀为止（贪婪），“广州逸达酒店有限公司”不截成“广州逸达酒店”，
+# “××有限公司霞美分公司”不截成总公司；“（个体工商户）”算名称的一部分。
+_SUFFIX = r"(?:公司|商行|经营部|店|厂)(?:[（(]个体工商户[）)])?"
+_PARTY = r"([^，,。；;：:\s]{2,60}" + _SUFFIX + r")"
+# 被告后面紧跟案由（“……纠纷”）或标点，案由里出现“店”“厂”时也不会把案由吞进名称。
+_AFTER_DEFENDANT = r"(?=[\u4e00-\u9fff、]{0,20}?纠纷|[，,。；;）)]|$)"
 
 
 def _sued_parties(compact: str) -> tuple[list[str], list[str]]:
     """“原告甲诉被告乙……纠纷”“甲与乙……纠纷”这类无冒号写法；只认以单位后缀结尾的名称。"""
-    match = re.search(r"原告" + _PARTY + r"诉被告" + _PARTY, compact) or re.search(_PARTY + r"(?:与|诉)" + _PARTY + r"[\u4e00-\u9fff、]{0,20}?纠纷", compact)
+    match = re.search(r"原告" + _PARTY + r"诉被告" + _PARTY + _AFTER_DEFENDANT, compact) \
+        or re.search(_PARTY + r"(?:与|诉)" + _PARTY + r"[\u4e00-\u9fff、]{0,20}?纠纷", compact)
     return ([match.group(1)], [match.group(2)]) if match else ([], [])
+
+
+# 识别出的名称在原文里后面紧跟着单位名称的剩余部分（“有限公司”“限公司”（断行）“××分公司”“（个体工商户）”），
+# 说明可能被截短了。宁可多判：多判只是请律师确认，少判可能存错案件。
+_TRUNCATED_TAIL = r"(?:[^，,。；;：:\s（()）诉与被原告]{0,8}(?:公司|商行|经营部|店|厂)|[（(]个体工商户[）)])"
+
+
+def truncated_parties(compact: str, names: list[str]) -> list[str]:
+    """名称可能识别不全的当事人。只用来判断能否直接存：有就请律师确认。"""
+    return [name for name in names if re.search(re.escape(name) + _TRUNCATED_TAIL, compact)]
 
 
 def _cause(compact: str) -> str:
@@ -213,8 +230,8 @@ def extract(text: str, name: str = "") -> dict:
         "主案号解析": primary,
         "受理机关": _first(r"([\u4e00-\u9fff]{2,30}?(?:人民法院|仲裁委员会|人民检察院))", compact),
         "案由": _cause(compact),
-        "原告": _parties(text, "原告") or _parties(text, "上诉人") or _parties(text, "申请人") or sued_plaintiffs,
-        "被告": _parties(text, "被告") or _parties(text, "被上诉人") or _parties(text, "被申请人") or sued_defendants,
+        "原告": _parties(text, "原告") or _parties(text, "上诉人") or _parties(text, "申请人"),
+        "被告": _parties(text, "被告") or _parties(text, "被上诉人") or _parties(text, "被申请人"),
         "落款日期": signing_date(compact),
         **court_staff(compact),
     }
@@ -234,6 +251,12 @@ def extract(text: str, name: str = "") -> dict:
         review.append("缴费金额/期限")
     if not text.strip():
         review = ["正文为空（扫描件需人工阅读或 OCR）"]
+    # “原告甲诉被告乙……纠纷”句式分不清名称在哪结束（“××有限公司实力供应商”“××宾馆”），
+    # 从这种句式取到的名称一律算可能不全：照常显示，但不用来直接存（生产 6,309 件实测，句式取错 52 件、冒号写法 14 件）。
+    sentence = [name for role, found in (("原告", sued_plaintiffs), ("被告", sued_defendants)) if not result[role] for name in found]
+    result["原告"] = result["原告"] or sued_plaintiffs
+    result["被告"] = result["被告"] or sued_defendants
+    result["当事人可能截短"] = list(dict.fromkeys([*truncated_parties(compact, [*result["原告"], *result["被告"]]), *sentence]))
     result["需人工核对"] = review
     result["识别状态"] = "需人工核对" if review else "已识别"
     return result
