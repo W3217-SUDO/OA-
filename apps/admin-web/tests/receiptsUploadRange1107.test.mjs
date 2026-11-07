@@ -13,3 +13,8 @@ test('上传日期变了（含搜具体字段放开日期、清空条件）就�
   assert.match(page, /const receiptRangeKey = receiptQuery\.upload_range/);
   assert.match(page, /if \(loadedReceiptRange\.current === receiptRangeKey\) return;[\s\S]*?void load\(\);\s*\}, \[receiptRangeKey\]\);/);
 });
+
+test('被顶替的旧取数不关加载状态', () => {
+  assert.match(page, /if \(seq !== receiptLoadSeq\.current\) \{\s*superseded = true;\s*return;\s*\}/);
+  assert.match(page, /finally \{\s*if \(!superseded\) setLoading\(false\);\s*\}/);
+});
