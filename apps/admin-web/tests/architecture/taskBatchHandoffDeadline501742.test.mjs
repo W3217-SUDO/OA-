@@ -16,7 +16,7 @@ test("501742：批量交接窗口有选填的任务期限，提交时带上，�
 test("501742：所有带时间的日期选择手机上都不超出屏幕", () => {
   const shared = read("../../src/components/common/dateTimePopup.ts");
   assert.match(shared, /root: "oa-datetime-popup"/);
-  assert.match(shared, /getPopupContainer: \(\) => document\.body/);
+  assert.doesNotMatch(shared, /getPopupContainer/); // 挂在页面容器里，缓存页签隐藏时一起隐藏
   for (const [path, count] of [
     ["../../src/tp/TaskActionModals.tsx", 2], ["../../src/tp/TaskCreateModal.tsx", 2], ["../../src/VipTaskCenterPage.tsx", 3],
     ["../../src/CommunicationLogPage.tsx", 1], ["../../src/legal/CaseCenterPage.tsx", 5],
