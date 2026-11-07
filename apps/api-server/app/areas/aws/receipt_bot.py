@@ -1,4 +1,4 @@
-"""钉钉收文助手（陶国南 11-07）：律师在沪知收文群转发法院短信并 @收文助手，按发送人本人的账号收文，并在群里告知律师和律师助理。
+"""钉钉收文助手（陶国南 11-07）：律师在收文群转发法院短信并 @收文助手，按发送人本人的账号收文，并在群里告知律师和律师助理。
 
 这里只放与钉钉连接无关的部分：认人、调收文接口、记录、拼回复。下载、匹配、入库全部走现有“一键收文”接口，
 用发送人本人的短期令牌调用，权限和留痕与网页一致，机器人没有自己的放宽路径。
@@ -33,11 +33,19 @@ WAITING, PENDING, DONE, CLOSED, CANCELLED = "待确认", "待处理", "已导入
 CONFIRM_MINUTES = 30
 SKILL_ID = "court-doc-intake"
 RECEIPT_PAGE = "/?page=documents-official"
+UNDO_HINT = "存错了：到官文收文删除这条，并到案件里改回回填的案号和开庭。"
 ASSISTANT_NAME_FIELDS = ("assistants", "assistant", "case_assistant")
 ASSISTANT_ACCOUNT_FIELDS = ("assistant_usernames", "assistant_username")
 _LINK = re.compile(r"https?://[^\s，,。；;]+")
 _COURT = re.compile(r"人民法院|法院|仲裁委员会|人民检察院")
 _FIRST_LEVEL = "第一级"
+_SECOND_LEVEL = "第二级"
+COURT_NUMBER_FIELDS = ("court_case_no", "first_court_case_no", "first_instance_case_no", "second_court_case_no",
+                       "retrial_court_case_no", "hearing_case_no", "court_no", "filing_no", "official_no")
+COURT_NAME_FIELDS = ("court", "first_court_name", "second_court_name", "retrial_court_name", "execution_court_name")
+# 只用来判断全所是否唯一，结果不显示给任何人，也不用它写入。
+_UNIQUE_CHECK_IDENTITY = {"username": "receipt-bot-unique-check", "display_name": "收文助手唯一性检查", "role": "admin", "role_ids": ["admin"],
+                          "_actual_role": "admin", "_actual_role_ids": ["admin"], "department": "", "action_keys": ["*"], "menu_keys": []}
 
 Api = Callable[[str, str, dict], Awaitable[dict]]
 AgentTurn = Callable[[str, str], Awaitable[None]]
@@ -57,7 +65,7 @@ class BotMessage:
 class BotSettings:
     group_name: str
     use_cloud_agent: bool
-    auto_save_court_no: bool
+    auto_save_unique: bool
 
 
 @dataclass
@@ -268,6 +276,50 @@ async def _handle_command(text: str, user: User, message: BotMessage, api: Api, 
     return await _save(record, int(data["case_id"]), user, message, api, db)
 
 
+async def strict_unique(report: dict, db: AsyncSession) -> tuple[bool, str]:
+    """能否不经律师确认直接存（陶国南 11-07 反查唯一也可直接存）。服务器判断，不看模型。全部满足才算唯一：
+
+    1. 收文接口按发送人权限返回“待确认入库”，且只有一个案件；同一批文书只有一个法院案号（或反查时没有案号）。
+    2. 法院案号直配：文书案号归一化后，等于该案已登记的某个法院案号；检索命中别的字段不算。
+    3. 当事人反查：文书的原告、被告都要有，分别能在该案原告、被告里找到，且文书受理法院和该案登记的法院一致。
+    4. 不限发送人权限再查一遍全所，也只有这一个案件；发送人看不到的同名案件也算不唯一。
+    返回 (是否唯一, 不唯一时的原因)。不满足时不存，请律师回“确认”。
+    """
+    from app.agent_skill_packages.court_doc_intake.scripts.normalize_case_no import parse as parse_case_no
+    from app.areas.aws.court_intake import _core_names, _match_case
+    case_id = int((report.get("case") or {}).get("case_id") or 0)
+    case = await db.get(BusinessRecord, case_id) if case_id else None
+    if case is None or case.module != "case":
+        return False, "案件读取失败"
+    data = case.data or {}
+    level = str((report.get("match") or {}).get("level") or "")
+    numbers = [str(item) for item in report.get("case_numbers") or []]
+    if len(numbers) > 1:
+        return False, "文书上有多个法院案号"
+    fields = [item.get("fields") or {} for item in report.get("documents") or []]
+    plaintiffs = list(dict.fromkeys(name for item in fields for name in item.get("原告") or []))
+    defendants = list(dict.fromkeys(name for item in fields for name in item.get("被告") or []))
+    if level.startswith(_FIRST_LEVEL):
+        registered = {parse_case_no(str(data[key]))["归一化"] for key in COURT_NUMBER_FIELDS if str(data.get(key) or "").strip()}
+        if not numbers or parse_case_no(numbers[0])["归一化"] not in registered:
+            return False, "法院案号与该案登记的不一致"
+    elif level.startswith(_SECOND_LEVEL):
+        plaintiff_text, defendant_text = str(data.get("plaintiff") or ""), str(data.get("opponent") or data.get("defendant") or "")
+        # 只比完整字号（去公司后缀），不比去掉地区后的短字号，避免同名不同地的公司算对上。
+        side_matches = lambda names, text: any(_core_names(name)[:1] and _core_names(name)[0] in text for name in names)  # noqa: E731
+        if not (side_matches(plaintiffs, plaintiff_text) and side_matches(defendants, defendant_text)):
+            return False, "原告、被告没有同时对上"
+        court = str(report.get("court") or next((item.get("受理机关") for item in fields if item.get("受理机关")), "") or "").strip()
+        if not court or court not in {str(data.get(key) or "").strip() for key in COURT_NAME_FIELDS}:
+            return False, "受理法院与该案登记的不一致"
+    else:
+        return False, "匹配方式不明确"
+    everyone = await _match_case(numbers, plaintiffs, defendants, _UNIQUE_CHECK_IDENTITY, db)
+    if [record.id for record in everyone["records"]] != [case_id]:
+        return False, "全所不止这一个案件符合"
+    return True, ""
+
+
 async def _preview(message: BotMessage, link: str, user: User, config: BotSettings, api: Api, agent_turn: AgentTurn | None, db: AsyncSession) -> Reply | None:
     me = _mention([message.sender_id])
     record = await _record(message, user, PENDING, {"kind": "zxfw", "link": link}, db)
@@ -301,14 +353,21 @@ async def _preview(message: BotMessage, link: str, user: User, config: BotSettin
         await _set_status(record, PENDING, {**record_data, "reason": str(status)}, user.username, db)
         return Reply(f"{me} 这条短信没有自动收文，已转到收文台待处理。\n{_link_line()}", [message.sender_id])
     case_id = int(report["case"]["case_id"])
-    level = str((report.get("match") or {}).get("level") or "")
-    if config.auto_save_court_no and level.startswith(_FIRST_LEVEL):
-        await _set_status(record, WAITING, {**record_data, "case_id": case_id}, user.username, db)
-        return await _save(record, case_id, user, message, api, db)
-    await _set_status(record, WAITING, {**record_data, "case_id": case_id, "expires_at": expires}, user.username, db)
-    basis = (report.get("match") or {}).get("basis") or ""
+    match = report.get("match") or {}
+    basis = str(match.get("basis") or "")
+    why_not = ""
+    if config.auto_save_unique:
+        unique, why_not = await strict_unique(report, db)
+        if unique:
+            await _set_status(record, WAITING, {**record_data, "case_id": case_id, "auto_saved": True,
+                                                "match_level": str(match.get("level") or ""), "match_basis": basis}, user.username, db)
+            reply = await _save(record, case_id, user, message, api, db)
+            if record.status == DONE:
+                reply.text += f"\n匹配依据：{basis}\n{UNDO_HINT}"
+            return reply
+    await _set_status(record, WAITING, {**record_data, "case_id": case_id, "expires_at": expires, "not_auto_reason": why_not}, user.username, db)
     return Reply("\n".join([f"{me} 找到案件，请核对后回复“确认”存入，或回复“取消”：", *_facts(report),
-                            *([f"匹配依据：{basis}"] if basis else [])]), [message.sender_id])
+                            *([f"匹配依据：{basis}"] if basis else []), *([f"未自动存入：{why_not}"] if why_not else [])]), [message.sender_id])
 
 
 async def handle_message(message: BotMessage, config: BotSettings, *, api: Api, db: AsyncSession, agent_turn: AgentTurn | None = None) -> Reply | None:

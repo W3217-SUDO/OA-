@@ -22,7 +22,6 @@ router = APIRouter(prefix=settings.api_prefix + "/agent-admin/dingtalk-bots")
 
 CONFIG_KEY = "dingtalk_receipt_bot"
 TOKEN_URL = "https://api.dingtalk.com/v1.0/oauth2/accessToken"
-DEFAULT_GROUP = "沪知收文群"
 
 
 class BotInput(BaseModel):
@@ -30,9 +29,9 @@ class BotInput(BaseModel):
     app_key: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
     app_secret: str = Field(default="", max_length=256)  # 留空表示不改
     enabled: bool = False
-    group_name: str = Field(default=DEFAULT_GROUP, min_length=1, max_length=100)
+    group_name: str = Field(default="", max_length=100)
     use_cloud_agent: bool = False  # 云端智能体读短信：文书内容会发到模型服务，要陶威拍板后再开
-    auto_save_court_no: bool = False  # 法院案号唯一匹配直接入库：跳过律师确认，要陶威拍板后再开
+    auto_save_unique: bool = False  # 服务器判断唯一匹配时直接入库：跳过律师确认，要陶威拍板后再开
 
 
 def _require_admin(identity: dict) -> None:
@@ -70,8 +69,8 @@ async def _save(db: AsyncSession, record, value: dict) -> None:
 
 def _public(value: dict) -> dict:
     return {"app_key": value.get("app_key", ""), "secret_set": bool(value.get("encrypted_secret")),
-            "enabled": bool(value.get("enabled")), "group_name": value.get("group_name") or DEFAULT_GROUP,
-            "use_cloud_agent": bool(value.get("use_cloud_agent")), "auto_save_court_no": bool(value.get("auto_save_court_no")),
+            "enabled": bool(value.get("enabled")), "group_name": value.get("group_name") or "",
+            "use_cloud_agent": bool(value.get("use_cloud_agent")), "auto_save_unique": bool(value.get("auto_save_unique")),
             "updated_by": value.get("updated_by", ""), "updated_at": value.get("updated_at", ""),
             "verified_at": value.get("verified_at", ""), "verify_ok": value.get("verify_ok"),
             "verify_message": value.get("verify_message", "")}
@@ -84,11 +83,11 @@ class BotConfig:
     app_secret: str
     group_name: str
     use_cloud_agent: bool
-    auto_save_court_no: bool
+    auto_save_unique: bool
 
     @property
     def ready(self) -> bool:
-        return self.enabled and bool(self.app_key and self.app_secret)
+        return self.enabled and bool(self.app_key and self.app_secret and self.group_name)
 
 
 async def load_bot(db: AsyncSession) -> BotConfig:
@@ -99,8 +98,8 @@ async def load_bot(db: AsyncSession) -> BotConfig:
     except HTTPException:
         secret = ""
     return BotConfig(enabled=bool(value.get("enabled")), app_key=str(value.get("app_key") or ""), app_secret=secret,
-                     group_name=str(value.get("group_name") or DEFAULT_GROUP),
-                     use_cloud_agent=bool(value.get("use_cloud_agent")), auto_save_court_no=bool(value.get("auto_save_court_no")))
+                     group_name=str(value.get("group_name") or "").strip(),
+                     use_cloud_agent=bool(value.get("use_cloud_agent")), auto_save_unique=bool(value.get("auto_save_unique")))
 
 
 async def probe(app_key: str, app_secret: str, transport=None) -> tuple[bool, str]:
@@ -132,10 +131,12 @@ async def update_dingtalk_bot(body: BotInput, identity: dict = Depends(current_i
     record, value = await _load(db, lock=True)
     secret = body.app_secret.strip()
     changed = {**value, "app_key": body.app_key, "enabled": body.enabled, "group_name": body.group_name.strip(),
-               "use_cloud_agent": body.use_cloud_agent, "auto_save_court_no": body.auto_save_court_no,
+               "use_cloud_agent": body.use_cloud_agent, "auto_save_unique": body.auto_save_unique,
                "updated_by": identity["username"], "updated_at": _now()}
     if body.enabled and not (secret or value.get("encrypted_secret")):
         raise HTTPException(422, "启用前请先填写 AppSecret")
+    if body.enabled and not body.group_name.strip():
+        raise HTTPException(422, "启用前请先填写收文群名称")
     if secret:
         changed["encrypted_secret"] = seal_key(secret)
     if secret or body.app_key != value.get("app_key"):

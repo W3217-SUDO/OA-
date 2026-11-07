@@ -1,4 +1,5 @@
 """钉钉收文助手：群里 @ 的消息按发送人本人收文，不发真实消息、不连真实接口。"""
+from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -16,12 +17,15 @@ from app.main import app
 from app.models import BusinessRecord, User, WorkflowEvent
 from app.security import current_identity
 
-GROUP = "沪知收文群"
+GROUP = "临时收文群"
 LINK = "https://zxfw.court.gov.cn/zxfw/#/pagesAjkj/app/wssd/index?qdbh=5f184b3f7c5740d791d35a51bc6b4841&sdbh=6f184b3f7c5740d791d35a51bc6b4841&sdsin=7f184b3f7c5740d791d35a51bc6b4841"
 SMS = f"【上海市浦东新区人民法院】向您发送了（2026）沪0115民初1号案件相关文书。点击链接查阅：{LINK}"
-CONFIG = BotSettings(group_name=GROUP, use_cloud_agent=False, auto_save_court_no=False)
+CONFIG = BotSettings(group_name=GROUP, use_cloud_agent=False, auto_save_unique=False)
+AUTO = BotSettings(group_name=GROUP, use_cloud_agent=False, auto_save_unique=True)
+NUMBER = "（2026）沪0115民初1号"
 CASE = {"case_id": 7, "serial_no": "HZMS1", "title": "某案", "plaintiff": "甲公司", "defendant": "乙公司", "court_case_no": ""}
 DOCS = [{"attachment_id": 9, "name": "传票", "fields": {"文书类型": "传票", "收款账户": {"账号": "6222000011112222"}, "法官电话": "13900000000"}}]
+PARTY_DOCS = [{"attachment_id": 9, "name": "传票", "fields": {"文书类型": "传票", "原告": ["上海甲方科技有限公司"], "被告": ["杭州乙方贸易有限公司"], "受理机关": "上海市浦东新区人民法院"}}]
 
 
 def preview(level="第一级 官方案号直配", **extra):
@@ -76,6 +80,15 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
             ])
             await db.commit()
 
+        # 全所检索在 sqlite 里匹配不了中文（JSON 按转义存储），这里按用例给结果；真实库的查询另行只读核对过。
+        self.firm_ids = [7]
+
+        async def firm_match(numbers, plaintiffs, defendants, identity, db):
+            return {"records": [SimpleNamespace(id=item) for item in self.firm_ids], "level": "", "basis": "", "tried": []}
+        firm_patch = patch("app.areas.aws.court_intake._match_case", firm_match)
+        firm_patch.start()
+        self.addCleanup(firm_patch.stop)
+
     async def asyncTearDown(self):
         app.dependency_overrides.clear()
         await self.engine.dispose()
@@ -123,16 +136,63 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("6222000011112222", reply.text)
             self.assertNotIn("13900000000", reply.text)
 
-    async def test_court_number_auto_save_only_when_switched_on(self):
-        config = BotSettings(group_name=GROUP, use_cloud_agent=False, auto_save_court_no=True)
-        api = FakeApi(preview(), done())
-        reply = await self._run(sms(), api, config)
-        self.assertIn("收文完成", reply.text)
-        self.assertEqual(len(api.calls), 2)
-        api = FakeApi(preview(level="第二级 当事人+机关反查"))
-        reply = await self._run(sms(message_id="m3"), api, config)
-        self.assertIn("回复“确认”", reply.text)
+    async def _set_case(self, **data):
+        async with self.sessions() as db:
+            case = await db.get(BusinessRecord, 7)
+            case.data = {**case.data, **data}
+            await db.commit()
+
+    async def test_switch_off_always_asks_even_when_unique(self):
+        await self._set_case(court_case_no=NUMBER)
+        api = FakeApi(preview())
+        self.assertIn("回复“确认”", (await self._run(sms(), api)).text)
         self.assertEqual(len(api.calls), 1)
+
+    async def test_unique_court_number_saves_directly_with_undo_hint(self):
+        await self._set_case(court_case_no=NUMBER)
+        api = FakeApi(preview(), done())
+        reply = await self._run(sms(), api, AUTO)
+        for words in ("收文完成", "匹配依据", "存错了"):
+            self.assertIn(words, reply.text)
+        self.assertEqual(api.calls[1][2], {"link": LINK, "case_id": 7, "confirm": True})
+        record = (await self._records())[0]
+        self.assertEqual((record.status, record.data["auto_saved"]), ("已导入", True))
+
+    async def test_court_number_must_be_registered_on_the_case(self):
+        await self._set_case(remark=NUMBER, court_case_no="（2025）沪0115民初9号")
+        reply = await self._run(sms(), FakeApi(preview()), AUTO)
+        self.assertIn("未自动存入：法院案号与该案登记的不一致", reply.text)
+
+    async def test_two_numbers_on_documents_are_not_unique(self):
+        await self._set_case(court_case_no=NUMBER)
+        reply = await self._run(sms(), FakeApi(preview(case_numbers=[NUMBER, "（2026）沪0115民初2号"])), AUTO)
+        self.assertIn("多个法院案号", reply.text)
+
+    async def test_party_match_saves_only_when_all_three_match(self):
+        await self._set_case(plaintiff="上海甲方科技有限公司", opponent="杭州乙方贸易有限公司", court="上海市浦东新区人民法院")
+        party = dict(level="第二级 当事人+机关反查", case_numbers=[], court="上海市浦东新区人民法院", documents=PARTY_DOCS)
+        api = FakeApi(preview(**party), done())
+        self.assertIn("收文完成", (await self._run(sms(), api, AUTO)).text)
+        for change, words in ((dict(plaintiff="广州甲方科技有限公司"), "原告、被告"), (dict(plaintiff="上海甲方科技有限公司", opponent="成都丁方有限公司"), "原告、被告"),
+                              (dict(opponent="杭州乙方贸易有限公司", court="别的法院"), "受理法院")):
+            await self._set_case(**change)
+            reply = await self._run(sms(message_id=f"p{words}{len(change)}{change.get('opponent')}"), FakeApi(preview(**party)), AUTO)
+            self.assertIn("未自动存入：" + words, reply.text)
+
+    async def test_case_invisible_to_sender_still_blocks_direct_save(self):
+        await self._set_case(plaintiff="上海甲方科技有限公司", opponent="杭州乙方贸易有限公司", court="上海市浦东新区人民法院")
+        self.firm_ids = [7, 8]
+        party = dict(level="第二级 当事人+机关反查", case_numbers=[], court="上海市浦东新区人民法院", documents=PARTY_DOCS)
+        reply = await self._run(sms(), FakeApi(preview(**party)), AUTO)
+        self.assertIn("全所不止这一个案件符合", reply.text)
+        self.assertNotIn("HZMS2", reply.text)
+
+    async def test_save_failure_after_auto_goes_to_pending_without_undo_hint(self):
+        await self._set_case(court_case_no=NUMBER)
+        reply = await self._run(sms(), FakeApi(preview(), ApiError(409, "案件已进入归档流程，不能上传案件文档")), AUTO)
+        self.assertIn("待处理", reply.text)
+        self.assertNotIn("存错了", reply.text)
+        self.assertEqual((await self._records())[0].status, "待处理")
 
     async def test_several_candidates_pick_by_number(self):
         report = {"status": "需要选择案件", "documents": DOCS, "match": {"candidates": [
@@ -199,7 +259,7 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
             raise RuntimeError("cloud down")
         await self._run(sms(), FakeApi(preview()), agent_turn=turn)
         self.assertEqual(turns, [])
-        config = BotSettings(group_name=GROUP, use_cloud_agent=True, auto_save_court_no=False)
+        config = BotSettings(group_name=GROUP, use_cloud_agent=True, auto_save_unique=False)
         reply = await self._run(sms(message_id="m2"), FakeApi(preview()), config, turn)
         self.assertEqual(turns, ["lawyer"])
         self.assertIn("回复“确认”", reply.text)

@@ -195,7 +195,7 @@ async def main() -> None:
         if not bot.ready:
             await asyncio.sleep(RECHECK_SECONDS)
             continue
-        config = BotSettings(group_name=bot.group_name, use_cloud_agent=bot.use_cloud_agent, auto_save_court_no=bot.auto_save_court_no)
+        config = BotSettings(group_name=bot.group_name, use_cloud_agent=bot.use_cloud_agent, auto_save_unique=bot.auto_save_unique)
         try:
             # 连接最长保持 30 分钟后重连，重读配置和版本；钉钉的 ticket 只用一次。
             await asyncio.wait_for(worker.connect(bot.app_key, bot.app_secret, config), timeout=1800)
