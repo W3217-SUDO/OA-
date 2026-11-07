@@ -1084,7 +1084,7 @@ const nonlitigationFinanceRoutes: Record<string, { view: string; title: string }
 };
 
 // 501791（思法汇成 11-08）：“全国组织机构查询平台”换成国家企业信用信息公示系统。系统不替大家保存外部网站的账号密码，只提示用浏览器记住。
-// 商标局老查询地址 wcjs…/txnT01.do 已被对方拦截，改用中国商标网“商标查询”入口页；公示系统实名分站直接打开会被拦，改用首页。
+// 商标局老查询地址 wcjs…/txnT01.do 已被对方拦截，改用中国商标网“商标查询”入口页；公示系统按思法汇成 01:15 给的地址 /index（/index.html 打不开）。
 const supportTools: { label: string; href: string; hint?: string }[] = [
   {
     label: "国家知识产权局商标局",
@@ -1094,7 +1094,7 @@ const supportTools: { label: string; href: string; hint?: string }[] = [
     label: "国家知识产权局专利局",
     href: "https://pss-system.cponline.cnipa.gov.cn/conventionalSearch",
   },
-  { label: "国家企业信用信息公示系统", href: "https://www.gsxt.gov.cn/index.html", hint: "从首页登录；首次登录后可让浏览器记住密码" },
+  { label: "国家企业信用信息公示系统", href: "https://shiming.gsxt.gov.cn/index", hint: "首次登录后可让浏览器记住密码" },
   { label: "法律法规查询", href: "https://flk.npc.gov.cn/" },
   { label: "裁判文书检索", href: "https://openlaw.cn/index.jsp" },
 ];
