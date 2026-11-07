@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Key } from "react";
 import { Button, Card, Popconfirm, Space, Statistic, Tabs, message } from "antd";
 import {
@@ -161,6 +161,8 @@ export default function DocumentCenterPage({
   // ===== Receipt states =====
   // 陶国南 11-07：收文台默认看当日收文，晚上写总结时回看。
   const [receiptQuery, setReceiptQuery] = useState<Record<string, any>>(() => ({ upload_range: [dayjs(), dayjs()] }));
+  // 连续换日期时只认最后一次取数，先发的慢请求不能把后来的结果盖掉。
+  const receiptLoadSeq = useRef(0);
   const [selectedReceiptKeys, setSelectedReceiptKeys] = useState<Key[]>([]);
   const [receiptDateOpen, setReceiptDateOpen] = useState(false);
   const [receiptDate, setReceiptDate] = useState<ReturnType<typeof dayjs> | null>(null);
@@ -310,7 +312,13 @@ export default function DocumentCenterPage({
         setReceiptRecords([]);
         setReceiptFiles([]);
         const scope = first === "official" ? "official" : first === "my-receipts" ? "mine" : "company";
-        const { data } = await api.get("/documents/receipts", { params: { scope } });
+        // 上传日期在后端筛（默认当天），不再整包取回全所收文再在浏览器里筛（陶威 11-07 公司收文一直加载）。
+        const range = receiptQuery.upload_range;
+        const seq = ++receiptLoadSeq.current;
+        const { data } = await api.get("/documents/receipts", {
+          params: { scope, ...(range ? { uploaded_from: range[0].format("YYYY-MM-DD"), uploaded_to: range[1].format("YYYY-MM-DD") } : {}) },
+        });
+        if (seq !== receiptLoadSeq.current) return;
         setReceiptRecords(data.items);
         setReceiptFiles(data.attachments);
         if (first === "official") {
@@ -418,6 +426,16 @@ export default function DocumentCenterPage({
     setTab(first);
     load();
   }, [initialView]);
+
+  // 收文台换了上传日期（含搜具体字段时放开日期、清空条件）就按新范围重新取；首次打开由上面那次加载负责。
+  const receiptRangeKey = receiptQuery.upload_range
+    ? `${receiptQuery.upload_range[0].format("YYYY-MM-DD")}~${receiptQuery.upload_range[1].format("YYYY-MM-DD")}` : "";
+  const loadedReceiptRange = useRef(receiptRangeKey);
+  useEffect(() => {
+    if (loadedReceiptRange.current === receiptRangeKey) return;
+    loadedReceiptRange.current = receiptRangeKey;
+    if (["official", "my-receipts", "company-receipts"].includes(first)) void load();
+  }, [receiptRangeKey]);
 
   const createOfficialOutgoing = async () => {
     const values = await outgoingForm.validateFields();

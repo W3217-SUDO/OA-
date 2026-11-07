@@ -38,7 +38,7 @@ async def export_official_documents(ids: str = "", identity: dict = Depends(curr
         selected_ids = {int(value.strip()) for value in ids.split(",") if value.strip()}
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="收文记录编号无效") from exc
-    official = await list_receipts("official", identity, db)
+    official = await list_receipts("official", identity, db, uploaded_from=None, uploaded_to=None)
     records = [item for item in official["items"] if not selected_ids or item["id"] in selected_ids]
     rows = []
     for item in records:

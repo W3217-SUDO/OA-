@@ -1,6 +1,6 @@
 """按上传来源列出官文收文与案件内收文。"""
 
-from datetime import timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_, select
@@ -123,8 +123,22 @@ async def list_receipts(
     scope: str = Query(..., pattern="^(official|mine|company)$"),
     identity: dict = Depends(current_identity),
     db: AsyncSession = Depends(get_db),
+    uploaded_from: date | None = Query(default=None, description="上传日期起（北京时间，含当天）；和 uploaded_to 一起给"),
+    uploaded_to: date | None = Query(default=None, description="上传日期止（北京时间，含当天）"),
 ):
     await _require_receipt_menu(scope, identity, db)
+    # 收文台默认只看当天：以前日期只在浏览器里筛，每次都把全所 1 万多份收文整包取回（陶威 11-07 公司收文一直加载）。
+    if (uploaded_from is None) != (uploaded_to is None):
+        raise HTTPException(status_code=422, detail="上传日期起止要一起填")
+    if uploaded_from is not None and uploaded_to is not None and uploaded_from > uploaded_to:
+        raise HTTPException(status_code=422, detail="上传日期起不能晚于止")
+    day_from = uploaded_from.isoformat() if uploaded_from else ""
+    day_to = uploaded_to.isoformat() if uploaded_to else ""
+
+    def in_upload_range(row: dict) -> bool:
+        # 和页面原来的筛选完全一样：上传日期字符串在起止之间（按字符串比较）。
+        value = str((row.get("data") or {}).get("uploaded_at") or "")
+        return not day_from or (day_from <= value <= day_to)
     official_records = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "document"))).all()
     eligible_records = [
         record for record in official_records
@@ -163,16 +177,22 @@ async def list_receipts(
             row = _record_dict(record)
             row["data"] = {**row["data"], "receipt_source": "official_upload",
                            "uploader_display_name": person_name(attachment.uploader or record.owner)}
+            if not in_upload_range(row):
+                continue
             rows.append(row)
             files[attachment_id] = _attachment_dict(attachment)
 
     if scope in {"mine", "company"}:
         keyword_filter = or_(*(FileAttachment.original_name.contains(word) for word in RECEIPT_KEYWORDS))
-        case_files = (await db.execute(
-            select(FileAttachment, BusinessRecord)
-            .join(BusinessRecord, FileAttachment.record_id == BusinessRecord.id)
-            .where(BusinessRecord.module == "case", keyword_filter)
-        )).all()
+        case_query = (select(FileAttachment, BusinessRecord)
+                      .join(BusinessRecord, FileAttachment.record_id == BusinessRecord.id)
+                      .where(BusinessRecord.module == "case", keyword_filter))
+        if uploaded_from is not None and uploaded_to is not None:
+            # 案件附件的上传日期就是北京时间的上传那天（_case_attachment_row），按北京时间零点切。
+            case_query = case_query.where(
+                FileAttachment.created_at >= datetime.combine(uploaded_from, time.min, CHINA),
+                FileAttachment.created_at < datetime.combine(uploaded_to + timedelta(days=1), time.min, CHINA))
+        case_files = (await db.execute(case_query)).all()
         # 501385：旧系统归档官方收文时会在案件文档里另存一份，同一案件已有同名官方收文的那份案件附件不再重复列。
         official_names = {(official_attachments[item].record_id, official_attachments[item].original_name) for item in official_ids}
         for attachment, case in case_files:
@@ -180,7 +200,10 @@ async def list_receipts(
                 continue
             if scope == "mine" and attachment.uploader != identity["username"]:
                 continue
-            rows.append(_case_attachment_row(attachment, case))
+            row = _case_attachment_row(attachment, case)
+            if not in_upload_range(row):
+                continue
+            rows.append(row)
             files[attachment.id] = _attachment_dict(attachment, case)
 
     rows.sort(key=lambda row: (str((row.get("data") or {}).get("uploaded_at") or ""), abs(row["id"])), reverse=True)
