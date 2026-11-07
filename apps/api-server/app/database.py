@@ -13,12 +13,7 @@ class Base(DeclarativeBase):
 
 def dumps_json(value) -> str:
     """JSON 列保留中文：data 按文本搜索时，\\uXXXX 形式的中文搜不到（案件保存后案号、当事人搜不到）。"""
-    text = json.dumps(value, ensure_ascii=False)
-    try:
-        text.encode("utf-8")
-    except UnicodeEncodeError:  # 孤立代理字符不能按 UTF-8 写库，这种值仍转义，不能让保存失败
-        return json.dumps(value)
-    return text
+    return json.dumps(value, ensure_ascii=False)
 
 
 engine = create_async_engine(settings.database_url, pool_pre_ping=True, json_serializer=dumps_json)
