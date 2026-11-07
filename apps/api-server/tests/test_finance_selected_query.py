@@ -20,7 +20,7 @@ from app.areas.finance.settlements import router
 from app.database import Base, get_db
 from app.models import (
     BusinessRecord, IncomingPayment, LegacyFinanceAllocation,
-    LegacyFinanceRecord, SystemParameter, User,
+    LegacyArPaymentField, LegacyFinanceRecord, SystemParameter, User,
 )
 from app.security import current_identity
 from tests.personnel_role_fixture import bind_system_role_pages
@@ -53,7 +53,7 @@ class SelectedQueryAssertions:
                 sync_connection,
                 tables=[
                     BusinessRecord.__table__, IncomingPayment.__table__, User.__table__,
-                    LegacyFinanceRecord.__table__, LegacyFinanceAllocation.__table__,
+                    LegacyFinanceRecord.__table__, LegacyFinanceAllocation.__table__, LegacyArPaymentField.__table__,
                     SystemParameter.__table__,
                 ],
             ))

@@ -36,6 +36,8 @@ class FinanceQueryRevisionDefinitionTest(TestCase):
             "checkpoints", "checkpoint_blobs", "checkpoint_writes", "checkpoint_migrations",
             # 变更留痕与 MCP 记录：每次写入都追加、财务查询不读取（2026-10-24 性能整改）。
             "data_change_logs", "mcp_access_tokens", "mcp_call_logs",
+            # 财务旁表只由来源表触发器改写，来源表已计入修订（11-07 慢查询 A3）。
+            "legacy_ar_payment_fields", "incoming_allocation_items",
         }))
         for table in ("parties", "party_library"):
             self.assertNotIn(table, revision.EXCLUDED_TABLES, "当事人库是业务表，必须装修订触发器")

@@ -28,6 +28,9 @@ REINSTALL_REVISION = "finance_query_revision_tables_v2"
 # 后台循环或智能体持续写入、且财务查询不读取的表；修订日志及迁移登记表本身也不纳入。
 EXCLUDED_TABLES = frozenset({
     REVISION_TABLE, "schema_migrations",
+    # 财务旁表只由来源表（legacy_finance_records、incoming_payments）的触发器改写，来源表本身已计入修订，
+    # 不再单独装修订触发器（11-07 慢查询 A3）。
+    "legacy_ar_payment_fields", "incoming_allocation_items",
     "notification_sync_schedules", "ipr_case_reminder_types",
     "notifications", "notification_deliveries",
     "checkpoints", "checkpoint_blobs", "checkpoint_writes", "checkpoint_migrations",
