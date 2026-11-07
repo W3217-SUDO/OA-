@@ -35,9 +35,13 @@ class BatchHandoffPermissionTest(unittest.IsolatedAsyncioTestCase):
                 JobRole(code="R-BATCH", name="只批量", permissions=["dashboard", "action:task.batch.update"], field_keys=[], is_active=True),
                 # 有任务页面：页面带出“任务转交”
                 JobRole(code="R-TASK", name="有任务页", permissions=["task-my", "action:task.batch.update"], field_keys=[], is_active=True),
+                # 没有任务页面，单独给了“批量修改”和“接收任务”：只有批量接收能做
+                JobRole(code="R-ACCEPT", name="批量加接收", permissions=["dashboard", "action:task.batch.update", "action:task.accept"], field_keys=[], is_active=True),
+                JobRole(code="LEGACY-EXT-SOURCE", name="外部案源人", permissions=["task-my", "action:task.batch.update"], field_keys=[], is_active=True),
                 person("batchonly", "只批量"), person("taskpage", "有任务页"), person("receiver", "有任务页"),
+                person("acceptonly", "批量加接收"), person("external", "外部案源人"),
             ])
-            for owner in ("batchonly", "taskpage"):
+            for owner in ("batchonly", "taskpage", "acceptonly", "external"):
                 db.add(BusinessRecord(module="task", serial_no=f"T-{owner}", title="任务", status="处理中", owner=owner, department="事务部",
                                       customer="", description="", data={"initiator": owner, "assignee": owner}))
             await db.commit()
@@ -70,6 +74,19 @@ class BatchHandoffPermissionTest(unittest.IsolatedAsyncioTestCase):
         for action, extra in (("accept", {}), ("complete", {}), ("confirm", {}), ("handoff", {"recipient": "receiver"}), ("withdraw", {"comment": "不需要了"})):
             response = await self.batch("taskpage", action, **extra)
             self.assertNotEqual(response.status_code, 403, f"{action}：{response.text}")
+            self.assertNotEqual(response.status_code, 422, f"{action} 请求要合法：{response.text}")
+
+    async def test_role_missing_one_action(self):
+        accepted = await self.batch("acceptonly", "accept")
+        self.assertNotEqual(accepted.status_code, 403, accepted.text)
+        for action, extra in (("complete", {}), ("confirm", {}), ("handoff", {"recipient": "receiver"}), ("withdraw", {"comment": "不需要了"})):
+            response = await self.batch("acceptonly", action, **extra)
+            self.assertEqual(response.status_code, 403, f"{action}：{response.text}")
+
+    async def test_external_account_cannot_batch(self):
+        for action, extra in (("accept", {}), ("handoff", {"recipient": "receiver"}), ("withdraw", {"comment": "不需要了"})):
+            response = await self.batch("external", action, **extra)
+            self.assertEqual(response.status_code, 403, f"外部账号 {action}：{response.text}")
 
 if __name__ == "__main__":
     unittest.main()
