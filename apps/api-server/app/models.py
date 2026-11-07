@@ -71,6 +71,7 @@ from app.data_models.finance import (
     ReconciliationBatch as ReconciliationBatch,
     IncomingPayment as IncomingPayment,
     BankStatementLine as BankStatementLine,
+    LegacyArPaymentField as LegacyArPaymentField,
     LegacyFinanceRecord as LegacyFinanceRecord,
     LegacyFinanceAllocation as LegacyFinanceAllocation,
     LegacyFinanceFile as LegacyFinanceFile,

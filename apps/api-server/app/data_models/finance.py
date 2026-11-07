@@ -4,6 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, query_expression
+from sqlalchemy import event
 from app.database import Base
 
 
@@ -169,6 +170,26 @@ class BankStatementLine(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class LegacyArPaymentField(Base):
+    """旧回款头（FAM_AR_Payment）JSON 拆出的字段，财务到账来源查询直接读这张表，不再逐行解析 JSON。
+
+    由 legacy_finance_records 上的触发器维护（PostgreSQL 在启动修订 legacy_ar_payment_side_table_v1 安装，
+    新库和测试库建表时安装，见 finance_side_ddl.py），应用和同步程序都不直接写。旁表只是派生数据，原 JSON 不动；
+    同步回滚逐列改回原值时触发器同样跟着改。一致性检查见 app/core/finance_side_tables.py。
+    """
+
+    __tablename__ = "legacy_ar_payment_fields"
+
+    record_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
+    legacy_id: Mapped[str] = mapped_column(String(128), default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    payment_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    group_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    payment_method: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    settlement_status: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_database: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+
 class LegacyFinanceRecord(Base):
     """Read-only normalized ledger for legacy FAM financial headers.
 
@@ -289,3 +310,8 @@ class LegacyFinanceAudit(Base):
     source_payload: Mapped[dict] = mapped_column(JSON, default=dict)
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+# 新库、测试库建表时装旁表触发器；生产已有的库由启动修订 finance_side_tables_v1 安装并回填。
+from app.data_models.finance_side_ddl import install_after_create as _install_side_table_triggers  # noqa: E402
+event.listen(Base.metadata, "after_create", _install_side_table_triggers)

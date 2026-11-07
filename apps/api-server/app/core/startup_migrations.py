@@ -239,6 +239,21 @@ def _apply_clue_scope_indexes(connection: Connection, _upgrade_schema: Callable[
     connection.execute(text("ANALYZE business_records"))
 
 
+def _apply_finance_side_tables(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
+    """财务旁表（慢查询 A3）：建表、装触发器、按原 JSON 回填。
+
+    建触发器要短暂拿来源表的 SHARE ROW EXCLUSIVE 锁（写入等待），整个修订本地约 0.3 秒；
+    lock_timeout 5 秒拿不到锁就启动失败，所以发布要避开同步。回滚：删触发器即可，两张表只是派生数据。
+    """
+    if connection.dialect.name != "postgresql":
+        return
+    from app.data_models.finance_side_ddl import POSTGRES_BACKFILL, POSTGRES_INSTALL
+    connection.execute(text("SET LOCAL lock_timeout = '5s'"))
+    connection.execute(text("SET LOCAL statement_timeout = '120s'"))
+    for statement in (*POSTGRES_INSTALL, *POSTGRES_BACKFILL, "ANALYZE legacy_ar_payment_fields", "ANALYZE incoming_allocation_items"):
+        connection.execute(text(statement))
+
+
 def _apply_refund_candidate_indexes(connection: Connection, _upgrade_schema: Callable[[Connection], None]) -> None:
     """只有少数费用登记退费进度或是律师代理费(退费)；部分索引只收这些行，表达式与 dashboard_scope 查询一致。"""
     if connection.dialect.name != "postgresql":
@@ -357,6 +372,7 @@ def _run_versioned_schema_migrations(
         ("finance_query_revision_ipr_applicants_v1", _apply_finance_query_revision),
         ("business_record_scope_trgm_v1", _apply_record_scope_indexes),
         ("clue_scope_indexes_v1", _apply_clue_scope_indexes),
+        ("finance_side_tables_v1", _apply_finance_side_tables),
     )
     for revision, migration in revisions:
         if connection.execute(

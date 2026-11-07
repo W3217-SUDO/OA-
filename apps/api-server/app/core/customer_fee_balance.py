@@ -113,18 +113,9 @@ async def _cashed_by_fee(fee_ids: set[int], db) -> dict[int, Decimal]:
     cashed: dict[int, Decimal] = defaultdict(Decimal)
     if db.get_bind().dialect.name == "postgresql":
         rows = await db.execute(text("""
-            SELECT fid::bigint, sum(amt::numeric) FROM (
-              SELECT coalesce(nullif(s->>'fee_record_id', ''), nullif(s->>'finance_record_id', ''),
-                              nullif(s->>'fee_id', ''), nullif(s->>'case_fee_id', '')) AS fid, s->>'amount' AS amt
-              FROM incoming_payments ip
-              CROSS JOIN LATERAL json_array_elements(
-                CASE WHEN json_typeof(ip.allocations) = 'array' THEN ip.allocations ELSE '[]'::json END) a
-              CROSS JOIN LATERAL json_array_elements(
-                CASE WHEN json_typeof(a->'settlement_items') = 'array' AND json_array_length(a->'settlement_items') > 0
-                     THEN a->'settlement_items' ELSE json_build_array(a) END) s
-              WHERE ip.deleted_at IS NULL
-            ) x
-            WHERE fid ~ '^[0-9]{1,18}$' AND amt ~ '^-?[0-9]+(\\.[0-9]+)?$' AND fid::bigint = ANY(:ids)
+            SELECT i.fee_id, sum(i.amt::numeric) FROM incoming_allocation_items i
+            JOIN incoming_payments ip ON ip.id = i.incoming_payment_id AND ip.deleted_at IS NULL
+            WHERE i.amt ~ '^-?[0-9]+(\\.[0-9]+)?$' AND i.fee_id = ANY(:ids)
             GROUP BY 1
         """), {"ids": list(fee_ids)})
         for fee_id, total in rows.all():
