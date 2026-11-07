@@ -1,4 +1,5 @@
 """Extracted implementation; see scripts/rebuild_area_split.py and reference/."""
+import json
 import logging
 from datetime import timedelta, timezone
 from app.core.constants import (
@@ -1423,6 +1424,10 @@ async def _collect_hr_employee_deletion_blockers(employee: BusinessRecord, ident
     reference_terms = [value for value in {username, employee.title.strip()} if value]
     reference_conditions = [BusinessRecord.owner == username] if username else []
     reference_conditions.extend(func.cast(BusinessRecord.data, String).ilike(f"%{value}%") for value in reference_terms)
+    # 旧数据里中文可能存成 \\uXXXX，名字要两种写法都查，否则查不到引用就能删员工。
+    reference_conditions.extend(
+        func.cast(BusinessRecord.data, String).ilike(f"%{json.dumps(value)[1:-1]}%", escape="|")
+        for value in reference_terms if not value.isascii())
     if reference_conditions and not redundant_duplicate:
         reference_filter = (
             BusinessRecord.id != employee.id,

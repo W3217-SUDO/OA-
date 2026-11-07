@@ -12,9 +12,19 @@ from app.core.dependencies import (
     datetime, func, or_, re, select,
 )
 from app.core.case_people import split_case_people
+from app.core.conflict_review_facts import normalized_name
 from app.models_shared import (
     CaseLitigantsInput, CasePhaseChangeInput, CounselCaseSearchInput,
 )
+
+
+# 法院、公证案号：（2026）沪0101民初1号、沪 0101 民初 1 号。
+_CASE_NUMBER_KEYWORD = re.compile(r"[（(]\s*\d{4}\s*[）)]|\d\s*[\u4e00-\u9fff]+\s*\d+\s*号")
+_case_number_key = normalized_name
+
+
+def _looks_like_case_number(keyword: str) -> bool:
+    return bool(_CASE_NUMBER_KEYWORD.search(keyword))
 
 
 def _is_pending_execution_case(record: BusinessRecord) -> bool:
@@ -1279,11 +1289,14 @@ async def _query_counsel_cases(
     keyword = body.keyword.strip()
     if keyword and body.scope != "global":
         keyword_pattern = f"%{keyword}%"
+        data_text = BusinessRecord.data.cast(String)
         record_conditions.append(or_(
             BusinessRecord.serial_no.ilike(keyword_pattern),
             BusinessRecord.title.ilike(keyword_pattern),
             BusinessRecord.customer.ilike(keyword_pattern),
-            BusinessRecord.data.cast(String).ilike(keyword_pattern),
+            # 法院、公证案号有的带空格、有的半角括号：只有搜案号才统一，其他关键字不多算。
+            func.replace(func.replace(func.replace(data_text, " ", ""), "（", "("), "）", ")").ilike(f"%{_case_number_key(keyword)}%")
+            if _looks_like_case_number(keyword) else data_text.ilike(keyword_pattern),
         ))
     if search_projection:
         from app.core.record_projection_query import read_record_projections
@@ -1452,7 +1465,9 @@ async def _query_counsel_cases(
             value(data, "clue_no", "clue_nos", "investigation_clue", "investigation_clue_nos", "source_clue_no"),
         )
         # 只匹配当前业务字段，避免复制旧值、历史快照等原始数据造成误命中。
-        if body.keyword and not contains(" ".join(searchable_text(item) for item in keyword_fields), body.keyword): continue
+        keyword_text = " ".join(searchable_text(item) for item in keyword_fields)
+        if body.keyword and not (contains(keyword_text, body.keyword) or (
+                _looks_like_case_number(body.keyword) and _case_number_key(body.keyword) in _case_number_key(keyword_text))): continue
         if not contains(value(data, "plaintiff", "plaintiffs") or record.customer, body.plaintiff): continue
         if not contains(value(data, "prosecutor", "procuratorate", "first_procuratorate_name"), body.prosecutor): continue
         if not contains(value(data, "defendant", "defendants", "opponent"), body.defendant): continue
