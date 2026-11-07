@@ -909,6 +909,26 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(listed.json()["items"][0]["documents"], [{"attachment_id": 9, "name": "传票", "kind": "传票"}])
         self.assertEqual(listed.json()["items"][0]["reason"], "系统里没找到这个案号对应的案件")
 
+    async def test_record_shows_processing_while_downloading_and_failure_reason_after(self):
+        from app.areas.aws.receipt_bot import PROCESSING_REASON, ApiError, _reason
+        seen = []
+
+        async def api(username, path, body):
+            seen.append([(r.status, r.data.get("reason")) for r in await self._records()])
+            raise ApiError(422, "法院接口拒绝：校验失败,对路径进行了修改；请确认链接完整且未过期")
+        reply = await self._run(sms(), api)
+        self.assertEqual(seen, [[("待处理", PROCESSING_REASON)]], "处理中就写明在识别")
+        self.assertIn("对路径进行了修改", reply.text)
+        record = (await self._records())[0]
+        self.assertEqual((record.status, record.data["reason"]), ("待处理", "法院接口拒绝：校验失败,对路径进行了修改；请确认链接完整且未过期"))
+        stalled = BusinessRecord(module="court_group_receipt", status="待处理",
+                                 data={"reason": PROCESSING_REASON, "sent_at": "2026-11-07T00:00:00+00:00"})
+        self.assertIn("识别中断", _reason(stalled))
+
+    async def test_processing_reason_cleared_when_waiting_for_confirm(self):
+        await self._run(sms(), FakeApi(preview()))
+        self.assertEqual((await self._records())[0].data["reason"], "")
+
     def test_bot_receipts_are_not_agent_tools(self):
         from app.agent_mcp.semantic_metadata import exclusion_reasons
         routes = [route for route in app.routes if "bot-receipts" in getattr(route, "path", "")]
@@ -975,6 +995,9 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(assign.status_code, 409)
             closed = await client.post(f"{api}/{record.id}/close", json={"reason": "已手工上传"})
             self.assertEqual(closed.json()["status"], "不入库")
+            async with self.sessions() as db:
+                kept = (await db.get(BusinessRecord, record.id)).data
+            self.assertEqual((kept["reason"], kept["close_note"]), ("没有人民法院在线服务送达链接", "已手工上传"), "不入库不覆盖原来的原因")
             self.assertEqual((await client.get(api)).json()["items"], [])
         async with self.sessions() as db:
             events = (await db.scalars(select(WorkflowEvent).where(WorkflowEvent.record_id == record.id))).all()
