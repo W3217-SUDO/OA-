@@ -1083,7 +1083,8 @@ const nonlitigationFinanceRoutes: Record<string, { view: string; title: string }
   "ipr-finance-internal-company": { view: "finance-internal-company", title: "内部费用明细(公司)" },
 };
 
-const supportTools = [
+// 501791（思法汇成 11-08）：“全国组织机构查询平台”换成国家企业信用信息公示系统。系统不替大家保存外部网站的账号密码，只提示用浏览器记住。
+const supportTools: { label: string; href: string; hint?: string }[] = [
   {
     label: "国家知识产权局商标局",
     href: "http://wcjs.sbj.cnipa.gov.cn/txnT01.do",
@@ -1092,7 +1093,7 @@ const supportTools = [
     label: "国家知识产权局专利局",
     href: "https://pss-system.cponline.cnipa.gov.cn/conventionalSearch",
   },
-  { label: "全国组织机构查询平台", href: "https://www.cods.org.cn" },
+  { label: "国家企业信用信息公示系统", href: "https://shiming.gsxt.gov.cn/index.html", hint: "首次登录后可让浏览器记住密码" },
   { label: "法律法规查询", href: "https://flk.npc.gov.cn/" },
   { label: "裁判文书检索", href: "https://openlaw.cn/index.jsp" },
 ];
@@ -2444,9 +2445,13 @@ export default function App() {
                   href={item.href}
                   target="_blank"
                   rel="noreferrer"
+                  title={item.hint}
                 >
                   <LinkOutlined />
-                  {item.label}
+                  <span className="support-tools-text">
+                    {item.label}
+                    {item.hint && <small className="support-tools-hint">{item.hint}</small>}
+                  </span>
                 </a>
               ))}
             </div>
