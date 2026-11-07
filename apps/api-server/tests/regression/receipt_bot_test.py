@@ -926,14 +926,16 @@ class ReceiptBotTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("识别中断", _reason(stalled))
 
     async def test_result_dropped_when_record_handled_during_processing(self):
-        """识别期间收文台已处理（超时后才允许），机器人结果不写回、不发确认消息。"""
+        """识别期间收文台已处理（超时后才允许），机器人结果不写回、不发确认消息，只告诉发送人已处理。"""
         async def api(username, path, body):
             async with self.sessions() as db:
                 record = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "court_group_receipt"))).one()
                 record.status, record.data = "不入库", {**record.data, "close_note": "手工处理"}
                 await db.commit()
             return preview()
-        self.assertIsNone(await self._run(sms(), api))
+        reply = await self._run(sms(), api)
+        self.assertIn("已在收文台处理", reply.text)
+        self.assertNotIn("确认 ", reply.text)
         self.assertEqual((await self._records())[0].status, "不入库")
 
     async def test_assign_and_close_refused_while_processing(self):

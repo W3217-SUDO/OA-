@@ -551,8 +551,9 @@ async def _preview(message: BotMessage, link: str, user: User, config: BotSettin
 
 
 async def _preview_record(record: BusinessRecord, message: BotMessage, link: str, user: User, config: BotSettings, api: Api,
-                          agent_turn: AgentTurn | None, db: AsyncSession) -> Reply:
+                          agent_turn: AgentTurn | None, db: AsyncSession) -> Reply | None:
     me = _mention([message.sender_id])
+    handled = Reply(f"{me} 这条短信已在收文台处理，收文助手不再重复处理。\n{_link_line()}", [message.sender_id])
     if config.use_cloud_agent and agent_turn is not None:
         # 云端智能体按收文技能读短信并预览；它只能生成待确认请求，不能写入。结果以下面 OA 接口返回为准，云端失败不影响收文。
         try:
@@ -563,11 +564,11 @@ async def _preview_record(record: BusinessRecord, message: BotMessage, link: str
         report = await api(user.username, INTAKE_PATH, {"link": link})
     except ApiError as exc:
         if not await _still_processing(record, db):
-            return None
+            return handled
         await _set_status(record, PENDING, {"reason": exc.detail}, user.username, db)
         return Reply(f"{me} 文书下载或识别失败：{exc.detail}。已转到收文台待处理。\n{_link_line()}", [message.sender_id])
     if not await _still_processing(record, db):
-        return None
+        return handled
     status = report.get("status")
     record_data = {"reason": "", "documents": [{"attachment_id": item.get("attachment_id"), "name": item.get("name") or "",
                                                 "kind": (item.get("fields") or {}).get("文书类型") or ""} for item in report.get("documents") or []]}
