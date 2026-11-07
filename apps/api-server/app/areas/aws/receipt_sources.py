@@ -118,6 +118,44 @@ def _case_attachment_row(attachment: FileAttachment, case: BusinessRecord) -> di
     }
 
 
+async def _fill_case_people(row_cases: list[tuple[dict, BusinessRecord]], db: AsyncSession) -> None:
+    """收文列表的开庭律师、律师助理、品牌管理人显示姓名（陶威 11-07：这三列一直显示“姓名待维护”）。
+
+    页面读 *_display_name，接口以前从没给过。开庭律师、律师助理按工作台同一套规则（账号→姓名，旧系统姓名兜底）；
+    品牌管理人按案件导出：案件客户的客户管理人，旧系统 CoordinatorName 兜底。只给姓名，不带客户其他信息。
+    """
+    from app.core.system import _dashboard_people
+    from app.models import User
+    if not row_cases:
+        return
+    users_by_username = {user.username.lower(): user for user in (await db.scalars(select(User))).all()}
+    cases = {case.id: case for _, case in row_cases}
+    customer_ids = {int((case.data or {}).get("customer_id") or (case.data or {}).get("customer_record_id") or 0) for case in cases.values()} - {0}
+    customers = {item.id: item for item in await _scalars_in_batches(
+        db, customer_ids, lambda batch: select(BusinessRecord).where(BusinessRecord.id.in_(batch), BusinessRecord.module == "customer"))}
+    people: dict[int, dict] = {}
+    for case_id, case in cases.items():
+        data = case.data or {}
+        legacy = data.get("legacy_record") if isinstance(data.get("legacy_record"), dict) else {}
+        customer = customers.get(int(data.get("customer_id") or data.get("customer_record_id") or 0))
+        customer_data = (customer.data or {}) if customer else {}
+        customer_legacy = customer_data.get("legacy_record") if isinstance(customer_data.get("legacy_record"), dict) else {}
+        people[case_id] = {
+            "hearing_lawyer_display_name": _dashboard_people(
+                users_by_username, data.get("hearing_lawyer_usernames"), data.get("hearing_lawyer_username"), data.get("hearing_lawyers"),
+                data.get("hearing_lawyer"), data.get("hearing_lawyer_display_names"), data.get("hearing_lawyer_display_name"),
+                legacy.get("CourtLawyerName")),
+            "assistant_display_name": _dashboard_people(
+                users_by_username, data.get("assistant_usernames"), data.get("assistant_username"), data.get("assistants"),
+                data.get("assistant"), data.get("assistant_display_names"), data.get("assistant_display_name"),
+                legacy.get("CaseAssistantName")),
+            "brand_manager_display_name": _dashboard_people(
+                users_by_username, customer_data.get("customer_managers"), customer_legacy.get("CoordinatorName")),
+        }
+    for row, case in row_cases:
+        row["data"] = {**(row.get("data") or {}), **people[case.id]}
+
+
 @router.get(f"{settings.api_prefix}/documents/receipts")
 async def list_receipts(
     scope: str = Query(..., pattern="^(official|mine|company)$"),
@@ -170,6 +208,7 @@ async def list_receipts(
     }
     rows: list[dict] = []
     files: dict[int, dict] = {}
+    row_cases: list[tuple[dict, BusinessRecord]] = []
     if scope in {"official", "company"}:
         for attachment_id in official_ids:
             record = official_candidates[attachment_id]
@@ -180,6 +219,7 @@ async def list_receipts(
             if not in_upload_range(row):
                 continue
             rows.append(row)
+            row_cases.append((row, official_cases[attachment.record_id]))
             files[attachment_id] = _attachment_dict(attachment)
 
     if scope in {"mine", "company"}:
@@ -204,7 +244,9 @@ async def list_receipts(
             if not in_upload_range(row):
                 continue
             rows.append(row)
+            row_cases.append((row, case))
             files[attachment.id] = _attachment_dict(attachment, case)
 
+    await _fill_case_people(row_cases, db)
     rows.sort(key=lambda row: (str((row.get("data") or {}).get("uploaded_at") or ""), abs(row["id"])), reverse=True)
     return {"items": rows, "attachments": list(files.values()), "total": len(rows)}
