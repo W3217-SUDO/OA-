@@ -1607,8 +1607,8 @@ export default function App() {
     },
     [menuConfig, isNarrowViewport],
   );
-  const actualRole = sessionUser?.actual_role || sessionUser?.role;
-  const permissionAdministrator = actualRole === "admin" || sessionUser?.actual_role_ids?.includes("admin") === true;
+  // 只认真实角色列表：role 对页面授权的人也是 admin，缺 actual_role_ids 时按非管理员处理（陶威 11-07）。
+  const permissionAdministrator = sessionUser?.actual_role_ids?.includes("admin") === true;
   const grantedMenuKeys = useMemo(() => new Set(
     !permissionsReady ? ["dashboard"] : permissionAdministrator
       ? flattenMenu(effectiveMenuItems).map((item) => item.key)
@@ -1769,8 +1769,9 @@ export default function App() {
           display_name: data.display_name,
           department: data.department,
           role: data.role,
-          actual_role: data.actual_role || data.role,
-          actual_role_ids: data.actual_role_ids || data.role_ids,
+          // 登录接口的 role / role_ids 对页面授权的人也是 admin，不能拿来兜底；缺真实角色时按非管理员处理（陶威 11-07）。
+          actual_role: data.actual_role || "",
+          actual_role_ids: Array.isArray(data.actual_role_ids) ? data.actual_role_ids : [],
           menu_keys: data.menu_keys,
           configured_action_keys: Array.isArray(data.configured_action_keys) ? data.configured_action_keys : [],
           can_manage_agent_settings: data.can_manage_agent_settings === true,

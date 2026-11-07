@@ -236,7 +236,6 @@ export default function SystemCenterPage({
     ) {
       void loadConfigs();
     }
-    else if (initialView === "system-management-cache") void loadCaches();
     else if (initialView === "system-management-menu") void loadMenus();
     else if (initialView === "system-users") {
       void loadUsers();
@@ -247,6 +246,10 @@ export default function SystemCenterPage({
       void loadMenus();
     } else if (initialView === "system-security") void loadSecurity();
   }, [initialView, category]);
+  // 缓存列表只给真实管理员读；登录信息可能晚到，所以单独跟着 actualAdmin 再读一次（陶威 11-07）。
+  useEffect(() => {
+    if (initialView === "system-management-cache" && actualAdmin) void loadCaches();
+  }, [initialView, actualAdmin]);
 
   const saveConfig = async (
     key: string,

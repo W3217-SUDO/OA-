@@ -54,6 +54,15 @@ export function SystemCacheManagement({
     <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无数据" />
   );
 
+  if (!actualAdmin) {
+    // 缓存列表接口只给真实管理员，页面授权的人不再一直“正在读取”（陶威 11-07）。
+    return (
+      <Card className="panel system-focused" title="缓存管理">
+        <Alert type="warning" showIcon message="缓存管理只有系统管理员可以使用" />
+      </Card>
+    );
+  }
+
   return (
     <Card className="panel system-focused" title="缓存管理">
       <Alert
