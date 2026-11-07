@@ -190,6 +190,44 @@ def _facts(report: dict) -> list[str]:
     return lines
 
 
+def _minutes(value: Any) -> str:
+    """开庭时间只到分钟：2026-09-22T10:00:00 → 2026-09-22 10:00。"""
+    return re.sub(r"(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}):\d{2}", r"\1 \2", str(value or ""))
+
+
+def _plan_lines(report: dict) -> list[str]:
+    """预览时列出确认后会写的所有内容：文书、法院案号、开庭、承办法官和书记员、费用草稿。"""
+    plan = report.get("plan") or {}
+    receipts = [str(item) for item in plan.get("receipts") or []]
+    skipped = sum(1 for item in receipts if item.startswith("已收过"))
+    actions = []
+    if len(receipts) - skipped:
+        actions.append(f"存入文书 {len(receipts) - skipped} 份")
+    if skipped:
+        actions.append(f"{skipped} 份此前已收过，不重复存")
+    court_no = str(plan.get("court_case_no") or "")
+    if court_no and not court_no.startswith("已登记"):
+        actions.append(f"回填法院案号 {court_no}")
+    hearing = plan.get("hearing_plan") or {}
+    status = hearing.get("status")
+    if status == "将回填":
+        actions.append(f"回填开庭 {hearing.get('hearing')}")
+        actions.extend(f"回填{item}" for item in hearing.get("also_filled") or [])
+    elif status == "已有开庭未覆盖":
+        actions.append(f"系统已登记开庭 {_minutes(hearing.get('previous'))}，文书为 {hearing.get('hearing')}，不覆盖，请核对")
+    elif status in {"冲突未回填", "审级不明未回填", "缺法院名称未回填"}:
+        actions.append(f"开庭{status}，请核对")
+    staff = (plan.get("court_staff") or {}).get("display") or []
+    if staff:
+        actions.append("回填" + "、".join(str(item) for item in staff))
+    for fee in plan.get("fees") or []:
+        if fee.get("amount"):
+            # 系统要求律所案件费用明确选择合同，不能按案件推断（core/finance.py），收文建不了费用单，如实说明。
+            actions.append(f"缴费通知 {fee['amount']} 元" + (f"（期限 {fee['deadline']}）" if fee.get("deadline") else "")
+                           + "：费用单要到系统里选合同后新建，收文助手不代建")
+    return ["确认后将：" + ("，".join(actions) or "不写入新内容")]
+
+
 def _court_no_filled(report: dict, planned_court_no: str) -> str:
     """真的回填了才算：这次确实存入了文书，且入库后案件的法院案号就是预览计划要填的。文书全部已收过时不算。"""
     from app.agent_skill_packages.court_doc_intake.scripts.normalize_case_no import parse as parse_case_no
@@ -232,7 +270,7 @@ def _done_lines(report: dict, planned_court_no: str = "") -> list[str]:
         previous = str(hearing.get("previous") or "").replace("T", " ")
         actions.append("已回填开庭" + (f"（原为 {previous}）" if previous else ""))
     elif status == "已有开庭未覆盖":
-        actions.append(f"系统已登记开庭 {str(hearing.get('previous') or '').replace('T', ' ')}，文书为 {hearing.get('hearing')}，未覆盖，请核对")
+        actions.append(f"系统已登记开庭 {_minutes(hearing.get('previous'))}，文书为 {hearing.get('hearing')}，未覆盖，请核对")
     elif status in {"冲突未回填", "审级不明未回填", "缺法院名称未回填"}:
         actions.append(f"开庭{status}，请核对")
     actions.extend(f"已回填{item}" for item in hearing.get("also_filled") or [])
@@ -530,7 +568,7 @@ async def _preview_record(record: BusinessRecord, message: BotMessage, link: str
             return reply
     await _set_status(record, WAITING, {**record_data, "case_id": case_id, "expires_at": expires, "not_auto_reason": why_not,
                                                 "prompt_label": f"{report['case'].get('serial_no') or ''} {_documents_text(report)}".strip()}, user.username, db)
-    return Reply("\n".join([f"{me} 找到案件，请核对后回复“确认 {record.id}”存入，或“取消 {record.id}”：", *_facts(report),
+    return Reply("\n".join([f"{me} 找到案件，请核对后回复“确认 {record.id}”存入，或“取消 {record.id}”：", *_facts(report), *_plan_lines(report),
                             *([f"匹配依据：{basis}"] if basis else [])]), [message.sender_id])
 
 

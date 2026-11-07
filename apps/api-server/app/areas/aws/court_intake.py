@@ -145,11 +145,12 @@ async def _receive(case: BusinessRecord, document: dict, court_no: str, received
             "receipt_id": result["record"]["id"], "skipped": False}
 
 
-async def _backfill_hearing(case: BusinessRecord, documents: list[dict], level: str, court_name: str, court_no: str,
-                            identity: dict, db: AsyncSession, *, keep_existing: bool = False) -> dict:
-    """传票与出庭通知书一致时回填开庭时间和法庭；不一致或审级不明时只报告。"""
-    from app.api_schemas.cases import CaseCourtInfoInput
-    from app.areas.legal.router import update_case_court_info
+def _hearing_plan(data: dict, documents: list[dict], level: str, court_name: str, court_no: str, *, keep_existing: bool = False) -> dict:
+    """开庭回填的判断，不写库：预览和真正回填共用这一套，预览说的就是入库后会做的。
+
+    返回 status：无开庭信息、冲突未回填、审级不明未回填、已是最新、已有开庭未覆盖、缺法院名称未回填、将回填。
+    将回填时 payload 是要写的字段，also_filled 是顺带回填的该审级法院名称和案号。
+    """
     hearings = {(item["fields"].get("开庭日期"), item["fields"].get("开庭时刻")): item["fields"].get("开庭法庭") or ""
                 for item in documents if item["fields"].get("开庭日期") and item["fields"].get("开庭时刻")}
     if not hearings:
@@ -159,32 +160,44 @@ async def _backfill_hearing(case: BusinessRecord, documents: list[dict], level: 
     (day, clock), room = next(iter(hearings.items()))
     rooms = [item["fields"].get("开庭法庭") for item in documents if item["fields"].get("开庭法庭")]
     room = max(rooms, key=len) if rooms else room
+    shown = f"{day} {clock} {room}".strip()
     if level not in HEARING_PREFIX:
-        return {"status": "审级不明未回填", "hearing": f"{day} {clock} {room}"}
+        return {"status": "审级不明未回填", "hearing": shown}
     prefix = HEARING_PREFIX[level]
     date_field, room_field = prefix + "_hearing_date", prefix + "_courtroom"
-    data = case.data or {}
     value = f"{day}T{clock}:00"
     previous = str(data.get(date_field) or "")
-    if previous.replace(" ", "T")[:16] == value[:16] and (data.get(room_field) or "") == room:
-        return {"status": "已是最新", "hearing": f"{day} {clock} {room}"}
     existing_room = str(data.get(room_field) or "")
+    if previous.replace(" ", "T")[:16] == value[:16] and existing_room == room:
+        return {"status": "已是最新", "hearing": shown}
     if keep_existing and ((previous and previous.replace(" ", "T")[:16] != value[:16]) or (existing_room and room and existing_room != room)):
-        return {"status": "已有开庭未覆盖", "hearing": f"{day} {clock} {room}", "previous": f"{previous} {existing_room}".strip()}
+        return {"status": "已有开庭未覆盖", "hearing": shown, "previous": f"{previous} {existing_room}".strip()}
     payload = {date_field: datetime.fromisoformat(value), "comment": "法院收文：按传票/出庭通知书回填开庭"}
     if room:
         payload[room_field] = room
     filled = []
     if not str(data.get(prefix + "_name") or "").strip():
         if not court_name:
-            return {"status": "缺法院名称未回填", "hearing": f"{day} {clock} {room}"}
+            return {"status": "缺法院名称未回填", "hearing": shown}
         payload[prefix + "_name"] = court_name
         filled.append(f"{level}法院 {court_name}")
     if court_no and not str(data.get(prefix + "_case_no") or "").strip():
         payload[prefix + "_case_no"] = court_no
         filled.append(f"{level}案号 {court_no}")
-    await update_case_court_info(case.id, CaseCourtInfoInput(**payload), identity=identity, db=db)
-    return {"status": "已回填", "hearing": f"{day} {clock} {room}", "previous": previous, "also_filled": filled}
+    return {"status": "将回填", "hearing": shown, "previous": f"{previous} {existing_room}".strip(), "payload": payload, "also_filled": filled}
+
+
+async def _backfill_hearing(case: BusinessRecord, documents: list[dict], level: str, court_name: str, court_no: str,
+                            identity: dict, db: AsyncSession, *, keep_existing: bool = False) -> dict:
+    """传票与出庭通知书一致时回填开庭时间和法庭；不一致或审级不明时只报告。判断在 _hearing_plan。"""
+    from app.api_schemas.cases import CaseCourtInfoInput
+    from app.areas.legal.router import update_case_court_info
+    plan = _hearing_plan(case.data or {}, documents, level, court_name, court_no, keep_existing=keep_existing)
+    if plan["status"] != "将回填":
+        return plan
+    await update_case_court_info(case.id, CaseCourtInfoInput(**plan["payload"]), identity=identity, db=db)
+    previous = str((case.data or {}).get(HEARING_PREFIX[level] + "_hearing_date") or "")
+    return {"status": "已回填", "hearing": plan["hearing"], "previous": previous, "also_filled": plan["also_filled"]}
 
 
 def _staff(documents: list[dict]) -> dict:
@@ -293,7 +306,8 @@ async def _prepare_fee(case: BusinessRecord, document: dict, court_no: str, leve
             "bank": account.get("开户行", "")}
 
 
-def _preview(case: BusinessRecord, documents: list[dict], court_no: str, level: str, court_name: str, received: dict[int, str]) -> dict:
+def _preview(case: BusinessRecord, documents: list[dict], court_no: str, level: str, court_name: str, received: dict[int, str],
+             *, keep_existing: bool = False) -> dict:
     """列出确认后将写入的内容，不改任何业务数据。"""
     data = case.data or {}
     hearings = {(item["fields"].get("开庭日期"), item["fields"].get("开庭时刻"), item["fields"].get("开庭法庭") or "")
@@ -309,6 +323,9 @@ def _preview(case: BusinessRecord, documents: list[dict], court_no: str, level: 
         "hearing": ([f"{day} {clock} {room}" for day, clock, room in hearings] if hearings else []),
         "hearing_note": "开庭信息不一致，入库后只报告不回填" if len({(day, clock) for day, clock, _ in hearings}) > 1 else "",
         "court_name": court_name, "fees": fees,
+        # 和入库时同一套判断（_hearing_plan），预览说的就是入库后会做的。
+        "hearing_plan": {key: value for key, value in _hearing_plan(data, documents, level, court_name, court_no, keep_existing=keep_existing).items()
+                         if key != "payload"},
         # 承办法官、书记员、法官电话（BUG 陶国南 11-01 智能体日常办事第 4 项）：只填空着的字段。
         "court_staff": _staff_plan(case, documents, level, court_name),
     }
@@ -362,7 +379,7 @@ async def run_intake(body: CourtIntakeInput, identity: dict, db: AsyncSession, *
             received_before[item["attachment_id"]] = existing.original_name
     if not body.confirm:
         report.update({"status": "待确认入库", "case": _brief(case), "instance_level": level,
-                       "plan": _preview(case, documents, court_no, level, court_name, received_before),
+                       "plan": _preview(case, documents, court_no, level, court_name, received_before, keep_existing=direct_save),
                        "next_step": f"把匹配结果和 plan 列给用户，用户确认后带 case_id={case.id}、confirm=true 再调用本工具入库；用户不确认则不入库。"})
         return report
     received = [await _receive(case, item, court_no, item["fields"].get("落款日期") or date.today().isoformat(), identity, db)
