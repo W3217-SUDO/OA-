@@ -18,9 +18,9 @@ import {
   Tooltip,
 } from "antd";
 import Table from "../components/ResizableTable";
+import { NotaryCreateCsvImport } from "./NotaryCreateCsvImport";
 import type { FitStackGroup } from "../components/ResizableTable";
 import {
-  DownloadOutlined,
   PaperClipOutlined,
   TeamOutlined,
   UploadOutlined,
@@ -119,12 +119,14 @@ const CLUE_FIT_STACK: FitStackGroup[] = [
 ];
 
 export default function InvestigationCenterPage({
-  initialTab,
+  initialTab: requestedTab,
   onNavigate,
 }: {
   initialTab: string;
   onNavigate?: (route: string) => void;
 }) {
+  // 501692/501694：原“公证信息导入”子菜单并入“公证书号仓库信息导入”；旧页签或书签打开旧地址时进合并后的页面。
+  const initialTab = requestedTab === "notary-import-info" ? "notary-import-storage" : requestedTab;
   const initial = (
     initialTab.startsWith("notary")
       ? "notary"
@@ -985,7 +987,6 @@ export default function InvestigationCenterPage({
     if (initialTab === "notary-import-invoices")
       form.append("invoice_no", importReference.trim());
     const endpoint: Record<string, string> = {
-      "notary-import-info": "/investigations/notaries/import",
       "notary-import-storage": "/investigations/notaries/storage/import",
       "notary-import-files": "/investigations/notaries/files/import",
       "notary-import-invoices": "/investigations/notaries/invoices/import",
@@ -1017,27 +1018,6 @@ export default function InvestigationCenterPage({
             导入时间: data.attachment?.created_at,
           },
         ]);
-      else if (Array.isArray(data.created_ids)) {
-        const created = await Promise.all(
-          data.created_ids.map((id: number) =>
-            api.get(`/records/${id}`).then((res) => res.data),
-          ),
-        );
-        setImportPreviewRows(
-          created.map((row: any) => ({
-            id: row.id,
-            来源线索编号: row.data.clue_no,
-            公证标题: row.title,
-            负责人: projectedPersonDisplayName(row.owner_display_name, row.owner),
-            审核截止日: row.data.review_due_date,
-            公证书编号: row.data.certificate_no,
-            签发日期: row.data.certificate_issued_date,
-            存放位置: row.data.certificate_storage_location,
-            实物已收: row.data.physical_received ? "是" : "否",
-            说明: row.description,
-          })),
-        );
-      }
       message.success(
         initialTab === "notary-import-storage"
           ? `成功更新 ${data.updated ?? data.created} 条公证仓库信息`
@@ -2637,14 +2617,12 @@ export default function InvestigationCenterPage({
     isClue = initialTab.startsWith("clue-"),
     isAuditClue = initialTab.startsWith("clue-audit-"),
     isImport = [
-      "notary-import-info",
       "notary-import-storage",
       "notary-import-files",
       "notary-import-invoices",
     ].includes(initialTab),
     isFileQuery = initialTab === "notary-query-files";
   const routeTitles: Record<string, string> = {
-    "notary-import-info": "公证信息导入",
     "notary-import-storage": "补充取证信息(公证书号,仓库位置,发票号)文件导入",
     "notary-import-files": "公证书文件导入",
     "notary-import-invoices": "发票文件导入",
@@ -3040,19 +3018,7 @@ export default function InvestigationCenterPage({
     </>
   );
   const importColumns =
-    initialTab === "notary-import-info"
-      ? [
-          "来源线索编号",
-          "公证标题",
-          "负责人",
-          "审核截止日",
-          "公证书编号",
-          "签发日期",
-          "存放位置",
-          "实物已收",
-          "说明",
-        ]
-      : initialTab === "notary-import-storage"
+    initialTab === "notary-import-storage"
         ? [
             "线索号",
             "调查员",
@@ -3092,17 +3058,15 @@ export default function InvestigationCenterPage({
               "权利人",
             ];
   const importRule =
-    initialTab === "notary-import-info"
-      ? "仅支持 UTF-8 CSV；来源线索必须已完成取证，且尚未生成公证记录。"
+    initialTab === "notary-import-storage"
+      ? "支持 Excel（.xlsx / .xls）或 CSV；第一行为表头（列见下表）。按线索号或公证书号找到已有公证记录，更新公证书号、仓库、发票号，填了案号的关联案件。"
       : initialTab === "notary-import-files"
         ? "请选择 PDF，并填写要关联的公证书号；文件名不参与编号匹配。"
         : initialTab === "notary-import-invoices"
           ? "请选择 PDF，并填写要关联的发票号；文件名不参与编号匹配。"
           : "";
-  const importAccept = ["notary-import-info", "notary-import-storage"].includes(
-    initialTab,
-  )
-    ? ".csv,text/csv"
+  const importAccept = initialTab === "notary-import-storage"
+    ? ".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
     : ".pdf,application/pdf";
   // Every route declares its data-column widths. Calculate the horizontal viewport
   // from those widths and include the selection column, instead of leaving a large
@@ -3209,14 +3173,6 @@ export default function InvestigationCenterPage({
             <div className="notary-file-rule">{importRule}</div>
             <label>请选择上传文件：</label>
             <Space wrap>
-              {initialTab === "notary-import-info" && (
-                <Button
-                  icon={<DownloadOutlined />}
-                  onClick={downloadImportTemplate}
-                >
-                  下载导入模板
-                </Button>
-              )}
               <label className="notary-upload-button">
                 <UploadOutlined /> 选择文件
                 <input
@@ -3262,6 +3218,9 @@ export default function InvestigationCenterPage({
               scroll={{ x: 1200 }}
               pagination={false}
             />
+            {initialTab === "notary-import-storage" && (
+              <NotaryCreateCsvImport personName={projectedPersonDisplayName} onImported={() => load(tab)} />
+            )}
           </div>
         ) : (
           <>

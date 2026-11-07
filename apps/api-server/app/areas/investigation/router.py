@@ -505,9 +505,43 @@ async def import_investigation_notaries(file: UploadFile = File(...), identity: 
     return {"created": len(created_ids), "created_ids": created_ids, "failed": len(errors), "errors": errors}
 
 
+def _storage_import_cell(value) -> str:
+    """表格单元格转文字：Excel 整数不带 .0，纯日期不带 00:00:00。"""
+    from app.core.bank_statement_import import cell_text
+    if isinstance(value, datetime):
+        return value.date().isoformat() if (value.hour, value.minute, value.second) == (0, 0, 0) else value.isoformat(sep=" ", timespec="seconds")
+    if isinstance(value, date):
+        return value.isoformat()
+    return cell_text(value)
+
+
+def _storage_import_rows(raw: bytes, filename: str) -> list[tuple[int, dict]]:
+    """读取导入文件第一个工作表：第一行非空行是表头，返回 [(行号, {表头: 值})]，跳过整行为空的行。"""
+    from app.core.bank_statement_import import statement_sheets
+    sheets = statement_sheets(raw, filename)
+    try:
+        _, rows = next(sheets)
+        header: list[str] | None = None
+        result: list[tuple[int, dict]] = []
+        for row_no, cells in enumerate(rows, 1):
+            if row_no > 20000:
+                raise ValueError("单个工作表超过 20000 行，请拆分导入")
+            values = [_storage_import_cell(cell) for cell in (cells or [])]
+            if not any(values):
+                continue
+            if header is None:
+                header = values
+                continue
+            result.append((row_no, {name: values[index] if index < len(values) else "" for index, name in enumerate(header) if name}))
+        return result
+    finally:
+        sheets.close()
+
+
 @router.post(f"{settings.api_prefix}/investigations/notaries/storage/import", status_code=status.HTTP_201_CREATED)
 async def import_notary_storage(file: UploadFile = File(...), identity: dict = Depends(current_identity), db: AsyncSession = Depends(get_db)):
-    """Update warehouse/certificate/invoice/case fields on existing notary records from UTF-8 CSV."""
+    """公证书号仓库信息导入：按线索号或公证书号找到已有公证记录，更新公证书号、仓库、发票号等，填了案号的关联案件。
+    收 Excel（.xlsx / .xls）或 CSV（范文玲 11-06，501692/501694）；取第一个工作表，第一行非空行为表头。"""
     from app.core.permissions import _require_role_action
     await _require_role_action(identity, db, "investigation.import")
     from app.core.permissions import (
@@ -516,21 +550,23 @@ async def import_notary_storage(file: UploadFile = File(...), identity: dict = D
     from app.core.system import (
         _import_relation_data, _unique_import_record,
     )
-    if not (file.filename or "").lower().endswith(".csv"):
-        raise HTTPException(status_code=422, detail="仅支持 UTF-8 CSV 文件")
+    filename = file.filename or ""
+    if Path(filename).suffix.lower() not in {".xlsx", ".xls", ".csv"}:
+        raise HTTPException(status_code=422, detail="仅支持 Excel（.xlsx / .xls）或 CSV 文件")
     raw = await file.read()
     if len(raw) > 5 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="导入文件不能超过 5MB")
     try:
-        content = raw.decode("utf-8-sig")
-    except UnicodeDecodeError as exc:
-        raise HTTPException(status_code=422, detail="CSV 必须使用 UTF-8 编码") from exc
+        source_rows = _storage_import_rows(raw, filename)
+    except Exception as exc:  # 文件损坏、编码无法识别等，按文件问题提示，不报 500
+        raise HTTPException(status_code=422, detail=f"文件无法读取：{exc}" if isinstance(exc, ValueError) else "文件无法读取，请确认是 Excel 或 CSV 文件") from exc
+    file_kind = "CSV" if filename.lower().endswith(".csv") else "Excel"
     records = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "notary", *(await _record_scope_conditions(identity, db))))).all()
     cases = (await db.scalars(select(BusinessRecord).where(BusinessRecord.module == "case", *(await _record_scope_conditions(identity, db))))).all()
     by_clue = {str((item.data or {}).get("clue_no", "")).strip().casefold(): item for item in records if (item.data or {}).get("clue_no")}
     by_certificate = {str((item.data or {}).get("certificate_no", "")).strip().casefold(): item for item in records if (item.data or {}).get("certificate_no")}
     updated = 0; errors: list[dict] = []; seen: set[int] = set(); imported_rows: list[dict] = []
-    for row_no, row in enumerate(csv.DictReader(io.StringIO(content)), 2):
+    for row_no, row in source_rows:
         clue_no = (row.get("线索号") or row.get("线索编号") or row.get("clue_no") or "").strip()
         certificate_no = (row.get("公证书号") or row.get("certificate_no") or "").strip()
         item = by_clue.get(clue_no.casefold()) if clue_no else None
@@ -565,7 +601,7 @@ async def import_notary_storage(file: UploadFile = File(...), identity: dict = D
             "address": (row.get("调查地址") or row.get("address") or "").strip(),
         }
         item.data = {**data, **{key: value for key, value in values.items() if value}}
-        db.add(WorkflowEvent(record_id=item.id, action="导入公证仓库信息", from_status=item.status, to_status=item.status, operator=identity["username"], comment=f"CSV 第 {row_no} 行"))
+        db.add(WorkflowEvent(record_id=item.id, action="导入公证仓库信息", from_status=item.status, to_status=item.status, operator=identity["username"], comment=f"{file_kind} 第 {row_no} 行"))
         imported_rows.append({
             "id": item.id,
             "线索号": clue_no or str(data.get("clue_no", "")),
