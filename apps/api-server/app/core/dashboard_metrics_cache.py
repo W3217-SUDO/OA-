@@ -161,6 +161,8 @@ _GLOBAL_SLOT_PREFIX = "sunhold:dashboard:compute:v1"
 _GLOBAL_SLOT_SECONDS = 90
 _GLOBAL_POLL_SECONDS = 0.2
 _RELEASE_SLOT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0"
+# 后台刷新算完后歇一会：名额还是自己的才延长；算得太久（超过名额有效期）已被别人拿走时不能延长别人的名额。
+_REST_SLOT = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('EXPIRE', KEYS[1], ARGV[2]) end return 0"
 
 
 async def _global_slot(urgent):
@@ -188,7 +190,7 @@ async def _release_global_slot(lease, *, urgent=False, seconds=0.0):
         # 后台刷新算完后名额再占一段时间（算的时长 × 倍数），把它占用的 CPU 限制在一定比例内，用户请求不被挤掉。
         rest = 0 if urgent else min(_GLOBAL_SLOT_SECONDS, int(seconds * settings.dashboard_background_rest_ratio))
         if rest >= 1:
-            await asyncio.shield(shared.client().expire(lease[0], rest))
+            await asyncio.shield(shared.client().eval(_REST_SLOT, 1, lease[0], lease[1], rest))
             return
         await asyncio.shield(shared.client().eval(_RELEASE_SLOT, 1, lease[0], lease[1]))
     except (RedisError, HTTPException) as exc:

@@ -173,7 +173,7 @@ class BankStatementLine(Base):
 class LegacyArPaymentField(Base):
     """旧回款头（FAM_AR_Payment）JSON 拆出的字段，财务到账来源查询直接读这张表，不再逐行解析 JSON。
 
-    由 legacy_finance_records 上的触发器维护（PostgreSQL 在启动修订 legacy_ar_payment_side_table_v1 安装，
+    由 legacy_finance_records 上的触发器维护（PostgreSQL 在启动修订 finance_side_tables_v1 安装，
     新库和测试库建表时安装，见 finance_side_ddl.py），应用和同步程序都不直接写。旁表只是派生数据，原 JSON 不动；
     同步回滚逐列改回原值时触发器同样跟着改。一致性检查见 app/core/finance_side_tables.py。
     """
