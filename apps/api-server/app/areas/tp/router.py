@@ -888,7 +888,7 @@ async def batch_lifecycle_tasks(body: TaskBatchLifecycleInput, identity: dict = 
     ordered_tasks = [tasks_by_id[task_id] for task_id in task_ids]
     comment = body.comment.strip()
     recipient = ""
-    # 501742：批量交接可填一个期限，所有选中任务同用；不填保留各自原期限。规则同单条转交。
+    # 501742：批量交接可填一个期限，所有选中任务同用，填了才按单条转交的规则校验和缩短；不填保留各自原期限，不按类型上限缩短。
     handoff_deadlines: dict[int, tuple] = {}
     if body.action == "handoff":
         recipient = await _active_task_username(body.recipient, db, field_name="接收人")

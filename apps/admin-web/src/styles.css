@@ -1409,3 +1409,42 @@ body {
 /* 501295：顶部“工作台”右边固定的“问题反馈”页签，醒目一点。 */
 .feedback-pinned-tab{display:inline-flex;align-items:center;gap:4px;font-weight:600;color:#fa8c16}
 .topbar-workspace-tabs .ant-tabs-tab-active .feedback-pinned-tab{color:inherit}
+
+/* 501742：带时间的日期面板默认左右排，约 460px 宽，手机上超出屏幕。窄屏改成上下排，并固定在屏幕内；内容比屏幕高时面板内滚动。
+   Picker 上加 classNames={{ popup: { root: "oa-datetime-popup" } }} 才生效。 */
+@media (max-width: 520px) {
+  .oa-datetime-popup.ant-picker-dropdown {
+    position: fixed !important;
+    top: 8px !important;
+    right: 8px !important;
+    bottom: auto !important;
+    left: 8px !important;
+    width: auto !important;
+    max-height: calc(100vh - 16px);
+    overflow-y: auto;
+  }
+  .oa-datetime-popup .ant-picker-panel-container,
+  .oa-datetime-popup .ant-picker-panel-layout,
+  .oa-datetime-popup .ant-picker-panel,
+  .oa-datetime-popup .ant-picker-datetime-panel {
+    width: 100%;
+    min-width: 0;
+  }
+  .oa-datetime-popup .ant-picker-datetime-panel {
+    flex-direction: column;
+  }
+  .oa-datetime-popup .ant-picker-date-panel,
+  .oa-datetime-popup .ant-picker-time-panel {
+    width: 100%;
+    min-width: 0;
+  }
+  .oa-datetime-popup .ant-picker-time-panel {
+    border-inline-start: 0;
+  }
+  .oa-datetime-popup .ant-picker-time-panel .ant-picker-content {
+    height: auto;
+  }
+  .oa-datetime-popup .ant-picker-time-panel-column {
+    height: 132px;
+  }
+}
